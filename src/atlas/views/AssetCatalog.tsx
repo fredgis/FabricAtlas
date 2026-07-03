@@ -4,7 +4,7 @@ import { Table2, Columns3, Sigma, Search, Users, Boxes } from "lucide-react";
 import { useAtlas } from "../store";
 import { Card, PrincipalAvatar, SectionLabel, TypeGlyph, cn } from "../ui";
 import {
-  MODEL_SCHEMA,
+  schemaFor,
   typeMeta,
   type AccessLevel,
   type Item,
@@ -70,7 +70,7 @@ export function AssetCatalogView() {
       }
     };
     for (const it of items) {
-      const schema = MODEL_SCHEMA[it.fabricId];
+      const schema = schemaFor(data, it.fabricId);
       if (schema) {
         for (const t of schema) {
           push({ id: `${it.fabricId}::t::${t.name}`, itemFabricId: it.fabricId, itemName: it.displayName, itemType: it.itemType, kind: "table", name: t.name });

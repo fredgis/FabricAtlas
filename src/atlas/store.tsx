@@ -51,6 +51,7 @@ const EMPTY_DATA: AtlasData = {
   config: [],
   comments: [],
   syncRuns: [],
+  schema: {},
 };
 
 export function AtlasProvider({

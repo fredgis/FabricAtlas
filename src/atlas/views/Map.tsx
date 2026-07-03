@@ -14,7 +14,7 @@ import {
 import {
   HEALTH_COLOR,
   typeMeta,
-  MODEL_SCHEMA,
+  schemaFor,
   relativeTime,
   type Item,
   type ItemType,
@@ -76,7 +76,7 @@ export function MapView() {
     items.find((i) => i.itemType === "SemanticModel")?.fabricId ?? items[0]?.fabricId ?? "",
   );
   const sel = itemById.get(selId);
-  const schema = MODEL_SCHEMA[selId];
+  const schema = schemaFor(data, selId);
   const [openTables, setOpenTables] = useState<Set<string>>(new Set());
   const toggleTable = (t: string) =>
     setOpenTables((prev) => {

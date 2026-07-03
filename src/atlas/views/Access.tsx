@@ -4,7 +4,7 @@ import { useAtlas } from "../store";
 import { Card, PrincipalAvatar, SectionLabel, TypeGlyph, cn } from "../ui";
 import {
   typeMeta,
-  MODEL_SCHEMA,
+  schemaFor,
   type AccessLevel,
   type AccessSource,
   type Grant,
@@ -142,7 +142,7 @@ export function AccessView() {
   const assetsFor = (acc: { item: Item }[]) => {
     const out: { itemName: string; itemType: ItemType; kind: string; name: string; table?: string }[] = [];
     for (const { item } of acc) {
-      const schema = MODEL_SCHEMA[item.fabricId];
+      const schema = schemaFor(data, item.fabricId);
       if (!schema) continue;
       for (const t of schema) {
         out.push({ itemName: item.displayName, itemType: item.itemType, kind: "table", name: t.name });

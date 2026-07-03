@@ -23,6 +23,7 @@ import type {
   Grant,
   Item,
   Job,
+  ModelTableSchema,
   Principal,
   WorkspaceInfo,
 } from "./model";
@@ -212,6 +213,20 @@ async function persistSync(
       value: c.value,
     })),
   );
+  // Persist the sub-object schema (tables/columns/measures) as hidden ConfigEntry
+  // rows so the Asset Catalog and deep lineage survive a reload without re-sync.
+  const schemaRows: Row[] = [];
+  for (const [itemId, tables] of Object.entries(atlas.schema ?? {})) {
+    for (const t of tables) {
+      schemaRows.push({
+        itemFabricId: itemId,
+        section: "__schema__",
+        label: t.name,
+        value: JSON.stringify({ rows: t.rows, columns: t.columns, measures: t.measures }).slice(0, 2000),
+      });
+    }
+  }
+  if (schemaRows.length) await insertAll("ConfigEntry", schemaRows);
 
   // Workspace summary (single row) + a sync-run audit record.
   try {
@@ -335,12 +350,32 @@ export async function loadFromDb(isPreview: boolean): Promise<AtlasData | null> 
     durationSec: Number(r.durationSec ?? 0),
     message: (r.message as string) || undefined,
   }));
-  const config = configRows.map((r) => ({
-    itemFabricId: String(r.itemFabricId),
-    section: String(r.section),
-    label: String(r.label),
-    value: String(r.value ?? ""),
-  }));
+  const config: { itemFabricId: string; section: string; label: string; value: string }[] = [];
+  const schema: Record<string, ModelTableSchema[]> = {};
+  for (const r of configRows) {
+    if (String(r.section) === "__schema__") {
+      try {
+        const parsed = JSON.parse(String(r.value ?? "{}")) as {
+          rows?: number;
+          columns?: { name: string; dataType: string }[];
+          measures?: { name: string }[];
+        };
+        const id = String(r.itemFabricId);
+        const arr = schema[id] ?? [];
+        arr.push({ name: String(r.label), rows: parsed.rows, columns: parsed.columns ?? [], measures: parsed.measures ?? [] });
+        schema[id] = arr;
+      } catch {
+        /* ignore malformed schema row */
+      }
+    } else {
+      config.push({
+        itemFabricId: String(r.itemFabricId),
+        section: String(r.section),
+        label: String(r.label),
+        value: String(r.value ?? ""),
+      });
+    }
+  }
   const comments: Comment[] = commentRows.map((r) => ({
     id: String(r.id),
     itemFabricId: (r.itemFabricId as string) || undefined,
@@ -370,5 +405,5 @@ export async function loadFromDb(isPreview: boolean): Promise<AtlasData | null> 
       }
     : WS_FALLBACK;
 
-  return { workspace, items, edges, principals, grants, jobs, config, comments, syncRuns };
+  return { workspace, items, edges, principals, grants, jobs, config, schema, comments, syncRuns };
 }

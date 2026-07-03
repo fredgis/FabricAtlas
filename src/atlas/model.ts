@@ -172,6 +172,9 @@ export interface AtlasData {
   config: ConfigKV[];
   comments: Comment[];
   syncRuns: SyncRun[];
+  // Sub-objects (tables/columns/measures) keyed by real item id, populated by
+  // the live Sync. Preview falls back to MODEL_SCHEMA via schemaFor().
+  schema?: Record<string, ModelTableSchema[]>;
 }
 
 // ---------- helpers ----------
@@ -365,6 +368,14 @@ export const MODEL_SCHEMA: Record<string, ModelTableSchema[]> = {
   [LH]: AR_TABLES.map((t) => ({ ...t, measures: [] })),
 };
 
+/** Sub-object schema for an item: live-synced schema first, sample schema as fallback. */
+export function schemaFor(
+  data: { schema?: Record<string, ModelTableSchema[]> },
+  id: string,
+): ModelTableSchema[] | undefined {
+  return data.schema?.[id] ?? MODEL_SCHEMA[id];
+}
+
 export const SAMPLE_DATA: AtlasData = {
   workspace: {
     fabricId: "10000000-0000-4000-8000-0000000000f0",
@@ -472,4 +483,5 @@ export const SAMPLE_DATA: AtlasData = {
   syncRuns: [
     { id: "s1", startedAt: iso(7), finishedAt: iso(6), status: "completed", itemsSynced: 14, triggeredBy: OWNER, summary: "14 items · 14 lineage edges · 1 principal · 6 jobs" },
   ],
+  schema: MODEL_SCHEMA,
 };

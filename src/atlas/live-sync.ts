@@ -18,6 +18,7 @@ import {
   type WorkspaceRole,
   type ConfigKV,
   type AccessLevel,
+  type ModelTableSchema,
 } from "./model";
 
 /* -------------------------------- MSAL --------------------------------- */
@@ -69,6 +70,7 @@ export interface RawSync {
   lineage?: Array<{ source?: string; target?: string; relation?: string }>;
   access?: Array<{ itemId?: string; principalName?: string; principalEmail?: string; principalType?: string; accessRight?: string }>;
   config?: Array<{ itemId?: string; section?: string; label?: string; value?: string }>;
+  schema?: Record<string, Array<{ name?: string; rows?: number; columns?: Array<{ name?: string; dataType?: string }>; measures?: Array<{ name?: string }> }>>;
   errors?: string[];
 }
 
@@ -295,6 +297,17 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
       value: String(c.value ?? ""),
     }));
 
+  const schema: Record<string, ModelTableSchema[]> = {};
+  for (const [id, tables] of Object.entries(raw.schema ?? {})) {
+    if (!itemIds.has(id) || !Array.isArray(tables)) continue;
+    schema[id] = tables.map((t) => ({
+      name: String(t.name ?? ""),
+      rows: t.rows,
+      columns: (t.columns ?? []).map((c) => ({ name: String(c.name ?? ""), dataType: String(c.dataType ?? "column") })),
+      measures: (t.measures ?? []).map((m) => ({ name: String(m.name ?? "") })),
+    }));
+  }
+
   const ws = (raw.workspace ?? {}) as Record<string, unknown>;
   const workspace: WorkspaceInfo = {
     fabricId: String(ws.id ?? fallback.fabricId),
@@ -311,6 +324,7 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
     grants,
     jobs,
     config,
+    schema,
     comments: [],
     syncRuns: [],
   };

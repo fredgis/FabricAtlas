@@ -67,7 +67,7 @@ def get_workspace(fabricToken: str, workspaceId: str) -> dict:
 def _scan_workspace(token, ws):
     start = _req(
         token,
-        ADMIN + "/workspaces/getInfo?lineage=True&datasourceDetails=True&getArtifactUsers=True",
+        ADMIN + "/workspaces/getInfo?lineage=True&datasourceDetails=True&getArtifactUsers=True&datasetSchema=True&datasetExpressions=True",
         method="POST",
         body={"workspaces": [ws]},
     )
@@ -166,6 +166,24 @@ def _item_config(token, ws, a, typ):
     return rows
 
 
+def _item_schema(token, ws, a, typ):
+    """Sub-objects of an item: a semantic model's tables/columns/measures, or a
+    lakehouse's tables. Keyed by the real item id at sync time."""
+    tables = []
+    if typ == "SemanticModel":
+        for t in a.get("tables") or []:
+            cols = [
+                {"name": c.get("name"), "dataType": c.get("dataType") or c.get("type") or "column"}
+                for c in (t.get("columns") or [])
+            ]
+            meas = [{"name": m.get("name")} for m in (t.get("measures") or [])]
+            tables.append({"name": t.get("name"), "columns": cols, "measures": meas})
+    elif typ == "Lakehouse":
+        for t in _lh_tables(token, ws, a.get("id")):
+            tables.append({"name": t.get("name"), "columns": [], "measures": []})
+    return tables
+
+
 @udf.function()
 def sync_all(fabricToken: str, workspaceId: str) -> dict:
     """One-shot sync for Fabric Atlas. Uses the Fabric item APIs for the catalog
@@ -179,6 +197,7 @@ def sync_all(fabricToken: str, workspaceId: str) -> dict:
         "access": [],
         "lineage": [],
         "config": [],
+        "schema": {},
         "jobs": [],
         "errors": [],
     }
@@ -237,6 +256,12 @@ def sync_all(fabricToken: str, workspaceId: str) -> dict:
                 out["lineage"].append({"source": a["datasetId"], "target": aid, "relation": "report"})
             try:
                 out["config"].extend(_item_config(fabricToken, ws, a, typ))
+            except Exception:
+                pass
+            try:
+                sch = _item_schema(fabricToken, ws, a, typ)
+                if sch:
+                    out["schema"][aid] = sch
             except Exception:
                 pass
 
