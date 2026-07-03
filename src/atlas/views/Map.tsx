@@ -13,21 +13,26 @@ import {
 } from "../ui";
 import {
   HEALTH_COLOR,
-  ITEM_TYPES,
+  typeMeta,
   MODEL_SCHEMA,
   relativeTime,
   type Item,
   type ItemType,
 } from "../model";
 
-const LAYER: Record<ItemType, number> = {
+const LAYER: Partial<Record<ItemType, number>> = {
   DataPipeline: 0,
   Dataflow: 0,
   Notebook: 0,
+  Eventstream: 0,
+  UserDataFunction: 0,
+  AppBackend: 0,
   Lakehouse: 1,
   Warehouse: 1,
   Eventhouse: 1,
+  MirroredDatabase: 1,
   SQLEndpoint: 2,
+  SQLDatabase: 2,
   SemanticModel: 2,
   KQLDatabase: 2,
   Report: 3,
@@ -47,7 +52,7 @@ export function MapView() {
     const layers: Item[][] = [[], [], [], []];
     [...items]
       .sort((a, b) => a.displayName.localeCompare(b.displayName))
-      .forEach((it) => layers[LAYER[it.itemType]].push(it));
+      .forEach((it) => layers[LAYER[it.itemType] ?? 0].push(it));
     const pos = new Map<string, { x: number; y: number }>();
     layers.forEach((col, li) => {
       col.forEach((it, idx) => {
@@ -145,7 +150,7 @@ export function MapView() {
                     {it.displayName}
                   </div>
                   <div className="text-[10.5px] uppercase tracking-wide text-muted-foreground">
-                    {ITEM_TYPES[it.itemType].label}
+                    {typeMeta(it.itemType).label}
                   </div>
                 </div>
                 <HealthDot health={it.health} />
@@ -178,7 +183,7 @@ export function MapView() {
               <div className="min-w-0">
                 <div className="truncate text-[17px] font-bold">{sel.displayName}</div>
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                  {ITEM_TYPES[sel.itemType].label}
+                  {typeMeta(sel.itemType).label}
                 </div>
               </div>
             </div>

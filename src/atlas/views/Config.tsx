@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useAtlas } from "../store";
 import { Card, EndorsementChip, HealthChip, TypeGlyph, cn } from "../ui";
-import { ITEM_TYPES, type ConfigKV, type Item } from "../model";
+import { typeMeta, type ConfigKV, type Item } from "../model";
 
 export function ConfigView() {
   const { data } = useAtlas();
@@ -73,7 +73,7 @@ export function ConfigView() {
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13px] font-semibold">{i.displayName}</div>
                     <div className="text-[11px] text-muted-foreground">
-                      {ITEM_TYPES[i.itemType].label}
+                      {typeMeta(i.itemType).label}
                     </div>
                   </div>
                   <span className="text-[11px] font-bold text-muted-foreground">{count}</span>
@@ -90,7 +90,7 @@ export function ConfigView() {
               <div className="flex-1">
                 <div className="text-[17px] font-bold">{sel.displayName}</div>
                 <div className="text-[12px] text-muted-foreground">
-                  {ITEM_TYPES[sel.itemType].label}
+                  {typeMeta(sel.itemType).label}
                   {sel.ownerName ? ` · owned by ${sel.ownerName}` : ""}
                 </div>
               </div>

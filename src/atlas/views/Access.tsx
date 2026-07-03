@@ -3,7 +3,7 @@ import { ShieldAlert, Globe, Crown, UserX, Bot } from "lucide-react";
 import { useAtlas } from "../store";
 import { Card, PrincipalAvatar, SectionLabel, TypeGlyph, cn } from "../ui";
 import {
-  ITEM_TYPES,
+  typeMeta,
   type AccessLevel,
   type AccessSource,
   type Grant,
@@ -248,7 +248,7 @@ export function AccessView() {
                   <TypeGlyph type={i.itemType} size={28} />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13px] font-semibold">{i.displayName}</div>
-                    <div className="text-[11px] text-muted-foreground">{ITEM_TYPES[i.itemType].label}</div>
+                    <div className="text-[11px] text-muted-foreground">{typeMeta(i.itemType).label}</div>
                   </div>
                   <span className="text-[11px] font-bold text-muted-foreground">
                     {grants.filter((g) => g.itemFabricId === i.fabricId).length}
@@ -265,7 +265,7 @@ export function AccessView() {
                 <div>
                   <div className="text-[16px] font-bold">{sel.displayName}</div>
                   <div className="text-[12px] text-muted-foreground">
-                    {ITEM_TYPES[sel.itemType].label}
+                    {typeMeta(sel.itemType).label}
                     {sel.ownerName ? ` · owned by ${sel.ownerName}` : ""}
                   </div>
                 </div>

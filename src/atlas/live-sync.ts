@@ -5,7 +5,6 @@
 
 import { ATLAS_CONFIG, getUdfUrl } from "./config";
 import {
-  ITEM_TYPES,
   type AtlasData,
   type Item,
   type ItemType,
@@ -107,7 +106,8 @@ const ROLE_TO_ACCESS: Record<string, "owner" | "edit" | "view"> = {
 };
 
 function toItemType(t: unknown): ItemType | null {
-  return typeof t === "string" && t in ITEM_TYPES ? (t as ItemType) : null;
+  // Keep every real workspace item; unknown types render with a neutral glyph.
+  return typeof t === "string" && t.length > 0 ? (t as ItemType) : null;
 }
 
 function jobStatus(s: unknown): Job["status"] {

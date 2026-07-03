@@ -2,7 +2,7 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import type { CSSProperties, ReactNode } from "react";
 import {
-  ITEM_TYPES,
+  typeMeta,
   HEALTH_COLOR,
   avatarColor,
   initials,
@@ -80,7 +80,7 @@ export function PrincipalAvatar({
 
 /** Colored rounded square with the 2-letter Fabric item-type code. */
 export function TypeGlyph({ type, size = 32 }: { type: ItemType; size?: number }) {
-  const meta = ITEM_TYPES[type];
+  const meta = typeMeta(type);
   return (
     <span
       title={meta.label}

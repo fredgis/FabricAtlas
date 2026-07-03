@@ -10,12 +10,17 @@ export type ItemType =
   | "Eventhouse"
   | "KQLDatabase"
   | "SQLEndpoint"
+  | "SQLDatabase"
   | "Notebook"
   | "DataPipeline"
   | "Dataflow"
   | "SemanticModel"
   | "Report"
-  | "Dashboard";
+  | "Dashboard"
+  | "Eventstream"
+  | "MirroredDatabase"
+  | "UserDataFunction"
+  | "AppBackend";
 
 export type Health = "healthy" | "stale" | "failing" | "unknown";
 export type Endorsement = "none" | "promoted" | "certified";
@@ -49,7 +54,20 @@ export const ITEM_TYPES: Record<ItemType, TypeMeta> = {
   SemanticModel: { label: "Semantic model", code: "SM", color: "#d9a520", icon: "Boxes" },
   Report: { label: "Report", code: "RP", color: "#eab308", icon: "BarChart3" },
   Dashboard: { label: "Dashboard", code: "DB", color: "#f59e0b", icon: "LayoutDashboard" },
+  SQLDatabase: { label: "SQL database", code: "DB", color: "#2563eb", icon: "Database" },
+  Eventstream: { label: "Eventstream", code: "ES", color: "#06b6d4", icon: "Radio" },
+  MirroredDatabase: { label: "Mirrored DB", code: "MD", color: "#8b5cf6", icon: "Copy" },
+  UserDataFunction: { label: "User data function", code: "Fn", color: "#64748b", icon: "FunctionSquare" },
+  AppBackend: { label: "Fabric app", code: "AP", color: "#0ea5b7", icon: "AppWindow" },
 };
+
+const FALLBACK_META: TypeMeta = { label: "Item", code: "··", color: "#8b95a5", icon: "Box" };
+
+/** Item-type metadata that never throws — unknown/blank types get a neutral glyph. */
+export function typeMeta(type: string | undefined | null): TypeMeta {
+  if (!type) return FALLBACK_META;
+  return (ITEM_TYPES as Record<string, TypeMeta>)[type] ?? { ...FALLBACK_META, label: String(type) };
+}
 
 export const HEALTH_COLOR: Record<Health, string> = {
   healthy: "#22a565",

@@ -10,7 +10,7 @@ import {
   TypeGlyph,
   cn,
 } from "../ui";
-import { ITEM_TYPES, relativeTime, type Item, type ItemType } from "../model";
+import { typeMeta, relativeTime, type Item, type ItemType } from "../model";
 
 export function CatalogView() {
   const { data } = useAtlas();
@@ -96,7 +96,7 @@ export function CatalogView() {
                   >
                     {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                     <TypeGlyph type={type} size={20} />
-                    <span>{ITEM_TYPES[type].label}</span>
+                    <span>{typeMeta(type).label}</span>
                     <span className="ml-auto text-[11px] text-muted-foreground">{list.length}</span>
                   </button>
                   {open &&
@@ -123,7 +123,7 @@ export function CatalogView() {
                 <TypeGlyph type={i.itemType} size={36} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[10.5px] uppercase tracking-wide text-muted-foreground">
-                    {ITEM_TYPES[i.itemType].label}
+                    {typeMeta(i.itemType).label}
                   </div>
                 </div>
                 <HealthDot health={i.health} />

@@ -4,7 +4,7 @@ import { useAtlas } from "../store";
 import { Avatar, Card, HealthDot, SectionLabel, TypeGlyph } from "../ui";
 import {
   HEALTH_COLOR,
-  ITEM_TYPES,
+  typeMeta,
   relativeTime,
   type Health,
   type ItemType,
@@ -126,11 +126,11 @@ export function OverviewView({ onOpen }: { onOpen: (t: Tab) => void }) {
                 className="flex items-center gap-[11px] text-left"
               >
                 <TypeGlyph type={t} size={28} />
-                <div className="w-[130px] text-[13px] font-semibold">{ITEM_TYPES[t].label}</div>
+                <div className="w-[130px] text-[13px] font-semibold">{typeMeta(t).label}</div>
                 <div className="h-[8px] flex-1 overflow-hidden rounded-full bg-muted">
                   <div
                     className="h-full rounded-full"
-                    style={{ width: `${(c / maxType) * 100}%`, background: ITEM_TYPES[t].color }}
+                    style={{ width: `${(c / maxType) * 100}%`, background: typeMeta(t).color }}
                   />
                 </div>
                 <div className="w-[24px] text-right text-[13px] font-bold tabular-nums">{c}</div>
