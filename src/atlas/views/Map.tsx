@@ -19,14 +19,15 @@ import {
 } from "../model";
 
 const LAYER: Record<ItemType, number> = {
-  Lakehouse: 0,
-  Warehouse: 0,
-  Eventhouse: 0,
-  KQLDatabase: 0,
-  Notebook: 1,
-  DataPipeline: 1,
-  Dataflow: 1,
+  DataPipeline: 0,
+  Dataflow: 0,
+  Notebook: 0,
+  Lakehouse: 1,
+  Warehouse: 1,
+  Eventhouse: 1,
+  SQLEndpoint: 2,
   SemanticModel: 2,
+  KQLDatabase: 2,
   Report: 3,
   Dashboard: 3,
 };

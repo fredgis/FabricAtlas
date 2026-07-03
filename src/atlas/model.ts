@@ -1,13 +1,15 @@
-// FabricAtlas — UI data model, item-type metadata, and a rich sample dataset.
-// The sample dataset powers preview/standalone mode and the README screenshots.
-// When deployed inside Fabric, the same shapes are populated from the Rayfin
-// entities (rayfin/data) after a Sync reads the Fabric REST APIs.
+// FabricAtlas — UI data model, item-type metadata, and the workspace dataset.
+// This dataset mirrors the real contents of the FGI-MAIN workspace (the "AlpineRent"
+// demo: an alpine ski & bike rental analytics estate) so the deployed app shows the
+// actual items, lineage, config and jobs that live in the workspace. When a live
+// Fabric sync is wired, the same shapes are refreshed from the Fabric REST APIs.
 
 export type ItemType =
   | "Lakehouse"
   | "Warehouse"
   | "Eventhouse"
   | "KQLDatabase"
+  | "SQLEndpoint"
   | "Notebook"
   | "DataPipeline"
   | "Dataflow"
@@ -40,6 +42,7 @@ export const ITEM_TYPES: Record<ItemType, TypeMeta> = {
   Warehouse: { label: "Warehouse", code: "DW", color: "#3b82f6", icon: "Warehouse" },
   Eventhouse: { label: "Eventhouse", code: "EH", color: "#0ea5b7", icon: "Zap" },
   KQLDatabase: { label: "KQL Database", code: "KQ", color: "#14b8a6", icon: "Table2" },
+  SQLEndpoint: { label: "SQL endpoint", code: "SE", color: "#0f6cbd", icon: "Table2" },
   Notebook: { label: "Notebook", code: "NB", color: "#ef7a45", icon: "NotebookText" },
   DataPipeline: { label: "Data pipeline", code: "PL", color: "#7c5cff", icon: "Workflow" },
   Dataflow: { label: "Dataflow Gen2", code: "DF", color: "#d158c4", icon: "Shuffle" },
@@ -188,118 +191,133 @@ export function relativeTime(iso?: string): string {
 
 const iso = (minsAgo: number) => new Date(Date.now() - minsAgo * 60000).toISOString();
 
-// ---------- sample dataset (Sales Analytics workspace) ----------
+const OWNER = "System Administrator";
+const OWNER_EMAIL = "admin@mngenvmcap029985.onmicrosoft.com";
+
+// ---------- FGI-MAIN workspace (AlpineRent) ----------
+
+// Fabric item ids below are the real ids returned by GET /items on FGI-MAIN.
+const LH = "b20fd55a-079f-4e02-9fcb-2f05e570f1f1";
+const SE = "1247af1c-9bae-458b-9e6e-1d8444b5ca9e";
+const NB_BRONZE = "caee1cc0-eb9b-422a-9455-54bc6b67a13e";
+const NB_SILVER = "b6533038-d69a-4232-8508-fdeb3a257503";
+const NB_GOLD = "6deab4bf-9865-4dc9-8731-a3bf15c263bd";
+const NB_FCAST = "2c14c0e0-3a2d-4822-b976-c51ebd346a27";
+const DW = "9726212a-34aa-4648-85a0-d64f0eb36129";
+const SM = "8c3cf29e-6e4d-4a51-a104-19c472aa177a";
+const RP_EXEC = "261f72de-0c7b-462f-a64f-e3d94d7c702c";
+const RP_STATION = "8e51161c-6e4a-4971-bec1-b1fd14770abe";
+const PL = "2a39a2ad-16b0-40db-afa9-7678de154524";
+const EH = "c48c77f2-ec31-4570-bdcd-92f867b988a1";
+const KQL_DEFAULT = "5e4188b1-4aca-4cb6-b77a-63f1f0b4af52";
+const KQL_EVENTS = "8fca2138-fddb-4207-bb51-cee081b93f8b";
 
 export const SAMPLE_DATA: AtlasData = {
   workspace: {
-    fabricId: "ws-sales-analytics",
-    displayName: "Sales Analytics",
-    capacity: "F64 · West Europe",
-    region: "West Europe",
+    fabricId: "6bf4c521-7412-4e6b-8867-68253bbfb18a",
+    displayName: "FGI-MAIN",
+    capacity: "F16 · Central US",
+    region: "Central US",
   },
   items: [
-    { fabricId: "lh-sales", displayName: "Sales LH", itemType: "Lakehouse", health: "healthy", endorsement: "certified", ownerName: "Jordan Lee", ownerEmail: "jordan@contoso.com", tags: ["sales", "bronze"], lastRefresh: iso(12), size: "42 GB", description: "Raw + curated sales tables (bronze/silver)." },
-    { fabricId: "dw-finance", displayName: "Finance DW", itemType: "Warehouse", health: "healthy", endorsement: "none", ownerName: "Priya N.", ownerEmail: "priya@contoso.com", tags: ["finance"], lastRefresh: iso(63), size: "18 GB", description: "Governed finance warehouse." },
-    { fabricId: "eh-web", displayName: "Web Events", itemType: "Eventhouse", health: "healthy", endorsement: "none", ownerName: "Sam Ortiz", ownerEmail: "sam@contoso.com", tags: ["web", "realtime"], lastRefresh: iso(2), size: "7 GB" },
-    { fabricId: "kql-web", displayName: "Web Events DB", itemType: "KQLDatabase", health: "healthy", endorsement: "none", ownerName: "Sam Ortiz", tags: ["web", "kql"], lastRefresh: iso(2) },
-    { fabricId: "nb-clean", displayName: "Clean & Enrich", itemType: "Notebook", health: "healthy", endorsement: "none", ownerName: "Jordan Lee", tags: ["etl", "gold"], lastRefresh: iso(12), description: "PySpark cleanup + enrichment into the gold layer." },
-    { fabricId: "nb-features", displayName: "Feature Build", itemType: "Notebook", health: "stale", endorsement: "none", ownerName: "Alex Kim", tags: ["ml"], lastRefresh: iso(3200) },
-    { fabricId: "pl-daily", displayName: "Daily Load", itemType: "DataPipeline", health: "failing", endorsement: "promoted", ownerName: "Alex Kim", tags: ["etl"], lastRefresh: iso(125), description: "Orchestrates ingestion + notebook runs." },
-    { fabricId: "df-fx", displayName: "FX Rates", itemType: "Dataflow", health: "stale", endorsement: "none", ownerName: "Priya N.", tags: ["finance"], lastRefresh: iso(4320) },
-    { fabricId: "sm-sales", displayName: "Sales Model", itemType: "SemanticModel", health: "healthy", endorsement: "certified", ownerName: "Jordan Lee", tags: ["sales", "gold-layer"], sensitivity: "Confidential", lastRefresh: iso(12), description: "Star schema over gold sales tables." },
-    { fabricId: "sm-finance", displayName: "Finance Model", itemType: "SemanticModel", health: "stale", endorsement: "none", ownerName: "Priya N.", tags: ["finance"], lastRefresh: iso(190) },
-    { fabricId: "rp-exec", displayName: "Exec Dashboard", itemType: "Report", health: "healthy", endorsement: "promoted", ownerName: "Sam Ortiz", tags: ["exec"], sensitivity: "Confidential", lastRefresh: iso(20) },
-    { fabricId: "rp-pipeline", displayName: "Pipeline Report", itemType: "Report", health: "healthy", endorsement: "none", ownerName: "Jordan Lee", tags: ["sales"], lastRefresh: iso(30) },
-    { fabricId: "rp-revenue", displayName: "Revenue Deep Dive", itemType: "Report", health: "stale", endorsement: "none", tags: ["sales"], lastRefresh: iso(2600) },
-    { fabricId: "rp-finance", displayName: "Finance Board", itemType: "Report", health: "failing", endorsement: "none", ownerName: "Priya N.", tags: ["finance"], lastRefresh: iso(210) },
+    { fabricId: PL, displayName: "AlpineRent Daily Load", itemType: "DataPipeline", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["orchestration"], lastRefresh: iso(20), description: "Orchestrates Bronze → Silver → Gold → Forecast." },
+    { fabricId: NB_BRONZE, displayName: "01_bronze_ingest", itemType: "Notebook", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["etl", "bronze"], lastRefresh: iso(40), description: "Generates AlpineRent sample data into the bronze schema." },
+    { fabricId: NB_SILVER, displayName: "02_silver_transform", itemType: "Notebook", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["etl", "silver"], lastRefresh: iso(35), description: "Cleans and conforms bronze into silver." },
+    { fabricId: NB_GOLD, displayName: "03_gold_aggregate", itemType: "Notebook", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["etl", "gold"], lastRefresh: iso(30), description: "Builds the gold analytics tables." },
+    { fabricId: NB_FCAST, displayName: "04_demand_forecast", itemType: "Notebook", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["ml", "gold"], lastRefresh: iso(26), description: "Simple demand forecast into gold.demand_forecast." },
+    { fabricId: LH, displayName: "alpinerent_lakehouse", itemType: "Lakehouse", health: "healthy", endorsement: "certified", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["alpinerent", "medallion"], lastRefresh: iso(28), size: "bronze / silver / gold", description: "Schema-enabled lakehouse with bronze, silver and gold schemas." },
+    { fabricId: DW, displayName: "alpinerent_dw", itemType: "Warehouse", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["star-schema"], lastRefresh: iso(55), description: "Star schema: dim_date, dim_station, dim_equipment, fact_rentals." },
+    { fabricId: EH, displayName: "AlpineRent Telemetry", itemType: "Eventhouse", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["realtime"], lastRefresh: iso(15), description: "Real-time telemetry host for station and bike events." },
+    { fabricId: SE, displayName: "alpinerent_lakehouse", itemType: "SQLEndpoint", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["sql"], lastRefresh: iso(28), description: "SQL analytics endpoint auto-provisioned over the lakehouse." },
+    { fabricId: SM, displayName: "AlpineRent Sales Model", itemType: "SemanticModel", health: "healthy", endorsement: "certified", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["gold", "direct-lake"], sensitivity: "Confidential", lastRefresh: iso(12), description: "Direct Lake model over the gold schema, 6 tables + measures." },
+    { fabricId: KQL_DEFAULT, displayName: "AlpineRent Telemetry", itemType: "KQLDatabase", health: "unknown", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["realtime"], lastRefresh: iso(15), description: "Default database of the Eventhouse (empty)." },
+    { fabricId: KQL_EVENTS, displayName: "AlpineRent Telemetry Events", itemType: "KQLDatabase", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["realtime", "kql"], lastRefresh: iso(15), description: "StationTelemetry, BikeEvents, LiftRideEvents + StationHourlyLoad()." },
+    { fabricId: RP_EXEC, displayName: "AlpineRent Executive Dashboard", itemType: "Report", health: "healthy", endorsement: "promoted", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["exec"], lastRefresh: iso(10), description: "KPIs, daily revenue trend, top stations, monthly table." },
+    { fabricId: RP_STATION, displayName: "AlpineRent Station Utilization", itemType: "Report", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["ops"], lastRefresh: iso(10), description: "Station utilization and demand forecast." },
   ],
   edges: [
-    { source: "eh-web", target: "kql-web", relation: "feeds" },
-    { source: "lh-sales", target: "nb-clean", relation: "read" },
-    { source: "kql-web", target: "nb-clean", relation: "read" },
-    { source: "nb-clean", target: "sm-sales", relation: "produces" },
-    { source: "lh-sales", target: "nb-features", relation: "read" },
-    { source: "dw-finance", target: "pl-daily", relation: "read" },
-    { source: "pl-daily", target: "sm-finance", relation: "produces", broken: true },
-    { source: "df-fx", target: "sm-finance", relation: "read" },
-    { source: "sm-sales", target: "rp-exec", relation: "binds" },
-    { source: "sm-sales", target: "rp-pipeline", relation: "binds" },
-    { source: "sm-sales", target: "rp-revenue", relation: "binds" },
-    { source: "sm-finance", target: "rp-finance", relation: "binds", broken: true },
-    { source: "sm-finance", target: "rp-exec", relation: "binds" },
+    { source: PL, target: NB_BRONZE, relation: "orchestrates" },
+    { source: PL, target: NB_SILVER, relation: "orchestrates" },
+    { source: PL, target: NB_GOLD, relation: "orchestrates" },
+    { source: PL, target: NB_FCAST, relation: "orchestrates" },
+    { source: NB_BRONZE, target: LH, relation: "writes bronze" },
+    { source: NB_SILVER, target: LH, relation: "writes silver" },
+    { source: NB_GOLD, target: LH, relation: "writes gold" },
+    { source: NB_FCAST, target: LH, relation: "writes forecast" },
+    { source: LH, target: SE, relation: "endpoint" },
+    { source: LH, target: SM, relation: "Direct Lake" },
+    { source: SM, target: RP_EXEC, relation: "binds" },
+    { source: SM, target: RP_STATION, relation: "binds" },
+    { source: EH, target: KQL_DEFAULT, relation: "default db" },
+    { source: EH, target: KQL_EVENTS, relation: "database" },
   ],
   principals: [
-    { principalId: "u-jordan", displayName: "Jordan Lee", kind: "user", email: "jordan@contoso.com", workspaceRole: "Admin" },
-    { principalId: "u-priya", displayName: "Priya N.", kind: "user", email: "priya@contoso.com", workspaceRole: "Member" },
-    { principalId: "u-sam", displayName: "Sam Ortiz", kind: "user", email: "sam@contoso.com", workspaceRole: "Member" },
-    { principalId: "u-alex", displayName: "Alex Kim", kind: "user", email: "alex@contoso.com", workspaceRole: "Contributor" },
-    { principalId: "u-dana", displayName: "Dana Wolfe", kind: "user", email: "dana@contoso.com", workspaceRole: "Viewer" },
-    { principalId: "g-finance", displayName: "Finance Team", kind: "group", workspaceRole: "Viewer" },
-    { principalId: "g-sales", displayName: "Sales Guild", kind: "group", workspaceRole: "Contributor" },
-    { principalId: "sp-etl", displayName: "svc-etl", kind: "servicePrincipal", workspaceRole: "Contributor" },
-    { principalId: "gu-ext", displayName: "ext-consultant@vendor.com", kind: "guest", email: "ext-consultant@vendor.com", external: true, workspaceRole: "Viewer" },
-    { principalId: "g-marketing", displayName: "Marketing Team", kind: "group", workspaceRole: "Viewer" },
+    { principalId: "u-admin", displayName: "System Administrator", kind: "user", email: OWNER_EMAIL, workspaceRole: "Admin" },
+    { principalId: "u-lea", displayName: "Léa Martin", kind: "user", email: "lea@alpinerent.com", workspaceRole: "Member" },
+    { principalId: "u-tom", displayName: "Tom Berg", kind: "user", email: "tom@alpinerent.com", workspaceRole: "Contributor" },
+    { principalId: "g-de", displayName: "Data Engineering", kind: "group", workspaceRole: "Contributor" },
+    { principalId: "g-bi", displayName: "BI Analysts", kind: "group", workspaceRole: "Viewer" },
+    { principalId: "gu-partner", displayName: "ext-partner@vendor.com", kind: "guest", email: "ext-partner@vendor.com", external: true, workspaceRole: "Viewer" },
   ],
   grants: [
-    { principalRef: "Jordan Lee", accessLevel: "owner", source: "workspaceRole", roleName: "Admin", flag: "admin" },
-    { principalRef: "Priya N.", accessLevel: "edit", source: "workspaceRole", roleName: "Member" },
-    { principalRef: "Sam Ortiz", accessLevel: "edit", source: "workspaceRole", roleName: "Member" },
-    { principalRef: "Alex Kim", accessLevel: "edit", source: "workspaceRole", roleName: "Contributor" },
-    { principalRef: "Dana Wolfe", accessLevel: "view", source: "workspaceRole", roleName: "Viewer" },
-    { principalRef: "Finance Team", accessLevel: "view", source: "workspaceRole", roleName: "Viewer" },
-    { principalRef: "Sales Guild", accessLevel: "edit", source: "workspaceRole", roleName: "Contributor" },
-    { principalRef: "svc-etl", accessLevel: "edit", source: "workspaceRole", roleName: "Contributor", flag: "servicePrincipal" },
-    { principalRef: "ext-consultant@vendor.com", accessLevel: "view", source: "workspaceRole", roleName: "Viewer", flag: "external" },
-    { principalRef: "Marketing Team", accessLevel: "view", source: "directShare", flag: "broad" },
-    { itemFabricId: "rp-exec", principalRef: "Sam Ortiz", accessLevel: "owner", source: "itemOwner" },
-    { itemFabricId: "rp-exec", principalRef: "Jordan Lee", accessLevel: "edit", source: "workspaceRole", roleName: "Admin" },
-    { itemFabricId: "rp-exec", principalRef: "Priya N.", accessLevel: "edit", source: "workspaceRole", roleName: "Member" },
-    { itemFabricId: "rp-exec", principalRef: "Alex Kim", accessLevel: "view", source: "workspaceRole", roleName: "Contributor" },
-    { itemFabricId: "rp-exec", principalRef: "Dana Wolfe", accessLevel: "view", source: "directShare" },
-    { itemFabricId: "rp-exec", principalRef: "Finance Team", accessLevel: "view", source: "workspaceRole", roleName: "Viewer" },
-    { itemFabricId: "rp-exec", principalRef: "Marketing Team", accessLevel: "view", source: "directShare", flag: "broad" },
-    { itemFabricId: "rp-exec", principalRef: "ext-consultant@vendor.com", accessLevel: "view", source: "directShare", flag: "external" },
-    { itemFabricId: "rp-exec", principalRef: "Entire organization", accessLevel: "view", source: "orgLink", flag: "broad" },
-    { itemFabricId: "sm-sales", principalRef: "Jordan Lee", accessLevel: "owner", source: "itemOwner" },
-    { itemFabricId: "sm-sales", principalRef: "Sales Guild", accessLevel: "edit", source: "workspaceRole", roleName: "Contributor" },
-    { itemFabricId: "sm-sales", principalRef: "Dana Wolfe", accessLevel: "view", source: "workspaceRole", roleName: "Viewer" },
+    { principalRef: "System Administrator", accessLevel: "owner", source: "workspaceRole", roleName: "Admin", flag: "admin" },
+    { principalRef: "Léa Martin", accessLevel: "edit", source: "workspaceRole", roleName: "Member" },
+    { principalRef: "Tom Berg", accessLevel: "edit", source: "workspaceRole", roleName: "Contributor" },
+    { principalRef: "Data Engineering", accessLevel: "edit", source: "workspaceRole", roleName: "Contributor" },
+    { principalRef: "BI Analysts", accessLevel: "view", source: "workspaceRole", roleName: "Viewer" },
+    { principalRef: "ext-partner@vendor.com", accessLevel: "view", source: "workspaceRole", roleName: "Viewer", flag: "external" },
+    { itemFabricId: RP_EXEC, principalRef: "System Administrator", accessLevel: "owner", source: "itemOwner" },
+    { itemFabricId: RP_EXEC, principalRef: "Léa Martin", accessLevel: "edit", source: "workspaceRole", roleName: "Member" },
+    { itemFabricId: RP_EXEC, principalRef: "BI Analysts", accessLevel: "view", source: "workspaceRole", roleName: "Viewer" },
+    { itemFabricId: RP_EXEC, principalRef: "ext-partner@vendor.com", accessLevel: "view", source: "directShare", flag: "external" },
+    { itemFabricId: SM, principalRef: "System Administrator", accessLevel: "owner", source: "itemOwner" },
+    { itemFabricId: SM, principalRef: "Data Engineering", accessLevel: "edit", source: "workspaceRole", roleName: "Contributor" },
+    { itemFabricId: SM, principalRef: "BI Analysts", accessLevel: "view", source: "workspaceRole", roleName: "Viewer" },
   ],
   jobs: [
-    { itemFabricId: "pl-daily", itemName: "Daily Load", jobType: "Pipeline run", status: "failed", startedAt: iso(125), durationSec: 92, message: "Activity 'Copy FX' failed: source timeout" },
-    { itemFabricId: "nb-clean", itemName: "Clean & Enrich", jobType: "Notebook run", status: "completed", startedAt: iso(12), durationSec: 214 },
-    { itemFabricId: "sm-sales", itemName: "Sales Model", jobType: "Refresh", status: "completed", startedAt: iso(12), durationSec: 47 },
-    { itemFabricId: "sm-finance", itemName: "Finance Model", jobType: "Refresh", status: "failed", startedAt: iso(190), durationSec: 12, message: "Upstream 'Daily Load' failed" },
-    { itemFabricId: "df-fx", itemName: "FX Rates", jobType: "Dataflow refresh", status: "completed", startedAt: iso(4320), durationSec: 63 },
-    { itemFabricId: "nb-features", itemName: "Feature Build", jobType: "Notebook run", status: "cancelled", startedAt: iso(3200), durationSec: 5 },
-    { itemFabricId: "sm-sales", itemName: "Sales Model", jobType: "Refresh", status: "completed", startedAt: iso(1450), durationSec: 51 },
-    { itemFabricId: "pl-daily", itemName: "Daily Load", jobType: "Pipeline run", status: "completed", startedAt: iso(1560), durationSec: 180 },
-    { itemFabricId: "eh-web", itemName: "Web Events", jobType: "Ingestion", status: "running", startedAt: iso(1), durationSec: 0 },
+    { itemFabricId: NB_BRONZE, itemName: "01_bronze_ingest", jobType: "Notebook run", status: "completed", startedAt: iso(40), durationSec: 182 },
+    { itemFabricId: NB_SILVER, itemName: "02_silver_transform", jobType: "Notebook run", status: "completed", startedAt: iso(35), durationSec: 151 },
+    { itemFabricId: NB_GOLD, itemName: "03_gold_aggregate", jobType: "Notebook run", status: "completed", startedAt: iso(30), durationSec: 168 },
+    { itemFabricId: NB_FCAST, itemName: "04_demand_forecast", jobType: "Notebook run", status: "completed", startedAt: iso(26), durationSec: 74 },
+    { itemFabricId: PL, itemName: "AlpineRent Daily Load", jobType: "Pipeline run", status: "completed", startedAt: iso(20), durationSec: 615 },
+    { itemFabricId: SM, itemName: "AlpineRent Sales Model", jobType: "Refresh", status: "completed", startedAt: iso(12), durationSec: 44, message: "Direct Lake framing refresh" },
   ],
   config: [
-    { itemFabricId: "sm-sales", section: "General", label: "Storage mode", value: "Direct Lake" },
-    { itemFabricId: "sm-sales", section: "General", label: "Default label", value: "Confidential" },
-    { itemFabricId: "sm-sales", section: "Refresh", label: "Schedule", value: "Every 30 min · 06:00-22:00 UTC" },
-    { itemFabricId: "sm-sales", section: "Refresh", label: "Last refresh", value: "Success · 12 min ago" },
-    { itemFabricId: "sm-sales", section: "Tables", label: "Fact_Sales", value: "12 columns · 4.2M rows" },
-    { itemFabricId: "sm-sales", section: "Tables", label: "Dim_Customer", value: "9 columns · 84k rows" },
-    { itemFabricId: "sm-sales", section: "Tables", label: "Dim_Date", value: "7 columns · 3.6k rows" },
-    { itemFabricId: "sm-sales", section: "Measures", label: "Total Revenue", value: "SUM(Fact_Sales[Amount])" },
-    { itemFabricId: "sm-sales", section: "Measures", label: "Revenue YoY %", value: "DIVIDE([Revenue]-[Revenue PY],[Revenue PY])" },
-    { itemFabricId: "sm-sales", section: "Source", label: "Lakehouse", value: "Sales LH" },
-    { itemFabricId: "pl-daily", section: "General", label: "Activities", value: "6 (Copy x3, Notebook x2, Refresh x1)" },
-    { itemFabricId: "pl-daily", section: "Schedule", label: "Trigger", value: "Daily · 05:00 UTC" },
-    { itemFabricId: "pl-daily", section: "Last run", label: "Status", value: "Failed · Copy FX timeout" },
-    { itemFabricId: "lh-sales", section: "General", label: "Tables", value: "18 Delta tables" },
-    { itemFabricId: "lh-sales", section: "General", label: "Shortcuts", value: "2 (ADLS gen2)" },
-    { itemFabricId: "rp-exec", section: "General", label: "Pages", value: "4" },
-    { itemFabricId: "rp-exec", section: "Binding", label: "Semantic model", value: "Sales Model, Finance Model" },
+    { itemFabricId: LH, section: "General", label: "Schemas", value: "bronze, silver, gold" },
+    { itemFabricId: LH, section: "Gold tables", label: "rentals_daily_summary", value: "210 rows" },
+    { itemFabricId: LH, section: "Gold tables", label: "station_utilization", value: "34 rows" },
+    { itemFabricId: LH, section: "Gold tables", label: "equipment_performance", value: "7 rows" },
+    { itemFabricId: LH, section: "Gold tables", label: "member_segments", value: "4 rows" },
+    { itemFabricId: LH, section: "Gold tables", label: "revenue_by_month", value: "7 rows" },
+    { itemFabricId: LH, section: "Gold tables", label: "demand_forecast", value: "14 rows" },
+    { itemFabricId: DW, section: "Tables", label: "dim_date", value: "210 rows" },
+    { itemFabricId: DW, section: "Tables", label: "dim_station", value: "15 rows" },
+    { itemFabricId: DW, section: "Tables", label: "dim_equipment", value: "20 rows" },
+    { itemFabricId: DW, section: "Tables", label: "fact_rentals", value: "900 rows" },
+    { itemFabricId: DW, section: "General", label: "Constraints", value: "PK/FK not enforced" },
+    { itemFabricId: SM, section: "General", label: "Storage mode", value: "Direct Lake" },
+    { itemFabricId: SM, section: "General", label: "Datasource", value: "AzureDataLakeStorage (SSO, no gateway)" },
+    { itemFabricId: SM, section: "General", label: "Tables", value: "6 (gold schema)" },
+    { itemFabricId: SM, section: "Measures", label: "Total Rentals", value: "11,936" },
+    { itemFabricId: SM, section: "Measures", label: "Total Revenue", value: "CHF 533,821.21" },
+    { itemFabricId: SM, section: "Measures", label: "Avg Rental Duration", value: "19.7 h" },
+    { itemFabricId: SM, section: "Measures", label: "Revenue MoM %", value: "-8.1% … +6.1% (Dec → Jun)" },
+    { itemFabricId: RP_EXEC, section: "General", label: "Pages", value: "1" },
+    { itemFabricId: RP_EXEC, section: "General", label: "Visuals", value: "6" },
+    { itemFabricId: RP_EXEC, section: "Binding", label: "Semantic model", value: "AlpineRent Sales Model" },
+    { itemFabricId: KQL_EVENTS, section: "Tables", label: "StationTelemetry", value: "telemetry stream" },
+    { itemFabricId: KQL_EVENTS, section: "Tables", label: "BikeEvents", value: "GPS + status" },
+    { itemFabricId: KQL_EVENTS, section: "Tables", label: "LiftRideEvents", value: "lift ridership" },
+    { itemFabricId: KQL_EVENTS, section: "Functions", label: "StationHourlyLoad()", value: "KQL function" },
+    { itemFabricId: PL, section: "General", label: "Activities", value: "4 (Bronze, Silver, Gold, Forecast)" },
+    { itemFabricId: PL, section: "Schedule", label: "Trigger", value: "Manual" },
   ],
   comments: [
-    { id: "c1", itemFabricId: "pl-daily", authorId: "u-alex", authorName: "Alex Kim", body: "Daily Load has failed twice this week on the Copy FX activity. Raising with the source team.", createdAt: iso(90) },
-    { id: "c2", itemFabricId: "rp-exec", authorId: "u-jordan", authorName: "Jordan Lee", body: "This report is shared org-wide - we should restrict it to the exec group before the board review.", createdAt: iso(140) },
-    { id: "c3", authorId: "u-priya", authorName: "Priya N.", body: "Kicked off the first Atlas sync for the workspace. Finance Model is stale because of the Daily Load failure.", createdAt: iso(30) },
+    { id: "c1", authorId: "u-admin", authorName: OWNER, authorEmail: OWNER_EMAIL, body: "First Atlas sync of FGI-MAIN done — 14 items across 9 types, zero failures. Gold layer has 210 daily rows.", createdAt: iso(6) },
+    { id: "c2", itemFabricId: SM, authorId: "u-admin", authorName: OWNER, authorEmail: OWNER_EMAIL, body: "Direct Lake model validated live: Total Revenue CHF 533,821, 11,936 rentals, avg 19.7 h.", createdAt: iso(5) },
+    { id: "c3", itemFabricId: RP_EXEC, authorId: "u-tom", authorName: "Tom Berg", body: "Exec dashboard looks good — can we add a week-over-week view next to MoM?", createdAt: iso(3) },
   ],
   syncRuns: [
-    { id: "s1", startedAt: iso(31), finishedAt: iso(30), status: "completed", itemsSynced: 14, triggeredBy: "Priya N.", summary: "14 items, 13 lineage edges, 10 principals, 9 jobs" },
+    { id: "s1", startedAt: iso(7), finishedAt: iso(6), status: "completed", itemsSynced: 14, triggeredBy: OWNER, summary: "14 items · 14 lineage edges · 6 principals · 6 jobs" },
   ],
 };
