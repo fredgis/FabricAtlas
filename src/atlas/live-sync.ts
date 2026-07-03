@@ -16,6 +16,8 @@ import {
   type Health,
   type PrincipalKind,
   type WorkspaceRole,
+  type ConfigKV,
+  type AccessLevel,
 } from "./model";
 
 /* -------------------------------- MSAL --------------------------------- */
@@ -65,6 +67,8 @@ export interface RawSync {
   roleAssignments?: Array<Record<string, unknown>>;
   jobs?: Array<Record<string, unknown>>;
   lineage?: Array<{ source?: string; target?: string; relation?: string }>;
+  access?: Array<{ itemId?: string; principalName?: string; principalEmail?: string; principalType?: string; accessRight?: string }>;
+  config?: Array<{ itemId?: string; section?: string; label?: string; value?: string }>;
   errors?: string[];
 }
 
@@ -118,6 +122,14 @@ function jobStatus(s: unknown): Job["status"] {
   return "cancelled";
 }
 
+function accessLevelFrom(ar?: string | null): AccessLevel {
+  const s = (ar || "").toLowerCase();
+  if (s.includes("owner")) return "owner";
+  if (s.includes("write")) return "edit";
+  if (s.includes("read")) return "view";
+  return "none";
+}
+
 export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData {
   const items: Item[] = (raw.items ?? [])
     .map((it): Item | null => {
@@ -134,6 +146,8 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
       };
     })
     .filter((x): x is Item => x !== null);
+
+  const itemIds = new Set(items.map((i) => i.fabricId));
 
   const jobs: Job[] = (raw.jobs ?? []).map((j) => {
     const start = j.startTimeUtc as string | undefined;
@@ -209,10 +223,45 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
     });
   }
 
-  // Real lineage computed server-side by the UDF (Lakehouse→SQL endpoint,
-  // Report→semantic model, semantic model→Direct Lake source). Fall back to the
-  // one edge we can assert locally (Lakehouse and its same-named SQL endpoint).
-  const itemIds = new Set(items.map((i) => i.fabricId));
+  // Per-item access from the scanner (who can see each item, beyond workspace roles).
+  const principalRefs = new Set(principals.map((p) => p.displayName));
+  for (const g of raw.access ?? []) {
+    const name = String(g.principalName || g.principalEmail || "Unknown");
+    const email = g.principalEmail;
+    const isGuest = !!email && email.toUpperCase().includes("#EXT#");
+    const kind: PrincipalKind =
+      g.principalType === "Group"
+        ? "group"
+        : g.principalType === "App" || g.principalType === "ServicePrincipal"
+          ? "servicePrincipal"
+          : isGuest
+            ? "guest"
+            : "user";
+    if (!principalRefs.has(name)) {
+      principalRefs.add(name);
+      principals.push({
+        principalId: String(email || name),
+        displayName: name,
+        kind,
+        email: email || undefined,
+        external: isGuest,
+        workspaceRole: "Viewer",
+      });
+    }
+    if (g.itemId && itemIds.has(g.itemId)) {
+      grants.push({
+        itemFabricId: g.itemId,
+        principalRef: name,
+        accessLevel: accessLevelFrom(g.accessRight),
+        source: "directShare",
+        roleName: g.accessRight || undefined,
+        flag: isGuest ? "external" : kind === "servicePrincipal" ? "servicePrincipal" : undefined,
+      });
+    }
+  }
+
+  // Real lineage computed server-side by the UDF (item relations + report→model).
+  // Fall back to the one edge we can assert locally (Lakehouse and its SQL endpoint).
   const edges: Edge[] = [];
   if (Array.isArray(raw.lineage) && raw.lineage.length) {
     for (const e of raw.lineage) {
@@ -229,6 +278,15 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
     }
   }
 
+  const config: ConfigKV[] = (raw.config ?? [])
+    .filter((c) => !!c.itemId && itemIds.has(c.itemId))
+    .map((c) => ({
+      itemFabricId: String(c.itemId),
+      section: String(c.section || "General"),
+      label: String(c.label || ""),
+      value: String(c.value ?? ""),
+    }));
+
   const ws = (raw.workspace ?? {}) as Record<string, unknown>;
   const workspace: WorkspaceInfo = {
     fabricId: String(ws.id ?? fallback.fabricId),
@@ -244,7 +302,7 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
     principals,
     grants,
     jobs,
-    config: [],
+    config,
     comments: [],
     syncRuns: [],
   };

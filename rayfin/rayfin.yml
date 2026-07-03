@@ -11,6 +11,7 @@ services:
       - https://brisk-ledge-93076fb928-centralus.webapp.fabricapps.net
       - https://curly-coral-5adca33fed-centralus.webapp.fabricapps.net
       - https://regal-pond-64fa781fd5-centralus.webapp.fabricapps.net
+      - https://safe-gorge-104de50bf3-centralus.webapp.fabricapps.net
   data:
     enabled: true
     dialect: mssql

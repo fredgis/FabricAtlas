@@ -1,11 +1,17 @@
 # atlas_sync_functions — Fabric User Data Function
 
 This is the server-side function Fabric Atlas calls when you click **Sync**. It
-runs inside Fabric, receives the signed-in user's token, calls the Fabric REST
-APIs on their behalf, and returns the workspace catalog — items, the list of
-**workspace users and their access**, and recent jobs. See the
-"Why a Fabric User Data Function?" note in the [root README](../../../README.md)
-for the reasoning.
+runs inside Fabric, receives the signed-in user's token, and returns the whole
+workspace picture: items, **per-item access** (who can see each item, not just the
+workspace), the real **lineage** between items, per-item **config**, and recent
+jobs. See the "Why a Fabric User Data Function?" note in the
+[root README](../../../README.md) for the reasoning.
+
+Per-item access and lineage come from the Fabric **admin scanner** (`getInfo`),
+which needs the `Tenant.Read.All` delegated permission (already consented on the
+`FabricAtlas Sync` app registration) and the tenant's read-only admin API settings
+enabled. If the scanner is unavailable, `sync_all` still returns items, workspace
+roles and jobs, and reports the reason in `errors`.
 
 > Fabric has **no REST API to publish a UDF** and does not persist the Python
 > through `updateDefinition`, so the code is kept here and published once from the
@@ -19,7 +25,7 @@ for the reasoning.
 | `list_items` | `fabricToken, workspaceId` | workspace items |
 | `list_role_assignments` | `fabricToken, workspaceId` | users/groups + their workspace role |
 | `get_workspace` | `fabricToken, workspaceId` | workspace metadata |
-| `sync_all` | `fabricToken, workspaceId` | `{ workspace, items, roleAssignments, jobs }` — used by the app |
+| `sync_all` | `fabricToken, workspaceId` | `{ workspace, items, roleAssignments, access, lineage, config, jobs }` — used by the app |
 
 ## Publish (once)
 

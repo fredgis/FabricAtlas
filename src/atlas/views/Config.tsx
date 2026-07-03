@@ -103,8 +103,9 @@ export function ConfigView() {
 
           {sections.length === 0 && (
             <div className="rounded-xl border border-dashed border-border p-[24px] text-center text-[13px] text-muted-foreground">
-              No configuration synced for this item yet. Run a Sync to pull its definition
-              from the Fabric APIs.
+              No configuration retrievable for this item. If you haven't synced yet, run a
+              Sync; otherwise its details are restricted or aren't exposed by the Fabric APIs
+              for this item type.
             </div>
           )}
 

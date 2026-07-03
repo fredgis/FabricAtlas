@@ -57,20 +57,7 @@ const CATS: { key: string; label: string; types: ItemType[] }[] = [
   { key: "reports", label: "Reports", types: ["Report", "Dashboard"] },
 ];
 
-function accessFor(p: Principal, catKey: string): AccessLevel {
-  if (p.kind === "guest") return catKey === "reports" ? "view" : "none";
-  if (p.kind === "servicePrincipal")
-    return catKey === "sources" || catKey === "transforms" ? "edit" : "none";
-  switch (p.workspaceRole) {
-    case "Admin":
-    case "Member":
-      return "edit";
-    case "Contributor":
-      return catKey === "reports" ? "view" : "edit";
-    case "Viewer":
-      return catKey === "models" || catKey === "reports" ? "view" : "none";
-  }
-}
+const RANK: Record<AccessLevel, number> = { none: 0, view: 1, edit: 2, owner: 3 };
 
 const SOURCE_LABEL: Record<AccessSource, string> = {
   workspaceRole: "Inherited · Workspace",
@@ -105,11 +92,40 @@ export function AccessView() {
     [principals],
   );
 
+  const grantsByPrincipal = useMemo(() => {
+    const m = new Map<string, Grant[]>();
+    for (const g of grants) {
+      const a = m.get(g.principalRef) ?? [];
+      a.push(g);
+      m.set(g.principalRef, a);
+    }
+    return m;
+  }, [grants]);
+  const itemTypeById = useMemo(
+    () => new Map<string, ItemType>(items.map((i) => [i.fabricId, i.itemType])),
+    [items],
+  );
+  // Real effective access: workspace-level grant (no item) applies to every
+  // category; an item-level grant applies only to its item's category.
+  const catAccess = (p: Principal, cat: { types: ItemType[] }): AccessLevel => {
+    const gs = grantsByPrincipal.get(p.displayName) ?? [];
+    const types = new Set(cat.types);
+    let best: AccessLevel = "none";
+    for (const g of gs) {
+      const applies = !g.itemFabricId || types.has(itemTypeById.get(g.itemFabricId)!);
+      if (applies && RANK[g.accessLevel] > RANK[best]) best = g.accessLevel;
+    }
+    return best;
+  };
+  const hasWorkspaceRole = (p: Principal) =>
+    (grantsByPrincipal.get(p.displayName) ?? []).some((g) => !g.itemFabricId);
+
   const risks = useMemo(() => {
     const guests = principals.filter((p) => p.external);
     const admins = principals.filter((p) => p.workspaceRole === "Admin");
     const sps = principals.filter((p) => p.kind === "servicePrincipal");
-    const noOwner = items.filter((i) => !i.ownerName);
+    const wsPrincipals = new Set(grants.filter((g) => !g.itemFabricId).map((g) => g.principalRef));
+    const itemOnly = principals.filter((p) => !wsPrincipals.has(p.displayName));
     const broad = grants.filter((g) => g.flag === "broad");
     const out: { icon: typeof ShieldAlert; sev: string; title: string; detail: string }[] = [];
     if (guests.length)
@@ -118,8 +134,8 @@ export function AccessView() {
       out.push({ icon: ShieldAlert, sev: "#e0a417", title: "Items shared broadly", detail: `${broad.length} grant(s) reach the whole org (tenant link / large group).` });
     if (admins.length > 2)
       out.push({ icon: Crown, sev: "#e0a417", title: `${admins.length} workspace admins`, detail: `${admins.map((a) => a.displayName).join(", ")} — more than recommended.` });
-    if (noOwner.length)
-      out.push({ icon: UserX, sev: "#3b82f6", title: `${noOwner.length} item(s) with no owner`, detail: noOwner.map((i) => i.displayName).join(", ") });
+    if (itemOnly.length)
+      out.push({ icon: UserX, sev: "#3b82f6", title: `${itemOnly.length} principal(s) with item-only access`, detail: `${itemOnly.map((p) => p.displayName).join(", ")} — shared specific items without workspace membership.` });
     if (sps.length)
       out.push({ icon: Bot, sev: "#3b82f6", title: `${sps.length} service principal(s)`, detail: `${sps.map((s) => s.displayName).join(", ")} — automation access, review periodically.` });
     return out;
@@ -192,10 +208,18 @@ export function AccessView() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-[10px] py-[11px]"><RoleBadge role={p.workspaceRole} /></td>
+                      <td className="px-[10px] py-[11px]">
+                        {hasWorkspaceRole(p) ? (
+                          <RoleBadge role={p.workspaceRole} />
+                        ) : (
+                          <span className="rounded-full bg-muted px-[10px] py-[3px] text-[11px] font-semibold text-muted-foreground">
+                            Item-only
+                          </span>
+                        )}
+                      </td>
                       {CATS.map((c) => (
                         <td key={c.key} className="px-[10px] py-[11px]">
-                          <AccessChip level={accessFor(p, c.key)} />
+                          <AccessChip level={catAccess(p, c)} />
                         </td>
                       ))}
                     </tr>

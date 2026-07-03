@@ -142,7 +142,7 @@ async function persistSync(
   };
 
   await Promise.all(
-    ["FabricItem", "Principal", "AccessGrant", "JobRun", "LineageEdge"].map(wipe),
+    ["FabricItem", "Principal", "AccessGrant", "JobRun", "LineageEdge", "ConfigEntry"].map(wipe),
   );
 
   await insertAll(
@@ -201,6 +201,15 @@ async function persistSync(
       targetFabricId: e.target,
       relation: e.relation,
       broken: !!e.broken,
+    })),
+  );
+  await insertAll(
+    "ConfigEntry",
+    atlas.config.map((c) => ({
+      itemFabricId: c.itemFabricId,
+      section: c.section,
+      label: c.label,
+      value: c.value,
     })),
   );
 

@@ -1,4 +1,5 @@
 import json
+import time
 import urllib.request
 import urllib.error
 
@@ -8,17 +9,25 @@ udf = fn.UserDataFunctions()
 
 FABRIC = "https://api.fabric.microsoft.com/v1"
 PBI = "https://api.powerbi.com/v1.0/myorg"
+ADMIN = PBI + "/admin"
 
 
-def _get(token: str, url: str):
-    req = urllib.request.Request(url, method="GET")
+def _req(token, url, method="GET", body=None):
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method)
     req.add_header("Authorization", "Bearer " + token)
+    if data is not None:
+        req.add_header("Content-Type", "application/json")
     with urllib.request.urlopen(req, timeout=110) as r:
-        return json.loads(r.read().decode("utf-8"))
+        txt = r.read().decode("utf-8")
+        return json.loads(txt) if txt else {}
 
 
-def _get_all(token: str, path: str):
-    """GET a Fabric list endpoint, following continuationUri pagination."""
+def _get(token, url):
+    return _req(token, url)
+
+
+def _get_all(token, path):
     items = []
     url = FABRIC + path
     guard = 0
@@ -45,8 +54,6 @@ def list_items(fabricToken: str, workspaceId: str) -> list:
 
 @udf.function()
 def list_role_assignments(fabricToken: str, workspaceId: str) -> list:
-    # Workspace users/groups/service principals and their workspace role
-    # (Admin / Member / Contributor / Viewer) - feeds the Access tab.
     return _get_all(fabricToken, f"/workspaces/{workspaceId}/roleAssignments")
 
 
@@ -55,115 +62,191 @@ def get_workspace(fabricToken: str, workspaceId: str) -> dict:
     return _get(fabricToken, f"{FABRIC}/workspaces/{workspaceId}")
 
 
-def _compute_lineage(token: str, ws: str, items: list) -> list:
-    """Real edges between items, derived from the Fabric/Power BI REST APIs:
-       Lakehouse -> its SQL endpoint, Report -> its semantic model, and
-       semantic model -> its Direct Lake source (lakehouse / SQL endpoint)."""
-    edges = []
+# ---- admin scanner: the one source that returns per-item access + lineage ----
 
-    def find_item(key):
-        if not key:
-            return None
-        k = str(key).lower()
-        for it in items:
-            if str(it.get("id", "")).lower() == k or str(it.get("displayName", "")).lower() == k:
-                return it.get("id")
+def _scan_workspace(token, ws):
+    start = _req(
+        token,
+        ADMIN + "/workspaces/getInfo?lineage=True&datasourceDetails=True&getArtifactUsers=True",
+        method="POST",
+        body={"workspaces": [ws]},
+    )
+    scan_id = start.get("id")
+    if not scan_id:
         return None
+    for _ in range(30):
+        st = _get(token, ADMIN + f"/workspaces/scanStatus/{scan_id}")
+        if st.get("status") == "Succeeded":
+            break
+        if st.get("status") == "Failed":
+            return None
+        time.sleep(2)
+    res = _get(token, ADMIN + f"/workspaces/scanResult/{scan_id}")
+    wss = res.get("workspaces") or []
+    return wss[0] if wss else None
 
-    # Lakehouse -> SQL endpoint (exact, from the lakehouse properties).
-    for it in items:
-        if it.get("type") == "Lakehouse":
-            try:
-                lh = _get(token, f"{FABRIC}/workspaces/{ws}/lakehouses/{it['id']}")
-                ep = (((lh or {}).get("properties") or {}).get("sqlEndpointProperties") or {}).get("id")
-                if ep:
-                    edges.append({"source": it["id"], "target": ep, "relation": "SQL endpoint"})
-            except Exception:
-                pass
 
-    # Report -> semantic model (report.datasetId).
+# scanner artifact array key -> Atlas item type
+ART_KEYS = {
+    "reports": "Report",
+    "datasets": "SemanticModel",
+    "dashboards": "Dashboard",
+    "dataflows": "Dataflow",
+    "datamarts": "Datamart",
+    "Lakehouse": "Lakehouse",
+    "Notebook": "Notebook",
+    "DataPipeline": "DataPipeline",
+    "warehouses": "Warehouse",
+    "Eventhouse": "Eventhouse",
+    "KQLDatabase": "KQLDatabase",
+    "UserDataFunction": "UserDataFunction",
+    "SQLAnalyticsEndpoint": "SQLEndpoint",
+    "MirroredDatabase": "MirroredDatabase",
+    "Eventstream": "Eventstream",
+}
+
+REL_LABEL = {
+    "Datasource": "reads",
+    "Association": "Direct Lake",
+    "CascadeDelete": "SQL endpoint",
+}
+
+
+def _access_right(user):
+    for k, v in user.items():
+        if k.endswith("UserAccessRight") or k.endswith("AccessRight"):
+            return v
+    return None
+
+
+def _lh_tables(token, ws, lid):
     try:
-        reports = (_get(token, f"{PBI}/groups/{ws}/reports") or {}).get("value", [])
-        for r in reports:
-            ds = r.get("datasetId")
-            rid = r.get("id")
-            if ds and rid:
-                edges.append({"source": ds, "target": rid, "relation": "report"})
+        d = _get(token, f"{FABRIC}/workspaces/{ws}/lakehouses/{lid}/tables")
+        return d.get("data", []) if isinstance(d, dict) else []
     except Exception:
-        pass
+        return []
 
-    # Semantic model -> Direct Lake source (lakehouse / SQL endpoint).
-    for it in items:
-        if it.get("type") == "SemanticModel":
-            try:
-                dss = (_get(token, f"{PBI}/groups/{ws}/datasets/{it['id']}/datasources") or {}).get("value", [])
-                for d in dss:
-                    cd = d.get("connectionDetails") or {}
-                    tgt = find_item(cd.get("database")) or find_item(cd.get("path"))
-                    if tgt and tgt != it["id"]:
-                        edges.append({"source": tgt, "target": it["id"], "relation": "Direct Lake"})
-            except Exception:
-                pass
 
-    # De-duplicate on (source, target).
-    seen = set()
-    out = []
-    for e in edges:
-        k = (e["source"], e["target"])
-        if k not in seen:
-            seen.add(k)
-            out.append(e)
-    return out
+def _item_config(token, ws, a, typ):
+    rows = []
+
+    def add(section, label, value):
+        if value is not None and value != "":
+            rows.append({"itemId": a.get("id"), "section": section, "label": label, "value": str(value)})
+
+    add("General", "Description", a.get("description"))
+    add("General", "Configured by", a.get("configuredBy") or a.get("createdBy") or a.get("modifiedBy"))
+    add("General", "Modified", a.get("modifiedDateTime") or a.get("lastUpdatedDate"))
+
+    if typ == "SemanticModel":
+        add("Model", "Storage mode", a.get("targetStorageMode"))
+        add("Model", "Provider", a.get("contentProviderType"))
+        tables = a.get("tables") or []
+        if tables:
+            add("Model", "Tables", len(tables))
+            meas = sum(len(t.get("measures") or []) for t in tables)
+            add("Model", "Measures", meas)
+    elif typ == "Lakehouse":
+        ep = a.get("extendedProperties") or {}
+        add("OneLake", "Tables path", ep.get("OneLakeTablesPath"))
+        add("OneLake", "Default schema", ep.get("DefaultSchema"))
+        try:
+            dw = json.loads(ep.get("DwProperties") or "{}")
+            add("SQL endpoint", "TDS endpoint", dw.get("tdsEndpoint"))
+        except Exception:
+            pass
+        for t in _lh_tables(token, ws, a.get("id")):
+            add("Tables", t.get("name"), t.get("type", "Table"))
+    elif typ == "Warehouse":
+        add("Tables", "Detail", "Table-level detail requires a SQL connection, which the app can't open — open the warehouse in Fabric to browse tables.")
+    elif typ == "Report":
+        add("Report", "Type", a.get("reportType"))
+        add("Report", "Semantic model", a.get("datasetId"))
+
+    return rows
 
 
 @udf.function()
 def sync_all(fabricToken: str, workspaceId: str) -> dict:
-    """One-shot sync for Fabric Atlas: workspace metadata, every item, the full
-    list of workspace principals + their access, recent job runs, and the real
-    lineage between items."""
+    """One-shot sync for Fabric Atlas. Uses the Fabric item APIs for the catalog
+    and the admin scanner for the two hard things: real lineage between items and
+    per-item access (who can see each item, not just the workspace)."""
+    ws = workspaceId
     out = {
         "workspace": None,
         "items": [],
         "roleAssignments": [],
-        "jobs": [],
+        "access": [],
         "lineage": [],
-        "syncedAt": None,
+        "config": [],
+        "jobs": [],
         "errors": [],
     }
 
     try:
-        out["workspace"] = _get(fabricToken, f"{FABRIC}/workspaces/{workspaceId}")
+        out["workspace"] = _get(fabricToken, f"{FABRIC}/workspaces/{ws}")
     except Exception as e:
         out["errors"].append("workspace: " + str(e))
 
     try:
-        out["items"] = _get_all(fabricToken, f"/workspaces/{workspaceId}/items")
+        out["items"] = _get_all(fabricToken, f"/workspaces/{ws}/items")
     except Exception as e:
         out["errors"].append("items: " + str(e))
 
-    # Users of the workspace and their accesses (for the Access tab).
     try:
-        out["roleAssignments"] = _get_all(
-            fabricToken, f"/workspaces/{workspaceId}/roleAssignments"
-        )
+        out["roleAssignments"] = _get_all(fabricToken, f"/workspaces/{ws}/roleAssignments")
     except Exception as e:
         out["errors"].append("roleAssignments: " + str(e))
 
-    # Real lineage between items.
+    # Admin scanner: per-item access + lineage + config.
+    scan = None
     try:
-        out["lineage"] = _compute_lineage(fabricToken, workspaceId, out["items"])
+        scan = _scan_workspace(fabricToken, ws)
+        if scan is None:
+            out["errors"].append("scan: no result (needs Tenant.Read.All + admin API tenant settings)")
     except Exception as e:
-        out["errors"].append("lineage: " + str(e))
+        out["errors"].append("scan: " + str(e))
 
-    # Recent job instances per item (best-effort, capped to stay within limits).
+    if scan:
+        arts = []
+        for key, typ in ART_KEYS.items():
+            for a in scan.get(key, []) or []:
+                a["_type"] = typ
+                arts.append(a)
+        ids = {a.get("id") for a in arts}
+        for a in arts:
+            aid = a.get("id")
+            typ = a["_type"]
+            for u in a.get("users", []) or []:
+                out["access"].append({
+                    "itemId": aid,
+                    "principalName": u.get("displayName") or u.get("emailAddress") or u.get("identifier"),
+                    "principalEmail": u.get("emailAddress"),
+                    "principalType": u.get("principalType"),
+                    "accessRight": _access_right(u),
+                })
+            for r in a.get("relations", []) or []:
+                dep = r.get("dependentOnArtifactId")
+                if dep and dep in ids:
+                    out["lineage"].append({
+                        "source": dep,
+                        "target": aid,
+                        "relation": REL_LABEL.get(r.get("relationType"), r.get("relationType") or "depends"),
+                    })
+            if typ == "Report" and a.get("datasetId"):
+                out["lineage"].append({"source": a["datasetId"], "target": aid, "relation": "report"})
+            try:
+                out["config"].extend(_item_config(fabricToken, ws, a, typ))
+            except Exception:
+                pass
+
+    # Recent job instances per item (best-effort, capped).
     for it in out["items"][:50]:
         iid = it.get("id")
         if not iid:
             continue
         try:
-            jobs = _get_all(
-                fabricToken, f"/workspaces/{workspaceId}/items/{iid}/jobs/instances"
-            )
+            jobs = _get_all(fabricToken, f"/workspaces/{ws}/items/{iid}/jobs/instances")
             for j in jobs[:3]:
                 j["itemId"] = iid
                 j["itemDisplayName"] = it.get("displayName")
@@ -173,6 +256,5 @@ def sync_all(fabricToken: str, workspaceId: str) -> dict:
             pass
 
     import datetime
-
     out["syncedAt"] = datetime.datetime.utcnow().isoformat() + "Z"
     return out
