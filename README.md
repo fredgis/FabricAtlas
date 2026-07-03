@@ -88,7 +88,8 @@ And because it is declarative, you can grow it by prompting an AI agent. See
 > columns, measures) is read in-app through the Fabric embed proxy (DAX `INFO` functions),
 > which is the one Fabric data path a browser app is allowed to use. Fabric does not expose
 > a REST API to publish a User Data Function, so that one step is done once in the Fabric
-> portal (Publish), after which the app invokes it.
+> portal (Publish), after which the app invokes it. The function's source and the publish
+> steps live in [`fabric/udf/atlas_sync_functions/`](fabric/udf/atlas_sync_functions/).
 
 ## How it works
 
