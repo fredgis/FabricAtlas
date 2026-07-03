@@ -117,24 +117,24 @@ export function OverviewView({ onOpen }: { onOpen: (t: Tab) => void }) {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(158px, 1fr))", gap: 12 }}>
         {kpis.map((k) => {
           const Icon = k.icon;
           return (
             <button
               key={k.label}
               onClick={() => k.go && onOpen(k.go)}
-              className="flex flex-col gap-[10px] rounded-2xl border border-border bg-card p-[15px] text-left transition-all hover:-translate-y-[2px] hover:border-primary/40 hover:shadow-lg"
+              className="flex flex-col gap-[8px] rounded-2xl border border-border bg-card p-[15px] text-left transition-all hover:-translate-y-[2px] hover:border-primary/40 hover:shadow-lg"
             >
-              <div className="flex items-center justify-between">
-                <span className="flex h-[32px] w-[32px] items-center justify-center rounded-xl" style={{ background: `${k.color}1c`, color: k.color }}>
-                  <Icon size={17} />
+              <div className="flex items-center gap-[10px]">
+                <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-xl" style={{ background: `${k.color}1c`, color: k.color }}>
+                  <Icon size={18} />
                 </span>
+                <span className="text-[26px] font-extrabold leading-none tabular-nums" style={{ color: k.color }}>{k.value}</span>
               </div>
-              <div>
-                <div className="text-[27px] font-extrabold leading-none tabular-nums" style={{ color: k.color }}>{k.value}</div>
-                <div className="mt-[5px] text-[12.5px] font-semibold">{k.label}</div>
-                <div className="text-[11px] text-muted-foreground">{k.sub}</div>
+              <div className="min-w-0">
+                <div className="truncate text-[12.5px] font-semibold">{k.label}</div>
+                <div className="truncate text-[11px] text-muted-foreground">{k.sub}</div>
               </div>
             </button>
           );
@@ -147,7 +147,7 @@ export function OverviewView({ onOpen }: { onOpen: (t: Tab) => void }) {
           <SectionLabel>Governance snapshot</SectionLabel>
           <button className="text-[12px] font-semibold text-primary" onClick={() => onOpen("sensitivity")}>Sensitivity</button>
         </div>
-        <div className="mt-[14px] grid gap-[18px]" style={{ gridTemplateColumns: "1.3fr 1fr" }}>
+        <div className="mt-[14px] grid gap-[18px]" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
           <div className="flex flex-col gap-[13px]">
             {[
               { label: "Endorsement coverage", n: endorsed.length, color: "#0ea5b7" },
@@ -175,7 +175,7 @@ export function OverviewView({ onOpen }: { onOpen: (t: Tab) => void }) {
         </div>
       </Card>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1.2fr", gap: 18 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 18 }}>
         <Card style={{ padding: 16 }}>
           <SectionLabel>Items by type</SectionLabel>
           <div className="mt-[12px] flex flex-col gap-[10px]">

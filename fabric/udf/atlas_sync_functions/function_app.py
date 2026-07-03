@@ -265,6 +265,26 @@ def sync_all(fabricToken: str, workspaceId: str) -> dict:
             except Exception:
                 pass
 
+        # Schema-enabled lakehouses (and warehouses) have no usable /tables REST,
+        # so derive their tables from the Direct Lake semantic model(s) that read
+        # them (the scanner already gave us those tables + columns).
+        for a in arts:
+            if a.get("_type") not in ("Lakehouse", "Warehouse"):
+                continue
+            lid = a.get("id")
+            if out["schema"].get(lid):
+                continue
+            derived = {}
+            for ds in arts:
+                if ds.get("_type") != "SemanticModel":
+                    continue
+                if not any(r.get("dependentOnArtifactId") == lid for r in (ds.get("relations") or [])):
+                    continue
+                for t in out["schema"].get(ds.get("id"), []):
+                    derived[t["name"]] = {"name": t["name"], "columns": t.get("columns", []), "measures": []}
+            if derived:
+                out["schema"][lid] = list(derived.values())
+
     # Recent job instances per item (best-effort, capped).
     for it in out["items"][:50]:
         iid = it.get("id")
