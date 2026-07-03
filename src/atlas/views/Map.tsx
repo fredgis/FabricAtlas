@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useAtlas } from "../store";
 import {
   Avatar,
@@ -13,6 +14,7 @@ import {
 import {
   HEALTH_COLOR,
   ITEM_TYPES,
+  MODEL_SCHEMA,
   relativeTime,
   type Item,
   type ItemType,
@@ -69,6 +71,14 @@ export function MapView() {
     items.find((i) => i.itemType === "SemanticModel")?.fabricId ?? items[0]?.fabricId ?? "",
   );
   const sel = itemById.get(selId);
+  const schema = MODEL_SCHEMA[selId];
+  const [openTables, setOpenTables] = useState<Set<string>>(new Set());
+  const toggleTable = (t: string) =>
+    setOpenTables((prev) => {
+      const n = new Set(prev);
+      n.has(t) ? n.delete(t) : n.add(t);
+      return n;
+    });
 
   const upstream = edges.filter((e) => e.target === selId).map((e) => itemById.get(e.source)!).filter(Boolean);
   const downstream = edges.filter((e) => e.source === selId).map((e) => itemById.get(e.target)!).filter(Boolean);
@@ -243,6 +253,62 @@ export function MapView() {
                 ))}
               </div>
             </div>
+
+            {schema && (
+              <div>
+                <SectionLabel>Deep lineage · {schema.length} tables</SectionLabel>
+                <div className="mt-[8px] flex flex-col gap-[5px]">
+                  {schema.map((t) => {
+                    const open = openTables.has(t.name);
+                    return (
+                      <div key={t.name} className="overflow-hidden rounded-lg border border-border">
+                        <button
+                          onClick={() => toggleTable(t.name)}
+                          className="flex w-full items-center gap-[6px] px-[10px] py-[7px] text-left"
+                        >
+                          {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                          <span className="text-[12.5px] font-semibold">{t.name}</span>
+                          {t.rows != null && (
+                            <span className="ml-auto text-[11px] text-muted-foreground">
+                              {t.rows} rows
+                            </span>
+                          )}
+                        </button>
+                        {open && (
+                          <div className="flex flex-col gap-[8px] border-t border-border/60 px-[10px] py-[8px]">
+                            {t.measures.length > 0 && (
+                              <div>
+                                <div className="mb-[3px] text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                                  Measures · {t.measures.length}
+                                </div>
+                                {t.measures.map((m) => (
+                                  <div key={m.name} className="flex items-center gap-[7px] py-[1px] text-[12px]">
+                                    <span className="inline-block" style={{ width: 6, height: 6, borderRadius: 2, background: "#d9a520" }} />
+                                    <span className="font-medium">{m.name}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <div>
+                              <div className="mb-[3px] text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                                Columns · {t.columns.length}
+                              </div>
+                              {t.columns.map((c) => (
+                                <div key={c.name} className="flex items-center gap-[7px] py-[1px] text-[12px]">
+                                  <span className="inline-block" style={{ width: 6, height: 6, borderRadius: 2, background: "#4c8dff" }} />
+                                  <span className="font-mono">{c.name}</span>
+                                  <span className="ml-auto text-[11px] text-muted-foreground">{c.dataType}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-[10px]">
               <Card style={{ padding: 12 }}>

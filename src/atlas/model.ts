@@ -212,6 +212,141 @@ const EH = "c48c77f2-ec31-4570-bdcd-92f867b988a1";
 const KQL_DEFAULT = "5e4188b1-4aca-4cb6-b77a-63f1f0b4af52";
 const KQL_EVENTS = "8fca2138-fddb-4207-bb51-cee081b93f8b";
 
+// ---------- deep lineage: real semantic-model / gold schema (from TMDL) ----------
+
+export interface ModelColumn {
+  name: string;
+  dataType: string;
+}
+export interface ModelMeasure {
+  name: string;
+  expr?: string;
+}
+export interface ModelTableSchema {
+  name: string;
+  rows?: number;
+  columns: ModelColumn[];
+  measures: ModelMeasure[];
+}
+
+const AR_TABLES: ModelTableSchema[] = [
+  {
+    name: "rentals_daily_summary",
+    rows: 210,
+    measures: [
+      { name: "Total Rentals", expr: "SUM(rentals_daily_summary[total_rentals])" },
+      { name: "Total Revenue", expr: "SUM(rentals_daily_summary[total_revenue_chf])" },
+      { name: "Avg Rental Duration", expr: "DIVIDE(SUMX(...), SUM(total_rentals))" },
+      { name: "Active Member-Days", expr: "SUM(rentals_daily_summary[unique_members])" },
+      { name: "Multiday Rentals", expr: "SUM(rentals_daily_summary[multiday_rentals])" },
+    ],
+    columns: [
+      { name: "rental_date", dataType: "dateTime" },
+      { name: "total_rentals", dataType: "int64" },
+      { name: "total_revenue_chf", dataType: "double" },
+      { name: "avg_duration_hours", dataType: "double" },
+      { name: "unique_members", dataType: "int64" },
+      { name: "avg_revenue_chf", dataType: "double" },
+      { name: "multiday_rentals", dataType: "int64" },
+      { name: "day_of_week", dataType: "string" },
+    ],
+  },
+  {
+    name: "station_utilization",
+    rows: 34,
+    measures: [
+      { name: "Total Station Revenue", expr: "SUM(station_utilization[total_revenue_chf])" },
+      { name: "Avg Utilization Index", expr: "AVERAGE(station_utilization[utilization_index])" },
+    ],
+    columns: [
+      { name: "station_id", dataType: "string" },
+      { name: "station_name", dataType: "string" },
+      { name: "resort", dataType: "string" },
+      { name: "region", dataType: "string" },
+      { name: "elevation_band", dataType: "string" },
+      { name: "capacity", dataType: "int64" },
+      { name: "total_rentals", dataType: "int64" },
+      { name: "total_revenue_chf", dataType: "double" },
+      { name: "avg_duration_hours", dataType: "double" },
+      { name: "unique_members", dataType: "int64" },
+      { name: "one_way_rentals", dataType: "int64" },
+      { name: "utilization_index", dataType: "double" },
+      { name: "revenue_per_capacity", dataType: "double" },
+    ],
+  },
+  {
+    name: "equipment_performance",
+    rows: 7,
+    measures: [
+      { name: "Equipment Revenue", expr: "SUM(equipment_performance[total_revenue_chf])" },
+      { name: "Avg Daily Rate", expr: "AVERAGE(equipment_performance[avg_daily_rate_chf])" },
+    ],
+    columns: [
+      { name: "category", dataType: "string" },
+      { name: "total_rentals", dataType: "int64" },
+      { name: "total_revenue_chf", dataType: "double" },
+      { name: "avg_daily_rate_chf", dataType: "double" },
+      { name: "avg_duration_hours", dataType: "double" },
+      { name: "distinct_items", dataType: "int64" },
+      { name: "revenue_per_item", dataType: "double" },
+    ],
+  },
+  {
+    name: "member_segments",
+    rows: 4,
+    measures: [
+      { name: "Segment Members", expr: "SUM(member_segments[active_members])" },
+      { name: "Segment Revenue", expr: "SUM(member_segments[total_revenue_chf])" },
+    ],
+    columns: [
+      { name: "membership_tier", dataType: "string" },
+      { name: "tier_rank", dataType: "int64" },
+      { name: "active_members", dataType: "int64" },
+      { name: "total_rentals", dataType: "int64" },
+      { name: "total_revenue_chf", dataType: "double" },
+      { name: "avg_rental_value_chf", dataType: "double" },
+      { name: "revenue_per_member", dataType: "double" },
+    ],
+  },
+  {
+    name: "revenue_by_month",
+    rows: 7,
+    measures: [
+      { name: "Monthly Revenue", expr: "SUM(revenue_by_month[total_revenue_chf])" },
+      { name: "Revenue MoM %", expr: "DIVIDE([Monthly Revenue]-[PM], [PM])" },
+    ],
+    columns: [
+      { name: "rental_month", dataType: "string" },
+      { name: "total_rentals", dataType: "int64" },
+      { name: "total_revenue_chf", dataType: "double" },
+      { name: "unique_members", dataType: "int64" },
+    ],
+  },
+  {
+    name: "demand_forecast",
+    rows: 14,
+    measures: [
+      { name: "Forecast Rentals", expr: "SUM(demand_forecast[forecast_rentals])" },
+      { name: "Forecast Revenue", expr: "SUM(demand_forecast[forecast_revenue_chf])" },
+    ],
+    columns: [
+      { name: "forecast_date", dataType: "dateTime" },
+      { name: "method", dataType: "string" },
+      { name: "forecast_rentals", dataType: "double" },
+      { name: "forecast_revenue_chf", dataType: "double" },
+      { name: "generated_ts", dataType: "dateTime" },
+    ],
+  },
+];
+
+/** Real table/column/measure schema, keyed by item fabricId. The Semantic model
+ *  carries measures; the Lakehouse gold layer carries the same tables (source of
+ *  the Direct Lake model) without measures. Pulled from the model TMDL. */
+export const MODEL_SCHEMA: Record<string, ModelTableSchema[]> = {
+  [SM]: AR_TABLES,
+  [LH]: AR_TABLES.map((t) => ({ ...t, measures: [] })),
+};
+
 export const SAMPLE_DATA: AtlasData = {
   workspace: {
     fabricId: "6bf4c521-7412-4e6b-8867-68253bbfb18a",
@@ -253,26 +388,11 @@ export const SAMPLE_DATA: AtlasData = {
   ],
   principals: [
     { principalId: "u-admin", displayName: "System Administrator", kind: "user", email: OWNER_EMAIL, workspaceRole: "Admin" },
-    { principalId: "u-lea", displayName: "Léa Martin", kind: "user", email: "lea@alpinerent.com", workspaceRole: "Member" },
-    { principalId: "u-tom", displayName: "Tom Berg", kind: "user", email: "tom@alpinerent.com", workspaceRole: "Contributor" },
-    { principalId: "g-de", displayName: "Data Engineering", kind: "group", workspaceRole: "Contributor" },
-    { principalId: "g-bi", displayName: "BI Analysts", kind: "group", workspaceRole: "Viewer" },
-    { principalId: "gu-partner", displayName: "ext-partner@vendor.com", kind: "guest", email: "ext-partner@vendor.com", external: true, workspaceRole: "Viewer" },
   ],
   grants: [
     { principalRef: "System Administrator", accessLevel: "owner", source: "workspaceRole", roleName: "Admin", flag: "admin" },
-    { principalRef: "Léa Martin", accessLevel: "edit", source: "workspaceRole", roleName: "Member" },
-    { principalRef: "Tom Berg", accessLevel: "edit", source: "workspaceRole", roleName: "Contributor" },
-    { principalRef: "Data Engineering", accessLevel: "edit", source: "workspaceRole", roleName: "Contributor" },
-    { principalRef: "BI Analysts", accessLevel: "view", source: "workspaceRole", roleName: "Viewer" },
-    { principalRef: "ext-partner@vendor.com", accessLevel: "view", source: "workspaceRole", roleName: "Viewer", flag: "external" },
     { itemFabricId: RP_EXEC, principalRef: "System Administrator", accessLevel: "owner", source: "itemOwner" },
-    { itemFabricId: RP_EXEC, principalRef: "Léa Martin", accessLevel: "edit", source: "workspaceRole", roleName: "Member" },
-    { itemFabricId: RP_EXEC, principalRef: "BI Analysts", accessLevel: "view", source: "workspaceRole", roleName: "Viewer" },
-    { itemFabricId: RP_EXEC, principalRef: "ext-partner@vendor.com", accessLevel: "view", source: "directShare", flag: "external" },
     { itemFabricId: SM, principalRef: "System Administrator", accessLevel: "owner", source: "itemOwner" },
-    { itemFabricId: SM, principalRef: "Data Engineering", accessLevel: "edit", source: "workspaceRole", roleName: "Contributor" },
-    { itemFabricId: SM, principalRef: "BI Analysts", accessLevel: "view", source: "workspaceRole", roleName: "Viewer" },
   ],
   jobs: [
     { itemFabricId: NB_BRONZE, itemName: "01_bronze_ingest", jobType: "Notebook run", status: "completed", startedAt: iso(40), durationSec: 182 },
@@ -315,9 +435,8 @@ export const SAMPLE_DATA: AtlasData = {
   comments: [
     { id: "c1", authorId: "u-admin", authorName: OWNER, authorEmail: OWNER_EMAIL, body: "First Atlas sync of FGI-MAIN done — 14 items across 9 types, zero failures. Gold layer has 210 daily rows.", createdAt: iso(6) },
     { id: "c2", itemFabricId: SM, authorId: "u-admin", authorName: OWNER, authorEmail: OWNER_EMAIL, body: "Direct Lake model validated live: Total Revenue CHF 533,821, 11,936 rentals, avg 19.7 h.", createdAt: iso(5) },
-    { id: "c3", itemFabricId: RP_EXEC, authorId: "u-tom", authorName: "Tom Berg", body: "Exec dashboard looks good — can we add a week-over-week view next to MoM?", createdAt: iso(3) },
   ],
   syncRuns: [
-    { id: "s1", startedAt: iso(7), finishedAt: iso(6), status: "completed", itemsSynced: 14, triggeredBy: OWNER, summary: "14 items · 14 lineage edges · 6 principals · 6 jobs" },
+    { id: "s1", startedAt: iso(7), finishedAt: iso(6), status: "completed", itemsSynced: 14, triggeredBy: OWNER, summary: "14 items · 14 lineage edges · 1 principal · 6 jobs" },
   ],
 };

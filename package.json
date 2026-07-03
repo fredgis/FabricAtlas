@@ -19,6 +19,7 @@
     "test:fabric": "node scripts/open-fabric-portal.mjs"
   },
   "dependencies": {
+    "@azure/msal-browser": "^3.30.0",
     "@microsoft/fabric-app-data": "1.1.0",
     "@microsoft/fabric-app-data-embed-client": "1.0.0",
     "@microsoft/fabric-app-data-proxy": "1.0.0",

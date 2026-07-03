@@ -32,6 +32,7 @@ import { AccessView } from "./atlas/views/Access";
 import { JobsView } from "./atlas/views/Jobs";
 import { ConfigView } from "./atlas/views/Config";
 import { CommentsView } from "./atlas/views/Comments";
+import { WelcomeView } from "./atlas/views/Welcome";
 
 export type Tab =
   | "overview"
@@ -60,7 +61,8 @@ function initialTab(): Tab {
 function App() {
   const [tab, setTab] = useState<Tab>(initialTab);
   const { isDark, toggleTheme } = useThemeContext();
-  const { data, sync, syncing, lastSyncedAt, currentUser } = useAtlas();
+  const { data, sync, syncing, lastSyncedAt, currentUser, isPreview, hasData } =
+    useAtlas();
 
   useEffect(() => {
     window.location.hash = tab;
@@ -76,6 +78,11 @@ function App() {
   }, []);
 
   const nav = (t: Tab) => setTab(t);
+
+  // Deployed and nothing synced yet → the classy first-run screen.
+  if (!isPreview && !hasData) {
+    return <WelcomeView />;
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">

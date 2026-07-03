@@ -9,6 +9,7 @@ services:
     allowedRedirectUris:
       - http://localhost:5173
       - https://brisk-ledge-93076fb928-centralus.webapp.fabricapps.net
+      - https://curly-coral-5adca33fed-centralus.webapp.fabricapps.net
   data:
     enabled: true
     dialect: mssql
