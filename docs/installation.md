@@ -58,7 +58,12 @@ auth only works embedded in the portal.
 | Setting | Value |
 | --- | --- |
 | Tenant | `a699f329-c8e1-4cf2-ae4f-6ff073b6b3db` |
-| Workspace | `FGIMain` |
+| Workspace | `FGIMain` (id `b210da17-0985-4bd0-a8ae-f257e89bd493`) |
+| Requirement | The Fabric Apps (Rayfin) item type must be enabled for the workspace's capacity and tenant. If `rayfin up` returns `403 The feature is not available`, enable Fabric Apps in the Fabric admin portal (or deploy onto a capacity/region where it is enabled), then re-run. |
+
+> Make sure `rayfin login` targets the tenant that owns the workspace:
+> `npx rayfin login --tenant <tenant-id> --select`. A namesake workspace in a different tenant
+> (on a paused capacity) will resolve but fail to deploy.
 
 ## 4. Redeploy after a change
 

@@ -87,7 +87,7 @@ npm install
 npm run dev            # http://localhost:5173
 
 # deploy into your Fabric workspace
-npx rayfin login
+npx rayfin login --tenant <your-tenant-id> --select
 npx rayfin up --workspace "FGIMain"
 ```
 
