@@ -61,7 +61,7 @@ they persist and are shared across the whole team.
 
 ## Theming
 
-Light (white) is the default. `src/hooks/use-theme.ts` follows the host `data-appearance` attribute
+Dark is the default. `src/hooks/use-theme.ts` follows the host `data-appearance` attribute
 (so it matches the Fabric portal when embedded) and toggles the `.dark` class for Tailwind. Design
 tokens are Fluent-style CSS variables in `src/global.css`.
 

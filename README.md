@@ -57,10 +57,10 @@ everyone sees them.
 
 ![Comments](docs/screenshots/comments.png)
 
-### Light and dark
-White by default, with a one-click dark theme that also follows the Fabric portal.
+### Dark and light
+Dark by default, with a one-click light theme. When embedded, it follows the Fabric portal theme.
 
-![Map in dark theme](docs/screenshots/map-dark.png)
+![Map in light theme](docs/screenshots/map-light.png)
 
 ## Why Rayfin
 
