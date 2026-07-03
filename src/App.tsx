@@ -6,9 +6,11 @@
 //-----------------------------------------------------------------------
 
 import { useEffect, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity,
   BarChart3,
+  Boxes,
   Compass,
   FolderTree,
   MessagesSquare,
@@ -28,6 +30,7 @@ import { relativeTime } from "./atlas/model";
 import { OverviewView } from "./atlas/views/Overview";
 import { MapView } from "./atlas/views/Map";
 import { CatalogView } from "./atlas/views/Catalog";
+import { AssetCatalogView } from "./atlas/views/AssetCatalog";
 import { AccessView } from "./atlas/views/Access";
 import { JobsView } from "./atlas/views/Jobs";
 import { ConfigView } from "./atlas/views/Config";
@@ -38,6 +41,7 @@ export type Tab =
   | "overview"
   | "map"
   | "catalog"
+  | "assets"
   | "access"
   | "jobs"
   | "config"
@@ -47,6 +51,7 @@ const NAV: { id: Tab; label: string; icon: typeof Compass }[] = [
   { id: "overview", label: "Overview", icon: BarChart3 },
   { id: "map", label: "Map & lineage", icon: Waypoints },
   { id: "catalog", label: "Catalog", icon: FolderTree },
+  { id: "assets", label: "Asset Catalog", icon: Boxes },
   { id: "access", label: "Access", icon: ShieldCheck },
   { id: "jobs", label: "Jobs & health", icon: Activity },
   { id: "config", label: "Config", icon: Settings2 },
@@ -175,13 +180,25 @@ function App() {
         </header>
 
         <main className="min-h-0 flex-1 overflow-auto">
-          {tab === "overview" && <OverviewView onOpen={nav} />}
-          {tab === "map" && <MapView />}
-          {tab === "catalog" && <CatalogView />}
-          {tab === "access" && <AccessView />}
-          {tab === "jobs" && <JobsView />}
-          {tab === "config" && <ConfigView />}
-          {tab === "comments" && <CommentsView />}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={tab}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.16, ease: "easeOut" }}
+              className="h-full"
+            >
+              {tab === "overview" && <OverviewView onOpen={nav} />}
+              {tab === "map" && <MapView />}
+              {tab === "catalog" && <CatalogView />}
+              {tab === "assets" && <AssetCatalogView />}
+              {tab === "access" && <AccessView />}
+              {tab === "jobs" && <JobsView />}
+              {tab === "config" && <ConfigView />}
+              {tab === "comments" && <CommentsView />}
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
     </div>

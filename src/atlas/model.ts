@@ -406,11 +406,14 @@ export const SAMPLE_DATA: AtlasData = {
   ],
   principals: [
     { principalId: "u-admin", displayName: "System Administrator", kind: "user", email: OWNER_EMAIL, workspaceRole: "Admin" },
+    { principalId: "u-lea", displayName: "Léa Martin", kind: "user", email: "lea.martin@alpinerent.com", workspaceRole: "Viewer" },
   ],
   grants: [
     { principalRef: "System Administrator", accessLevel: "owner", source: "workspaceRole", roleName: "Admin", flag: "admin" },
     { itemFabricId: RP_EXEC, principalRef: "System Administrator", accessLevel: "owner", source: "itemOwner" },
     { itemFabricId: SM, principalRef: "System Administrator", accessLevel: "owner", source: "itemOwner" },
+    { itemFabricId: RP_STATION, principalRef: "Léa Martin", accessLevel: "view", source: "directShare", roleName: "Read" },
+    { itemFabricId: SM, principalRef: "Léa Martin", accessLevel: "view", source: "directShare", roleName: "ReadReshareExplore" },
   ],
   jobs: [
     { itemFabricId: NB_BRONZE, itemName: "01_bronze_ingest", jobType: "Notebook run", status: "completed", startedAt: iso(40), durationSec: 182 },

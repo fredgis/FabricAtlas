@@ -9,7 +9,7 @@ Built as a [Rayfin](https://github.com/microsoft/rayfin) Data App and deployed s
 
 </div>
 
-![Overview](docs/screenshots/overview.png)
+![Fabric Atlas](docs/screenshots/welcome.png)
 
 ---
 
@@ -28,9 +28,16 @@ workspace and get value on the first Sync.
 
 ## A tour
 
+### Overview
+A one-glance dashboard: items by type, health, recent activity and jump-off points into the rest of the app.
+
+![Overview](docs/screenshots/overview.png)
+
 ### Map & lineage
-A cartography of every item and how they connect. Broken lineage is called out in red. Click any node
-to inspect it, walk upstream and downstream, and jump around.
+A cartography of every item and how they connect. **Drag nodes** to rearrange the graph, and click any
+node to light up its **upstream (violet)** and **downstream (teal)** in both directions while everything
+else dims. The inspector walks the lineage all the way down to a semantic model's tables, columns and
+measures.
 
 ![Map & lineage](docs/screenshots/map.png)
 
@@ -39,15 +46,24 @@ Every item as a collapsible tree and as rich cards — owner, health, endorsemen
 
 ![Catalog](docs/screenshots/catalog.png)
 
+### Asset Catalog
+Goes _inside_ the items: every table, column, measure and KPI across the workspace, searchable and
+grouped by item. Pick any object and see exactly **who can access it** — inherited from the parent
+item's permissions.
+
+![Asset Catalog](docs/screenshots/assets.png)
+
 ### Access
-Who can reach what. A matrix by principal, and a drill-down by object that explains where each grant
-comes from (workspace role, direct share, group, org link). Risks are surfaced automatically.
+Who can reach what. A matrix by principal that computes **real effective access** from the actual grants,
+and a drill-down by object that explains where each grant comes from. Item-level shares are surfaced too:
+someone given a single report or model, without workspace membership, shows up as **item-only**.
 
 ![Access](docs/screenshots/access.png)
 
 ### Config
-Everything retrievable about an item — settings, schedules, tables, measures, bindings — as an
-expandable tree.
+Everything retrievable about an item — storage mode, OneLake paths, SQL endpoint, tables and measures —
+as an expandable tree. When a detail can't be read (for example a warehouse's tables need a SQL
+connection), it says so.
 
 ![Config](docs/screenshots/config.png)
 
@@ -57,10 +73,10 @@ everyone sees them.
 
 ![Comments](docs/screenshots/comments.png)
 
-### Dark and light
-Dark by default, with a one-click light theme. When embedded, it follows the Fabric portal theme.
+### Light and dark
+Light by default, with a one-click dark theme. When embedded, it follows the Fabric portal theme.
 
-![Map in light theme](docs/screenshots/map-light.png)
+![Fabric Atlas in dark theme](docs/screenshots/assets-dark.png)
 
 ## Why Rayfin
 
