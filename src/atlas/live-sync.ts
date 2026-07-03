@@ -76,13 +76,21 @@ export function isSyncConfigured(): boolean {
   return !!getUdfUrl();
 }
 
+// The portal gives one invoke URL per function; if the user pastes another
+// function's URL (e.g. ping), retarget the last function segment to sync_all.
+function retargetToSyncAll(url: string): string {
+  if (/sync_all/i.test(url)) return url;
+  return url.replace(/\/(ping|list_items|list_role_assignments|get_workspace)(\/|:|\?|$)/i, "/sync_all$2");
+}
+
 export async function invokeSyncAll(workspaceId: string): Promise<RawSync> {
-  const url = getUdfUrl();
-  if (!url) {
+  const raw = getUdfUrl();
+  if (!raw) {
     throw new Error(
       "Sync endpoint not configured yet — publish the atlas_sync_functions UDF and paste its invoke URL.",
     );
   }
+  const url = retargetToSyncAll(raw);
   const token = await acquireToken();
   const resp = await fetch(url, {
     method: "POST",
