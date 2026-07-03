@@ -36,6 +36,22 @@ tree and comments. Nothing is written anywhere.
 Deployment provisions the backend (Fabric SQL database + Rayfin Data API, storage, static hosting,
 Fabric auth), applies the schema, and publishes the app — in one command.
 
+### Prerequisite: enable the Fabric Apps workload (tenant admin, one-time)
+
+Creating a Fabric App item requires a tenant admin to turn the workload on. Otherwise `rayfin up`
+returns `403 The feature is not available`.
+
+1. Open the [Fabric admin portal](https://app.fabric.microsoft.com/admin-portal) → Tenant settings.
+2. Under Fabric Apps (preview), set the switch to Enabled.
+3. Scope it to the whole organization, or a security group that includes the deploying account.
+4. Apply, wait a few minutes for it to propagate, then re-run `npx rayfin login`.
+
+The workspace's capacity must also sit in a region that supports Fabric App (preview). FGIMain runs
+on a France Central capacity, which is supported. Some regions are not (for example West US 3) — see
+[region availability](https://learn.microsoft.com/en-us/fabric/admin/region-availability).
+
+### Deploy
+
 ```bash
 npx rayfin login          # sign in with Entra ID
 npx rayfin up             # provision + apply schema + deploy the static app
