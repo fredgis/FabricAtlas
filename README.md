@@ -9,7 +9,7 @@ Built as a [Rayfin](https://github.com/microsoft/rayfin) Data App and deployed s
 
 </div>
 
-![Fabric Atlas](docs/screenshots/welcome.png)
+https://github.com/user-attachments/assets/52052323-f1f2-479b-8d39-18f7400fba24
 
 ---
 
@@ -164,22 +164,25 @@ Function reads the workspace with it, and the result — items, the list of
 workspace **users and their access**, and jobs — is written into the Rayfin
 database and rendered. Comments and the last sync are read back on open.
 
-> ### 💡 Rayfin improvements that would simplify this
+> ### 💡 What would make this simpler — Rayfin vs Fabric
 >
-> Building Fabric Atlas surfaced a few gaps. These would remove the UDF hop and
-> most of the glue code above:
+> Building Fabric Atlas surfaced a few gaps. Some are for **Rayfin** (the Data App
+> framework); the rest need a **new or extended Fabric platform API**.
 >
+> **Rayfin (the Data App framework):**
 > - Expose a scoped, opt-in brokered Fabric token to app code, so the app can call
 >   Fabric REST without a separate User Data Function and app registration.
 > - Add first-class server functions to the Data App template — a place to run
 >   trusted server-side code (like `sync_all`) without provisioning a separate UDF.
-> - Provide a REST/CLI way to publish a UDF and read its invoke URL, so deployment
->   is fully scriptable instead of a manual portal click.
-> - Offer a native Fabric lineage API (item level and intra-item: tables, columns,
->   measures), so lineage isn't stitched from the scanner API and DAX `INFO`.
 > - Support bulk `upsert` and CLI seeding for `@authenticated` entities, so a first
 >   dataset can load at deploy time, not only from the signed-in app.
-> - Enable CORS on Fabric management endpoints for delegated browser calls.
+>
+> **Fabric platform (a new or extended API):**
+> - A REST/CLI way to publish a User Data Function and read its invoke URL, so
+>   deployment is fully scriptable instead of a manual portal click.
+> - A native Fabric lineage API (item level and intra-item: tables, columns,
+>   measures), so lineage isn't stitched from the admin scanner and DAX `INFO`.
+> - CORS on the Fabric management endpoints, for delegated browser calls.
 
 ## Quickstart
 
