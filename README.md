@@ -201,6 +201,44 @@ npx rayfin up --workspace "<workspace-name>"
 
 Full steps in [docs/installation.md](docs/installation.md).
 
+## Reuse it as a Rayfin template
+
+Fabric Atlas is a standard Rayfin Data App, so you can hand it to the rest of the
+org as a Rayfin template: teammates scaffold their own copy, wired to *their*
+workspace, in one command. The [`rayfin-template.yml`](rayfin-template.yml)
+manifest at the repo root already marks it as one.
+
+**Scaffold a fresh app from the repo** — no setup, nothing to publish first:
+
+```bash
+rayfin init my-atlas -t https://github.com/fredgis/FabricAtlas
+cd my-atlas && npm install
+```
+
+`rayfin init -t <git-url>` clones the template, renames the project, and leaves you
+with a fresh, deployable app. Pin a version with `...FabricAtlas#v1.0.0` if you want.
+
+**Publish it to an internal template gallery** so it appears in the interactive
+`rayfin init` picker for everyone. Add one entry to a shared registry file —
+registries merge in tier order: bundled, then user-global
+`~/.rayfin/template-registries.yml`, then project-local `.rayfin/template-registries.yml`:
+
+```yaml
+# ~/.rayfin/template-registries.yml
+registries:
+  - name: fabric-atlas
+    displayName: Fabric Atlas
+    description: Workspace governance explorer
+    url: https://github.com/fredgis/FabricAtlas   # or your internal GitHub / Azure DevOps mirror
+    ref: main                                     # a tag or commit SHA is safer for a shared registry
+    templateName: fabric-atlas
+```
+
+Because every id is env-driven (the privacy scrub in this repo), the template ships
+code only: no tenant, workspace, or client id travels with it. Each team supplies
+its own `.env`, publishes its own Sync function and app registration
+([docs/installation.md](docs/installation.md)), then runs `rayfin up`.
+
 ## Docs
 
 | Doc | About |
