@@ -1,6 +1,6 @@
 # atlas_sync_functions — Fabric User Data Function
 
-This is the server-side function FabricAtlas calls when you click **Sync**. It
+This is the server-side function Fabric Atlas calls when you click **Sync**. It
 runs inside Fabric, receives the signed-in user's token, calls the Fabric REST
 APIs on their behalf, and returns the workspace catalog — items, the list of
 **workspace users and their access**, and recent jobs. See the
@@ -32,7 +32,7 @@ for the reasoning.
 
 ## Wire the app
 
-1. Open FabricAtlas (the `fabricatlas` app item / its hosting URL).
+1. Open Fabric Atlas (the `fabricatlas` app item / its hosting URL).
 2. On the first-run screen, paste the `sync_all` invoke URL in **Sync endpoint**
    and click **Save**.
 3. Click **Sync this workspace**. Approve the sign-in popup once

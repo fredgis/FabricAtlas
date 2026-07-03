@@ -1,6 +1,6 @@
-# Evolving FabricAtlas with prompts (vibe coding)
+# Evolving Fabric Atlas with prompts (vibe coding)
 
-FabricAtlas is built to be grown by talking to an AI agent, not just by hand. Rayfin ships the pieces
+Fabric Atlas is built to be grown by talking to an AI agent, not just by hand. Rayfin ships the pieces
 that make that reliable, and this repo already includes them.
 
 ## Why it works

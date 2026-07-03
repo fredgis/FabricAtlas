@@ -1,6 +1,6 @@
 # Installation & deployment
 
-FabricAtlas is a [Rayfin](https://github.com/microsoft/rayfin) Data App: a Vite + React front end
+Fabric Atlas is a [Rayfin](https://github.com/microsoft/rayfin) Data App: a Vite + React front end
 served by Rayfin static hosting, backed by a Fabric SQL database (the Rayfin data model) and Fabric
 brokered authentication. It runs as an item inside a Microsoft Fabric workspace.
 
@@ -20,7 +20,7 @@ npm install
 
 ## 2. Run it locally (preview mode, no Fabric needed)
 
-FabricAtlas boots in preview mode when it is not embedded in Fabric, backed by a rich sample
+Fabric Atlas boots in preview mode when it is not embedded in Fabric, backed by a rich sample
 workspace. This is the fastest way to explore the UI and is what powers the screenshots.
 
 ```bash

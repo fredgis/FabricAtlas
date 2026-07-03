@@ -65,6 +65,7 @@ export interface RawSync {
   items?: Array<Record<string, unknown>>;
   roleAssignments?: Array<Record<string, unknown>>;
   jobs?: Array<Record<string, unknown>>;
+  lineage?: Array<{ source?: string; target?: string; relation?: string }>;
   errors?: string[];
 }
 
@@ -208,14 +209,24 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
     });
   }
 
-  // Deterministic lineage we can assert without the scanner API: a Lakehouse
-  // and its auto-provisioned SQL endpoint.
+  // Real lineage computed server-side by the UDF (Lakehouse→SQL endpoint,
+  // Report→semantic model, semantic model→Direct Lake source). Fall back to the
+  // one edge we can assert locally (Lakehouse and its same-named SQL endpoint).
+  const itemIds = new Set(items.map((i) => i.fabricId));
   const edges: Edge[] = [];
-  const lakes = items.filter((i) => i.itemType === "Lakehouse");
-  for (const se of items.filter((i) => i.itemType === "SQLEndpoint")) {
-    const lh =
-      lakes.find((l) => se.displayName.includes(l.displayName)) ?? lakes[0];
-    if (lh) edges.push({ source: lh.fabricId, target: se.fabricId, relation: "SQL endpoint" });
+  if (Array.isArray(raw.lineage) && raw.lineage.length) {
+    for (const e of raw.lineage) {
+      if (e.source && e.target && itemIds.has(e.source) && itemIds.has(e.target)) {
+        edges.push({ source: e.source, target: e.target, relation: e.relation || "depends on" });
+      }
+    }
+  } else {
+    const lakes = items.filter((i) => i.itemType === "Lakehouse");
+    for (const se of items.filter((i) => i.itemType === "SQLEndpoint")) {
+      const n = se.displayName.toLowerCase();
+      const lh = lakes.find((l) => n === l.displayName.toLowerCase() || n.includes(l.displayName.toLowerCase()));
+      if (lh) edges.push({ source: lh.fabricId, target: se.fabricId, relation: "SQL endpoint" });
+    }
   }
 
   const ws = (raw.workspace ?? {}) as Record<string, unknown>;

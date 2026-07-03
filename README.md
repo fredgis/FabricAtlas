@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🧭 FabricAtlas
+# 🧭 Fabric Atlas
 
 ### Everything in your Microsoft Fabric workspace, in one place.
 
@@ -13,17 +13,17 @@ Built as a [Rayfin](https://github.com/microsoft/rayfin) Data App and deployed s
 
 ---
 
-## What is FabricAtlas?
+## What is Fabric Atlas?
 
 A Fabric workspace grows fast: lakehouses, notebooks, pipelines, semantic models, reports. Nobody has
 the full picture — what depends on what, who can see what, what just failed, who owns it.
 
-FabricAtlas gives you that picture. Click **Sync** and it reads your workspace from the Fabric APIs
+Fabric Atlas gives you that picture. Click **Sync** and it reads your workspace from the Fabric APIs
 and stores everything in its own data model. Then it draws it: a living map of your items and their
 lineage, a catalog you can browse as a tree or as cards, an access matrix down to each object, a jobs
 board, an exhaustive config tree per item, and a comment thread your whole team shares.
 
-No business data required. FabricAtlas only reads your workspace metadata, so you can point it at any
+No business data required. Fabric Atlas only reads your workspace metadata, so you can point it at any
 workspace and get value on the first Sync.
 
 ## A tour
@@ -64,7 +64,7 @@ Dark by default, with a one-click light theme. When embedded, it follows the Fab
 
 ## Why Rayfin
 
-FabricAtlas is a Rayfin Data App, so the whole backend is described in TypeScript and provisioned by
+Fabric Atlas is a Rayfin Data App, so the whole backend is described in TypeScript and provisioned by
 Rayfin on Fabric:
 
 - The **data model** is nine decorator classes in `rayfin/data/`. Rayfin turns them into a governed
@@ -81,7 +81,7 @@ And because it is declarative, you can grow it by prompting an AI agent. See
 > A deployed Rayfin app is a browser SPA with a Fabric SSO session, but Rayfin never
 > exposes a Fabric access token to app code, and the Fabric REST APIs don't allow browser
 > CORS. So the app cannot call the Fabric management APIs (list items, lineage,
-> permissions, jobs) directly from the browser. FabricAtlas therefore ships a small Fabric
+> permissions, jobs) directly from the browser. Fabric Atlas therefore ships a small Fabric
 > User Data Function (`atlas_sync_functions`, Python) that runs server-side, receives the
 > user's token, calls the Fabric REST APIs on their behalf, and returns the results, which
 > the Sync button writes into the Atlas database. The semantic-model deep lineage (tables,
@@ -95,7 +95,7 @@ And because it is declarative, you can grow it by prompting an AI agent. See
 
 ```mermaid
 flowchart LR
-  subgraph B["🌐 FabricAtlas — browser SPA (Rayfin app)"]
+  subgraph B["🌐 Fabric Atlas — browser SPA (Rayfin app)"]
     UI["React UI · 7 tabs<br/>Overview · Map · Catalog<br/>Access · Jobs · Config · Comments"]
     MSAL["MSAL<br/>Power BI token"]
   end
@@ -137,7 +137,7 @@ database and rendered. Comments and the last sync are read back on open.
 
 > ### 💡 Rayfin improvements that would simplify this
 >
-> Building FabricAtlas surfaced a few gaps. These would remove the UDF hop and
+> Building Fabric Atlas surfaced a few gaps. These would remove the UDF hop and
 > most of the glue code above:
 >
 > - Expose a scoped, opt-in brokered Fabric token to app code, so the app can call

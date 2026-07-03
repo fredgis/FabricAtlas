@@ -19,8 +19,8 @@ export function useAppTheme() {
         if (appearance === "dark") return true;
         if (appearance === "light") return false;
         if (document.documentElement.classList.contains("dark")) return true;
-        // Dark is the standard/default theme; the host can still force light.
-        return true;
+        // Light is the standard/default theme; the host can still force dark.
+        return false;
     });
 
     useEffect(() => {

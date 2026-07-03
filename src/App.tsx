@@ -100,7 +100,7 @@ function App() {
             <Compass size={19} />
           </span>
           <div>
-            <div className="text-[16px] font-bold leading-none">FabricAtlas</div>
+            <div className="text-[16px] font-bold leading-none">Fabric Atlas</div>
             <div className="mt-[3px] text-[11px] text-muted-foreground">
               Workspace explorer
             </div>

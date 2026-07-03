@@ -54,7 +54,7 @@ export function WelcomeView() {
           >
             <Compass size={19} />
           </span>
-          <div className="text-[16px] font-bold">FabricAtlas</div>
+          <div className="text-[16px] font-bold">Fabric Atlas</div>
         </div>
         <div className="flex items-center gap-[12px]">
           <button

@@ -1,6 +1,6 @@
 # Architecture
 
-FabricAtlas is one place to see everything in a Fabric workspace, plus a team comment layer. It is a
+Fabric Atlas is one place to see everything in a Fabric workspace, plus a team comment layer. It is a
 Rayfin Data App, so the backend is described in TypeScript and provisioned by Rayfin on Fabric.
 
 ## The pieces

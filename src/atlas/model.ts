@@ -1,4 +1,4 @@
-// FabricAtlas — UI data model, item-type metadata, and the workspace dataset.
+// Fabric Atlas — UI data model, item-type metadata, and the workspace dataset.
 // This dataset mirrors the real contents of the FGI-MAIN workspace (the "AlpineRent"
 // demo: an alpine ski & bike rental analytics estate) so the deployed app shows the
 // actual items, lineage, config and jobs that live in the workspace. When a live

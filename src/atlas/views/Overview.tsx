@@ -88,7 +88,7 @@ export function OverviewView({ onOpen }: { onOpen: (t: Tab) => void }) {
       <div>
         <h1 className="text-[22px] font-bold">Overview</h1>
         <div className="mt-[4px] text-[13px] text-muted-foreground">
-          Everything in {data.workspace.displayName}, indexed by FabricAtlas · last sync{" "}
+          Everything in {data.workspace.displayName}, indexed by Fabric Atlas · last sync{" "}
           {relativeTime(lastSyncedAt)}
           {syncRuns[0]?.triggeredBy ? ` by ${syncRuns[0].triggeredBy}` : ""}
         </div>

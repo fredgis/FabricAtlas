@@ -1,7 +1,7 @@
 import { entity, role, uuid, text, int, date } from '@microsoft/rayfin-core';
 
 /**
- * A Fabric workspace that FabricAtlas has indexed. One row is written per
+ * A Fabric workspace that Fabric Atlas has indexed. One row is written per
  * synced workspace; everything else in the catalog hangs off `fabricId`.
  */
 @entity()
