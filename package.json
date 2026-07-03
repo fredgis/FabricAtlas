@@ -1,7 +1,6 @@
 {
   "name": "fabric-atlas",
   "description": "This is a starter template for building Fabric Apps - Analytics web apps. Clone this repo locally and follow the steps below to get started.",
-  "license": "MIT",
   "author": "Microsoft",
   "private": true,
   "version": "0.0.0",

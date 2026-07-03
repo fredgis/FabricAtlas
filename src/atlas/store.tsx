@@ -39,9 +39,9 @@ function clone(d: AtlasData): AtlasData {
 const EMPTY_DATA: AtlasData = {
   workspace: {
     fabricId: ATLAS_CONFIG.workspaceId,
-    displayName: "FGI-MAIN",
-    capacity: "fgiswe (F16)",
-    region: "Central US",
+    displayName: "Fabric workspace",
+    capacity: "",
+    region: "",
   },
   items: [],
   edges: [],

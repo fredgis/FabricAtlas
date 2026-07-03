@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
-import { ShieldAlert, Globe, Crown, UserX, Bot } from "lucide-react";
+import { Fragment, useMemo, useState } from "react";
+import { ShieldAlert, Globe, Crown, UserX, Bot, ChevronDown, ChevronRight, Boxes, FolderTree } from "lucide-react";
 import { useAtlas } from "../store";
 import { Card, PrincipalAvatar, SectionLabel, TypeGlyph, cn } from "../ui";
 import {
   typeMeta,
+  MODEL_SCHEMA,
   type AccessLevel,
   type AccessSource,
   type Grant,
@@ -120,6 +121,38 @@ export function AccessView() {
   const hasWorkspaceRole = (p: Principal) =>
     (grantsByPrincipal.get(p.displayName) ?? []).some((g) => !g.itemFabricId);
 
+  // Expand a principal to reveal every item + asset they can reach.
+  const [openP, setOpenP] = useState<string | null>(null);
+  const [openParts, setOpenParts] = useState<Set<string>>(new Set(["items"]));
+  const togglePart = (k: string) =>
+    setOpenParts((prev) => {
+      const n = new Set(prev);
+      n.has(k) ? n.delete(k) : n.add(k);
+      return n;
+    });
+
+  const accessibleItemsFor = (p: Principal) => {
+    const gs = grantsByPrincipal.get(p.displayName) ?? [];
+    const baseline = gs.find((g) => !g.itemFabricId);
+    const byItem = new Map<string, { level: AccessLevel; inherited: boolean }>();
+    if (baseline) for (const it of items) byItem.set(it.fabricId, { level: baseline.accessLevel, inherited: true });
+    for (const g of gs) if (g.itemFabricId) byItem.set(g.itemFabricId, { level: g.accessLevel, inherited: false });
+    return items.filter((it) => byItem.has(it.fabricId)).map((it) => ({ item: it, ...byItem.get(it.fabricId)! }));
+  };
+  const assetsFor = (acc: { item: Item }[]) => {
+    const out: { itemName: string; itemType: ItemType; kind: string; name: string; table?: string }[] = [];
+    for (const { item } of acc) {
+      const schema = MODEL_SCHEMA[item.fabricId];
+      if (!schema) continue;
+      for (const t of schema) {
+        out.push({ itemName: item.displayName, itemType: item.itemType, kind: "table", name: t.name });
+        for (const m of t.measures) out.push({ itemName: item.displayName, itemType: item.itemType, kind: "measure", name: m.name, table: t.name });
+        for (const c of t.columns) out.push({ itemName: item.displayName, itemType: item.itemType, kind: "column", name: c.name, table: t.name });
+      }
+    }
+    return out;
+  };
+
   const risks = useMemo(() => {
     const guests = principals.filter((p) => p.external);
     const admins = principals.filter((p) => p.workspaceRole === "Admin");
@@ -187,43 +220,113 @@ export function AccessView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {principals.map((p) => (
-                    <tr key={p.principalId} className="border-t border-border/60 text-center">
-                      <td className="px-[16px] py-[11px] text-left">
-                        <div className="flex items-center gap-[10px]">
-                          <PrincipalAvatar name={p.displayName} kind={p.kind} size={30} />
-                          <div>
-                            <div className="flex items-center gap-[6px] text-[13px] font-semibold">
-                              <span className="truncate">{p.displayName}</span>
-                              {p.external && (
-                                <span className="rounded bg-[#f5a52422] px-[6px] py-[1px] text-[10px] font-bold text-[#b7791f]">external</span>
+                  {principals.map((p) => {
+                    const expanded = openP === p.principalId;
+                    const acc = expanded ? accessibleItemsFor(p) : [];
+                    const assets = expanded ? assetsFor(acc) : [];
+                    const itemsOpen = openParts.has("items");
+                    const assetsOpen = openParts.has("assets");
+                    return (
+                      <Fragment key={p.principalId}>
+                        <tr
+                          onClick={() => setOpenP(expanded ? null : p.principalId)}
+                          className="cursor-pointer border-t border-border/60 text-center hover:bg-accent/40"
+                        >
+                          <td className="px-[16px] py-[11px] text-left">
+                            <div className="flex items-center gap-[8px]">
+                              {expanded ? (
+                                <ChevronDown size={15} className="shrink-0 text-muted-foreground" />
+                              ) : (
+                                <ChevronRight size={15} className="shrink-0 text-muted-foreground" />
                               )}
-                              {p.kind === "servicePrincipal" && (
-                                <span className="rounded bg-[#0ea5b722] px-[6px] py-[1px] text-[10px] font-bold text-[#0e8a99]">SPN</span>
-                              )}
+                              <PrincipalAvatar name={p.displayName} kind={p.kind} size={30} />
+                              <div>
+                                <div className="flex items-center gap-[6px] text-[13px] font-semibold">
+                                  <span className="truncate">{p.displayName}</span>
+                                  {p.external && (
+                                    <span className="rounded bg-[#f5a52422] px-[6px] py-[1px] text-[10px] font-bold text-[#b7791f]">external</span>
+                                  )}
+                                  {p.kind === "servicePrincipal" && (
+                                    <span className="rounded bg-[#0ea5b722] px-[6px] py-[1px] text-[10px] font-bold text-[#0e8a99]">SPN</span>
+                                  )}
+                                </div>
+                                <div className="text-[11px] capitalize text-muted-foreground">
+                                  {p.kind === "servicePrincipal" ? "Service principal" : p.kind}
+                                </div>
+                              </div>
                             </div>
-                            <div className="text-[11px] capitalize text-muted-foreground">
-                              {p.kind === "servicePrincipal" ? "Service principal" : p.kind}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-[10px] py-[11px]">
-                        {hasWorkspaceRole(p) ? (
-                          <RoleBadge role={p.workspaceRole} />
-                        ) : (
-                          <span className="rounded-full bg-muted px-[10px] py-[3px] text-[11px] font-semibold text-muted-foreground">
-                            Item-only
-                          </span>
+                          </td>
+                          <td className="px-[10px] py-[11px]">
+                            {hasWorkspaceRole(p) ? (
+                              <RoleBadge role={p.workspaceRole} />
+                            ) : (
+                              <span className="rounded-full bg-muted px-[10px] py-[3px] text-[11px] font-semibold text-muted-foreground">
+                                Item-only
+                              </span>
+                            )}
+                          </td>
+                          {CATS.map((c) => (
+                            <td key={c.key} className="px-[10px] py-[11px]">
+                              <AccessChip level={catAccess(p, c)} />
+                            </td>
+                          ))}
+                        </tr>
+                        {expanded && (
+                          <tr className="bg-muted/30">
+                            <td colSpan={2 + CATS.length} className="px-[16px] py-[14px]">
+                              <div className="grid gap-[14px]" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                                <div className="overflow-hidden rounded-xl border border-border bg-card">
+                                  <button onClick={() => togglePart("items")} className="flex w-full items-center gap-[8px] px-[13px] py-[9px]">
+                                    {itemsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                    <FolderTree size={14} className="text-muted-foreground" />
+                                    <span className="text-[12.5px] font-bold">Items · {acc.length}</span>
+                                  </button>
+                                  {itemsOpen && (
+                                    <div className="max-h-[300px] overflow-auto border-t border-border/60">
+                                      {acc.map(({ item, level, inherited }) => (
+                                        <div key={item.fabricId} className="flex items-center gap-[9px] px-[13px] py-[6px] text-[12.5px]">
+                                          <TypeGlyph type={item.itemType} size={22} />
+                                          <span className="min-w-0 flex-1 truncate">{item.displayName}</span>
+                                          <span className="text-[10px] text-muted-foreground">{inherited ? "inherited" : "direct"}</span>
+                                          <AccessChip level={level} />
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="overflow-hidden rounded-xl border border-border bg-card">
+                                  <button onClick={() => togglePart("assets")} className="flex w-full items-center gap-[8px] px-[13px] py-[9px]">
+                                    {assetsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                    <Boxes size={14} className="text-muted-foreground" />
+                                    <span className="text-[12.5px] font-bold">Assets · {assets.length}</span>
+                                  </button>
+                                  {assetsOpen && (
+                                    <div className="max-h-[300px] overflow-auto border-t border-border/60">
+                                      {assets.length === 0 && (
+                                        <div className="px-[13px] py-[10px] text-[12px] text-muted-foreground">
+                                          No sub-objects in the items they can reach.
+                                        </div>
+                                      )}
+                                      {assets.map((a, i) => {
+                                        const c = a.kind === "measure" ? "#d9a520" : a.kind === "table" ? "#2f9e6f" : "#3b82f6";
+                                        return (
+                                          <div key={i} className="flex items-center gap-[8px] px-[13px] py-[5px] text-[12px]">
+                                            <span className="rounded px-[5px] py-[1px] text-[9.5px] font-bold uppercase" style={{ background: `${c}22`, color: c }}>{a.kind}</span>
+                                            <span className="truncate font-medium">{a.name}</span>
+                                            <span className="ml-auto truncate text-[10.5px] text-muted-foreground">{a.table ?? a.itemName}</span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                      {CATS.map((c) => (
-                        <td key={c.key} className="px-[10px] py-[11px]">
-                          <AccessChip level={catAccess(p, c)} />
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

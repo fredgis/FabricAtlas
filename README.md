@@ -43,6 +43,8 @@ measures.
 
 ### Catalog
 Every item as a collapsible tree and as rich cards — owner, health, endorsement, tags, freshness.
+Click any card to slide open a panel with **all of its properties**: identity, lineage, access,
+config facts and recent jobs.
 
 ![Catalog](docs/screenshots/catalog.png)
 
@@ -54,11 +56,21 @@ item's permissions.
 ![Asset Catalog](docs/screenshots/assets.png)
 
 ### Access
-Who can reach what. A matrix by principal that computes **real effective access** from the actual grants,
-and a drill-down by object that explains where each grant comes from. Item-level shares are surfaced too:
-someone given a single report or model, without workspace membership, shows up as **item-only**.
+Who can reach what. Toggle **By principal** or **By object**. The matrix computes **real effective
+access** from the actual grants; click a principal to expand every **item and asset** they can reach.
+Item-level shares are surfaced too: someone given a single report or model, without workspace
+membership, shows up as **item-only**, and the risk panel calls out external guests and service
+principals.
 
-![Access](docs/screenshots/access.png)
+![Access — by principal](docs/screenshots/access.png)
+
+![Access — by object](docs/screenshots/access-object.png)
+
+### Sensitivity
+Every Microsoft Information Protection label in the workspace, with confidential and
+highly-confidential items spotlighted for review.
+
+![Sensitivity](docs/screenshots/sensitivity.png)
 
 ### Config
 Everything retrievable about an item — storage mode, OneLake paths, SQL endpoint, tables and measures —
@@ -74,9 +86,10 @@ everyone sees them.
 ![Comments](docs/screenshots/comments.png)
 
 ### Light and dark
-Light by default, with a one-click dark theme. When embedded, it follows the Fabric portal theme.
+Light by default, with a one-click dark theme (most shots here are dark). When embedded, it follows
+the Fabric portal theme.
 
-![Fabric Atlas in dark theme](docs/screenshots/assets-dark.png)
+![Fabric Atlas in light theme](docs/screenshots/overview-light.png)
 
 ## Why Rayfin
 
@@ -116,7 +129,7 @@ flowchart LR
     MSAL["MSAL<br/>Power BI token"]
   end
 
-  subgraph F["☁️ Microsoft Fabric · FGI-MAIN"]
+  subgraph F["☁️ Microsoft Fabric workspace"]
     UDF["User Data Function<br/>atlas_sync_functions · sync_all"]
     REST["Fabric REST APIs<br/>items · roleAssignments · jobs"]
     SM["Semantic model<br/>embed proxy · DAX INFO"]
@@ -180,7 +193,7 @@ npm run dev            # http://localhost:5173
 
 # deploy into your Fabric workspace
 npx rayfin login --tenant <your-tenant-id> --select
-npx rayfin up --workspace "FGIMain"
+npx rayfin up --workspace "<workspace-name>"
 ```
 
 Full steps in [docs/installation.md](docs/installation.md).
@@ -207,10 +220,10 @@ src/
     store.tsx           # data + sync + comments (preview / Rayfin backed)
     backend.ts          # persistence + Fabric sync boundary
     ui.tsx              # avatars, glyphs, health chips, cards
-    views/              # Overview, Map, Catalog, Access, Jobs, Config, Comments
+    views/              # Overview, Map, Catalog, Asset Catalog, Access, Sensitivity, Jobs, Config, Comments
 docs/                   # this documentation + screenshots
 ```
 
-## License
+---
 
-MIT © 2026. Built with [Rayfin](https://github.com/microsoft/rayfin) on Microsoft Fabric.
+A free sample, shared as-is. Built with [Rayfin](https://github.com/microsoft/rayfin) on Microsoft Fabric.

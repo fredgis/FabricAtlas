@@ -13,6 +13,7 @@ import {
   Boxes,
   Compass,
   FolderTree,
+  Lock,
   MessagesSquare,
   Moon,
   RefreshCw,
@@ -32,6 +33,7 @@ import { MapView } from "./atlas/views/Map";
 import { CatalogView } from "./atlas/views/Catalog";
 import { AssetCatalogView } from "./atlas/views/AssetCatalog";
 import { AccessView } from "./atlas/views/Access";
+import { SensitivityView } from "./atlas/views/Sensitivity";
 import { JobsView } from "./atlas/views/Jobs";
 import { ConfigView } from "./atlas/views/Config";
 import { CommentsView } from "./atlas/views/Comments";
@@ -43,6 +45,7 @@ export type Tab =
   | "catalog"
   | "assets"
   | "access"
+  | "sensitivity"
   | "jobs"
   | "config"
   | "comments";
@@ -53,6 +56,7 @@ const NAV: { id: Tab; label: string; icon: typeof Compass }[] = [
   { id: "catalog", label: "Catalog", icon: FolderTree },
   { id: "assets", label: "Asset Catalog", icon: Boxes },
   { id: "access", label: "Access", icon: ShieldCheck },
+  { id: "sensitivity", label: "Sensitivity", icon: Lock },
   { id: "jobs", label: "Jobs & health", icon: Activity },
   { id: "config", label: "Config", icon: Settings2 },
   { id: "comments", label: "Comments", icon: MessagesSquare },
@@ -194,6 +198,7 @@ function App() {
               {tab === "catalog" && <CatalogView />}
               {tab === "assets" && <AssetCatalogView />}
               {tab === "access" && <AccessView />}
+              {tab === "sensitivity" && <SensitivityView />}
               {tab === "jobs" && <JobsView />}
               {tab === "config" && <ConfigView />}
               {tab === "comments" && <CommentsView />}

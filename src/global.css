@@ -184,3 +184,7 @@ body,
 #root {
   height: 100%;
 }
+
+/* Animated flow along active lineage edges */
+@keyframes atlas-flow { to { stroke-dashoffset: -24; } }
+.atlas-flow { stroke-dasharray: 3 7; animation: atlas-flow .9s linear infinite; }

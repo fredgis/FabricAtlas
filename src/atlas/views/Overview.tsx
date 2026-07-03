@@ -1,11 +1,13 @@
 import { useMemo } from "react";
 import type { Tab } from "@/App";
+import { Boxes, Activity, AlertTriangle, Users, Lock, BadgeCheck } from "lucide-react";
 import { useAtlas } from "../store";
 import { Avatar, Card, HealthDot, SectionLabel, TypeGlyph } from "../ui";
 import {
   HEALTH_COLOR,
   typeMeta,
   relativeTime,
+  MODEL_SCHEMA,
   type Health,
   type ItemType,
 } from "../model";
@@ -54,7 +56,7 @@ function Donut({ counts }: { counts: [Health, number][] }) {
 
 export function OverviewView({ onOpen }: { onOpen: (t: Tab) => void }) {
   const { data, lastSyncedAt } = useAtlas();
-  const { items, principals, jobs, syncRuns } = data;
+  const { items, principals, jobs, syncRuns, grants, edges } = data;
 
   const health = useMemo(() => {
     const c: Record<Health, number> = { healthy: 0, stale: 0, failing: 0, unknown: 0 };
@@ -75,18 +77,39 @@ export function OverviewView({ onOpen }: { onOpen: (t: Tab) => void }) {
 
   const maxType = Math.max(...byType.map(([, c]) => c), 1);
 
-  const kpis: { label: string; value: number; color?: string; go?: Tab }[] = [
-    { label: "Items", value: items.length },
-    { label: "Healthy", value: health.healthy, color: HEALTH_COLOR.healthy },
-    { label: "Stale", value: health.stale, color: HEALTH_COLOR.stale, go: "jobs" },
-    { label: "Failing", value: health.failing, color: HEALTH_COLOR.failing, go: "jobs" },
-    { label: "People & groups", value: principals.length, go: "access" },
+  const CONF = new Set(["confidential", "highly confidential"]);
+  const confidential = items.filter((i) => CONF.has((i.sensitivity ?? "").toLowerCase()));
+  const endorsed = items.filter((i) => i.endorsement !== "none");
+  const labeled = items.filter((i) => i.sensitivity);
+  const external = principals.filter((p) => p.external);
+  const wsPrincipals = new Set(grants.filter((g) => !g.itemFabricId).map((g) => g.principalRef));
+  const itemOnly = principals.filter((p) => !wsPrincipals.has(p.displayName));
+  const assetCount = items.reduce((n, i) => {
+    const s = MODEL_SCHEMA[i.fabricId];
+    return n + (s ? s.reduce((m, t) => m + 1 + t.columns.length + t.measures.length, 0) : 0);
+  }, 0);
+  const pct = (n: number) => Math.round((n / (items.length || 1)) * 100);
+
+  const kpis: { icon: typeof Boxes; label: string; value: number; color: string; go?: Tab; sub: string }[] = [
+    { icon: Boxes, label: "Items", value: items.length, color: "#3b82f6", go: "catalog", sub: `${byType.length} types` },
+    { icon: Activity, label: "Healthy", value: health.healthy, color: HEALTH_COLOR.healthy, go: "jobs", sub: `of ${items.length}` },
+    { icon: AlertTriangle, label: "Needs attention", value: health.stale + health.failing, color: "#e0a417", go: "jobs", sub: `${health.failing} failing` },
+    { icon: Users, label: "People & groups", value: principals.length, color: "#7c5cff", go: "access", sub: `${external.length} external` },
+    { icon: Lock, label: "Confidential", value: confidential.length, color: "#e5484d", go: "sensitivity", sub: `${labeled.length} labeled` },
+    { icon: BadgeCheck, label: "Endorsed", value: endorsed.length, color: "#0ea5b7", go: "catalog", sub: `${pct(endorsed.length)}% coverage` },
+  ];
+
+  const tiles = [
+    { label: "External access", value: external.length, tab: "access" as Tab, tone: external.length ? "#e5484d" : "#22a565" },
+    { label: "Item-only shares", value: itemOnly.length, tab: "access" as Tab, tone: "#e0a417" },
+    { label: "Lineage links", value: edges.length, tab: "map" as Tab, tone: "#0ea5b7" },
+    { label: "Data assets", value: assetCount, tab: "assets" as Tab, tone: "#3b82f6" },
   ];
 
   return (
     <div className="flex flex-col gap-[18px] p-[24px]">
       <div>
-        <h1 className="text-[22px] font-bold">Overview</h1>
+        <h1 className="text-[22px] font-bold">Governance overview</h1>
         <div className="mt-[4px] text-[13px] text-muted-foreground">
           Everything in {data.workspace.displayName}, indexed by Fabric Atlas · last sync{" "}
           {relativeTime(lastSyncedAt)}
@@ -94,26 +117,63 @@ export function OverviewView({ onOpen }: { onOpen: (t: Tab) => void }) {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 14 }}>
-        {kpis.map((k) => (
-          <Card
-            key={k.label}
-            className={k.go ? "cursor-pointer transition-colors hover:border-primary" : ""}
-            style={{ padding: 16 }}
-          >
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 12 }}>
+        {kpis.map((k) => {
+          const Icon = k.icon;
+          return (
             <button
-              className="w-full text-left"
+              key={k.label}
               onClick={() => k.go && onOpen(k.go)}
-              disabled={!k.go}
+              className="flex flex-col gap-[10px] rounded-2xl border border-border bg-card p-[15px] text-left transition-all hover:-translate-y-[2px] hover:border-primary/40 hover:shadow-lg"
             >
-              <SectionLabel>{k.label}</SectionLabel>
-              <div className="mt-[8px] text-[28px] font-bold" style={{ color: k.color }}>
-                {k.value}
+              <div className="flex items-center justify-between">
+                <span className="flex h-[32px] w-[32px] items-center justify-center rounded-xl" style={{ background: `${k.color}1c`, color: k.color }}>
+                  <Icon size={17} />
+                </span>
+              </div>
+              <div>
+                <div className="text-[27px] font-extrabold leading-none tabular-nums" style={{ color: k.color }}>{k.value}</div>
+                <div className="mt-[5px] text-[12.5px] font-semibold">{k.label}</div>
+                <div className="text-[11px] text-muted-foreground">{k.sub}</div>
               </div>
             </button>
-          </Card>
-        ))}
+          );
+        })}
       </div>
+
+      {/* Governance snapshot */}
+      <Card style={{ padding: 16 }}>
+        <div className="flex items-center justify-between">
+          <SectionLabel>Governance snapshot</SectionLabel>
+          <button className="text-[12px] font-semibold text-primary" onClick={() => onOpen("sensitivity")}>Sensitivity</button>
+        </div>
+        <div className="mt-[14px] grid gap-[18px]" style={{ gridTemplateColumns: "1.3fr 1fr" }}>
+          <div className="flex flex-col gap-[13px]">
+            {[
+              { label: "Endorsement coverage", n: endorsed.length, color: "#0ea5b7" },
+              { label: "Sensitivity labeled", n: labeled.length, color: "#e5484d" },
+            ].map((b) => (
+              <div key={b.label}>
+                <div className="mb-[5px] flex items-center justify-between text-[12.5px]">
+                  <span className="font-semibold">{b.label}</span>
+                  <span className="tabular-nums text-muted-foreground">{b.n}/{items.length} · {pct(b.n)}%</span>
+                </div>
+                <div className="h-[9px] overflow-hidden rounded-full bg-muted">
+                  <div className="h-full rounded-full transition-all" style={{ width: `${pct(b.n)}%`, background: b.color }} />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-[10px]">
+            {tiles.map((t) => (
+              <button key={t.label} onClick={() => onOpen(t.tab)} className="rounded-xl border border-border p-[11px] text-left transition-colors hover:border-primary/40">
+                <div className="text-[21px] font-extrabold tabular-nums" style={{ color: t.tone }}>{t.value}</div>
+                <div className="text-[11.5px] text-muted-foreground">{t.label}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </Card>
 
       <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1.2fr", gap: 18 }}>
         <Card style={{ padding: 16 }}>
@@ -173,9 +233,9 @@ export function OverviewView({ onOpen }: { onOpen: (t: Tab) => void }) {
                   className="inline-block rounded-full"
                   style={{ width: 8, height: 8, background: JOB_COLOR[j.status] }}
                 />
-                <span className="font-semibold">{j.itemName}</span>
-                <span className="text-muted-foreground">{j.jobType}</span>
-                <span className="ml-auto text-[12px] text-muted-foreground">
+                <span className="truncate font-semibold">{j.itemName}</span>
+                <span className="truncate text-muted-foreground">{j.jobType}</span>
+                <span className="ml-auto shrink-0 text-[12px] text-muted-foreground">
                   {relativeTime(j.startedAt)}
                 </span>
               </div>

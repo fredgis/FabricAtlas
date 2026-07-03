@@ -49,9 +49,9 @@ function workspaceId(): string {
 
 const WS_FALLBACK: WorkspaceInfo = {
   fabricId: ATLAS_CONFIG.workspaceId,
-  displayName: "FGI-MAIN",
-  capacity: "fgiswe (F16)",
-  region: "Central US",
+  displayName: "Fabric workspace",
+  capacity: "",
+  region: "",
 };
 
 /* --------------------------- comments --------------------------- */

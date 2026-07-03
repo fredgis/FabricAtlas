@@ -29,7 +29,7 @@ roles and jobs, and reports the reason in `errors`.
 
 ## Publish (once)
 
-1. Open the workspace **FGI-MAIN** in the Fabric portal.
+1. Open your workspace in the Fabric portal.
 2. Open the item **`atlas_sync_functions`** (User Data Function).
 3. In the editor, make sure the code matches [`function_app.py`](./function_app.py)
    (paste it if the editor is empty) and that the library
@@ -45,7 +45,7 @@ roles and jobs, and reports the reason in `errors`.
    (`UserDataFunction.Execute.All` + Power BI read). The catalog loads and is
    written to the Atlas database.
 
-The app authenticates with the Entra app registration **FabricAtlas Sync**
-(client id `16998994-9439-4e94-a401-4ac8ce7c8c02`), which already has the
-delegated permissions consented and the app's hosting origin as a SPA redirect
-URI.
+The app authenticates with the Entra app registration you created (see
+[docs/installation.md](../../../docs/installation.md)), whose client id is provided
+through `VITE_ATLAS_SPA_CLIENT_ID`, with the delegated permissions consented and the
+app's hosting origin registered as a SPA redirect URI.

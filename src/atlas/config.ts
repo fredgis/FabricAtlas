@@ -1,24 +1,21 @@
 // Runtime config for the live Sync (MSAL -> Fabric User Data Function).
 //
-// clientId / tenantId are not secrets (they identify a public SPA app
-// registration). They default to the values provisioned for FGI-MAIN and can
-// be overridden at build time with VITE_* env vars.
+// clientId / tenantId / workspaceId are provided at build time through VITE_*
+// env vars (see .env.local, git-ignored, and docs/installation.md). Nothing is
+// hard-coded so the repo isn't tied to a specific tenant. VITE_FABRIC_WORKSPACE_ID
+// is written by `rayfin up`; VITE_ATLAS_SPA_CLIENT_ID / VITE_ATLAS_TENANT_ID you set.
 //
 // The UDF invoke URL is only known AFTER the function is Published in the
 // Fabric portal, so it is not baked in: it is read from an env var if present,
 // otherwise from localStorage (pasted once in the empty-state screen).
 
 export const ATLAS_CONFIG = {
-  clientId:
-    (import.meta.env.VITE_ATLAS_SPA_CLIENT_ID as string) ||
-    "16998994-9439-4e94-a401-4ac8ce7c8c02",
+  clientId: (import.meta.env.VITE_ATLAS_SPA_CLIENT_ID as string) || "",
   tenantId:
     (import.meta.env.VITE_ATLAS_TENANT_ID as string) ||
     (import.meta.env.VITE_FABRIC_TENANT_ID as string) ||
-    "1e45d0cb-b0dd-408c-8806-58b447605e96",
-  workspaceId:
-    (import.meta.env.VITE_FABRIC_WORKSPACE_ID as string) ||
-    "6bf4c521-7412-4e6b-8867-68253bbfb18a",
+    "",
+  workspaceId: (import.meta.env.VITE_FABRIC_WORKSPACE_ID as string) || "",
   // A Power BI-audience token both invokes the UDF (UserDataFunction.Execute.All)
   // and is forwarded to Fabric REST inside the function.
   scope: "https://analysis.windows.net/powerbi/api/.default",

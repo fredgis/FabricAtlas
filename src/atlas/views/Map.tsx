@@ -90,6 +90,7 @@ export function MapView() {
 
   // Interactive graph: manual node positions (drag) + bidirectional highlight.
   const [drag, setDrag] = useState<Record<string, { x: number; y: number }>>({});
+  const [dragId, setDragId] = useState<string | null>(null);
   const dragging = useRef<{ id: string; ox: number; oy: number; px: number; py: number; moved: boolean } | null>(null);
   const posOf = (id: string) => drag[id] ?? layout.pos.get(id) ?? { x: 0, y: 0 };
 
@@ -97,19 +98,21 @@ export function MapView() {
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     const p = posOf(id);
     dragging.current = { id, ox: p.x, oy: p.y, px: e.clientX, py: e.clientY, moved: false };
+    setDragId(id);
   };
   const nodeMove = (e: RPE) => {
     const d = dragging.current;
     if (!d) return;
     const dx = e.clientX - d.px;
     const dy = e.clientY - d.py;
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) d.moved = true;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) d.moved = true;
     setDrag((prev) => ({ ...prev, [d.id]: { x: d.ox + dx, y: d.oy + dy } }));
   };
   const nodeUp = (e: RPE, id: string) => {
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
     const d = dragging.current;
     dragging.current = null;
+    setDragId(null);
     if (d && !d.moved) setSelId(id);
   };
 
@@ -157,6 +160,7 @@ export function MapView() {
               return (
                 <path
                   key={i}
+                  className={active && !e.broken ? "atlas-flow" : undefined}
                   d={`M${x1},${y1} C${x1 + 46},${y1} ${x2 - 46},${y2} ${x2},${y2}`}
                   fill="none"
                   stroke={color}
@@ -175,6 +179,7 @@ export function MapView() {
             const isUp = upIds.has(it.fabricId);
             const isDown = downIds.has(it.fabricId);
             const dim = !!selId && !connected.has(it.fabricId);
+            const isDragging = dragId === it.fabricId;
             const accent = selected ? "var(--color-primary)" : isUp ? UP : isDown ? DOWN : undefined;
             return (
               <div
@@ -183,19 +188,25 @@ export function MapView() {
                 onPointerMove={nodeMove}
                 onPointerUp={(e) => nodeUp(e, it.fabricId)}
                 className={cn(
-                  "absolute flex cursor-grab select-none items-center gap-[10px] rounded-xl border bg-card px-[12px] text-left shadow-sm transition-all active:cursor-grabbing",
-                  selected ? "border-primary" : "border-border hover:shadow-md",
+                  "absolute flex cursor-grab select-none items-center gap-[10px] rounded-xl border bg-card px-[12px] text-left shadow-sm active:cursor-grabbing",
+                  selected ? "border-primary" : "border-border",
                 )}
                 style={{
                   left: p.x,
                   top: p.y,
                   width: NODE_W,
                   height: NODE_H,
-                  zIndex: selected ? 4 : dim ? 1 : 2,
+                  zIndex: isDragging ? 6 : selected ? 4 : dim ? 1 : 2,
                   opacity: dim ? 0.35 : 1,
-                  boxShadow: selected
-                    ? "0 0 0 2px var(--color-primary), 0 10px 26px -12px rgba(2,8,23,.45)"
-                    : undefined,
+                  transform: isDragging ? "scale(1.05)" : undefined,
+                  transition: isDragging
+                    ? "none"
+                    : "box-shadow .18s ease, opacity .18s ease, border-color .18s ease, transform .12s ease",
+                  boxShadow: isDragging
+                    ? "0 16px 34px -12px rgba(2,8,23,.55), 0 0 0 2px " + (accent ?? "var(--color-primary)")
+                    : selected
+                      ? "0 0 0 2px var(--color-primary), 0 10px 26px -12px rgba(2,8,23,.45)"
+                      : undefined,
                   borderColor: accent,
                 }}
               >

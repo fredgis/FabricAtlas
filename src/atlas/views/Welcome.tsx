@@ -1,10 +1,9 @@
 import { useState } from "react";
 import {
   Activity,
-  BarChart3,
-  Compass,
+  Boxes,
   FolderTree,
-  MessagesSquare,
+  Lock,
   Moon,
   RefreshCw,
   ShieldCheck,
@@ -18,13 +17,33 @@ import { useThemeContext } from "@/hooks/theme.context";
 import { useAtlas } from "../store";
 import { Avatar, cn } from "../ui";
 
-const FEATURES: { icon: typeof Compass; label: string; hint: string }[] = [
+function GovernanceLogo({ size = 92 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" aria-label="Fabric Governance">
+      <defs>
+        <linearGradient id="fg-logo" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#0ea5b7" />
+          <stop offset="0.55" stopColor="#3b82f6" />
+          <stop offset="1" stopColor="#7c5cff" />
+        </linearGradient>
+      </defs>
+      <path d="M32 3 L57 11.5 V30 C57 45.5 46 56 32 61 C18 56 7 45.5 7 30 V11.5 Z" fill="url(#fg-logo)" />
+      <path d="M32 3 L57 11.5 V30 C57 45.5 46 56 32 61 C18 56 7 45.5 7 30 V11.5 Z" fill="#000" fillOpacity="0.06" />
+      <g stroke="#fff" strokeWidth="2.6" strokeLinejoin="round" strokeLinecap="round" fill="none">
+        <path d="M32 15 L45 32 L32 49 L19 32 Z" opacity="0.95" />
+      </g>
+      <path d="M32 23 L39 32 L32 41 L25 32 Z" fill="#fff" fillOpacity="0.95" />
+    </svg>
+  );
+}
+
+const FEATURES: { icon: typeof FolderTree; label: string; hint: string }[] = [
   { icon: FolderTree, label: "Catalog", hint: "every item, typed & grouped" },
   { icon: Waypoints, label: "Lineage", hint: "down to tables & measures" },
-  { icon: ShieldCheck, label: "Access", hint: "users & their permissions" },
-  { icon: Activity, label: "Jobs", hint: "runs, health & failures" },
-  { icon: BarChart3, label: "Config", hint: "exhaustive item settings" },
-  { icon: MessagesSquare, label: "Comments", hint: "your team layer" },
+  { icon: Boxes, label: "Assets", hint: "tables, columns, KPIs" },
+  { icon: ShieldCheck, label: "Access", hint: "who can reach each object" },
+  { icon: Lock, label: "Sensitivity", hint: "labels & confidential items" },
+  { icon: Activity, label: "Health", hint: "jobs, runs & failures" },
 ];
 
 export function WelcomeView() {
@@ -48,13 +67,11 @@ export function WelcomeView() {
       {/* top bar */}
       <header className="relative z-10 flex items-center justify-between px-[26px] py-[18px]">
         <div className="flex items-center gap-[11px]">
-          <span
-            className="flex items-center justify-center rounded-xl text-white"
-            style={{ width: 34, height: 34, background: "linear-gradient(135deg,#0ea5b7,#3b82f6)" }}
-          >
-            <Compass size={19} />
-          </span>
-          <div className="text-[16px] font-bold">Fabric Atlas</div>
+          <GovernanceLogo size={34} />
+          <div>
+            <div className="text-[16px] font-bold leading-none">Fabric Atlas</div>
+            <div className="mt-[2px] text-[11px] text-muted-foreground">Workspace governance</div>
+          </div>
         </div>
         <div className="flex items-center gap-[12px]">
           <button
@@ -70,16 +87,8 @@ export function WelcomeView() {
 
       {/* hero */}
       <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-[24px] text-center">
-        <div
-          className="mb-[22px] flex items-center justify-center rounded-[26px] text-white shadow-2xl"
-          style={{
-            width: 92,
-            height: 92,
-            background: "linear-gradient(135deg,#0ea5b7,#3b82f6 55%,#7c5cff)",
-            boxShadow: "0 20px 60px -18px rgba(59,130,246,0.65)",
-          }}
-        >
-          <Compass size={46} strokeWidth={1.6} />
+        <div className="mb-[22px]" style={{ filter: "drop-shadow(0 20px 44px rgba(59,130,246,0.45))" }}>
+          <GovernanceLogo size={98} />
         </div>
 
         <div className="mb-[8px] inline-flex items-center gap-[8px] rounded-full border border-border bg-card/70 px-[12px] py-[5px] text-[12px] text-muted-foreground backdrop-blur">
@@ -88,19 +97,19 @@ export function WelcomeView() {
           <span className="opacity-60">· {data.workspace.capacity}</span>
         </div>
 
-        <h1 className="max-w-[720px] text-[34px] font-extrabold leading-[1.12] tracking-tight sm:text-[40px]">
-          One map of everything in your{" "}
+        <h1 className="max-w-[760px] text-[34px] font-extrabold leading-[1.12] tracking-tight sm:text-[42px]">
+          Fabric workspace{" "}
           <span
             className="bg-clip-text text-transparent"
             style={{ backgroundImage: "linear-gradient(120deg,#0ea5b7,#3b82f6,#7c5cff)" }}
           >
-            Fabric workspace
+            governance
           </span>
+          , in one place
         </h1>
-        <p className="mt-[14px] max-w-[560px] text-[15px] leading-relaxed text-muted-foreground">
-          Nothing is stored yet. Run a Sync to read the live workspace — items,
-          lineage, users &amp; access, jobs and config — straight into the Atlas
-          database.
+        <p className="mt-[14px] max-w-[580px] text-[15px] leading-relaxed text-muted-foreground">
+          Discover every item, trace lineage down to the column, see who can reach what, and spotlight
+          confidential data. Nothing is stored until you Sync — then it all lands in the Atlas database.
         </p>
 
         {/* URL config (only until the UDF invoke URL is known) */}

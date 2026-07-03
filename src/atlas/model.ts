@@ -1,8 +1,8 @@
 // Fabric Atlas — UI data model, item-type metadata, and the workspace dataset.
-// This dataset mirrors the real contents of the FGI-MAIN workspace (the "AlpineRent"
-// demo: an alpine ski & bike rental analytics estate) so the deployed app shows the
-// actual items, lineage, config and jobs that live in the workspace. When a live
-// Fabric sync is wired, the same shapes are refreshed from the Fabric REST APIs.
+// This is a self-contained sample (the "AlpineRent" demo: an alpine ski & bike
+// rental analytics estate) used for preview mode and the screenshots. When the
+// app is deployed and a live Sync runs, these shapes are replaced by the real
+// workspace read from the Fabric APIs.
 
 export type ItemType =
   | "Lakehouse"
@@ -210,25 +210,25 @@ export function relativeTime(iso?: string): string {
 const iso = (minsAgo: number) => new Date(Date.now() - minsAgo * 60000).toISOString();
 
 const OWNER = "System Administrator";
-const OWNER_EMAIL = "admin@mngenvmcap029985.onmicrosoft.com";
+const OWNER_EMAIL = "admin@alpinerent.com";
 
-// ---------- FGI-MAIN workspace (AlpineRent) ----------
+// ---------- sample workspace (AlpineRent demo) ----------
 
-// Fabric item ids below are the real ids returned by GET /items on FGI-MAIN.
-const LH = "b20fd55a-079f-4e02-9fcb-2f05e570f1f1";
-const SE = "1247af1c-9bae-458b-9e6e-1d8444b5ca9e";
-const NB_BRONZE = "caee1cc0-eb9b-422a-9455-54bc6b67a13e";
-const NB_SILVER = "b6533038-d69a-4232-8508-fdeb3a257503";
-const NB_GOLD = "6deab4bf-9865-4dc9-8731-a3bf15c263bd";
-const NB_FCAST = "2c14c0e0-3a2d-4822-b976-c51ebd346a27";
-const DW = "9726212a-34aa-4648-85a0-d64f0eb36129";
-const SM = "8c3cf29e-6e4d-4a51-a104-19c472aa177a";
-const RP_EXEC = "261f72de-0c7b-462f-a64f-e3d94d7c702c";
-const RP_STATION = "8e51161c-6e4a-4971-bec1-b1fd14770abe";
-const PL = "2a39a2ad-16b0-40db-afa9-7678de154524";
-const EH = "c48c77f2-ec31-4570-bdcd-92f867b988a1";
-const KQL_DEFAULT = "5e4188b1-4aca-4cb6-b77a-63f1f0b4af52";
-const KQL_EVENTS = "8fca2138-fddb-4207-bb51-cee081b93f8b";
+// Synthetic item ids for the bundled demo dataset (not tied to any real workspace).
+const LH = "10000000-0000-4000-8000-000000000001";
+const SE = "10000000-0000-4000-8000-000000000002";
+const NB_BRONZE = "10000000-0000-4000-8000-000000000003";
+const NB_SILVER = "10000000-0000-4000-8000-000000000004";
+const NB_GOLD = "10000000-0000-4000-8000-000000000005";
+const NB_FCAST = "10000000-0000-4000-8000-000000000006";
+const DW = "10000000-0000-4000-8000-000000000007";
+const SM = "10000000-0000-4000-8000-000000000008";
+const RP_EXEC = "10000000-0000-4000-8000-000000000009";
+const RP_STATION = "10000000-0000-4000-8000-000000000010";
+const PL = "10000000-0000-4000-8000-000000000011";
+const EH = "10000000-0000-4000-8000-000000000012";
+const KQL_DEFAULT = "10000000-0000-4000-8000-000000000013";
+const KQL_EVENTS = "10000000-0000-4000-8000-000000000014";
 
 // ---------- deep lineage: real semantic-model / gold schema (from TMDL) ----------
 
@@ -367,26 +367,26 @@ export const MODEL_SCHEMA: Record<string, ModelTableSchema[]> = {
 
 export const SAMPLE_DATA: AtlasData = {
   workspace: {
-    fabricId: "6bf4c521-7412-4e6b-8867-68253bbfb18a",
-    displayName: "FGI-MAIN",
-    capacity: "F16 · Central US",
-    region: "Central US",
+    fabricId: "10000000-0000-4000-8000-0000000000f0",
+    displayName: "AlpineRent Analytics",
+    capacity: "F16 · West Europe",
+    region: "West Europe",
   },
   items: [
     { fabricId: PL, displayName: "AlpineRent Daily Load", itemType: "DataPipeline", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["orchestration"], lastRefresh: iso(20), description: "Orchestrates Bronze → Silver → Gold → Forecast." },
     { fabricId: NB_BRONZE, displayName: "01_bronze_ingest", itemType: "Notebook", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["etl", "bronze"], lastRefresh: iso(40), description: "Generates AlpineRent sample data into the bronze schema." },
     { fabricId: NB_SILVER, displayName: "02_silver_transform", itemType: "Notebook", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["etl", "silver"], lastRefresh: iso(35), description: "Cleans and conforms bronze into silver." },
-    { fabricId: NB_GOLD, displayName: "03_gold_aggregate", itemType: "Notebook", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["etl", "gold"], lastRefresh: iso(30), description: "Builds the gold analytics tables." },
+    { fabricId: NB_GOLD, displayName: "03_gold_aggregate", itemType: "Notebook", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["etl", "gold"], sensitivity: "General", lastRefresh: iso(30), description: "Builds the gold analytics tables." },
     { fabricId: NB_FCAST, displayName: "04_demand_forecast", itemType: "Notebook", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["ml", "gold"], lastRefresh: iso(26), description: "Simple demand forecast into gold.demand_forecast." },
-    { fabricId: LH, displayName: "alpinerent_lakehouse", itemType: "Lakehouse", health: "healthy", endorsement: "certified", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["alpinerent", "medallion"], lastRefresh: iso(28), size: "bronze / silver / gold", description: "Schema-enabled lakehouse with bronze, silver and gold schemas." },
-    { fabricId: DW, displayName: "alpinerent_dw", itemType: "Warehouse", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["star-schema"], lastRefresh: iso(55), description: "Star schema: dim_date, dim_station, dim_equipment, fact_rentals." },
+    { fabricId: LH, displayName: "alpinerent_lakehouse", itemType: "Lakehouse", health: "healthy", endorsement: "certified", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["alpinerent", "medallion"], sensitivity: "Highly Confidential", lastRefresh: iso(28), size: "bronze / silver / gold", description: "Schema-enabled lakehouse with bronze, silver and gold schemas." },
+    { fabricId: DW, displayName: "alpinerent_dw", itemType: "Warehouse", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["star-schema"], sensitivity: "General", lastRefresh: iso(55), description: "Star schema: dim_date, dim_station, dim_equipment, fact_rentals." },
     { fabricId: EH, displayName: "AlpineRent Telemetry", itemType: "Eventhouse", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["realtime"], lastRefresh: iso(15), description: "Real-time telemetry host for station and bike events." },
-    { fabricId: SE, displayName: "alpinerent_lakehouse", itemType: "SQLEndpoint", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["sql"], lastRefresh: iso(28), description: "SQL analytics endpoint auto-provisioned over the lakehouse." },
+    { fabricId: SE, displayName: "alpinerent_lakehouse", itemType: "SQLEndpoint", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["sql"], sensitivity: "Confidential", lastRefresh: iso(28), description: "SQL analytics endpoint auto-provisioned over the lakehouse." },
     { fabricId: SM, displayName: "AlpineRent Sales Model", itemType: "SemanticModel", health: "healthy", endorsement: "certified", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["gold", "direct-lake"], sensitivity: "Confidential", lastRefresh: iso(12), description: "Direct Lake model over the gold schema, 6 tables + measures." },
     { fabricId: KQL_DEFAULT, displayName: "AlpineRent Telemetry", itemType: "KQLDatabase", health: "unknown", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["realtime"], lastRefresh: iso(15), description: "Default database of the Eventhouse (empty)." },
     { fabricId: KQL_EVENTS, displayName: "AlpineRent Telemetry Events", itemType: "KQLDatabase", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["realtime", "kql"], lastRefresh: iso(15), description: "StationTelemetry, BikeEvents, LiftRideEvents + StationHourlyLoad()." },
-    { fabricId: RP_EXEC, displayName: "AlpineRent Executive Dashboard", itemType: "Report", health: "healthy", endorsement: "promoted", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["exec"], lastRefresh: iso(10), description: "KPIs, daily revenue trend, top stations, monthly table." },
-    { fabricId: RP_STATION, displayName: "AlpineRent Station Utilization", itemType: "Report", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["ops"], lastRefresh: iso(10), description: "Station utilization and demand forecast." },
+    { fabricId: RP_EXEC, displayName: "AlpineRent Executive Dashboard", itemType: "Report", health: "healthy", endorsement: "promoted", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["exec"], sensitivity: "Confidential", lastRefresh: iso(10), description: "KPIs, daily revenue trend, top stations, monthly table." },
+    { fabricId: RP_STATION, displayName: "AlpineRent Station Utilization", itemType: "Report", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["ops"], sensitivity: "Confidential", lastRefresh: iso(10), description: "Station utilization and demand forecast." },
   ],
   edges: [
     { source: PL, target: NB_BRONZE, relation: "orchestrates" },
@@ -406,14 +406,26 @@ export const SAMPLE_DATA: AtlasData = {
   ],
   principals: [
     { principalId: "u-admin", displayName: "System Administrator", kind: "user", email: OWNER_EMAIL, workspaceRole: "Admin" },
+    { principalId: "u-tom", displayName: "Tom Berg", kind: "user", email: "tom.berg@alpinerent.com", workspaceRole: "Member" },
+    { principalId: "g-de", displayName: "Data Engineering", kind: "group", workspaceRole: "Contributor" },
+    { principalId: "g-bi", displayName: "BI Analysts", kind: "group", workspaceRole: "Viewer" },
+    { principalId: "sp-etl", displayName: "svc-alpine-etl", kind: "servicePrincipal", workspaceRole: "Contributor" },
     { principalId: "u-lea", displayName: "Léa Martin", kind: "user", email: "lea.martin@alpinerent.com", workspaceRole: "Viewer" },
+    { principalId: "gu-partner", displayName: "ext-partner@vendor.com", kind: "guest", email: "ext-partner@vendor.com", external: true, workspaceRole: "Viewer" },
   ],
   grants: [
     { principalRef: "System Administrator", accessLevel: "owner", source: "workspaceRole", roleName: "Admin", flag: "admin" },
+    { principalRef: "Tom Berg", accessLevel: "edit", source: "workspaceRole", roleName: "Member" },
+    { principalRef: "Data Engineering", accessLevel: "edit", source: "workspaceRole", roleName: "Contributor" },
+    { principalRef: "BI Analysts", accessLevel: "view", source: "workspaceRole", roleName: "Viewer" },
+    { principalRef: "svc-alpine-etl", accessLevel: "edit", source: "workspaceRole", roleName: "Contributor", flag: "servicePrincipal" },
     { itemFabricId: RP_EXEC, principalRef: "System Administrator", accessLevel: "owner", source: "itemOwner" },
     { itemFabricId: SM, principalRef: "System Administrator", accessLevel: "owner", source: "itemOwner" },
     { itemFabricId: RP_STATION, principalRef: "Léa Martin", accessLevel: "view", source: "directShare", roleName: "Read" },
     { itemFabricId: SM, principalRef: "Léa Martin", accessLevel: "view", source: "directShare", roleName: "ReadReshareExplore" },
+    { itemFabricId: RP_EXEC, principalRef: "ext-partner@vendor.com", accessLevel: "view", source: "directShare", flag: "external" },
+    { itemFabricId: LH, principalRef: "svc-alpine-etl", accessLevel: "edit", source: "directShare", flag: "servicePrincipal" },
+    { itemFabricId: NB_GOLD, principalRef: "Data Engineering", accessLevel: "edit", source: "directShare" },
   ],
   jobs: [
     { itemFabricId: NB_BRONZE, itemName: "01_bronze_ingest", jobType: "Notebook run", status: "completed", startedAt: iso(40), durationSec: 182 },
@@ -454,7 +466,7 @@ export const SAMPLE_DATA: AtlasData = {
     { itemFabricId: PL, section: "Schedule", label: "Trigger", value: "Manual" },
   ],
   comments: [
-    { id: "c1", authorId: "u-admin", authorName: OWNER, authorEmail: OWNER_EMAIL, body: "First Atlas sync of FGI-MAIN done — 14 items across 9 types, zero failures. Gold layer has 210 daily rows.", createdAt: iso(6) },
+    { id: "c1", authorId: "u-admin", authorName: OWNER, authorEmail: OWNER_EMAIL, body: "First Atlas sync done — 14 items across 9 types, zero failures. Gold layer has 210 daily rows.", createdAt: iso(6) },
     { id: "c2", itemFabricId: SM, authorId: "u-admin", authorName: OWNER, authorEmail: OWNER_EMAIL, body: "Direct Lake model validated live: Total Revenue CHF 533,821, 11,936 rentals, avg 19.7 h.", createdAt: iso(5) },
   ],
   syncRuns: [
