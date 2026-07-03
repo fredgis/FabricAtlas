@@ -17,7 +17,11 @@ brokered authentication. It runs as an item inside a Microsoft Fabric workspace.
 1. A Microsoft Fabric workspace on a capacity in a **region that supports Fabric Apps (preview)**.
 2. **Fabric Apps (preview)** enabled by a tenant admin (see below), otherwise `rayfin up` returns
    `403 The feature is not available`.
-3. An **Entra ID app registration** (SPA) used by the Sync button — see
+3. An **Entra ID app registration** (SPA) used by the Sync button, **and an account with enough Entra
+   privileges to create and manage it** — ownership of the app registration, or a directory role such
+   as *Application Administrator* / *Cloud Application Administrator*. You need this to grant admin
+   consent and to add SPA redirect URIs; without it, Microsoft Graph returns
+   `Authorization_RequestDenied — Insufficient privileges`. See
    [Live Sync setup](#5-live-sync-setup-app-registration--udf).
 4. The **read-only admin APIs** tenant settings enabled, so the Sync can read per-item access and
    lineage from the Fabric admin scanner:
@@ -126,6 +130,15 @@ VITE_ATLAS_TENANT_ID=<tenant-id>
 
 Then `npx rayfin up` again so the values are baked into the deployed bundle, and add the new hosting
 origin to the app registration's SPA redirect URIs.
+
+> **One SPA redirect URI per hosting origin.** MSAL signs in against the app's own origin
+> (`https://<app>.fabricapps.net`), so that exact origin must be listed under the app registration's
+> **Authentication → Single-page application** redirect URIs — otherwise the Sync popup fails with an
+> `AADSTS` redirect-mismatch error. `rayfin up` gives a **new** origin every time the app is *deleted
+> and re-created*, which means re-registering it. **Don't delete the app**: a plain `npx rayfin up`
+> reuses the same item and origin, so you register the redirect URI only once. Adding it (portal →
+> App registration → Authentication → SPA, or the Graph `PATCH` in step 5a) requires the Entra
+> privilege listed in the prerequisites.
 
 ### 5c. Publish the UDF and run Sync
 
