@@ -9,6 +9,10 @@ Built as a [Rayfin](https://github.com/microsoft/rayfin) Data App and deployed s
 
 </div>
 
+## Overview in less than one minute
+
+https://github.com/user-attachments/assets/21b1d273-da69-4869-a96c-26d4b6003aa7
+
 https://github.com/user-attachments/assets/52052323-f1f2-479b-8d39-18f7400fba24
 
 ---
