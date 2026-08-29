@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/fabric-atlas-hero-v2.svg" alt="Fabric Atlas, governance map for Microsoft Fabric workspaces" width="100%">
+<img src="docs/assets/fabric-atlas-hero-v3.svg" alt="Fabric Atlas, governance map for Microsoft Fabric workspaces" width="100%">
 
 Fabric Atlas gives a team one readable map of its Fabric workspace. It brings
 together lineage, item metadata, access, sensitivity and run history, then keeps
@@ -134,15 +134,16 @@ tenant automatically.
 
 | Target | Planned PR | Release | Engineering scope | Exit criteria |
 |---|---:|---|---|---|
-| Q4 CY26 | PR 1 | `v1.5.0` | Keep catalog reads shared with the authorized app audience and restrict scope changes to the configured synchronizer. Refactor persistence around an explicit `workspaceId`, add independent manifests and migrate the existing single-workspace snapshot. | A failed or incomplete workspace refresh cannot invalidate another workspace snapshot. |
-| Q4 CY26 | PR 2 | `v1.5.0` | Add UDF workspace discovery, persist the selected indexing scope, and run a bounded synchronization queue with progress and errors reported per workspace. | The synchronizer can select workspaces, refresh them independently and retry only failures. |
-| Q4 CY26 | PR 3 | `v1.5.0` | Add available, selected and active workspace state with lazy snapshot loading. Aggregate Overview, Catalog, Asset Catalog, Access, Sensitivity and Jobs. Keep Workspace Hub, configuration and comments tied to one active workspace. | Multi-workspace catalog MVP ready for release. |
-| Q1 CY27 | PR 4 | `v1.6.0` | Use composite graph IDs, open one workspace by default and allow comparison of up to three workspaces in separate visual groups. Show local lineage only at this stage. | Comparison stays readable and never creates an inferred connection. |
-| Q1 CY27 | PR 5 | `v1.6.0` | Run grouped metadata scans for the selected workspaces, build a global item index and persist source and target workspace IDs on relationships returned by Microsoft. | Verified cross-workspace lineage appears only when both endpoints are part of the indexed scope. |
+| Q4 CY26 | PR 1 | `v2.0.0` | Keep catalog reads shared with the authorized app audience and restrict scope changes to the configured synchronizer. Refactor persistence around an explicit `workspaceId`, add independent manifests and migrate the existing single-workspace snapshot. | A failed or incomplete workspace refresh cannot invalidate another workspace snapshot. |
+| Q4 CY26 | PR 2 | `v2.0.0` | Add UDF workspace discovery, persist the selected indexing scope, and run a bounded synchronization queue with progress and errors reported per workspace. | The synchronizer can select workspaces, refresh them independently and retry only failures. |
+| Q4 CY26 | PR 3 | `v2.0.0` | Add available, selected and active workspace state with lazy snapshot loading. Aggregate Overview, Catalog, Asset Catalog, Access, Sensitivity and Jobs. Keep Workspace Hub, configuration and comments tied to one active workspace. | Multi-workspace catalog MVP ready for release. |
+| Q1 CY27 | PR 4 | `v2.0.1` | Use composite graph IDs, open one workspace by default and allow comparison of up to three workspaces in separate visual groups. Show local lineage only at this stage. | Comparison stays readable and never creates an inferred connection. |
+| Q1 CY27 | PR 5 | `v2.0.2` | Run grouped metadata scans for the selected workspaces, build a global item index and persist source and target workspace IDs on relationships returned by Microsoft. | Verified cross-workspace lineage appears only when both endpoints are part of the indexed scope. |
 
-`v1.5.0` is the multi-workspace catalog milestone planned for Q4 CY26.
-`v1.6.0` adds lineage comparison and verified cross-workspace relationships in
-Q1 CY27. These dates are targets and may move if Fabric API coverage changes.
+`v2.0.0` is the multi-workspace catalog milestone planned for Q4 CY26.
+`v2.0.1` adds lineage comparison, followed by verified cross-workspace
+relationships in `v2.0.2` during Q1 CY27. These dates are targets and may move
+if Fabric API coverage changes.
 
 ## Quickstart
 
