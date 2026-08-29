@@ -22,6 +22,8 @@ export const ATLAS_CONFIG = {
   workspaceName:
     (import.meta.env.VITE_RAYFIN_ATLAS_WORKSPACE_NAME as string) ||
     "Microsoft Fabric workspace",
+  syncAdminEmail:
+    (import.meta.env.VITE_RAYFIN_ATLAS_SYNC_ADMIN_EMAIL as string) || "",
   // A Power BI-audience token both invokes the UDF (UserDataFunction.Execute.All)
   // and is forwarded to Fabric REST inside the function.
   scope: "https://analysis.windows.net/powerbi/api/.default",
@@ -44,5 +46,5 @@ export function getUdfUrl(): string | null {
 
 /** True once the UDF `sync_all` invoke URL is known. */
 export function isSyncConfigured(): boolean {
-  return !!getUdfUrl();
+  return !!getUdfUrl() && !!ATLAS_CONFIG.clientId && !!ATLAS_CONFIG.syncAdminEmail;
 }

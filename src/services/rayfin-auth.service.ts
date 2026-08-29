@@ -21,6 +21,7 @@ export interface IAuthService {
      * that case.
      */
     initEmbeddedAuth(): Promise<OpaqueSession | null>;
+    onSessionChange(callback: (session: OpaqueSession | null) => void): () => void;
 }
 
 /**
@@ -76,5 +77,9 @@ class RayfinAuthService implements IAuthService {
 
     async initEmbeddedAuth(): Promise<OpaqueSession | null> {
         return sdkInitEmbeddedAuth(this.client.auth, this.fabricOptions);
+    }
+
+    onSessionChange(callback: (session: OpaqueSession | null) => void): () => void {
+        return this.client.auth.onSessionChange(callback);
     }
 }

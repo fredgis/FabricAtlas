@@ -50,6 +50,36 @@ the published `sync_all` Fabric User Data Function. That server-side function re
 Power BI metadata APIs with the user's delegated token. The app maps the response, writes it through
 the Rayfin Data API, and records a `SyncRun`.
 
+Each refresh writes a new immutable snapshot. Content rows are written first and
+the `Workspace` manifest is written last. A failed or incomplete refresh never
+becomes active. On startup, hydration validates manifest counts and falls back
+to the previous complete snapshot when necessary.
+
+Snapshot creation is bound to the configured synchronization administrator.
+Rayfin create policies compare the authenticated email with each row's
+`writerEmail`, and hydration ignores manifests from any other writer.
+
+The workspace manifest stores the deployed build ID. A new build shows the
+guided sync screen until the authorized synchronizer publishes its snapshot.
+After that one sync, every user loads the same validated build snapshot.
+
+The MSAL account used for Sync must match the current Rayfin user and tenant.
+Tokens use session storage so switching Fabric users cannot silently reuse the
+first account from a persistent browser cache.
+
+## Object inventory
+
+- Lakehouse tables come from the paginated Fabric Tables API when available.
+- Schema-enabled lakehouse columns can be derived through the real Lakehouse to
+  SQL endpoint to Semantic Model lineage.
+- Warehouse and SQL Database objects use scanner metadata, with a clearly
+  labelled downstream model subset when complete SQL catalog access is not
+  available.
+- Semantic Models include tables, columns, measures, descriptions, hidden
+  flags and measure expressions.
+- Reports include pages. Fabric APIs do not expose complete visual field
+  bindings through this flow.
+
 In preview / standalone mode there is no token, so Sync just refreshes the sample dataset. The data
 layer is one abstraction (`src/atlas/store.tsx`) so the UI code is identical in both modes.
 
@@ -71,7 +101,7 @@ the `.dark` class for Tailwind. Design tokens are defined in `src/global.css`.
 | --- | --- | --- |
 | Auth | none | Fabric brokered (Entra ID) |
 | Data | in-memory sample set | Fabric SQL via RayfinClient |
-| Sync | refreshes the sample | reads Fabric REST → entities |
+| Sync | refreshes the sample | validates UDF result, writes a new snapshot |
 | Comments | in-memory | persisted to `Comment` |
 
 This lets the app be fully explorable (and screenshot-able) offline, while the same code runs for

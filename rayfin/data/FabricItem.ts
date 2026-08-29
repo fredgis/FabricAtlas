@@ -1,4 +1,4 @@
-import { entity, role, uuid, text, set, date } from '@microsoft/rayfin-core';
+import { entity, authenticated, uuid, text, set, date } from '@microsoft/rayfin-core';
 
 export type ItemHealth = 'healthy' | 'stale' | 'failing' | 'unknown';
 export type Endorsement = 'none' | 'promoted' | 'certified';
@@ -9,10 +9,15 @@ export type Endorsement = 'none' | 'promoted' | 'certified';
  * Fabric REST APIs; the catalog, map and health views all read from here.
  */
 @entity()
-@role('authenticated', '*')
+@authenticated('read')
+@authenticated('create', {
+  policy: (claims, item) => claims.email.eq(item.writerEmail),
+})
 export class FabricItem {
   @uuid() id!: string;
   @uuid() workspace_id!: string;
+  @uuid({ optional: true }) snapshotId?: string;
+  @text({ max: 160, optional: true }) writerEmail?: string;
   @text({ max: 100 }) fabricId!: string;
   @text({ max: 200 }) displayName!: string;
   @text({ max: 60 }) itemType!: string;

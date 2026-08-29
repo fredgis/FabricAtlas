@@ -4,6 +4,23 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-08-29
+
+### Added
+
+- Immutable workspace snapshots with manifest validation and fallback to the last complete index.
+- Multi-selection and group movement in item and object lineage.
+- Expanded object metadata for Lakehouse, Warehouse, SQL Database, Semantic Model and Report items.
+- Focused regression tests for snapshot integrity, account selection and UDF schema derivation.
+
+### Changed
+
+- Synchronization now rejects incomplete Fabric responses before persistence.
+- Lineage Reset restores positions, zoom, selection and scroll; lifecycle spacing is wider.
+- Governance Overview is reduced to one hero and three operational sections.
+- README and `/docs` now describe snapshot behavior, object coverage and contribution paths.
+- Security handling was hardened following an OWASP Top 10:2025 and ASVS 5.0 review.
+
 ## [1.3.1] - 2026-08-29
 
 ### Changed
@@ -100,6 +117,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
+[1.4.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.4.0
 [1.3.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.3.1
 [1.3.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.3.0
 [1.2.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.2.0

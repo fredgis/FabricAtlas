@@ -7,7 +7,7 @@ that make that reliable, and this repo already includes them.
 
 - The backend is declarative. Entities are TypeScript decorators in `rayfin/data/`. An agent edits a
   class, and `rayfin up` diffs the schema and applies the migration — no hand-written SQL.
-- The front end is plain React in `src/atlas/`, one file per tab. Adding a view is a local edit.
+- The front end is plain React in `src/atlas/`. Adding or composing a view is a local edit.
 - Rayfin ships agent context in this repo: `.agents/skills/rayfin` (data model, decorators, deploy),
   plus `app-design`, `schema-discovery`, `fabric-sdk` and more. The `AGENTS.md` at the root wires
   them in. There is also a Rayfin MCP server (`@microsoft/rayfin-mcp`, configured in `.mcp.json`) and
@@ -32,7 +32,8 @@ Data model:
 > "Add a `criticality` field to `FabricItem` (low/medium/high/critical) and show it as a colored
 > badge on the catalog cards and the map inspector."
 
-> "Add row-level security so a `Comment` can only be edited or deleted by its author."
+> "Add comment moderation for workspace administrators while preserving the
+> authenticated author policy."
 
 New surface area:
 
@@ -42,8 +43,8 @@ New surface area:
 
 Sync:
 
-> "In `runFabricSync`, call the Fabric items REST API for the current workspace, map each item to a
-> `FabricItem`, and upsert it with `client.data.FabricItem.create`."
+> "Add a new metadata section to `sync_all`, validate it before persistence,
+> and include it in the immutable snapshot manifest."
 
 Look and feel:
 

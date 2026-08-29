@@ -15,8 +15,15 @@
 // never breaks the UI — see docs/architecture.md for the full flow.
 
 import { ATLAS_CONFIG } from "./config";
-import { invokeSyncAll, mapSyncToAtlas } from "./live-sync";
+import {
+  invokeSyncAll,
+  mapSyncToAtlas,
+  realText,
+  toItemType,
+  type SyncIdentity,
+} from "./live-sync";
 import { normalizeLineageEdges } from "./lineage";
+import { DEPLOYMENT_ID } from "./release";
 import type {
   AtlasData,
   Comment,
@@ -32,12 +39,137 @@ import type {
 export type SyncProgressReporter = (progress: number, stage: string) => void;
 
 type Row = Record<string, unknown>;
-interface EntityApi {
-  findMany: (f?: unknown) => Promise<Row[]>;
-  findFirst?: (f?: unknown) => Promise<Row | null>;
-  create: (v: Row) => Promise<Row>;
-  delete: (w: Row) => Promise<Row>;
+interface EntityQuery {
+  where: (filter: Row) => EntityQuery;
+  first: (count: number) => EntityQuery;
+  after: (cursor: string) => EntityQuery;
+  executePaginated: () => Promise<{
+    items: Row[];
+    endCursor?: string;
+    hasNextPage: boolean;
+  }>;
 }
+interface EntityApi {
+  select?: (fields: readonly string[]) => EntityQuery;
+  findMany?: (f?: unknown) => Promise<Row[]>;
+  create: (v: Row) => Promise<Row>;
+}
+
+const ENTITY_FIELDS: Record<string, readonly string[]> = {
+  Workspace: [
+    "id",
+    "snapshotId",
+    "writerEmail",
+    "deploymentId",
+    "fabricId",
+    "displayName",
+    "capacity",
+    "region",
+    "itemCount",
+    "edgeCount",
+    "principalCount",
+    "grantCount",
+    "jobCount",
+    "configCount",
+    "schemaEntryCount",
+    "syncedAt",
+  ],
+  FabricItem: [
+    "id",
+    "workspace_id",
+    "snapshotId",
+    "writerEmail",
+    "fabricId",
+    "displayName",
+    "itemType",
+    "description",
+    "ownerName",
+    "ownerEmail",
+    "health",
+    "endorsement",
+    "sensitivity",
+    "tags",
+    "lastRefresh",
+  ],
+  LineageEdge: [
+    "id",
+    "workspace_id",
+    "snapshotId",
+    "writerEmail",
+    "sourceFabricId",
+    "targetFabricId",
+    "relation",
+    "broken",
+  ],
+  Principal: [
+    "id",
+    "workspace_id",
+    "snapshotId",
+    "writerEmail",
+    "principalId",
+    "displayName",
+    "kind",
+    "email",
+    "external",
+  ],
+  AccessGrant: [
+    "id",
+    "workspace_id",
+    "snapshotId",
+    "writerEmail",
+    "itemFabricId",
+    "principalRef",
+    "accessLevel",
+    "source",
+    "roleName",
+    "flag",
+  ],
+  JobRun: [
+    "id",
+    "workspace_id",
+    "snapshotId",
+    "writerEmail",
+    "itemFabricId",
+    "itemName",
+    "jobType",
+    "status",
+    "startedAt",
+    "durationSec",
+    "message",
+  ],
+  ConfigEntry: [
+    "id",
+    "workspace_id",
+    "snapshotId",
+    "writerEmail",
+    "itemFabricId",
+    "section",
+    "label",
+    "value",
+  ],
+  Comment: [
+    "id",
+    "workspace_id",
+    "itemFabricId",
+    "authorId",
+    "authorName",
+    "authorEmail",
+    "body",
+    "createdAt",
+  ],
+  SyncRun: [
+    "id",
+    "workspace_id",
+    "snapshotId",
+    "writerEmail",
+    "startedAt",
+    "finishedAt",
+    "status",
+    "itemsSynced",
+    "triggeredBy",
+    "summary",
+  ],
+};
 
 async function dataApi(): Promise<Record<string, EntityApi>> {
   const { getRayfinClient } = await import("@/lib/rayfin-client");
@@ -63,6 +195,17 @@ function textOrFallback(value: unknown, fallback: string): string {
   return !text || text === "undefined" || text === "null" ? fallback : text;
 }
 
+function requireSyncWriter(user: SyncIdentity): string {
+  const expected = ATLAS_CONFIG.syncAdminEmail.trim().toLowerCase();
+  const actual = user.email?.trim().toLowerCase() ?? "";
+  if (!expected || !actual || actual !== expected) {
+    throw new Error(
+      "Only the configured Atlas sync administrator can publish workspace snapshots.",
+    );
+  }
+  return actual;
+}
+
 /* --------------------------- comments --------------------------- */
 
 /** Persist a new comment to the Fabric-backed database (no-op in preview). */
@@ -71,20 +214,25 @@ export async function persistComment(
   comment: Comment,
 ): Promise<void> {
   if (isPreview) return;
-  try {
-    const data = await dataApi();
-    await data.Comment.create({
-      workspace_id: workspaceId(),
-      itemFabricId: comment.itemFabricId,
-      authorId: comment.authorId,
-      authorName: comment.authorName,
-      authorEmail: comment.authorEmail,
-      body: comment.body,
-      createdAt: new Date(comment.createdAt),
-    });
-  } catch (err) {
-    console.warn("[atlas] persistComment failed", err);
+  if (
+    !comment.authorId.trim() ||
+    !comment.authorEmail?.trim()
+  ) {
+    throw new Error("An authenticated comment author is required.");
   }
+  if (!comment.body.trim() || comment.body.length > 2000) {
+    throw new Error("Comments must contain between 1 and 2000 characters.");
+  }
+  const data = await dataApi();
+  await data.Comment.create({
+    workspace_id: workspaceId(),
+    itemFabricId: comment.itemFabricId,
+    authorId: comment.authorId,
+    authorName: comment.authorEmail,
+    authorEmail: comment.authorEmail,
+    body: comment.body,
+    createdAt: new Date(comment.createdAt),
+  });
 }
 
 /* ----------------------------- sync ----------------------------- */
@@ -96,7 +244,7 @@ export async function persistComment(
  */
 export async function runFabricSync(
   isPreview: boolean,
-  user: { name: string; email?: string },
+  user: SyncIdentity,
   reportProgress?: SyncProgressReporter,
 ): Promise<AtlasData | null> {
   if (isPreview) {
@@ -107,8 +255,9 @@ export async function runFabricSync(
     reportProgress?.(100, "Sync complete");
     return null;
   }
+  requireSyncWriter(user);
   reportProgress?.(8, "Connecting to Microsoft Fabric");
-  const raw = await invokeSyncAll(workspaceId());
+  const raw = await invokeSyncAll(workspaceId(), user);
   reportProgress?.(48, "Workspace metadata received");
   const atlas = mapSyncToAtlas(raw, WS_FALLBACK);
   reportProgress?.(58, "Building the governance catalog");
@@ -128,43 +277,26 @@ export async function runFabricSync(
 /** Replace the catalog rows in the Rayfin DB with a freshly synced snapshot. */
 async function persistSync(
   atlas: AtlasData,
-  user: { name: string; email?: string },
+  user: SyncIdentity,
   reportProgress?: SyncProgressReporter,
 ): Promise<void> {
   const wid = workspaceId();
-  let data: Record<string, EntityApi>;
-  try {
-    data = await dataApi();
-  } catch (err) {
-    console.warn("[atlas] persistSync: no data client", err);
-    return;
-  }
-
-  const wipe = async (entity: string) => {
-    try {
-      const rows = await data[entity].findMany();
-      await Promise.all(
-        rows.map((r) => data[entity].delete({ id: r.id }).catch(() => undefined)),
-      );
-    } catch {
-      /* entity may be empty or unavailable */
-    }
-  };
+  const snapshotId = crypto.randomUUID();
+  const writerEmail = requireSyncWriter(user);
+  const data = await dataApi();
 
   const insertAll = async (entity: string, rows: Row[]) => {
     for (const row of rows) {
-      try {
-        await data[entity].create({ workspace_id: wid, ...row });
-      } catch (err) {
-        console.warn(`[atlas] create ${entity} failed`, err);
-      }
+      await data[entity].create({
+        workspace_id: wid,
+        snapshotId,
+        writerEmail,
+        ...row,
+      });
     }
   };
 
   reportProgress?.(70, "Preparing the Atlas database");
-  await Promise.all(
-    ["FabricItem", "Principal", "AccessGrant", "JobRun", "LineageEdge", "ConfigEntry"].map(wipe),
-  );
   reportProgress?.(76, "Writing workspace items");
 
   await insertAll(
@@ -239,199 +371,475 @@ async function persistSync(
   reportProgress?.(94, "Writing object metadata");
   // Persist the sub-object schema (tables/columns/measures) as hidden ConfigEntry
   // rows so the Asset Catalog and deep lineage survive a reload without re-sync.
+  // Values are chunked instead of truncated so wide table schemas retain every
+  // real column while staying within ConfigEntry.value's 2,000-character limit.
   const schemaRows: Row[] = [];
   for (const [itemId, tables] of Object.entries(atlas.schema ?? {})) {
     for (const t of tables) {
-      schemaRows.push({
-        itemFabricId: itemId,
-        section: "__schema__",
-        label: t.name,
-        value: JSON.stringify({ rows: t.rows, columns: t.columns, measures: t.measures }).slice(0, 2000),
+      const serialized = JSON.stringify({
+        rows: t.rows,
+        objectType: t.objectType,
+        source: t.source,
+        description: t.description,
+        isHidden: t.isHidden,
+        columns: t.columns,
+        measures: t.measures,
       });
+      const chunks = serialized.match(/[\s\S]{1,1960}/g) ?? [""];
+      for (let part = 0; part < chunks.length; part += 1) {
+        schemaRows.push({
+          itemFabricId: itemId,
+          section: "__schema__",
+          label: t.name,
+          value: `v1:${String(part + 1).padStart(4, "0")}:${String(chunks.length).padStart(4, "0")}:${chunks[part]}`,
+        });
+      }
     }
   }
   if (schemaRows.length) await insertAll("ConfigEntry", schemaRows);
 
-  // Workspace summary (single row) + a sync-run audit record.
+  // The audit row and every snapshot row must succeed before the Workspace
+  // marker is written. That final marker is the atomic visibility switch:
+  // orphaned rows from a failed attempt are never selected by hydration.
   reportProgress?.(97, "Finalizing the workspace snapshot");
-  try {
-    await wipe("Workspace");
-    await data.Workspace.create({
-      fabricId: atlas.workspace.fabricId,
-      displayName: atlas.workspace.displayName,
-      capacity: atlas.workspace.capacity,
-      region: atlas.workspace.region,
-      itemCount: atlas.items.length,
-      syncedAt: new Date(),
-    });
-  } catch (err) {
-    console.warn("[atlas] persist Workspace failed", err);
-  }
-  try {
-    await data.SyncRun.create({
-      workspace_id: wid,
-      startedAt: new Date(),
-      finishedAt: new Date(),
-      status: "completed",
-      itemsSynced: atlas.items.length,
-      triggeredBy: user.name,
-      summary: `${atlas.items.length} items · ${atlas.edges.length} lineage edges · ${atlas.principals.length} principals · ${atlas.jobs.length} jobs`,
-    });
-  } catch (err) {
-    console.warn("[atlas] persist SyncRun failed", err);
-  }
+  await data.SyncRun.create({
+    workspace_id: wid,
+    snapshotId,
+    writerEmail,
+    startedAt: new Date(),
+    finishedAt: new Date(),
+    status: "completed",
+    itemsSynced: atlas.items.length,
+    triggeredBy: user.name,
+    summary: `${atlas.items.length} items · ${atlas.edges.length} lineage edges · ${atlas.principals.length} principals · ${atlas.jobs.length} jobs`,
+  });
+  await data.Workspace.create({
+    snapshotId,
+    writerEmail,
+    deploymentId: DEPLOYMENT_ID,
+    fabricId: atlas.workspace.fabricId,
+    displayName: atlas.workspace.displayName,
+    capacity: atlas.workspace.capacity,
+    region: atlas.workspace.region,
+    itemCount: atlas.items.length,
+    edgeCount: atlas.edges.length,
+    principalCount: atlas.principals.length,
+    grantCount: atlas.grants.length,
+    jobCount: atlas.jobs.length,
+    configCount: atlas.config.length,
+    schemaEntryCount: schemaRows.length,
+    syncedAt: new Date(),
+  });
 }
 
 /* ----------------------------- load ----------------------------- */
 
+const READ_RETRY_DELAYS_MS = [0, 120, 360];
+
+async function readWithRetry(
+  api: EntityApi,
+  fields: readonly string[],
+  filter: Row,
+): Promise<Row[]> {
+  let lastError: unknown;
+  for (const delay of READ_RETRY_DELAYS_MS) {
+    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+    try {
+      if (!api.select) {
+        if (!api.findMany) {
+          throw new Error("Rayfin entity does not support reads");
+        }
+        return await api.findMany(filter);
+      }
+      const rows: Row[] = [];
+      let cursor: string | undefined;
+      for (let pageNumber = 0; pageNumber < 100; pageNumber += 1) {
+        let query = api.select(fields).where(filter).first(100);
+        if (cursor) query = query.after(cursor);
+        const page = await query.executePaginated();
+        rows.push(...page.items);
+        if (!page.hasNextPage) return rows;
+        if (!page.endCursor || page.endCursor === cursor) {
+          throw new Error("Rayfin pagination did not advance");
+        }
+        cursor = page.endCursor;
+      }
+      throw new Error("Rayfin pagination exceeded the safety limit");
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
+function sameText(left: unknown, right: unknown): boolean {
+  return String(left ?? "").toLowerCase() === String(right ?? "").toLowerCase();
+}
+
+function rowBelongsToWorkspace(row: Row, wid: string): boolean {
+  return sameText(row.workspace_id, wid);
+}
+
+function rowsForSnapshot(
+  rows: Row[],
+  wid: string,
+  snapshotId?: string,
+): Row[] {
+  return rows.filter(
+    (row) =>
+      rowBelongsToWorkspace(row, wid) &&
+      sameText(row.snapshotId, snapshotId) &&
+      sameText(row.writerEmail, ATLAS_CONFIG.syncAdminEmail),
+  );
+}
+
+const MANIFEST_COUNTS = [
+  ["itemCount", "items"],
+  ["edgeCount", "lineage edges"],
+  ["principalCount", "principals"],
+  ["grantCount", "access grants"],
+  ["jobCount", "jobs"],
+  ["configCount", "configuration rows"],
+  ["schemaEntryCount", "schema chunks"],
+] as const;
+
+function validateManifest(
+  marker: Row,
+  counts: Record<(typeof MANIFEST_COUNTS)[number][0], number>,
+): void {
+  if (
+    !marker.snapshotId ||
+    !sameText(marker.writerEmail, ATLAS_CONFIG.syncAdminEmail)
+  ) {
+    throw new Error("snapshot manifest is not signed by the configured writer");
+  }
+  for (const [field, label] of MANIFEST_COUNTS) {
+    if (marker[field] == null || Number(marker[field]) !== counts[field]) {
+      throw new Error(`snapshot manifest mismatch for ${label}`);
+    }
+  }
+  if (counts.itemCount === 0) {
+    throw new Error("snapshot manifest contains no workspace items");
+  }
+}
+
+function parseSchemaRows(
+  rows: Row[],
+  itemIds: Set<string>,
+): Record<string, ModelTableSchema[]> {
+  const grouped = new Map<string, Row[]>();
+  for (const row of rows) {
+    const itemId = String(row.itemFabricId ?? "");
+    const label = String(row.label ?? "");
+    if (!itemIds.has(itemId) || !label) {
+      throw new Error("snapshot contains schema for an unknown item");
+    }
+    const key = JSON.stringify([itemId, label]);
+    const values = grouped.get(key) ?? [];
+    values.push(row);
+    grouped.set(key, values);
+  }
+
+  const schema: Record<string, ModelTableSchema[]> = {};
+  for (const [key, parts] of grouped) {
+    const [itemId, label] = JSON.parse(key) as [string, string];
+    const rawValues = parts.map((part) => String(part.value ?? ""));
+    let serialized: string;
+    if (rawValues.length === 1 && !rawValues[0].startsWith("v1:")) {
+      serialized = rawValues[0];
+    } else {
+      const chunks = rawValues.map((value) => {
+        const match = /^v1:(\d{4}):(\d{4}):([\s\S]*)$/.exec(value);
+        if (!match) throw new Error("snapshot contains a malformed schema chunk");
+        return {
+          part: Number(match[1]),
+          total: Number(match[2]),
+          value: match[3],
+        };
+      });
+      const total = chunks[0]?.total ?? 0;
+      if (
+        total !== chunks.length ||
+        chunks.some((chunk) => chunk.total !== total) ||
+        new Set(chunks.map((chunk) => chunk.part)).size !== total
+      ) {
+        throw new Error("snapshot contains an incomplete schema");
+      }
+      serialized = chunks
+        .sort((left, right) => left.part - right.part)
+        .map((chunk) => chunk.value)
+        .join("");
+    }
+    const parsed = JSON.parse(serialized) as {
+      rows?: number;
+      objectType?: string;
+      source?: string;
+      description?: string;
+      isHidden?: boolean;
+      columns?: ModelTableSchema["columns"];
+      measures?: ModelTableSchema["measures"];
+    };
+    const tables = schema[itemId] ?? [];
+    tables.push({
+      name: label,
+      rows: parsed.rows,
+      objectType: parsed.objectType,
+      source: parsed.source,
+      description: parsed.description,
+      isHidden: parsed.isHidden,
+      columns: Array.isArray(parsed.columns) ? parsed.columns : [],
+      measures: Array.isArray(parsed.measures) ? parsed.measures : [],
+    });
+    schema[itemId] = tables;
+  }
+  return schema;
+}
+
 /**
  * Read the previously synced catalog back out of the Rayfin entities. Returns
  * `null` in preview or when nothing has been synced yet (so the caller shows
- * the empty state), and never throws.
+ * the empty state), and never exposes an incomplete snapshot.
  */
 export async function loadFromDb(isPreview: boolean): Promise<AtlasData | null> {
   if (isPreview) return null;
-  let data: Record<string, EntityApi>;
   try {
-    data = await dataApi();
-  } catch {
+    const data = await dataApi();
+    const wid = workspaceId();
+    const read = (entity: string, filter: Row) => {
+      const api = data[entity];
+      if (!api) throw new Error(`Rayfin entity ${entity} is unavailable`);
+      const fields = ENTITY_FIELDS[entity];
+      if (!fields) throw new Error(`Rayfin fields for ${entity} are unavailable`);
+      return readWithRetry(api, fields, filter);
+    };
+    const workspaceFilter = { workspace_id: { eq: wid } };
+    const [
+      allItemRows,
+      allEdgeRows,
+      allPrincipalRows,
+      allGrantRows,
+      allJobRows,
+      allConfigRows,
+      allCommentRows,
+      allSyncRows,
+      workspaceRows,
+    ] = await Promise.all([
+      read("FabricItem", workspaceFilter),
+      read("LineageEdge", workspaceFilter),
+      read("Principal", workspaceFilter),
+      read("AccessGrant", workspaceFilter),
+      read("JobRun", workspaceFilter),
+      read("ConfigEntry", workspaceFilter),
+      read("Comment", workspaceFilter),
+      read("SyncRun", workspaceFilter),
+      read("Workspace", { fabricId: { eq: wid } }),
+    ]);
+
+    const markers = workspaceRows
+      .filter(
+        (row) =>
+          sameText(row.fabricId, wid) &&
+          !!textOrFallback(row.snapshotId, "") &&
+          sameText(row.writerEmail, ATLAS_CONFIG.syncAdminEmail),
+      )
+      .sort(
+        (left, right) =>
+          Date.parse(String(right.syncedAt ?? 0)) -
+          Date.parse(String(left.syncedAt ?? 0)),
+      );
+    const candidates: Row[] = markers;
+    const commentRows = allCommentRows.filter((row) =>
+      rowBelongsToWorkspace(row, wid),
+    );
+    const comments: Comment[] = commentRows.map((row) => ({
+      id: String(row.id),
+      itemFabricId: (row.itemFabricId as string) || undefined,
+      authorId: String(row.authorId),
+      authorName: textOrFallback(row.authorEmail, String(row.authorName)),
+      authorEmail: (row.authorEmail as string) || undefined,
+      body: String(row.body),
+      createdAt: row.createdAt
+        ? new Date(row.createdAt as string).toISOString()
+        : new Date().toISOString(),
+    }));
+
+    for (const marker of candidates) {
+      try {
+        const snapshotId = marker?.snapshotId
+          ? String(marker.snapshotId)
+          : undefined;
+        const itemRows = rowsForSnapshot(allItemRows, wid, snapshotId);
+        const edgeRows = rowsForSnapshot(allEdgeRows, wid, snapshotId);
+        const principalRows = rowsForSnapshot(
+          allPrincipalRows,
+          wid,
+          snapshotId,
+        );
+        const grantRows = rowsForSnapshot(allGrantRows, wid, snapshotId);
+        const jobRows = rowsForSnapshot(allJobRows, wid, snapshotId);
+        const configRows = rowsForSnapshot(allConfigRows, wid, snapshotId);
+        const schemaRows = configRows.filter(
+          (row) => String(row.section) === "__schema__",
+        );
+        const regularConfigRows = configRows.filter(
+          (row) => String(row.section) !== "__schema__",
+        );
+
+        if (marker) {
+          validateManifest(marker, {
+            itemCount: itemRows.length,
+            edgeCount: edgeRows.length,
+            principalCount: principalRows.length,
+            grantCount: grantRows.length,
+            jobCount: jobRows.length,
+            configCount: regularConfigRows.length,
+            schemaEntryCount: schemaRows.length,
+          });
+        }
+
+        const items: Item[] = itemRows.map((row) => {
+          const fabricId = realText(row.fabricId);
+          const itemType = toItemType(row.itemType);
+          if (!fabricId || !itemType) {
+            throw new Error("snapshot contains malformed Fabric item metadata");
+          }
+          return {
+            fabricId,
+            displayName: realText(row.displayName) ?? fabricId,
+            itemType,
+            description: realText(row.description),
+            ownerName: realText(row.ownerName),
+            ownerEmail: realText(row.ownerEmail),
+            health: (row.health as Item["health"]) ?? "unknown",
+            endorsement:
+              (row.endorsement as Item["endorsement"]) ?? "none",
+            sensitivity: realText(row.sensitivity),
+            tags: row.tags
+              ? String(row.tags)
+                  .split(",")
+                  .map((tag) => tag.trim())
+                  .filter(Boolean)
+              : [],
+            lastRefresh: row.lastRefresh
+              ? new Date(row.lastRefresh as string).toISOString()
+              : undefined,
+          };
+        });
+        if (
+          new Set(items.map((item) => item.fabricId)).size !== items.length
+        ) {
+          throw new Error("snapshot contains duplicate Fabric item IDs");
+        }
+        if (items.length === 0 && comments.length === 0) continue;
+
+        const itemIds = new Set(items.map((item) => item.fabricId));
+        const edges: Edge[] = normalizeLineageEdges(
+          items,
+          edgeRows.map((row) => ({
+            source: String(row.sourceFabricId),
+            target: String(row.targetFabricId),
+            relation: String(row.relation),
+            broken: !!row.broken,
+          })),
+        );
+        const principals: Principal[] = principalRows.map((row) => ({
+          principalId: String(row.principalId),
+          displayName: String(row.displayName),
+          kind: row.kind as Principal["kind"],
+          email: (row.email as string) || undefined,
+          external: !!row.external,
+          workspaceRole: "Viewer",
+        }));
+        const grants: Grant[] = grantRows.map((row) => ({
+          itemFabricId: (row.itemFabricId as string) || undefined,
+          principalRef: String(row.principalRef),
+          accessLevel: row.accessLevel as Grant["accessLevel"],
+          source: row.source as Grant["source"],
+          roleName: (row.roleName as string) || undefined,
+          flag: (row.flag as Grant["flag"]) || undefined,
+        }));
+        const jobs: Job[] = jobRows.map((row) => ({
+          itemFabricId: String(row.itemFabricId),
+          itemName: String(row.itemName),
+          jobType: String(row.jobType),
+          status: row.status as Job["status"],
+          startedAt: row.startedAt
+            ? new Date(row.startedAt as string).toISOString()
+            : new Date().toISOString(),
+          durationSec: Number(row.durationSec ?? 0),
+          message: (row.message as string) || undefined,
+        }));
+        const config = regularConfigRows.map((row) => ({
+          itemFabricId: String(row.itemFabricId),
+          section: String(row.section),
+          label: String(row.label),
+          value: String(row.value ?? ""),
+        }));
+        const schema = parseSchemaRows(schemaRows, itemIds);
+        const syncRuns = rowsForSnapshot(allSyncRows, wid, snapshotId)
+          .map((row) => ({
+            id: String(row.id),
+            startedAt: row.startedAt
+              ? new Date(row.startedAt as string).toISOString()
+              : new Date().toISOString(),
+            finishedAt: row.finishedAt
+              ? new Date(row.finishedAt as string).toISOString()
+              : undefined,
+            status:
+              (row.status as "running" | "completed" | "failed") ??
+              "completed",
+            itemsSynced:
+              row.itemsSynced != null ? Number(row.itemsSynced) : undefined,
+            triggeredBy: (row.triggeredBy as string) || undefined,
+            summary: (row.summary as string) || undefined,
+          }))
+          .sort(
+            (left, right) =>
+              Date.parse(right.startedAt) - Date.parse(left.startedAt),
+          );
+        const workspace: WorkspaceInfo = marker
+          ? {
+              fabricId: textOrFallback(
+                marker.fabricId,
+                WS_FALLBACK.fabricId,
+              ),
+              displayName: textOrFallback(
+                marker.displayName,
+                WS_FALLBACK.displayName,
+              ),
+              capacity: textOrFallback(
+                marker.capacity,
+                WS_FALLBACK.capacity,
+              ),
+              region: textOrFallback(marker.region, WS_FALLBACK.region),
+              deploymentId:
+                textOrFallback(marker.deploymentId, "") || undefined,
+            }
+          : WS_FALLBACK;
+
+        return {
+          workspace,
+          items,
+          edges,
+          principals,
+          grants,
+          jobs,
+          config,
+          schema,
+          comments,
+          syncRuns,
+        };
+      } catch (error) {
+        console.warn(
+          "[atlas] ignored incomplete database snapshot",
+          marker?.snapshotId,
+          error,
+        );
+      }
+    }
+    return null;
+  } catch (error) {
+    console.warn("[atlas] loadFromDb failed", error);
     return null;
   }
-
-  const read = async (entity: string): Promise<Row[]> => {
-    try {
-      return await data[entity].findMany();
-    } catch {
-      return [];
-    }
-  };
-
-  const [
-    itemRows,
-    edgeRows,
-    principalRows,
-    grantRows,
-    jobRows,
-    configRows,
-    commentRows,
-    syncRows,
-    wsRows,
-  ] = await Promise.all([
-    read("FabricItem"),
-    read("LineageEdge"),
-    read("Principal"),
-    read("AccessGrant"),
-    read("JobRun"),
-    read("ConfigEntry"),
-    read("Comment"),
-    read("SyncRun"),
-    read("Workspace"),
-  ]);
-
-  const items: Item[] = itemRows.map((r) => ({
-    fabricId: String(r.fabricId),
-    displayName: String(r.displayName),
-    itemType: r.itemType as Item["itemType"],
-    description: (r.description as string) || undefined,
-    ownerName: (r.ownerName as string) || undefined,
-    ownerEmail: (r.ownerEmail as string) || undefined,
-    health: (r.health as Item["health"]) ?? "unknown",
-    endorsement: (r.endorsement as Item["endorsement"]) ?? "none",
-    sensitivity: (r.sensitivity as string) || undefined,
-    tags: r.tags ? String(r.tags).split(",").map((t) => t.trim()).filter(Boolean) : [],
-    lastRefresh: r.lastRefresh ? new Date(r.lastRefresh as string).toISOString() : undefined,
-  }));
-
-  if (items.length === 0 && commentRows.length === 0) return null;
-
-  const edges: Edge[] = normalizeLineageEdges(
-    items,
-    edgeRows.map((r) => ({
-      source: String(r.sourceFabricId),
-      target: String(r.targetFabricId),
-      relation: String(r.relation),
-      broken: !!r.broken,
-    })),
-  );
-  const principals: Principal[] = principalRows.map((r) => ({
-    principalId: String(r.principalId),
-    displayName: String(r.displayName),
-    kind: r.kind as Principal["kind"],
-    email: (r.email as string) || undefined,
-    external: !!r.external,
-    workspaceRole: "Viewer",
-  }));
-  const grants: Grant[] = grantRows.map((r) => ({
-    itemFabricId: (r.itemFabricId as string) || undefined,
-    principalRef: String(r.principalRef),
-    accessLevel: r.accessLevel as Grant["accessLevel"],
-    source: r.source as Grant["source"],
-    roleName: (r.roleName as string) || undefined,
-    flag: (r.flag as Grant["flag"]) || undefined,
-  }));
-  const jobs: Job[] = jobRows.map((r) => ({
-    itemFabricId: String(r.itemFabricId),
-    itemName: String(r.itemName),
-    jobType: String(r.jobType),
-    status: r.status as Job["status"],
-    startedAt: r.startedAt ? new Date(r.startedAt as string).toISOString() : new Date().toISOString(),
-    durationSec: Number(r.durationSec ?? 0),
-    message: (r.message as string) || undefined,
-  }));
-  const config: { itemFabricId: string; section: string; label: string; value: string }[] = [];
-  const schema: Record<string, ModelTableSchema[]> = {};
-  for (const r of configRows) {
-    if (String(r.section) === "__schema__") {
-      try {
-        const parsed = JSON.parse(String(r.value ?? "{}")) as {
-          rows?: number;
-          columns?: { name: string; dataType: string }[];
-          measures?: { name: string }[];
-        };
-        const id = String(r.itemFabricId);
-        const arr = schema[id] ?? [];
-        arr.push({ name: String(r.label), rows: parsed.rows, columns: parsed.columns ?? [], measures: parsed.measures ?? [] });
-        schema[id] = arr;
-      } catch {
-        /* ignore malformed schema row */
-      }
-    } else {
-      config.push({
-        itemFabricId: String(r.itemFabricId),
-        section: String(r.section),
-        label: String(r.label),
-        value: String(r.value ?? ""),
-      });
-    }
-  }
-  const comments: Comment[] = commentRows.map((r) => ({
-    id: String(r.id),
-    itemFabricId: (r.itemFabricId as string) || undefined,
-    authorId: String(r.authorId),
-    authorName: String(r.authorName),
-    authorEmail: (r.authorEmail as string) || undefined,
-    body: String(r.body),
-    createdAt: r.createdAt ? new Date(r.createdAt as string).toISOString() : new Date().toISOString(),
-  }));
-  const syncRuns = syncRows.map((r) => ({
-    id: String(r.id),
-    startedAt: r.startedAt ? new Date(r.startedAt as string).toISOString() : new Date().toISOString(),
-    finishedAt: r.finishedAt ? new Date(r.finishedAt as string).toISOString() : undefined,
-    status: (r.status as "running" | "completed" | "failed") ?? "completed",
-    itemsSynced: r.itemsSynced != null ? Number(r.itemsSynced) : undefined,
-    triggeredBy: (r.triggeredBy as string) || undefined,
-    summary: (r.summary as string) || undefined,
-  }));
-
-  const ws = wsRows[0];
-  const workspace: WorkspaceInfo = ws
-    ? {
-        fabricId: textOrFallback(ws.fabricId, WS_FALLBACK.fabricId),
-        displayName: textOrFallback(ws.displayName, WS_FALLBACK.displayName),
-        capacity: textOrFallback(ws.capacity, WS_FALLBACK.capacity),
-        region: textOrFallback(ws.region, WS_FALLBACK.region),
-      }
-    : WS_FALLBACK;
-
-  return { workspace, items, edges, principals, grants, jobs, config, schema, comments, syncRuns };
 }

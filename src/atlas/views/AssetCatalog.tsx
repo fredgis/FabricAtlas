@@ -33,6 +33,10 @@ interface Asset {
   name: string;
   table?: string;
   dataType?: string;
+  source?: string;
+  description?: string;
+  isHidden?: boolean;
+  expression?: string;
 }
 
 const KIND_META: Record<
@@ -177,13 +181,22 @@ export function AssetCatalogView() {
       const schema = schemaFor(data, item.fabricId);
       if (schema) {
         for (const table of schema) {
+          const tableKind: AssetKind = table.objectType
+            ?.toLowerCase()
+            .includes("view")
+            ? "view"
+            : "table";
           push({
             id: `${item.fabricId}::t::${table.name}`,
             itemFabricId: item.fabricId,
             itemName: item.displayName,
             itemType: item.itemType,
-            kind: "table",
+            kind: tableKind,
             name: table.name,
+            dataType: table.objectType,
+            source: table.source,
+            description: table.description,
+            isHidden: table.isHidden,
           });
           for (const column of table.columns) {
             push({
@@ -195,6 +208,8 @@ export function AssetCatalogView() {
               name: column.name,
               table: table.name,
               dataType: column.dataType,
+              description: column.description,
+              isHidden: column.isHidden,
             });
           }
           for (const measure of table.measures) {
@@ -206,6 +221,9 @@ export function AssetCatalogView() {
               kind: "measure",
               name: measure.name,
               table: table.name,
+              description: measure.description,
+              isHidden: measure.isHidden,
+              expression: measure.expr,
             });
           }
         }
@@ -240,7 +258,9 @@ export function AssetCatalogView() {
         (!normalizedQuery ||
           asset.name.toLowerCase().includes(normalizedQuery) ||
           asset.itemName.toLowerCase().includes(normalizedQuery) ||
-          (asset.table ?? "").toLowerCase().includes(normalizedQuery)),
+          (asset.table ?? "").toLowerCase().includes(normalizedQuery) ||
+          (asset.source ?? "").toLowerCase().includes(normalizedQuery) ||
+          (asset.description ?? "").toLowerCase().includes(normalizedQuery)),
     );
   }, [assets, query, kind]);
 
@@ -301,12 +321,14 @@ export function AssetCatalogView() {
   const counts = {
     all: assets.length,
     table: assets.filter((asset) => asset.kind === "table").length,
+    view: assets.filter((asset) => asset.kind === "view").length,
     column: assets.filter((asset) => asset.kind === "column").length,
     measure: assets.filter((asset) => asset.kind === "measure").length,
   };
   const kinds: { key: AssetKind | "all"; label: string; count: number }[] = [
     { key: "all", label: "All", count: counts.all },
     { key: "table", label: "Tables", count: counts.table },
+    { key: "view", label: "Views", count: counts.view },
     { key: "column", label: "Columns", count: counts.column },
     { key: "measure", label: "Measures / KPIs", count: counts.measure },
   ];
@@ -628,7 +650,7 @@ export function AssetCatalogView() {
                       value={KIND_META[selectedAsset.kind].label}
                     />
                     <MetadataCell
-                      label="Data type"
+                      label="Object / data type"
                       value={selectedAsset.dataType ?? "Not applicable"}
                     />
                     <MetadataCell
@@ -639,7 +661,32 @@ export function AssetCatalogView() {
                       label="Parent item"
                       value={selectedAsset.itemName}
                     />
+                    <MetadataCell
+                      label="Source"
+                      value={selectedAsset.source ?? "Fabric metadata"}
+                    />
+                    <MetadataCell
+                      label="Visibility"
+                      value={selectedAsset.isHidden ? "Hidden" : "Visible"}
+                    />
                   </div>
+
+                  {selectedAsset.description && (
+                    <p className="mt-s rounded-lg border border-border bg-secondary px-m py-s text-200 leading-300 text-muted-foreground">
+                      {selectedAsset.description}
+                    </p>
+                  )}
+
+                  {selectedAsset.expression && (
+                    <div className="mt-s overflow-x-auto rounded-lg border border-border bg-muted p-m">
+                      <div className="text-100 font-semibold uppercase tracking-wide text-muted-foreground">
+                        Expression
+                      </div>
+                      <code className="mt-xs block whitespace-pre-wrap font-mono text-200 text-foreground">
+                        {selectedAsset.expression}
+                      </code>
+                    </div>
+                  )}
 
                   <div className="mt-s flex items-center gap-m rounded-lg border border-border bg-secondary px-m py-m">
                     {selectedItem && (

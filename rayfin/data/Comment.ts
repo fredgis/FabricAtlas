@@ -1,4 +1,4 @@
-import { entity, role, uuid, text, date } from '@microsoft/rayfin-core';
+import { entity, authenticated, uuid, text, date } from '@microsoft/rayfin-core';
 
 /**
  * A team comment thread entry, attached either to the whole workspace
@@ -6,7 +6,10 @@ import { entity, role, uuid, text, date } from '@microsoft/rayfin-core';
  * database so notes persist and are shared across the team.
  */
 @entity()
-@role('authenticated', '*')
+@authenticated('read')
+@authenticated('create', {
+  policy: (claims, item) => claims.email.eq(item.authorEmail),
+})
 export class Comment {
   @uuid() id!: string;
   @uuid() workspace_id!: string;

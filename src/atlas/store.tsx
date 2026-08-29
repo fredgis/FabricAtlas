@@ -11,21 +11,10 @@ import {
 import { SAMPLE_DATA, type AtlasData, type Comment } from "./model";
 import { loadFromDb, persistComment, runFabricSync } from "./backend";
 import { ATLAS_CONFIG, isSyncConfigured } from "./config";
-import { APP_VERSION, BUILD_COMMIT, BUILD_DATE } from "./release";
-
-const DEPLOYMENT_SYNC_KEY = "atlas.syncedDeployment";
-const CURRENT_DEPLOYMENT = `${APP_VERSION}:${BUILD_COMMIT}:${BUILD_DATE}`;
-
-function needsDeploymentSync(isPreview: boolean): boolean {
-  if (isPreview) return false;
-  try {
-    return localStorage.getItem(DEPLOYMENT_SYNC_KEY) !== CURRENT_DEPLOYMENT;
-  } catch {
-    return true;
-  }
-}
+import { DEPLOYMENT_ID } from "./release";
 
 export interface CurrentUser {
+  id: string;
   name: string;
   email?: string;
 }
@@ -39,6 +28,7 @@ export interface AtlasContextValue {
   lastSyncedAt?: string;
   isPreview: boolean;
   configured: boolean;
+  canSync: boolean;
   hasData: boolean;
   requiresDeploymentSync: boolean;
   syncError?: string;
@@ -74,7 +64,7 @@ const EMPTY_DATA: AtlasData = {
 export function AtlasProvider({
   children,
   isPreview = true,
-  currentUser = { name: "You (preview)" },
+  currentUser = { id: "preview-user", name: "You (preview)" },
 }: {
   children: ReactNode;
   isPreview?: boolean;
@@ -93,11 +83,22 @@ export function AtlasProvider({
     isPreview ? SAMPLE_DATA.syncRuns[0]?.finishedAt : undefined,
   );
   const [configured] = useState<boolean>(isSyncConfigured());
-  const [requiresDeploymentSync, setRequiresDeploymentSync] = useState(() =>
-    needsDeploymentSync(isPreview),
+  const canSync =
+    isPreview ||
+    (!!currentUser.email &&
+      currentUser.email.trim().toLowerCase() ===
+        ATLAS_CONFIG.syncAdminEmail.trim().toLowerCase());
+  const [requiresDeploymentSync, setRequiresDeploymentSync] = useState(
+    !isPreview,
   );
   const [syncError, setSyncError] = useState<string | undefined>();
   const progressResetTimer = useRef<number | undefined>(undefined);
+  const operationGeneration = useRef(0);
+  const dataRef = useRef(data);
+
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
 
   useEffect(
     () => () => {
@@ -114,11 +115,15 @@ export function AtlasProvider({
     (window as unknown as { __atlasWorkspaceId?: string }).__atlasWorkspaceId =
       (import.meta.env.VITE_FABRIC_WORKSPACE_ID as string) ?? ATLAS_CONFIG.workspaceId;
     let alive = true;
+    const generation = operationGeneration.current;
     loadFromDb(false)
       .then((db) => {
-        if (alive && db) {
+        if (alive && db && operationGeneration.current === generation) {
           setData(db);
           setLastSyncedAt(db.syncRuns[0]?.finishedAt);
+          setRequiresDeploymentSync(
+            db.workspace.deploymentId !== DEPLOYMENT_ID,
+          );
         }
       })
       .catch(() => undefined)
@@ -131,6 +136,14 @@ export function AtlasProvider({
   }, [isPreview]);
 
   const sync = useCallback(async () => {
+    if (!canSync) {
+      setSyncError(
+        "Only the configured Atlas sync administrator can synchronize this workspace.",
+      );
+      return;
+    }
+    const generation = operationGeneration.current + 1;
+    operationGeneration.current = generation;
     if (progressResetTimer.current != null) {
       window.clearTimeout(progressResetTimer.current);
     }
@@ -142,6 +155,7 @@ export function AtlasProvider({
     let succeeded = false;
     let reportedProgress = 3;
     const heartbeat = window.setInterval(() => {
+      if (operationGeneration.current !== generation) return;
       if (reportedProgress < 42) {
         reportedProgress += 1;
         setSyncProgress(reportedProgress);
@@ -153,12 +167,29 @@ export function AtlasProvider({
         isPreview,
         currentUser,
         (progress, stage) => {
+          if (operationGeneration.current !== generation) return;
           reportedProgress = Math.max(reportedProgress, progress);
           setSyncProgress(reportedProgress);
           setSyncStage(stage);
         },
       );
-      const next = fresh ?? clone(data);
+      if (operationGeneration.current !== generation) return;
+      const previous = dataRef.current;
+      const next = fresh ?? clone(previous);
+      if (fresh) {
+        const comments = new Map(
+          [...fresh.comments, ...previous.comments].map((comment) => [
+            [
+              comment.itemFabricId ?? "",
+              comment.authorId,
+              comment.body,
+              comment.createdAt,
+            ].join("\u0000"),
+            comment,
+          ]),
+        );
+        next.comments = [...comments.values()];
+      }
       const finishedAt = new Date().toISOString();
       next.syncRuns = [
         {
@@ -177,29 +208,27 @@ export function AtlasProvider({
       setSyncProgress(100);
       setSyncStage("Workspace is ready");
       if (!isPreview) {
-        try {
-          localStorage.setItem(DEPLOYMENT_SYNC_KEY, CURRENT_DEPLOYMENT);
-        } catch {
-          // The current session can still continue when storage is unavailable.
-        }
         setRequiresDeploymentSync(false);
       }
       succeeded = true;
     } catch (err) {
+      if (operationGeneration.current !== generation) return;
       setSyncError(err instanceof Error ? err.message : String(err));
       setSyncProgress(0);
       setSyncStage("Sync failed");
     } finally {
       window.clearInterval(heartbeat);
-      setSyncing(false);
-      if (succeeded) {
+      if (operationGeneration.current === generation) {
+        setSyncing(false);
+      }
+      if (succeeded && operationGeneration.current === generation) {
         progressResetTimer.current = window.setTimeout(() => {
           setSyncProgress(0);
           setSyncStage("Ready to sync");
         }, 1200);
       }
     }
-  }, [data, isPreview, currentUser]);
+  }, [canSync, isPreview, currentUser]);
 
   const addComment = useCallback(
     async (body: string, itemFabricId?: string) => {
@@ -208,14 +237,14 @@ export function AtlasProvider({
       const comment: Comment = {
         id: `c-${Date.now()}`,
         itemFabricId,
-        authorId: currentUser.email ?? currentUser.name,
+        authorId: currentUser.id,
         authorName: currentUser.name,
         authorEmail: currentUser.email,
         body: text,
         createdAt: new Date().toISOString(),
       };
-      setData((prev) => ({ ...prev, comments: [...prev.comments, comment] }));
       await persistComment(isPreview, comment);
+      setData((prev) => ({ ...prev, comments: [...prev.comments, comment] }));
     },
     [currentUser, isPreview],
   );
@@ -232,6 +261,7 @@ export function AtlasProvider({
       lastSyncedAt,
       isPreview,
       configured,
+      canSync,
       hasData,
       requiresDeploymentSync,
       syncError,
@@ -239,7 +269,7 @@ export function AtlasProvider({
       sync,
       addComment,
     }),
-    [data, hydrating, syncing, syncProgress, syncStage, lastSyncedAt, isPreview, configured, hasData, requiresDeploymentSync, syncError, currentUser, sync, addComment],
+    [data, hydrating, syncing, syncProgress, syncStage, lastSyncedAt, isPreview, configured, canSync, hasData, requiresDeploymentSync, syncError, currentUser, sync, addComment],
   );
 
   return <AtlasContext.Provider value={value}>{children}</AtlasContext.Provider>;

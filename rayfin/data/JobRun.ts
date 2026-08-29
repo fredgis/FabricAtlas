@@ -1,4 +1,4 @@
-import { entity, role, uuid, text, set, int, date } from '@microsoft/rayfin-core';
+import { entity, authenticated, uuid, text, set, int, date } from '@microsoft/rayfin-core';
 
 export type JobStatus = 'completed' | 'failed' | 'running' | 'cancelled';
 
@@ -7,10 +7,15 @@ export type JobStatus = 'completed' | 'failed' | 'running' | 'cancelled';
  * APIs. Drives the Jobs / Health view.
  */
 @entity()
-@role('authenticated', '*')
+@authenticated('read')
+@authenticated('create', {
+  policy: (claims, item) => claims.email.eq(item.writerEmail),
+})
 export class JobRun {
   @uuid() id!: string;
   @uuid() workspace_id!: string;
+  @uuid({ optional: true }) snapshotId?: string;
+  @text({ max: 160, optional: true }) writerEmail?: string;
   @text({ max: 100 }) itemFabricId!: string;
   @text({ max: 200 }) itemName!: string;
   @text({ max: 60 }) jobType!: string;

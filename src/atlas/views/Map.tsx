@@ -3,6 +3,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent as RME,
   type PointerEvent as RPE,
 } from "react";
 import {
@@ -186,7 +187,7 @@ function objectGraph(
       color: "var(--color-object-table)",
       table: entry.name,
       kind: "table",
-      x: 284,
+      x: 330,
       y: 62 + index * 72,
     };
     nodes.push(modelNode);
@@ -230,7 +231,7 @@ function objectGraph(
     color: typeMeta(selected.itemType).color,
     itemId: selected.fabricId,
     kind: "owner",
-    x: 548,
+    x: 660,
     y: 20,
   };
   nodes.push(owner);
@@ -268,7 +269,7 @@ function objectGraph(
       table: table.name,
       itemId: selected.fabricId,
       kind: "field",
-      x: 548,
+      x: 660,
       y: 98 + index * 58,
     };
     nodes.push(node);
@@ -293,7 +294,7 @@ function objectGraph(
         color: typeMeta(consumer.itemType).color,
         itemId: consumer.fabricId,
         kind: "consumer",
-        x: 824,
+        x: 1000,
         y: 72 + index * 80,
       };
       nodes.push(node);
@@ -303,7 +304,7 @@ function objectGraph(
   return {
     nodes,
     edges: graphEdges,
-    width: 1060,
+    width: 1240,
     height: Math.max(520, selectedSchema.length * 72 + 96, fields.length * 58 + 170),
     table: table.name,
   };
@@ -350,6 +351,9 @@ export function MapView() {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [selId, setSelId] = useState(startingId);
   const [focusId, setFocusId] = useState(startingId);
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(
+    () => new Set(startingId ? [startingId] : []),
+  );
   const [impactMode, setImpactMode] = useState(
     searchParam("impact") === "focused",
   );
@@ -366,20 +370,27 @@ export function MapView() {
   const [objectDrag, setObjectDrag] = useState<Record<string, Point>>({});
   const [objectDragId, setObjectDragId] = useState<string | null>(null);
   const [selectedObjectId, setSelectedObjectId] = useState("");
+  const [selectedObjectIds, setSelectedObjectIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [zoom, setZoom] = useState(1);
   const [copied, setCopied] = useState(false);
   const dragging = useRef<{
     id: string;
-    origin: Point;
+    ids: string[];
+    origins: Record<string, Point>;
     pointer: Point;
     moved: boolean;
   } | null>(null);
   const objectDragging = useRef<{
     id: string;
-    origin: Point;
+    ids: string[];
+    origins: Record<string, Point>;
     pointer: Point;
     moved: boolean;
   } | null>(null);
+  const suppressItemClick = useRef(false);
+  const suppressObjectClick = useRef(false);
   const mapRef = useRef<HTMLDivElement>(null);
 
   const selected =
@@ -482,7 +493,7 @@ export function MapView() {
       buildStagedLayout(visibleItems, visibleEdges, {
         nodeWidth: NODE_W,
         nodeHeight: NODE_H,
-        columnGap: 230,
+        columnGap: 285,
         focusId: resolvedFocusId,
       }),
     [resolvedFocusId, visibleEdges, visibleItems],
@@ -552,9 +563,19 @@ export function MapView() {
 
   const nodeDown = (event: RPE<HTMLButtonElement>, id: string) => {
     event.currentTarget.setPointerCapture?.(event.pointerId);
+    const multi = event.ctrlKey || event.metaKey || event.shiftKey;
+    let selection = selectedItemIds;
+    if (!selection.has(id)) {
+      selection = multi
+        ? new Set([...selection, id])
+        : new Set([id]);
+      setSelectedItemIds(selection);
+    }
+    const ids = [...selection];
     dragging.current = {
       id,
-      origin: posOf(id),
+      ids,
+      origins: Object.fromEntries(ids.map((selectedId) => [selectedId, posOf(selectedId)])),
       pointer: { x: event.clientX, y: event.clientY },
       moved: false,
     };
@@ -566,23 +587,42 @@ export function MapView() {
     const dx = (event.clientX - current.pointer.x) / zoom;
     const dy = (event.clientY - current.pointer.y) / zoom;
     if (Math.abs(dx) > 2 || Math.abs(dy) > 2) current.moved = true;
-    setDrag((previous) => ({
-      ...previous,
-      [current.id]: {
-        x: Math.max(12, current.origin.x + dx),
-        y: Math.max(46, current.origin.y + dy),
-      },
-    }));
+    setDrag((previous) => {
+      const next = { ...previous };
+      current.ids.forEach((id) => {
+        const origin = current.origins[id];
+        next[id] = {
+          x: Math.max(12, origin.x + dx),
+          y: Math.max(46, origin.y + dy),
+        };
+      });
+      return next;
+    });
   };
-  const nodeUp = (event: RPE<HTMLButtonElement>, id: string) => {
+  const nodeUp = (event: RPE<HTMLButtonElement>) => {
     event.currentTarget.releasePointerCapture?.(event.pointerId);
     const moved = dragging.current?.moved;
     dragging.current = null;
     setDragId(null);
-    if (!moved) {
+    suppressItemClick.current = !!moved;
+    window.setTimeout(() => {
+      suppressItemClick.current = false;
+    }, 0);
+  };
+  const nodeClick = (event: RME<HTMLButtonElement>, id: string) => {
+    if (suppressItemClick.current) return;
+    const multi = event.ctrlKey || event.metaKey || event.shiftKey;
+    if (multi) {
+      const next = new Set(selectedItemIds);
+      if (next.has(id) && next.size > 1) next.delete(id);
+      else next.add(id);
+      setSelectedItemIds(next);
+      setSelId(next.has(id) ? id : ([...next][0] ?? id));
+    } else {
+      setSelectedItemIds(new Set([id]));
       setSelId(id);
-      setTab("summary");
     }
+    setTab("summary");
   };
 
   const selectObjectNode = (node: ObjectNode) => {
@@ -597,9 +637,27 @@ export function MapView() {
     node: ObjectNode,
   ) => {
     event.currentTarget.setPointerCapture?.(event.pointerId);
+    const multi = event.ctrlKey || event.metaKey || event.shiftKey;
+    let selection = selectedObjectIds;
+    if (!selection.has(node.id)) {
+      selection = multi
+        ? new Set([...selection, node.id])
+        : new Set([node.id]);
+      setSelectedObjectIds(selection);
+    }
+    const ids = [...selection];
     objectDragging.current = {
       id: node.id,
-      origin: objectPosOf(node),
+      ids,
+      origins: Object.fromEntries(
+        ids.map((id) => {
+          const selectedNode = objects.nodes.find((candidate) => candidate.id === id);
+          return [
+            id,
+            selectedNode ? objectPosOf(selectedNode) : { x: 0, y: 0 },
+          ];
+        }),
+      ),
       pointer: { x: event.clientX, y: event.clientY },
       moved: false,
     };
@@ -612,24 +670,49 @@ export function MapView() {
     const dx = (event.clientX - current.pointer.x) / zoom;
     const dy = (event.clientY - current.pointer.y) / zoom;
     if (Math.abs(dx) > 2 || Math.abs(dy) > 2) current.moved = true;
-    setObjectDrag((previous) => ({
-      ...previous,
-      [current.id]: {
-        x: Math.max(12, current.origin.x + dx),
-        y: Math.max(46, current.origin.y + dy),
-      },
-    }));
+    setObjectDrag((previous) => {
+      const next = { ...previous };
+      current.ids.forEach((id) => {
+        const origin = current.origins[id];
+        next[id] = {
+          x: Math.max(12, origin.x + dx),
+          y: Math.max(46, origin.y + dy),
+        };
+      });
+      return next;
+    });
   };
 
-  const objectNodeUp = (
-    event: RPE<HTMLButtonElement>,
-    node: ObjectNode,
-  ) => {
+  const objectNodeUp = (event: RPE<HTMLButtonElement>) => {
     event.currentTarget.releasePointerCapture?.(event.pointerId);
     const moved = objectDragging.current?.moved;
     objectDragging.current = null;
     setObjectDragId(null);
-    if (!moved) selectObjectNode(node);
+    suppressObjectClick.current = !!moved;
+    window.setTimeout(() => {
+      suppressObjectClick.current = false;
+    }, 0);
+  };
+
+  const objectNodeClick = (
+    event: RME<HTMLButtonElement>,
+    node: ObjectNode,
+  ) => {
+    if (suppressObjectClick.current) return;
+    const multi = event.ctrlKey || event.metaKey || event.shiftKey;
+    if (multi) {
+      const next = new Set(selectedObjectIds);
+      if (next.has(node.id) && next.size > 1) next.delete(node.id);
+      else next.add(node.id);
+      setSelectedObjectIds(next);
+      const active = next.has(node.id)
+        ? node
+        : objects.nodes.find((candidate) => candidate.id === [...next][0]);
+      if (active) selectObjectNode(active);
+    } else {
+      setSelectedObjectIds(new Set([node.id]));
+      selectObjectNode(node);
+    }
   };
 
   const toggleTable = (name: string) =>
@@ -656,6 +739,20 @@ export function MapView() {
     );
     setZoom(next);
     window.requestAnimationFrame(() => viewport.scrollTo({ top: 0, left: 0 }));
+  };
+
+  const resetGraph = () => {
+    setDrag({});
+    setObjectDrag({});
+    setZoom(1);
+    setFocusId(activeId);
+    setSelectedItemIds(new Set(activeId ? [activeId] : []));
+    setSelectedObjectIds(
+      new Set(activeObjectId ? [activeObjectId] : []),
+    );
+    window.requestAnimationFrame(() =>
+      mapRef.current?.scrollTo({ top: 0, left: 0, behavior: "smooth" }),
+    );
   };
 
   const copyLink = async () => {
@@ -845,13 +942,19 @@ export function MapView() {
             Focus selection
           </button>
         )}
+        {(mode === "items"
+          ? selectedItemIds.size
+          : selectedObjectIds.size) > 1 && (
+          <span className="rounded-lg border border-primary/30 bg-primary/10 px-[9px] py-[7px] text-[11px] font-semibold text-primary">
+            {mode === "items"
+              ? selectedItemIds.size
+              : selectedObjectIds.size}{" "}
+            selected
+          </span>
+        )}
         <button
           type="button"
-          onClick={() => {
-            setDrag({});
-            setObjectDrag({});
-            setZoom(1);
-          }}
+          onClick={resetGraph}
           className="flex h-[34px] items-center gap-[6px] rounded-lg border border-border px-[10px] text-[12px] font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
         >
           <RotateCcw size={13} />
@@ -895,7 +998,7 @@ export function MapView() {
                   <div
                     className="pointer-events-none absolute inset-x-0 top-[9px] z-[2] grid"
                     style={{
-                      gridTemplateColumns: `repeat(${LINEAGE_STAGE_LABELS.length}, 230px)`,
+                      gridTemplateColumns: `repeat(${LINEAGE_STAGE_LABELS.length}, 285px)`,
                       paddingLeft: 28,
                     }}
                   >
@@ -978,24 +1081,33 @@ export function MapView() {
                   </svg>
                   {visibleItems.map((item) => {
                     const point = posOf(item.fabricId);
-                    const selectedNode = item.fabricId === activeId;
+                    const primaryNode = item.fabricId === activeId;
+                    const selectedNode =
+                      selectedItemIds.has(item.fabricId) || primaryNode;
                     const isUp = impact.upstream.ids.has(item.fabricId);
                     const isDown = impact.downstream.ids.has(item.fabricId);
                     const dim = !!activeId && !connected.has(item.fabricId);
                     const activeDrag = dragId === item.fabricId;
-                    const accent = selectedNode ? "var(--color-primary)" : isUp ? UP : isDown ? DOWN : undefined;
+                    const accent = primaryNode
+                      ? "var(--color-primary)"
+                      : isUp
+                        ? UP
+                        : isDown
+                          ? DOWN
+                          : undefined;
                     return (
                       <button
                         key={item.fabricId}
                         type="button"
                         aria-pressed={selectedNode}
+                        onClick={(event) => nodeClick(event, item.fabricId)}
                         aria-label={`${item.displayName}, ${typeMeta(item.itemType).label}, ${item.health}`}
                         onPointerDown={(event) => nodeDown(event, item.fabricId)}
                         onPointerMove={nodeMove}
-                        onPointerUp={(event) => nodeUp(event, item.fabricId)}
+                        onPointerUp={nodeUp}
                         className={cn(
                           "absolute flex touch-none select-none items-center gap-[10px] rounded-xl border bg-card px-[12px] text-left shadow-sm transition-[box-shadow,opacity,border-color,transform] hover:-translate-y-[1px] hover:shadow-lg",
-                          selectedNode ? "border-primary" : "border-border",
+                          selectedNode ? "border-primary/70" : "border-border",
                           dim && "opacity-30",
                           "cursor-grab active:cursor-grabbing",
                         )}
@@ -1004,15 +1116,17 @@ export function MapView() {
                           top: point.y,
                           width: NODE_W,
                           height: NODE_H,
-                          zIndex: activeDrag ? 7 : selectedNode ? 5 : dim ? 1 : 3,
+                          zIndex: activeDrag ? 7 : primaryNode ? 5 : selectedNode ? 4 : dim ? 1 : 3,
                           transform: activeDrag ? "scale(1.04)" : undefined,
                           borderColor: accent,
-                          boxShadow: selectedNode
+                          boxShadow: primaryNode
                             ? "0 0 0 2px var(--color-primary), 0 12px 28px -18px rgba(0,0,0,.8)"
+                            : selectedNode
+                              ? "0 0 0 1px var(--color-primary)"
                             : undefined,
                         }}
                       >
-                        {accent && !selectedNode && (
+                        {accent && !primaryNode && (
                           <span
                             className="absolute -left-[6px] top-1/2 h-[11px] w-[11px] -translate-y-1/2 rounded-full ring-2 ring-card"
                             style={{ background: accent }}
@@ -1037,7 +1151,7 @@ export function MapView() {
                   <div
                     className="pointer-events-none absolute inset-x-0 top-[9px] grid"
                     style={{
-                      gridTemplateColumns: "260px 264px 276px 260px",
+                      gridTemplateColumns: "306px 330px 340px 300px",
                       paddingLeft: 24,
                     }}
                   >
@@ -1139,7 +1253,11 @@ export function MapView() {
                   </svg>
                   {objects.nodes.map((node) => {
                     const point = objectPosOf(node);
-                    const selectedNode = node.id === activeObjectId;
+                    const primaryNode = node.id === activeObjectId;
+                    const selectedNode =
+                      selectedObjectIds.size === 0
+                        ? primaryNode
+                        : selectedObjectIds.has(node.id);
                     const isUp = objectImpact.upstream.ids.has(node.id);
                     const isDown = objectImpact.downstream.ids.has(node.id);
                     const dim = !!activeObjectId && !objectConnected.has(node.id);
@@ -1149,7 +1267,7 @@ export function MapView() {
                       !query.trim() ||
                       node.label.toLowerCase().includes(query.trim().toLowerCase()) ||
                       node.subtitle.toLowerCase().includes(query.trim().toLowerCase());
-                    const accent = selectedNode
+                    const accent = primaryNode
                       ? "var(--color-primary)"
                       : isUp
                         ? UP
@@ -1162,18 +1280,13 @@ export function MapView() {
                         type="button"
                         aria-label={`${node.label}, ${node.subtitle}`}
                         aria-pressed={selectedNode}
+                        onClick={(event) => objectNodeClick(event, node)}
                         onPointerDown={(event) => objectNodeDown(event, node)}
                         onPointerMove={objectNodeMove}
-                        onPointerUp={(event) => objectNodeUp(event, node)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            selectObjectNode(node);
-                          }
-                        }}
+                        onPointerUp={objectNodeUp}
                         className={cn(
                           "absolute flex touch-none cursor-grab select-none items-center gap-[10px] rounded-xl border border-border bg-card px-[11px] text-left shadow-sm transition-[box-shadow,opacity,border-color,transform] hover:-translate-y-[1px] hover:shadow-lg active:cursor-grabbing",
-                          selectedNode && "border-primary",
+                          selectedNode && "border-primary/70",
                           (!matches || dim) && "opacity-25",
                         )}
                         style={{
@@ -1181,15 +1294,17 @@ export function MapView() {
                           top: point.y,
                           width: OBJECT_W,
                           height: OBJECT_H,
-                          zIndex: draggingNode ? 7 : selectedNode ? 5 : dim ? 1 : 3,
+                          zIndex: draggingNode ? 7 : primaryNode ? 5 : selectedNode ? 4 : dim ? 1 : 3,
                           transform: draggingNode ? "scale(1.04)" : undefined,
                           borderColor: accent,
-                          boxShadow: selectedNode
+                          boxShadow: primaryNode
                             ? "0 0 0 2px var(--color-primary), 0 12px 28px -18px rgba(0,0,0,.8)"
+                            : selectedNode
+                              ? "0 0 0 1px var(--color-primary)"
                             : undefined,
                         }}
                       >
-                        {accent && !selectedNode && (
+                        {accent && !primaryNode && (
                           <span
                             className="absolute -left-[6px] top-1/2 h-[11px] w-[11px] -translate-y-1/2 rounded-full ring-2 ring-card"
                             style={{ background: accent }}
@@ -1211,7 +1326,7 @@ export function MapView() {
                         </span>
                         {activeTable &&
                           (node.kind === "source" || node.kind === "table") &&
-                          !selectedNode && (
+                          !primaryNode && (
                           <span className="h-[8px] w-[8px] rounded-full bg-primary" />
                         )}
                       </button>
@@ -1270,8 +1385,8 @@ export function MapView() {
             </span>
             <span>
               {mode === "items"
-                ? "Drag nodes · click to inspect"
-                : "Drag objects · click to trace"}
+                ? "Ctrl/Cmd+click to multi-select · drag selection"
+                : "Ctrl/Cmd+click to multi-select · drag objects"}
             </span>
           </div>
 

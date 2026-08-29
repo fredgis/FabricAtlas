@@ -105,6 +105,7 @@ function App() {
     syncProgress,
     syncStage,
     syncError,
+    canSync,
     lastSyncedAt,
     currentUser,
     isPreview,
@@ -267,7 +268,12 @@ function App() {
             <button
               type="button"
               onClick={() => void sync()}
-              disabled={syncing}
+              disabled={syncing || !canSync}
+              title={
+                canSync
+                  ? undefined
+                  : "Only the configured Atlas sync administrator can synchronize"
+              }
               className="flex items-center gap-[8px] rounded-lg bg-gradient-to-br from-lineage-downstream to-primary px-[13px] py-[8px] text-[13px] font-bold text-primary-foreground shadow-sm disabled:opacity-70"
             >
               <RefreshCw size={15} className={syncing ? "animate-spin" : ""} />

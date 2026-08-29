@@ -81,6 +81,7 @@ export interface WorkspaceInfo {
   displayName: string;
   capacity: string;
   region: string;
+  deploymentId?: string;
 }
 
 export interface Item {
@@ -172,8 +173,9 @@ export interface AtlasData {
   config: ConfigKV[];
   comments: Comment[];
   syncRuns: SyncRun[];
-  // Sub-objects (tables/columns/measures) keyed by real item id, populated by
-  // the live Sync. Preview falls back to MODEL_SCHEMA via schemaFor().
+  // Tabular sub-objects (tables/views, columns and measures) keyed by real item
+  // id, populated by live Fabric/Power BI metadata. Report pages stay in config
+  // because the Asset Catalog's schema shape is intentionally tabular.
   schema?: Record<string, ModelTableSchema[]>;
 }
 
@@ -238,14 +240,22 @@ const KQL_EVENTS = "10000000-0000-4000-8000-000000000014";
 export interface ModelColumn {
   name: string;
   dataType: string;
+  description?: string;
+  isHidden?: boolean;
 }
 export interface ModelMeasure {
   name: string;
   expr?: string;
+  description?: string;
+  isHidden?: boolean;
 }
 export interface ModelTableSchema {
   name: string;
   rows?: number;
+  objectType?: string;
+  source?: string;
+  description?: string;
+  isHidden?: boolean;
   columns: ModelColumn[];
   measures: ModelMeasure[];
 }

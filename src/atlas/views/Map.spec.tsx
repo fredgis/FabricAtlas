@@ -108,4 +108,57 @@ describe("MapView selection", () => {
     expect(table).toHaveAttribute("aria-pressed", "true");
     expect(container.querySelectorAll(".atlas-flow").length).toBeGreaterThan(0);
   });
+
+  it("moves a multi-selection together and fully resets positions", () => {
+    window.history.replaceState(null, "", "/#map");
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+
+    const model = screen.getByLabelText(
+      "AlpineRent Sales Model, Semantic model, healthy",
+    );
+    const lakehouse = screen.getByLabelText(
+      "alpinerent_lakehouse, Lakehouse, healthy",
+    );
+    const initial = {
+      modelLeft: model.style.left,
+      modelTop: model.style.top,
+      lakehouseLeft: lakehouse.style.left,
+      lakehouseTop: lakehouse.style.top,
+    };
+
+    fireEvent.click(lakehouse, { ctrlKey: true });
+    fireEvent.pointerDown(lakehouse, {
+      button: 0,
+      clientX: 100,
+      clientY: 100,
+      pointerId: 4,
+    });
+    fireEvent.pointerMove(lakehouse, {
+      clientX: 150,
+      clientY: 140,
+      pointerId: 4,
+    });
+    fireEvent.pointerUp(lakehouse, {
+      button: 0,
+      clientX: 150,
+      clientY: 140,
+      pointerId: 4,
+    });
+
+    expect(model.style.left).not.toBe(initial.modelLeft);
+    expect(model.style.top).not.toBe(initial.modelTop);
+    expect(lakehouse.style.left).not.toBe(initial.lakehouseLeft);
+    expect(lakehouse.style.top).not.toBe(initial.lakehouseTop);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+
+    expect(model.style.left).toBe(initial.modelLeft);
+    expect(model.style.top).toBe(initial.modelTop);
+    expect(lakehouse.style.left).toBe(initial.lakehouseLeft);
+    expect(lakehouse.style.top).toBe(initial.lakehouseTop);
+  });
 });

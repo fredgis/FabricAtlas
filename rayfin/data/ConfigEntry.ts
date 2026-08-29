@@ -1,4 +1,4 @@
-import { entity, role, uuid, text } from '@microsoft/rayfin-core';
+import { entity, authenticated, uuid, text } from '@microsoft/rayfin-core';
 
 /**
  * One key/value configuration fact about an item (definition parts, settings,
@@ -6,10 +6,15 @@ import { entity, role, uuid, text } from '@microsoft/rayfin-core';
  * can render an exhaustive, groupable, expand/collapse tree per item.
  */
 @entity()
-@role('authenticated', '*')
+@authenticated('read')
+@authenticated('create', {
+  policy: (claims, item) => claims.email.eq(item.writerEmail),
+})
 export class ConfigEntry {
   @uuid() id!: string;
   @uuid() workspace_id!: string;
+  @uuid({ optional: true }) snapshotId?: string;
+  @text({ max: 160, optional: true }) writerEmail?: string;
   @text({ max: 100 }) itemFabricId!: string;
   @text({ max: 80 }) section!: string;
   @text({ max: 160 }) label!: string;

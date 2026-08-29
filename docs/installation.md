@@ -27,8 +27,9 @@ brokered authentication. It runs as an item inside a Microsoft Fabric workspace.
    lineage from the Fabric admin scanner:
    - *Service principals / users can access read-only admin APIs*
    - *Enhance admin APIs responses with detailed metadata* and *…with user information*
-5. The `atlas_sync_functions` **User Data Function published** in the workspace (portal), because
-   Fabric doesn't persist UDF code through the REST API — see
+5. The `atlas_sync_functions` **User Data Function published** in the workspace. Initial publication
+   can be done in the portal; later source updates can use the full-definition
+   `getDefinition` / `updateDefinition` REST flow described in
    [`fabric/udf/atlas_sync_functions/`](../fabric/udf/atlas_sync_functions/).
 
 ## 1. Clone and install
@@ -50,7 +51,7 @@ npm run dev
 ```
 
 Everything works against the sample dataset: overview, map, catalog, asset catalog, access matrix,
-sensitivity, jobs, config and comments. Nothing is written anywhere.
+sensitivity, jobs and Workspace Hub. Nothing is written anywhere.
 
 ## 3. Enable the Fabric Apps workload (tenant admin, one-time)
 
@@ -102,6 +103,7 @@ appId=$(az ad app create --display-name "Fabric Atlas Sync" --sign-in-audience A
 
 # 2. Add delegated permissions on the Power BI Service (resource 00000009-0000-0000-c000-000000000000):
 #    UserDataFunction.Execute.All, Workspace.Read.All, Item.Read.All,
+#    Lakehouse.Read.All, Warehouse.Read.All, SQLDatabase.Read.All,
 #    Report.Read.All, Dataset.Read.All, Tenant.Read.All
 #    (add each with: az ad app permission add --id $appId --api 00000009-0000-0000-c000-000000000000
 #     --api-permissions <scope-id>=Scope), then grant admin consent:
@@ -125,6 +127,7 @@ Add these public values to `rayfin/.env` (git-ignored). `rayfin env` maps custom
 RAYFIN_PUBLIC_ATLAS_SPA_CLIENT_ID=<client-id>
 RAYFIN_PUBLIC_ATLAS_UDF_URL=https://<...>/functions/sync_all/invoke
 RAYFIN_PUBLIC_ATLAS_WORKSPACE_NAME=<workspace-display-name>
+RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_EMAIL=<authorized-sync-user>
 ```
 
 Then `npx rayfin up` again so the values are baked into the deployed bundle, and add the new hosting
@@ -148,6 +151,10 @@ origin to the app registration's SPA redirect URIs.
    app and click **Start first sync**. The first-run screen shows live progress but never asks users
    to paste configuration values. After a successful index, future visits open the dashboard
    directly and later refreshes use the header Sync button.
+
+For an existing published UDF, retrieve the complete definition, replace only
+the Base64 `function_app.py` payload, submit it to `updateDefinition`, then read
+the definition back and compare the Python hash before invoking `sync_all`.
 
 ## 6. Redeploy after a change
 

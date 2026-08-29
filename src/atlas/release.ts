@@ -15,7 +15,7 @@ export const REPOSITORY_URL =
   "https://github.com/fredgis/FabricAtlas";
 
 export const APP_VERSION =
-  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.3.1";
+  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.4.0";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -24,7 +24,32 @@ export const BUILD_DATE =
   (import.meta.env.VITE_APP_BUILD_DATE as string | undefined) ??
   new Date(0).toISOString();
 
+export const DEPLOYMENT_ID = `${APP_VERSION}:${BUILD_COMMIT}:${BUILD_DATE}`;
+
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "1.4.0",
+    date: "2026-08-29",
+    title: "Reliable snapshots and deep inventory",
+    sections: [
+      {
+        title: "Reliability",
+        items: [
+          "Validated immutable snapshots preserve the last complete workspace index.",
+          "Hydration rejects incomplete or malformed rows instead of emptying the application.",
+          "Synchronization identity and token handling were hardened after OWASP review.",
+        ],
+      },
+      {
+        title: "Inventory & experience",
+        items: [
+          "Expanded Lakehouse, Warehouse, SQL Database, Semantic Model and Report metadata coverage.",
+          "Lineage supports group selection, group movement, reliable reset and wider paths.",
+          "Governance Overview was simplified around one hero and three high-signal sections.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.3.1",
     date: "2026-08-29",

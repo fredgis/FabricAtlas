@@ -14,6 +14,7 @@ import { ErrorFallback } from './ErrorFallback';
 import { useAppTheme } from './hooks/use-theme';
 import { ThemeContext } from './hooks/theme.context';
 import { AuthProvider } from './hooks/use-auth';
+import { useAuth } from './hooks/auth.context';
 import { bootstrapAuth, type IAuthService } from './services/rayfin-auth.service';
 import { AuthGate } from './components/auth-gate.component';
 import { AtlasProvider } from './atlas/store';
@@ -40,6 +41,26 @@ function ThemeShell({ children }: { children: ReactNode }) {
     );
 }
 
+// This private shell is intentionally colocated with the root auth composition.
+// eslint-disable-next-line react-refresh/only-export-components
+function AuthenticatedAtlas() {
+    const { session } = useAuth();
+    const user = session?.user;
+    if (!user) return null;
+    return (
+        <AtlasProvider
+            isPreview={false}
+            currentUser={{
+                id: user.id,
+                name: user.email,
+                email: user.email,
+            }}
+        >
+            <App />
+        </AtlasProvider>
+    );
+}
+
 function Root() {
     if (previewMode || !rayfinAuthService) {
         return (
@@ -58,9 +79,7 @@ function Root() {
             <ErrorBoundary FallbackComponent={ErrorFallback}>
                 <AuthProvider rayfinAuthService={rayfinAuthService}>
                     <AuthGate>
-                        <AtlasProvider isPreview={false}>
-                            <App />
-                        </AtlasProvider>
+                        <AuthenticatedAtlas />
                     </AuthGate>
                 </AuthProvider>
             </ErrorBoundary>

@@ -9,6 +9,14 @@ import { RayfinClient } from "@microsoft/rayfin-client";
 
 let _client: RayfinClient | undefined;
 
+function sessionAuthStorage(): Storage | false {
+    try {
+        return window.sessionStorage;
+    } catch {
+        return false;
+    }
+}
+
 /**
  * Returns the pre-configured RayfinClient singleton.
  */
@@ -24,7 +32,7 @@ export function getRayfinClient(): RayfinClient {
         _client = new RayfinClient({
             baseUrl: apiUrl,
             publishableKey,
-            authStorage: true,
+            authStorage: sessionAuthStorage(),
             useProxy: false,
         });
     }

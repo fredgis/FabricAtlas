@@ -1,4 +1,4 @@
-import { entity, role, uuid, text, set, int, date } from '@microsoft/rayfin-core';
+import { entity, authenticated, uuid, text, set, int, date } from '@microsoft/rayfin-core';
 
 export type SyncStatus = 'running' | 'completed' | 'failed';
 
@@ -7,10 +7,15 @@ export type SyncStatus = 'running' | 'completed' | 'failed';
  * Fabric APIs, by whom, and how much was ingested.
  */
 @entity()
-@role('authenticated', '*')
+@authenticated('read')
+@authenticated('create', {
+  policy: (claims, item) => claims.email.eq(item.writerEmail),
+})
 export class SyncRun {
   @uuid() id!: string;
   @uuid() workspace_id!: string;
+  @uuid({ optional: true }) snapshotId?: string;
+  @text({ max: 160, optional: true }) writerEmail?: string;
   @date() startedAt!: Date;
   @date({ optional: true }) finishedAt?: Date;
   @set('running', 'completed', 'failed') status!: SyncStatus;

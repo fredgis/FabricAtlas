@@ -1,4 +1,4 @@
-import { entity, role, uuid, text, set } from '@microsoft/rayfin-core';
+import { entity, authenticated, uuid, text, set } from '@microsoft/rayfin-core';
 
 export type AccessLevel = 'owner' | 'edit' | 'view' | 'none';
 export type AccessSource =
@@ -14,10 +14,15 @@ export type AccessSource =
  * access comes from so the object-level view can explain "how they got it".
  */
 @entity()
-@role('authenticated', '*')
+@authenticated('read')
+@authenticated('create', {
+  policy: (claims, item) => claims.email.eq(item.writerEmail),
+})
 export class AccessGrant {
   @uuid() id!: string;
   @uuid() workspace_id!: string;
+  @uuid({ optional: true }) snapshotId?: string;
+  @text({ max: 160, optional: true }) writerEmail?: string;
   @text({ max: 100, optional: true }) itemFabricId?: string;
   @text({ max: 150 }) principalRef!: string;
   @set('owner', 'edit', 'view', 'none') accessLevel!: AccessLevel;

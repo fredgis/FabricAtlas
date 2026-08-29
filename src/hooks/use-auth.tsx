@@ -35,6 +35,9 @@ export function AuthProvider({ children, rayfinAuthService }: AuthProviderProps)
 
     useEffect(() => {
         let cancelled = false;
+        const unsubscribe = rayfinAuthService.onSessionChange((nextSession) => {
+            if (!cancelled) setSession(nextSession);
+        });
 
         (async () => {
             try {
@@ -53,6 +56,7 @@ export function AuthProvider({ children, rayfinAuthService }: AuthProviderProps)
 
         return () => {
             cancelled = true;
+            unsubscribe();
         };
     }, [rayfinAuthService]);
 

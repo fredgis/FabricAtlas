@@ -77,6 +77,7 @@ export function FirstSyncView() {
   const {
     data,
     configured,
+    canSync,
     sync,
     syncing,
     syncError,
@@ -383,7 +384,7 @@ export function FirstSyncView() {
                 <button
                   type="button"
                   onClick={() => void sync()}
-                  disabled={syncing || !configured}
+                  disabled={syncing || !configured || !canSync}
                   className="mt-l flex h-11 w-full items-center justify-center gap-s rounded-xl bg-gradient-to-r from-primary to-lineage-downstream px-l text-300 font-semibold text-primary-foreground shadow-lg transition hover:brightness-110 disabled:opacity-55"
                 >
                   {syncing ? (
@@ -427,10 +428,19 @@ export function FirstSyncView() {
                 </div>
               )}
 
-              {configured && !syncError && !syncing && (
+              {configured && !canSync && !syncError && !syncing && (
+                <div className="rounded-xl border border-status-warning/35 bg-status-warning/10 p-m text-200 leading-300 text-status-warning">
+                  <div className="flex items-center gap-s font-semibold">
+                    <AlertTriangle className="icon-size-200" />
+                    Synchronization requires the configured publisher account
+                  </div>
+                </div>
+              )}
+
+              {configured && canSync && !syncError && !syncing && (
                 <div className="flex items-center gap-s text-200 text-muted-foreground">
                   <CheckCircle2 className="icon-size-200 text-status-healthy" />
-                  Sync endpoint and Entra client are configured.
+                  Sync endpoint, Entra client and publisher identity are configured.
                 </div>
               )}
             </motion.section>

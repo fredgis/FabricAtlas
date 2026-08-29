@@ -1,4 +1,4 @@
-import { entity, role, uuid, text, set, boolean } from '@microsoft/rayfin-core';
+import { entity, authenticated, uuid, text, set, boolean } from '@microsoft/rayfin-core';
 
 export type PrincipalKind = 'user' | 'group' | 'servicePrincipal' | 'guest';
 
@@ -7,10 +7,15 @@ export type PrincipalKind = 'user' | 'group' | 'servicePrincipal' | 'guest';
  * or one of its items. Powers the Access views.
  */
 @entity()
-@role('authenticated', '*')
+@authenticated('read')
+@authenticated('create', {
+  policy: (claims, item) => claims.email.eq(item.writerEmail),
+})
 export class Principal {
   @uuid() id!: string;
   @uuid() workspace_id!: string;
+  @uuid({ optional: true }) snapshotId?: string;
+  @text({ max: 160, optional: true }) writerEmail?: string;
   @text({ max: 150 }) principalId!: string;
   @text({ max: 200 }) displayName!: string;
   @set('user', 'group', 'servicePrincipal', 'guest') kind!: PrincipalKind;

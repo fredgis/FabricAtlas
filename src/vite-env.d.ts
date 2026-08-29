@@ -25,6 +25,8 @@ interface ImportMetaEnv {
   readonly VITE_RAYFIN_ATLAS_UDF_URL?: string;
   /** Rayfin-mapped display name for the deployment workspace. */
   readonly VITE_RAYFIN_ATLAS_WORKSPACE_NAME?: string;
+  /** Rayfin-mapped email allowed to publish synchronized snapshots. */
+  readonly VITE_RAYFIN_ATLAS_SYNC_ADMIN_EMAIL?: string;
   /** Legacy local override for the Atlas Entra application client ID. */
   readonly VITE_ATLAS_SPA_CLIENT_ID?: string;
   /** Legacy local override for the Atlas sync_all UDF invoke URL. */
