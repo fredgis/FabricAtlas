@@ -4,6 +4,15 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-08-29
+
+### Changed
+
+- Rebuilt the first-sync experience as a responsive full-width hero with animated lineage, live workspace metrics and a stronger synchronization panel.
+- Enhanced Governance Overview with animated depth and a circular health pulse.
+- Replaced conflicting named `max-w-*` utilities with dedicated layout classes.
+- Added a Rayfin workspace-name variable and robust fallbacks so deployment screens never show `undefined`.
+
 ## [1.1.1] - 2026-08-29
 
 ### Changed
@@ -49,6 +58,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
+[1.1.2]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.1.2
 [1.1.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.1.1
 [1.1.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.1.0
 [1.0.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.0.0

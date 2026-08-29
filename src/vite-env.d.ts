@@ -23,6 +23,8 @@ interface ImportMetaEnv {
   readonly VITE_RAYFIN_ATLAS_SPA_CLIENT_ID?: string;
   /** Rayfin-mapped public invoke URL for the Atlas sync_all UDF. */
   readonly VITE_RAYFIN_ATLAS_UDF_URL?: string;
+  /** Rayfin-mapped display name for the deployment workspace. */
+  readonly VITE_RAYFIN_ATLAS_WORKSPACE_NAME?: string;
   /** Legacy local override for the Atlas Entra application client ID. */
   readonly VITE_ATLAS_SPA_CLIENT_ID?: string;
   /** Legacy local override for the Atlas sync_all UDF invoke URL. */

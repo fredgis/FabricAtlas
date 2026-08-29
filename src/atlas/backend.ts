@@ -53,10 +53,15 @@ function workspaceId(): string {
 
 const WS_FALLBACK: WorkspaceInfo = {
   fabricId: ATLAS_CONFIG.workspaceId,
-  displayName: "Fabric workspace",
+  displayName: ATLAS_CONFIG.workspaceName,
   capacity: "",
   region: "",
 };
+
+function textOrFallback(value: unknown, fallback: string): string {
+  const text = value == null ? "" : String(value).trim();
+  return !text || text === "undefined" || text === "null" ? fallback : text;
+}
 
 /* --------------------------- comments --------------------------- */
 
@@ -421,10 +426,10 @@ export async function loadFromDb(isPreview: boolean): Promise<AtlasData | null> 
   const ws = wsRows[0];
   const workspace: WorkspaceInfo = ws
     ? {
-        fabricId: String(ws.fabricId),
-        displayName: String(ws.displayName),
-        capacity: (ws.capacity as string) || WS_FALLBACK.capacity,
-        region: (ws.region as string) || WS_FALLBACK.region,
+        fabricId: textOrFallback(ws.fabricId, WS_FALLBACK.fabricId),
+        displayName: textOrFallback(ws.displayName, WS_FALLBACK.displayName),
+        capacity: textOrFallback(ws.capacity, WS_FALLBACK.capacity),
+        region: textOrFallback(ws.region, WS_FALLBACK.region),
       }
     : WS_FALLBACK;
 

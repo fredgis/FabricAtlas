@@ -15,7 +15,7 @@ export const REPOSITORY_URL =
   "https://github.com/fredgis/FabricAtlas";
 
 export const APP_VERSION =
-  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.1.1";
+  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.1.2";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -25,6 +25,28 @@ export const BUILD_DATE =
   new Date(0).toISOString();
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "1.1.2",
+    date: "2026-08-29",
+    title: "Animated sync and overview heroes",
+    sections: [
+      {
+        title: "First sync",
+        items: [
+          "Rebuilt the deployment sync screen as a full-width animated hero.",
+          "Added an animated topology preview, live estate metrics and staged synchronization panel.",
+          "Added robust workspace-name fallbacks for deployment refreshes.",
+        ],
+      },
+      {
+        title: "Overview",
+        items: [
+          "Enhanced the governance command banner with animated depth and a health dial.",
+          "Removed named max-width utility collisions from hero and authentication surfaces.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.1.1",
     date: "2026-08-29",

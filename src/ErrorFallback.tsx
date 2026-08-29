@@ -14,7 +14,7 @@ export const ErrorFallback = ({ error, resetErrorBoundary }: { error: unknown; r
 
     return (
         <div className="flex min-h-screen items-center justify-center bg-background p-4">
-            <div className="w-full max-w-md text-center">
+            <div className="atlas-narrow-panel w-full text-center">
                 <h2 className="mb-2 text-lg font-semibold text-foreground">Something went wrong</h2>
                 <pre className="mb-4 max-h-32 overflow-auto rounded border border-border bg-muted p-3 text-left text-sm text-muted-foreground">
                     {message}

@@ -19,6 +19,9 @@ export const ATLAS_CONFIG = {
     (import.meta.env.VITE_FABRIC_TENANT_ID as string) ||
     "",
   workspaceId: (import.meta.env.VITE_FABRIC_WORKSPACE_ID as string) || "",
+  workspaceName:
+    (import.meta.env.VITE_RAYFIN_ATLAS_WORKSPACE_NAME as string) ||
+    "Microsoft Fabric workspace",
   // A Power BI-audience token both invokes the UDF (UserDataFunction.Execute.All)
   // and is forwarded to Fabric REST inside the function.
   scope: "https://analysis.windows.net/powerbi/api/.default",

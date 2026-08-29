@@ -124,6 +124,7 @@ Add these public values to `rayfin/.env` (git-ignored). `rayfin env` maps custom
 ```bash
 RAYFIN_PUBLIC_ATLAS_SPA_CLIENT_ID=<client-id>
 RAYFIN_PUBLIC_ATLAS_UDF_URL=https://<...>/functions/sync_all/invoke
+RAYFIN_PUBLIC_ATLAS_WORKSPACE_NAME=<workspace-display-name>
 ```
 
 Then `npx rayfin up` again so the values are baked into the deployed bundle, and add the new hosting

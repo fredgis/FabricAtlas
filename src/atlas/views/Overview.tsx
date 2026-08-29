@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type CSSProperties } from "react";
 import type { Tab } from "@/App";
 import {
   Activity,
@@ -235,11 +235,8 @@ export function OverviewView({ onOpen }: { onOpen: (t: Tab) => void }) {
 
   return (
     <div className="flex flex-col gap-xl p-l sm:p-xxl">
-      <Card className="relative isolate overflow-hidden border-primary/30 shadow-lg">
-        <div
-          className="pointer-events-none absolute inset-y-0 right-0 -z-10 hidden w-1/3 border-l border-primary/10 bg-primary/5 lg:block"
-          aria-hidden="true"
-        />
+      <Card className="atlas-overview-hero relative isolate overflow-hidden border-primary/30 shadow-2xl">
+        <div className="atlas-overview-beam" aria-hidden="true" />
         <div className="grid lg:grid-cols-5">
           <div className="flex flex-col justify-between gap-xxxl p-xl sm:p-xxl lg:col-span-3 lg:p-xxxl">
             <div>
@@ -260,10 +257,10 @@ export function OverviewView({ onOpen }: { onOpen: (t: Tab) => void }) {
               </div>
 
               <SectionLabel>Workspace</SectionLabel>
-              <h1 className="mt-s max-w-4xl text-balance font-heading text-hero-800 font-bold leading-hero-800 sm:text-hero-900 sm:leading-hero-900">
+              <h1 className="atlas-overview-title mt-s text-balance font-heading text-hero-800 font-bold leading-hero-800 sm:text-hero-900 sm:leading-hero-900">
                 {data.workspace.displayName || "Fabric workspace"}
               </h1>
-              <p className="mt-m max-w-3xl text-300 leading-300 text-muted-foreground">
+              <p className="atlas-overview-copy mt-m text-300 leading-300 text-muted-foreground">
                 {items.length} {items.length === 1 ? "item" : "items"} across{" "}
                 {byType.length} {byType.length === 1 ? "type" : "types"}, with{" "}
                 {assetCount} indexed data {assetCount === 1 ? "asset" : "assets"}.
@@ -305,35 +302,55 @@ export function OverviewView({ onOpen }: { onOpen: (t: Tab) => void }) {
             </div>
           </div>
 
-          <div className="relative flex flex-col justify-between gap-xxl border-t border-border/70 bg-muted/30 p-xl sm:p-xxl lg:col-span-2 lg:border-l lg:border-t-0 lg:p-xxxl">
+          <div className="relative flex flex-col justify-between gap-xxl border-t border-border/70 bg-background/35 p-xl backdrop-blur-sm sm:p-xxl lg:col-span-2 lg:border-l lg:border-t-0 lg:p-xxxl">
             <div>
               <SectionLabel>Governance pulse</SectionLabel>
-              <div className="mt-m flex items-end gap-m">
-                <span className="font-numeric text-hero-1000 font-bold leading-hero-1000 tabular-nums text-primary">
-                  {healthPercentage == null ? "—" : healthPercentage}
-                </span>
-                {healthPercentage != null && (
-                  <span className="pb-l text-500 font-semibold text-primary">
-                    %
-                  </span>
-                )}
-              </div>
-              <p className="text-300 leading-300 text-muted-foreground">
-                {items.length
-                  ? `${health.healthy} healthy of ${items.length} indexed items`
-                  : "Health will appear after items are indexed."}
-              </p>
-              <div className="mt-l flex h-s overflow-hidden rounded-full bg-muted">
-                {(Object.entries(health) as [Health, number][])
-                  .filter(([, count]) => count > 0)
-                  .map(([status, count]) => (
-                    <span
-                      key={status}
-                      className={HEALTH_TONE[status]}
-                      style={{ width: `${percentage(count)}%` }}
-                      title={`${status}: ${count}`}
-                    />
-                  ))}
+              <div className="mt-l flex flex-col items-center gap-xl xl:flex-row">
+                <div
+                  className="atlas-pulse-dial shrink-0"
+                  style={
+                    {
+                      "--pulse": `${healthPercentage ?? 0}%`,
+                    } as CSSProperties
+                  }
+                >
+                  <div className="atlas-pulse-core">
+                    <div>
+                      <div className="font-numeric text-hero-800 font-bold leading-hero-800 text-primary">
+                        {healthPercentage == null ? "—" : healthPercentage}
+                        {healthPercentage != null && (
+                          <span className="text-400">%</span>
+                        )}
+                      </div>
+                      <div className="mt-xs text-200 font-semibold text-muted-foreground">
+                        healthy inventory
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid w-full grid-cols-2 gap-s">
+                  {(Object.entries(health) as [Health, number][]).map(
+                    ([status, count]) => (
+                      <div
+                        key={status}
+                        className="rounded-xl border border-border bg-card/65 p-m"
+                      >
+                        <div className="flex items-center gap-s">
+                          <span
+                            className={`icon-size-100 rounded-full ${HEALTH_TONE[status]}`}
+                          />
+                          <span className="text-200 font-semibold capitalize text-muted-foreground">
+                            {status}
+                          </span>
+                        </div>
+                        <div className="mt-s font-numeric text-500 font-bold">
+                          {count}
+                        </div>
+                      </div>
+                    ),
+                  )}
+                </div>
               </div>
             </div>
 
@@ -708,7 +725,7 @@ export function OverviewView({ onOpen }: { onOpen: (t: Tab) => void }) {
                     <div key={name} className="flex items-center gap-s">
                       <Avatar name={name} />
                       <div>
-                        <div className="max-w-48 truncate text-200 font-semibold">
+                        <div className="atlas-owner-name truncate text-200 font-semibold">
                           {name}
                         </div>
                         <div className="text-100 text-muted-foreground">
