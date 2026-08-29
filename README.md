@@ -2,8 +2,9 @@
 
 <img src="docs/assets/fabric-atlas-hero.svg" alt="Fabric Atlas, governance map for Microsoft Fabric workspaces" width="100%">
 
-Fabric Atlas indexes a Fabric workspace and gives teams one place to inspect
-items, lineage, access, sensitivity, jobs, configuration and shared notes.
+Fabric Atlas gives a team one readable map of its Fabric workspace. It brings
+together lineage, item metadata, access, sensitivity and run history, then keeps
+the last validated snapshot in Fabric so everyone sees the same state.
 
 [![Release](https://img.shields.io/github/v/release/fredgis/FabricAtlas?display_name=tag&style=flat-square)](https://github.com/fredgis/FabricAtlas/releases/latest)
 [![License](https://img.shields.io/github/license/fredgis/FabricAtlas?style=flat-square)](LICENSE)
@@ -17,6 +18,10 @@ items, lineage, access, sensitivity, jobs, configuration and shared notes.
 [Contribute](.github/CONTRIBUTING.md)
 
 </div>
+
+## Quick look
+
+https://github.com/user-attachments/assets/21b1d273-da69-4869-a96c-26d4b6003aa7
 
 ## What it does
 
