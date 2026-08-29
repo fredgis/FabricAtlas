@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
+import type { AtlasFocusRequest } from "../navigation";
 import { useAtlas } from "../store";
 import {
   Avatar,
@@ -122,7 +123,7 @@ function toSectionKey(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 }
 
-export function CatalogView() {
+export function CatalogView({ focus }: { focus?: AtlasFocusRequest } = {}) {
   const { data } = useAtlas();
   const { items, config, grants, edges, jobs } = data;
 
@@ -138,7 +139,7 @@ export function CatalogView() {
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selType, setSelType] = useState<ItemType | null>(null);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(focus?.query ?? "");
 
   const toggle = (type: string) =>
     setExpanded((previous) => {
@@ -161,7 +162,9 @@ export function CatalogView() {
     );
   }, [items, selType, query]);
 
-  const [detailId, setDetailId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(
+    focus?.itemId ?? null,
+  );
   const drawerRef = useRef<HTMLElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
   const detail = items.find((item) => item.fabricId === detailId);

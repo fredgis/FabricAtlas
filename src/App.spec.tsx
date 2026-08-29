@@ -5,8 +5,8 @@
 // </copyright>
 //-----------------------------------------------------------------------
 
-import { describe, it, expect } from "vitest";
-import { render } from "@testing-library/react";
+import { beforeEach, describe, it, expect } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
 import App from "@/App";
 import { AtlasProvider } from "@/atlas/store";
 import { ThemeContext } from "@/hooks/theme.context";
@@ -22,6 +22,10 @@ function renderApp() {
 }
 
 describe("App", () => {
+    beforeEach(() => {
+        window.history.replaceState(null, "", "/#overview");
+    });
+
     it("renders without throwing", () => {
         expect(() => renderApp()).not.toThrow();
     });
@@ -29,5 +33,21 @@ describe("App", () => {
     it("mounts content into the document", () => {
         renderApp();
         expect(document.body).not.toBeEmptyDOMElement();
+    });
+
+    it("opens the grouped Governance Center from the sidebar", async () => {
+        renderApp();
+        fireEvent.click(screen.getByRole("button", { name: "Governance Center" }));
+        expect(
+            await screen.findByRole("heading", { name: "Governance Center" }),
+        ).toBeInTheDocument();
+    });
+
+    it("opens global search with Ctrl+K", () => {
+        renderApp();
+        fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+        expect(
+            screen.getByRole("dialog", { name: "Search Fabric Atlas" }),
+        ).toBeInTheDocument();
     });
 });

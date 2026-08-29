@@ -1,14 +1,19 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Activity,
   Ban,
   CheckCircle2,
   Clock3,
   Gauge,
+  FilterX,
   Loader2,
   PlayCircle,
+  Search,
   XCircle,
 } from "lucide-react";
+import type { AtlasFocusRequest } from "../navigation";
+import { SavedViewsMenu } from "../components/SavedViewsMenu";
+import { searchJobId } from "../search";
 import { useAtlas } from "../store";
 import { Card, SectionLabel, TypeGlyph } from "../ui";
 import { relativeTime, type Item, type Job, type JobStatus } from "../model";
@@ -69,17 +74,55 @@ function dateGroup(value: string): string {
   }).format(date);
 }
 
-export function JobsView() {
-  const { data } = useAtlas();
+export function JobsView({ focus }: { focus?: AtlasFocusRequest } = {}) {
+  const {
+    data,
+    savedViews,
+    savedViewsLoading,
+    savedViewsError,
+    addSavedView,
+    removeSavedView,
+  } = useAtlas();
   const { jobs, items } = data;
+  const [query, setQuery] = useState(
+    focus?.itemId ? "" : focus?.query ?? "",
+  );
+  const [focusedItemId, setFocusedItemId] = useState(
+    focus?.itemId ?? "",
+  );
+  const [focusedJobId, setFocusedJobId] = useState(
+    focus?.jobId ?? "",
+  );
+  const [statusFilter, setStatusFilter] = useState<JobStatus | "all">(
+    typeof focus?.filters?.status === "string"
+      ? (focus.filters.status as JobStatus)
+      : "all",
+  );
 
   const itemById = useMemo(
     () => new Map<string, Item>(items.map((item) => [item.fabricId, item])),
     [items],
   );
 
+  const filteredJobs = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    return jobs.filter(
+      (job) =>
+        (statusFilter === "all" || job.status === statusFilter) &&
+        (!focusedItemId || job.itemFabricId === focusedItemId) &&
+        (!focusedJobId ||
+          searchJobId(job.itemFabricId, job.jobType, job.startedAt) ===
+            focusedJobId) &&
+        (!normalized ||
+          job.itemName.toLowerCase().includes(normalized) ||
+          job.jobType.toLowerCase().includes(normalized) ||
+          job.status.toLowerCase().includes(normalized) ||
+          (job.message ?? "").toLowerCase().includes(normalized)),
+    );
+  }, [focusedItemId, focusedJobId, jobs, query, statusFilter]);
+
   const groupedJobs = useMemo(() => {
-    const sorted = [...jobs].sort(
+    const sorted = [...filteredJobs].sort(
       (a, b) => +new Date(b.startedAt) - +new Date(a.startedAt),
     );
     const groups = new Map<string, Job[]>();
@@ -90,7 +133,7 @@ export function JobsView() {
       groups.set(label, group);
     });
     return [...groups.entries()];
-  }, [jobs]);
+  }, [filteredJobs]);
 
   const summary = useMemo(() => {
     const completed = jobs.filter((job) => job.status === "completed");
@@ -182,14 +225,14 @@ export function JobsView() {
 
       <section aria-labelledby="run-history-title">
         <Card className="overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-s border-b border-border px-l py-m">
+          <div className="flex flex-wrap items-center justify-between gap-m border-b border-border px-l py-m">
             <div>
               <h2 id="run-history-title" className="text-400 leading-400 font-semibold">
                 Run history
               </h2>
               <p className="mt-xs text-200 leading-200 text-muted-foreground">
-                {jobs.length
-                  ? `${jobs.length} recorded run${jobs.length === 1 ? "" : "s"}`
+                {filteredJobs.length
+                  ? `${filteredJobs.length} of ${jobs.length} recorded runs`
                   : "No recorded runs"}
               </p>
             </div>
@@ -201,17 +244,81 @@ export function JobsView() {
             )}
           </div>
 
-          {jobs.length === 0 ? (
+          <div className="flex flex-col gap-s border-b border-border bg-secondary/60 px-l py-s sm:flex-row sm:items-center">
+            <label className="relative min-w-0 flex-1">
+              <span className="sr-only">Search job history</span>
+              <Search className="icon-size-200 pointer-events-none absolute left-m top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search item, job type, status or error"
+                className="h-9 w-full rounded-lg border border-input bg-card pl-xxxl pr-m text-300"
+              />
+            </label>
+            <select
+              aria-label="Filter jobs by status"
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(event.target.value as JobStatus | "all")
+              }
+              className="h-9 rounded-lg border border-input bg-card px-m text-300"
+            >
+              <option value="all">All statuses</option>
+              <option value="failed">Failed</option>
+              <option value="running">Running</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <SavedViewsMenu
+              views={savedViews.filter((view) => view.section === "jobs")}
+              loading={savedViewsLoading}
+              error={savedViewsError}
+              activeSection="jobs"
+              currentFilters={{ search: query, status: statusFilter }}
+              onCreate={addSavedView}
+              onApply={(view) => {
+                setQuery(
+                  typeof view.filters.search === "string"
+                    ? view.filters.search
+                    : "",
+                );
+                setStatusFilter(
+                  typeof view.filters.status === "string"
+                    ? (view.filters.status as JobStatus)
+                    : "all",
+                );
+              }}
+              onDelete={removeSavedView}
+            />
+            {(query || statusFilter !== "all" || focusedItemId || focusedJobId) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery("");
+                  setStatusFilter("all");
+                  setFocusedItemId("");
+                  setFocusedJobId("");
+                }}
+                className="inline-flex h-9 items-center justify-center gap-s rounded-lg px-m text-200 font-semibold text-primary hover:bg-primary/10"
+              >
+                <FilterX className="icon-size-100" />
+                Reset
+              </button>
+            )}
+          </div>
+
+          {filteredJobs.length === 0 ? (
             <div className="flex flex-col items-center px-xl py-xxxl text-center">
               <span className="flex items-center justify-center rounded-full bg-muted p-l text-muted-foreground">
                 <Activity className="icon-size-500" aria-hidden="true" />
               </span>
               <h3 className="mt-l text-400 leading-400 font-semibold">
-                No job activity yet
+                {jobs.length ? "No matching job activity" : "No job activity yet"}
               </h3>
               <p className="mt-s text-300 leading-300 text-muted-foreground">
-                Run a refresh, pipeline or notebook, then synchronize Fabric Atlas to
-                populate this operational history.
+                {jobs.length
+                  ? "Clear the filters or search for another item or run."
+                  : "Run a refresh, pipeline or notebook, then synchronize Fabric Atlas to populate this operational history."}
               </p>
             </div>
           ) : (

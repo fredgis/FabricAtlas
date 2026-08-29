@@ -14,6 +14,7 @@ the last validated snapshot in Fabric so everyone sees the same state.
 
 [Install](docs/installation.md) ·
 [Architecture](docs/architecture.md) ·
+[Functionalities](#functionalities) ·
 [Roadmap](#roadmap) ·
 [Changelog](CHANGELOG.md) ·
 [Contribute](.github/CONTRIBUTING.md)
@@ -35,8 +36,123 @@ Fabric Atlas collects that metadata without copying business data.
 - Trace item and object lineage from source to report.
 - Review effective access, direct shares and external principals.
 - Check sensitivity coverage and confidential assets.
+- Compare validated snapshots and review governance findings.
+- Search the whole workspace with `Ctrl+K` and save useful filter views.
+- Export access reviews and verified lineage impact reports.
 - Inspect jobs, configuration and team notes in one workspace hub.
 - Refresh the catalog through a guided synchronization flow.
+
+## Functionalities
+
+<details>
+<summary><strong>Workspace synchronization and reliability</strong></summary>
+
+| Functionality | What it provides |
+|---|---|
+| Guided first synchronization | A dedicated deployment screen with staged progress before the first catalog becomes visible |
+| Header synchronization | Reuses the same progress model for later refreshes without leaving the current page |
+| Immutable snapshots | Writes catalog rows first and publishes the workspace manifest only after every write succeeds |
+| Last-known-good fallback | Ignores incomplete snapshots and loads the newest valid workspace state |
+| Deployment gate | Requires one synchronization for each deployed build before users enter the catalog |
+| Trusted synchronizer | Restricts snapshot publication to the configured synchronization account |
+| Snapshot history | Loads previous validated snapshots for comparisons and governance trends |
+
+</details>
+
+<details>
+<summary><strong>Governance Center</strong></summary>
+
+| Functionality | What it provides |
+|---|---|
+| Findings | Actionable access, metadata, operations and lineage checks based on synchronized evidence |
+| Change Center | Compares any two validated snapshots across items, schema, access, sensitivity, lineage and jobs |
+| Governance history | Tracks items, labels, external principals, failures, lineage and schema inventory over time |
+| Metadata coverage | Shows descriptions, owners, sensitivity, endorsement and object-inventory completeness |
+| Sensitivity posture | Groups protected and unlabeled items and surfaces confidential assets |
+| Saved governance views | Persists personal filters such as metadata gaps, external access or failed operations |
+
+</details>
+
+<details>
+<summary><strong>Catalog and object inventory</strong></summary>
+
+| Functionality | What it provides |
+|---|---|
+| Workspace catalog | Groups Fabric items by type with search, health, ownership, labels, tags and detail drawers |
+| Asset Catalog | Lists tables, views, columns and measures under their parent Fabric item |
+| Deep metadata | Shows data types, descriptions, visibility, sources, row counts and measure expressions when available |
+| Item context | Keeps properties, lineage, access, configuration and job history beside the selected item |
+| Collapsed groups | Starts inventory lists grouped and collapsed for faster scanning |
+
+</details>
+
+<details>
+<summary><strong>Lineage and impact</strong></summary>
+
+| Functionality | What it provides |
+|---|---|
+| Item lineage | Places Fabric items in lifecycle stages from orchestration to consumption |
+| Object mode | Expands synchronized tables, columns and measures without claiming unsupported field bindings |
+| Impact tracing | Highlights upstream and downstream paths without moving the selected node |
+| Multi-selection | Moves several selected item or object nodes together |
+| Layout controls | Provides zoom, fit, reset, filters, minimap and persistent deep links |
+| Impact reports | Exports verified dependency evidence as Markdown for an item or schema object |
+
+</details>
+
+<details>
+<summary><strong>Access and information protection</strong></summary>
+
+| Functionality | What it provides |
+|---|---|
+| Additive effective access | Combines workspace and item grants so a direct share never reduces inherited access |
+| Access Review matrix | Reviews every reachable principal and item pair with permission, source and evidence |
+| Principal review | Groups all reachable items under collapsible principal sections |
+| Review decisions | Persists Reviewed, Accepted or Needs action status with an optional personal note |
+| CSV export | Downloads the currently filtered access evidence |
+| Risk filters | Isolates external, broad, service-principal, admin and unresolved access |
+
+</details>
+
+<details>
+<summary><strong>Operations and collaboration</strong></summary>
+
+| Functionality | What it provides |
+|---|---|
+| Jobs and health | Groups refresh, pipeline and notebook activity with status, duration and errors |
+| Job filters | Searches run history, isolates failures and saves recurring operational views |
+| Workspace Hub | Keeps synchronized configuration and shared team notes in one grouped interface |
+| Item notes | Attaches persistent context to the workspace or a specific Fabric item |
+| Sync audit | Records who synchronized the workspace, when it ran and how much metadata was indexed |
+
+</details>
+
+<details>
+<summary><strong>Search, navigation and personalization</strong></summary>
+
+| Functionality | What it provides |
+|---|---|
+| Global `Ctrl+K` search | Searches items, tables, views, columns, measures, principals, jobs, configuration and notes |
+| Targeted navigation | Opens the matching drawer, asset, review, job or Workspace Hub section |
+| Personal saved views | Stores user-scoped filter presets in the Fabric-backed Rayfin database |
+| Dark and light themes | Uses dark mode by default with a persistent light-mode preference |
+| Responsive navigation | Keeps grouped Explore, Govern, Operate and System sections usable on smaller screens |
+
+</details>
+
+<details>
+<summary><strong>Security, deployment and open source</strong></summary>
+
+| Functionality | What it provides |
+|---|---|
+| Fabric brokered authentication | Runs inside the Fabric portal with the signed-in Entra identity |
+| Bound token selection | Matches the Power BI token account and tenant to the current Fabric user |
+| Metadata-only storage | Stores governance metadata and notes, never workspace business data |
+| User-scoped preferences | Protects saved views and access-review decisions with Rayfin row policies |
+| Fabric deployment | Builds, migrates the schema and deploys the app through `npx rayfin up` |
+| Open-source project | Includes MIT licensing, contribution guidance, security reporting and release history |
+
+</details>
 
 ## Product screenshots
 
@@ -193,6 +309,9 @@ npm run build
 |---|---|
 | `src/atlas/views/` | Application pages |
 | `src/atlas/store.tsx` | Hydration, synchronization and comments |
+| `src/atlas/history.ts` | Validated snapshot comparison and governance trends |
+| `src/atlas/governance.ts` | Effective access, findings and metadata coverage |
+| `src/atlas/search.ts` | Global workspace search index |
 | `src/atlas/lineage.ts` | Lineage normalization, traversal and layout |
 | `src/atlas/backend.ts` | Workspace snapshots and Rayfin persistence |
 | `src/atlas/live-sync.ts` | UDF invocation and response mapping |

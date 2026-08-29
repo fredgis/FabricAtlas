@@ -29,7 +29,8 @@ Rayfin Data API (Data API Builder)  ──  Fabric SQL database (mssql)
 
 ## Data model
 
-Nine entities capture the workspace and the team layer. See [data-model.md](data-model.md) for fields.
+Eleven entities capture the workspace, team context and personal review state.
+See [data-model.md](data-model.md) for fields.
 
 | Entity | Holds |
 | --- | --- |
@@ -42,6 +43,8 @@ Nine entities capture the workspace and the team layer. See [data-model.md](data
 | `ConfigEntry` | Flat key/value config facts per item (drives the expandable tree) |
 | `Comment` | Team notes on the workspace or an item |
 | `SyncRun` | Audit of each Sync |
+| `SavedView` | User-scoped filter and navigation presets |
+| `AccessReview` | User-scoped access-review decisions and notes |
 
 ## Sync
 
@@ -66,6 +69,26 @@ After that one sync, every user loads the same validated build snapshot.
 The MSAL account used for Sync must match the current Rayfin user and tenant.
 Tokens use session storage so switching Fabric users cannot silently reuse the
 first account from a persistent browser cache.
+
+## Governance history
+
+`loadHistoryFromDb` reads older trusted manifests with snapshot-scoped queries.
+Each candidate passes the same writer, row-count, schema and item validation as
+the active catalog. Invalid historical snapshots are skipped.
+
+`src/atlas/history.ts` compares validated snapshots without depending on row
+order. It detects changes to items, schema objects, access grants, sensitivity,
+lineage and jobs, then derives the trend series used by Governance Center.
+
+## Personal governance state
+
+Saved views and access-review decisions are separate from synchronized
+snapshots. Rayfin policies bind their `user_id` field to the authenticated
+subject claim, so each user reads and changes only their own records.
+
+Governance Center groups findings, snapshot changes, trends and metadata
+coverage. Access Review uses the same additive effective-access engine as the
+Asset Catalog and lineage inspector.
 
 ## Object inventory
 
@@ -103,6 +126,7 @@ the `.dark` class for Tailwind. Design tokens are defined in `src/global.css`.
 | Data | in-memory sample set | Fabric SQL via RayfinClient |
 | Sync | refreshes the sample | validates UDF result, writes a new snapshot |
 | Comments | in-memory | persisted to `Comment` |
+| Saved views and reviews | current preview session | user-scoped Rayfin entities |
 
 This lets the app be fully explorable (and screenshot-able) offline, while the same code runs for
 real once deployed.

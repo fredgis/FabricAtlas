@@ -1,5 +1,8 @@
 import { useMemo } from "react";
-import type { Tab } from "@/App";
+import type {
+  AtlasNavigation,
+  Tab,
+} from "@/atlas/navigation";
 import {
   Activity,
   AlertTriangle,
@@ -31,7 +34,11 @@ const JOB_TONE: Record<JobStatus, string> = {
   cancelled: "bg-lineage-neutral",
 };
 
-export function OverviewView({ onOpen }: { onOpen: (t: Tab) => void }) {
+export function OverviewView({
+  onOpen,
+}: {
+  onOpen: (target: Tab | AtlasNavigation) => void;
+}) {
   const { data, lastSyncedAt } = useAtlas();
   const { items, principals, jobs, syncRuns, grants, edges } = data;
 
@@ -199,7 +206,7 @@ export function OverviewView({ onOpen }: { onOpen: (t: Tab) => void }) {
       label: "Confidential items",
       value: confidential.length,
       detail: `${labeled.length} items labeled`,
-      tab: "sensitivity" as Tab,
+      tab: "governance" as Tab,
       icon: LockKeyhole,
       tone: "text-lineage-upstream",
     },
@@ -415,7 +422,15 @@ export function OverviewView({ onOpen }: { onOpen: (t: Tab) => void }) {
           </div>
           <button
             type="button"
-            onClick={() => onOpen("sensitivity")}
+            onClick={() =>
+              onOpen({
+                tab: "governance",
+                focus: {
+                  requestId: crypto.randomUUID(),
+                  governanceSection: "coverage",
+                },
+              })
+            }
             className="shrink-0 text-200 font-semibold text-primary hover:underline"
           >
             Review labels

@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   Columns3,
+  FileDown,
   FilterX,
   Search,
   ShieldCheck,
@@ -13,6 +14,13 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { ImpactReportDialog } from "../components/ImpactReportDialog";
+import {
+  buildAccessReviewRows,
+  selectAccessByItem,
+} from "../governance";
+import type { SchemaObjectRef } from "../lineage";
+import type { AtlasFocusRequest } from "../navigation";
 import { useAtlas } from "../store";
 import { PrincipalAvatar, SectionLabel, TypeGlyph, cn } from "../ui";
 import {
@@ -152,9 +160,13 @@ function safeGroupId(value: string) {
   return `asset-group-${value.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
 }
 
-export function AssetCatalogView() {
+export function AssetCatalogView({
+  focus,
+}: {
+  focus?: AtlasFocusRequest;
+} = {}) {
   const { data } = useAtlas();
-  const { items, config, grants, principals } = data;
+  const { items, config, principals } = data;
 
   const itemById = useMemo(
     () => new Map(items.map((item) => [item.fabricId, item])),
@@ -246,9 +258,23 @@ export function AssetCatalogView() {
     return output;
   }, [data, items, config]);
 
-  const [query, setQuery] = useState("");
+  const initialFocusedAsset = assets.find(
+    (asset) =>
+      (!focus?.itemId || asset.itemFabricId === focus.itemId) &&
+      (!focus?.objectName || asset.name === focus.objectName) &&
+      (!focus?.tableName || asset.table === focus.tableName) &&
+      (!focus?.objectKind || asset.kind === focus.objectKind),
+  );
+  const [query, setQuery] = useState(
+    initialFocusedAsset ? "" : focus?.query ?? "",
+  );
   const [kind, setKind] = useState<AssetKind | "all">("all");
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
+    () =>
+      new Set(
+        initialFocusedAsset ? [initialFocusedAsset.itemFabricId] : [],
+      ),
+  );
 
   const filtered = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -274,49 +300,26 @@ export function AssetCatalogView() {
     return [...grouped.entries()];
   }, [filtered]);
 
-  const [selId, setSelId] = useState("");
+  const [selId, setSelId] = useState(initialFocusedAsset?.id ?? "");
+  const [impactOpen, setImpactOpen] = useState(false);
   const selectedAsset = assets.find((asset) => asset.id === selId);
 
+  const accessRows = useMemo(() => buildAccessReviewRows(data), [data]);
   const access = useMemo(() => {
-    if (!selectedAsset) {
-      return [] as {
-        name: string;
-        level: AccessLevel;
-        inherited: boolean;
-        roleName?: string;
-      }[];
-    }
-    const byName = new Map<
-      string,
-      {
-        name: string;
-        level: AccessLevel;
-        inherited: boolean;
-        roleName?: string;
-      }
-    >();
-    for (const grant of grants.filter((entry) => !entry.itemFabricId)) {
-      byName.set(grant.principalRef, {
-        name: grant.principalRef,
-        level: grant.accessLevel,
-        inherited: true,
-        roleName: grant.roleName,
-      });
-    }
-    for (const grant of grants.filter(
-      (entry) => entry.itemFabricId === selectedAsset.itemFabricId,
-    )) {
-      byName.set(grant.principalRef, {
-        name: grant.principalRef,
-        level: grant.accessLevel,
-        inherited: false,
-        roleName: grant.roleName,
-      });
-    }
-    return [...byName.values()].sort(
-      (a, b) => Number(a.inherited) - Number(b.inherited),
+    if (!selectedAsset) return [];
+    return selectAccessByItem(accessRows, selectedAsset.itemFabricId).map(
+      (row) => ({
+        name: row.principalRef,
+        level: row.effectiveAccess,
+        inherited: row.origin === "workspace",
+        mixed: row.origin === "mixed",
+        roleName: row.effectiveGrants
+          .map((grant) => grant.roleName)
+          .filter(Boolean)
+          .join(", "),
+      }),
     );
-  }, [selectedAsset, grants]);
+  }, [accessRows, selectedAsset]);
 
   const counts = {
     all: assets.length,
@@ -335,6 +338,14 @@ export function AssetCatalogView() {
 
   const selectedItem = selectedAsset
     ? itemById.get(selectedAsset.itemFabricId)
+    : undefined;
+  const selectedObject = selectedAsset
+    ? ({
+        itemId: selectedAsset.itemFabricId,
+        kind: selectedAsset.kind,
+        name: selectedAsset.name,
+        tableName: selectedAsset.table,
+      } satisfies SchemaObjectRef)
     : undefined;
   const hasActiveFilters = Boolean(query.trim() || kind !== "all");
 
@@ -630,6 +641,14 @@ export function AssetCatalogView() {
                     </div>
                     <button
                       type="button"
+                      onClick={() => setImpactOpen(true)}
+                      className="inline-flex items-center gap-s rounded-lg border border-border bg-card px-m py-s text-200 font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
+                    >
+                      <FileDown className="icon-size-100" aria-hidden="true" />
+                      Impact
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setSelId("")}
                       aria-label="Clear selected asset"
                       className="rounded-lg border border-transparent p-s text-muted-foreground hover:border-border hover:bg-card hover:text-foreground"
@@ -709,8 +728,8 @@ export function AssetCatalogView() {
                     <div className="min-w-0 flex-1">
                       <SectionLabel>Effective access</SectionLabel>
                       <p className="mt-xs text-200 text-muted-foreground">
-                        Workspace roles are inherited; item shares override them
-                        when present.
+                        Workspace and item grants are additive. A direct share
+                        never reduces inherited access.
                       </p>
                     </div>
                     <span className="rounded-md border border-border bg-secondary px-s py-xs font-numeric text-200 font-semibold text-muted-foreground">
@@ -758,7 +777,9 @@ export function AssetCatalogView() {
                                 {grant.roleName ??
                                   (grant.inherited
                                     ? "Workspace permission"
-                                    : "Item permission")}
+                                    : grant.mixed
+                                      ? "Workspace and item permissions"
+                                      : "Item permission")}
                               </div>
                             </div>
                             <AccessChip level={grant.level} />
@@ -772,12 +793,16 @@ export function AssetCatalogView() {
                                 "rounded-md border px-s py-xxs text-[length:var(--text-200)] font-semibold",
                                 grant.inherited
                                   ? "border-lineage-upstream/30 bg-lineage-upstream/10 text-lineage-upstream"
-                                  : "border-primary/30 bg-primary/10 text-primary",
+                                  : grant.mixed
+                                    ? "border-status-warning/30 bg-status-warning/10 text-status-warning"
+                                    : "border-primary/30 bg-primary/10 text-primary",
                               )}
                             >
                               {grant.inherited
                                 ? "Inherited · workspace"
-                                : "Direct · item share"}
+                                : grant.mixed
+                                  ? "Mixed · workspace + item"
+                                  : "Direct · item share"}
                             </span>
                           </div>
                         </div>
@@ -808,6 +833,15 @@ export function AssetCatalogView() {
           )}
         </AnimatePresence>
       </div>
+      {selectedAsset && selectedObject && (
+        <ImpactReportDialog
+          data={data}
+          itemId={selectedAsset.itemFabricId}
+          object={selectedObject}
+          open={impactOpen}
+          onClose={() => setImpactOpen(false)}
+        />
+      )}
     </div>
   );
 }

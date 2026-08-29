@@ -15,7 +15,7 @@ export const REPOSITORY_URL =
   "https://github.com/fredgis/FabricAtlas";
 
 export const APP_VERSION =
-  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.4.0";
+  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.5.0";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -27,6 +27,29 @@ export const BUILD_DATE =
 export const DEPLOYMENT_ID = `${APP_VERSION}:${BUILD_COMMIT}:${BUILD_DATE}`;
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "1.5.0",
+    date: "2026-08-29",
+    title: "Governance Center and workspace intelligence",
+    sections: [
+      {
+        title: "Governance",
+        items: [
+          "Governance Center groups actionable findings, snapshot changes, trends and metadata coverage.",
+          "Access Review provides additive permission evidence, personal review decisions and CSV export.",
+          "Validated snapshot history powers change detection without weakening last-known-good fallback.",
+        ],
+      },
+      {
+        title: "Productivity",
+        items: [
+          "Global Ctrl+K search opens items, schema objects, principals, jobs, configuration and notes.",
+          "Impact reports export verified upstream and downstream evidence for items and schema objects.",
+          "Personal saved views persist governance, access and job filters through Rayfin.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.4.0",
     date: "2026-08-29",

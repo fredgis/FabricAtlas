@@ -14,6 +14,10 @@ the writer configured for the deployment. They do not expose update or delete
 actions. Comments allow authenticated reads and policy-checked creates whose
 `authorEmail` matches the authenticated claim.
 
+`SavedView` and `AccessReview` records are user-scoped. Their read, create,
+update and delete policies require the authenticated subject claim to match
+`user_id`.
+
 ## Workspace
 
 The manifest for a complete synchronized snapshot.
@@ -82,6 +86,29 @@ The audit record for a completed snapshot.
 
 `workspace_id`, `snapshotId`, `writerEmail?`, `startedAt`, `finishedAt?`, `status`,
 `itemsSynced?`, `triggeredBy?`, `summary?`
+
+## SavedView
+
+A personal named view over Atlas navigation and filters.
+
+`workspace_id`, `user_id`, `name`, `section`, `filtersJson`, `createdAt`,
+`updatedAt`
+
+## AccessReview
+
+A personal decision for one effective principal and item pair.
+
+`workspace_id`, `user_id`, `recordKey`, `rowKey`, `itemFabricId`,
+`principalRef`, `status`, `note?`, `reviewedAt`, `updatedAt`
+
+The status is `reviewed`, `accepted` or `needsAction`.
+
+## Snapshot history
+
+History does not require another table. Atlas uses trusted `Workspace`
+manifests as the index and loads older child rows by `workspace_id` and
+`snapshotId`. Comments, saved views and access-review decisions are not part of
+snapshot comparisons.
 
 ## Adding a field
 

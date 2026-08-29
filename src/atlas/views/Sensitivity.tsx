@@ -85,7 +85,11 @@ function labelFor(sensitivity?: string): Label {
   );
 }
 
-export function SensitivityView() {
+export function SensitivityView({
+  embedded = false,
+}: {
+  embedded?: boolean;
+} = {}) {
   const { data } = useAtlas();
   const { items } = data;
 
@@ -147,8 +151,13 @@ export function SensitivityView() {
   ];
 
   return (
-    <div className="atlas-content-frame flex flex-col gap-l p-l sm:p-xxl">
-      <Card className="overflow-hidden">
+    <div
+      className={cn(
+        "flex flex-col gap-l",
+        embedded ? "" : "atlas-content-frame p-l sm:p-xxl",
+      )}
+    >
+      {!embedded && <Card className="overflow-hidden">
         <div className="border-b border-border bg-secondary/60 p-l">
           <div className="mb-xs text-200 font-semibold uppercase tracking-wider text-brand-foreground">
             Information protection
@@ -187,7 +196,7 @@ export function SensitivityView() {
             );
           })}
         </div>
-      </Card>
+      </Card>}
 
       <section aria-labelledby="label-summary-title">
         <div className="mb-m flex flex-wrap items-end justify-between gap-s">

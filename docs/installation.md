@@ -158,7 +158,8 @@ the definition back and compare the Python hash before invoking `sync_all`.
 
 ## 6. Redeploy after a change
 
-Any change — a new entity field, a new tab — ships the same way:
+Any change, including the `SavedView` and `AccessReview` entities introduced in
+Fabric Atlas 1.5, ships the same way:
 
 ```bash
 npx rayfin up

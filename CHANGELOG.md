@@ -4,6 +4,26 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-08-29
+
+### Added
+
+- Governance Center with grouped Findings, Change Center, History and Coverage views.
+- Validated snapshot history with configurable comparisons across items, schema, access, sensitivity, lineage and jobs.
+- Governance findings for explicit access, metadata, operational and lineage evidence.
+- Access Review matrix with additive permission calculation, persisted review decisions, notes and CSV export.
+- Global `Ctrl+K` search across items, schema objects, principals, jobs, configuration and team notes.
+- Exportable impact reports for Fabric items, tables, columns and measures.
+- User-scoped saved views for Governance Center, Access Review and Jobs filters.
+- Metadata coverage diagnostics and historical trend charts.
+
+### Changed
+
+- Governance capabilities are grouped under one Governance Center instead of adding separate navigation entries.
+- Access now uses one shared effective-permission engine across the review screen, Asset Catalog and lineage inspector.
+- Sensitivity details are available inside Governance Center coverage.
+- Catalog, Asset Catalog, Jobs, Workspace Hub and comments accept targeted navigation from global search.
+
 ## [1.4.0] - 2026-08-29
 
 ### Added
@@ -117,6 +137,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
+[1.5.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.5.0
 [1.4.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.4.0
 [1.3.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.3.1
 [1.3.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.3.0

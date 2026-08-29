@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Copy,
   ExternalLink,
+  FileDown,
   GitBranch,
   Maximize2,
   RotateCcw,
@@ -22,6 +23,11 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
+import { ImpactReportDialog } from "../components/ImpactReportDialog";
+import {
+  buildAccessReviewRows,
+  selectAccessByItem,
+} from "../governance";
 import { useAtlas } from "../store";
 import {
   Avatar,
@@ -49,6 +55,7 @@ import {
   buildStagedLayout,
   getLineageImpact,
   lineageEdgeKey,
+  type SchemaObjectRef,
 } from "../lineage";
 
 const NODE_W = 196;
@@ -341,7 +348,7 @@ function InspectorTabButton({
 
 export function MapView() {
   const { data } = useAtlas();
-  const { items, edges, comments, config, grants, principals, jobs } = data;
+  const { items, edges, comments, config, principals, jobs } = data;
   const itemById = useMemo(
     () => new Map<string, Item>(items.map((item) => [item.fabricId, item])),
     [items],
@@ -375,6 +382,7 @@ export function MapView() {
   );
   const [zoom, setZoom] = useState(1);
   const [copied, setCopied] = useState(false);
+  const [impactReportOpen, setImpactReportOpen] = useState(false);
   const dragging = useRef<{
     id: string;
     ids: string[];
@@ -519,6 +527,30 @@ export function MapView() {
     : (objects.nodes.find((node) => node.kind === "owner")?.id ??
       objects.nodes[0]?.id ??
       "");
+  const activeObject = objects.nodes.find((node) => node.id === activeObjectId);
+  const reportItemId =
+    mode === "objects" ? activeObject?.itemId ?? activeId : activeId;
+  const reportObject: SchemaObjectRef | undefined =
+    mode === "objects" && activeObject?.kind === "table"
+      ? {
+          itemId: activeId,
+          kind: "table",
+          name: activeObject.label,
+        }
+      : mode === "objects" && activeObject?.kind === "source" && activeObject.itemId
+        ? {
+            itemId: activeObject.itemId,
+            kind: "table",
+            name: activeObject.label,
+          }
+        : mode === "objects" && activeObject?.kind === "field"
+          ? {
+              itemId: activeId,
+              kind: activeObject.code === "fx" ? "measure" : "column",
+              name: activeObject.label,
+              tableName: activeObject.table,
+            }
+          : undefined;
   const objectImpact = useMemo(
     () => getObjectImpact(objects.edges, activeObjectId),
     [activeObjectId, objects.edges],
@@ -765,29 +797,19 @@ export function MapView() {
     }
   };
 
-  const directGrants = useMemo(
-    () => grants.filter((grant) => grant.itemFabricId === activeId),
-    [activeId, grants],
-  );
+  const accessRows = useMemo(() => buildAccessReviewRows(data), [data]);
   const effectiveAccess = useMemo(() => {
-    const access = new Map<
-      string,
-      (typeof grants)[number] & { inherited: boolean }
-    >();
-    grants
-      .filter((grant) => !grant.itemFabricId)
-      .forEach((grant) =>
-        access.set(grant.principalRef, { ...grant, inherited: true }),
-      );
-    directGrants.forEach((grant) =>
-      access.set(grant.principalRef, { ...grant, inherited: false }),
-    );
-    return [...access.values()].sort(
-      (a, b) =>
-        Number(a.inherited) - Number(b.inherited) ||
-        a.principalRef.localeCompare(b.principalRef),
-    );
-  }, [directGrants, grants]);
+    return selectAccessByItem(accessRows, activeId).map((row) => ({
+      principalRef: row.principalRef,
+      accessLevel: row.effectiveAccess,
+      inherited: row.origin === "workspace",
+      mixed: row.origin === "mixed",
+      roleName: row.effectiveGrants
+        .map((grant) => grant.roleName)
+        .filter(Boolean)
+        .join(", "),
+    }));
+  }, [accessRows, activeId]);
   const selectedJobs = jobs
     .filter((job) => job.itemFabricId === activeId)
     .sort((a, b) => +new Date(b.startedAt) - +new Date(a.startedAt));
@@ -1613,7 +1635,8 @@ export function MapView() {
                   <div>
                     <SectionLabel>Effective access · {effectiveAccess.length}</SectionLabel>
                     <div className="mt-[8px] text-[10px] leading-[1.4] text-muted-foreground">
-                      Direct item grants override inherited workspace access.
+                      Workspace and item grants are additive. Direct shares
+                      never reduce inherited access.
                     </div>
                     <div className="mt-[10px] flex flex-col gap-[7px]">
                       {effectiveAccess.map((grant) => {
@@ -1624,7 +1647,11 @@ export function MapView() {
                             <div className="min-w-0 flex-1">
                               <div className="truncate text-[12px] font-semibold">{grant.principalRef}</div>
                               <div className="text-[9.5px] text-muted-foreground">
-                                {grant.inherited ? "Inherited · workspace" : "Direct share"}
+                                {grant.inherited
+                                  ? "Inherited · workspace"
+                                  : grant.mixed
+                                    ? "Mixed · workspace + item"
+                                    : "Direct share"}
                                 {grant.roleName ? ` · ${grant.roleName}` : ""}
                               </div>
                             </div>
@@ -1675,6 +1702,14 @@ export function MapView() {
                 </a>
                 <button
                   type="button"
+                  onClick={() => setImpactReportOpen(true)}
+                  className="flex h-[36px] items-center justify-center gap-[7px] rounded-lg border border-border px-[10px] text-[12px] font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  <FileDown size={13} />
+                  Impact
+                </button>
+                <button
+                  type="button"
                   onClick={() => void copyLink()}
                   aria-label="Copy deep link"
                   className="flex h-[36px] w-[36px] items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -1686,6 +1721,15 @@ export function MapView() {
           )}
         </aside>
       </div>
+      {reportItemId && (
+        <ImpactReportDialog
+          data={data}
+          itemId={reportItemId}
+          object={reportObject}
+          open={impactReportOpen}
+          onClose={() => setImpactReportOpen(false)}
+        />
+      )}
     </div>
   );
 }

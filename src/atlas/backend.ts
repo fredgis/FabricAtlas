@@ -24,6 +24,13 @@ import {
 } from "./live-sync";
 import { normalizeLineageEdges } from "./lineage";
 import { DEPLOYMENT_ID } from "./release";
+import {
+  buildAtlasHistory,
+  snapshotFromData,
+  type AtlasHistory,
+  type HistoricalSnapshot,
+  type SnapshotCatalog,
+} from "./history";
 import type {
   AtlasData,
   Comment,
@@ -90,6 +97,8 @@ const ENTITY_FIELDS: Record<string, readonly string[]> = {
     "sensitivity",
     "tags",
     "lastRefresh",
+    "itemCreatedAt",
+    "itemUpdatedAt",
   ],
   LineageEdge: [
     "id",
@@ -269,9 +278,9 @@ export async function runFabricSync(
     /* ignore */
   }
   reportProgress?.(66, "Preserving team notes");
-  await persistSync(atlas, user, reportProgress);
+  const persisted = await persistSync(atlas, user, reportProgress);
   reportProgress?.(100, "Sync complete");
-  return atlas;
+  return persisted;
 }
 
 /** Replace the catalog rows in the Rayfin DB with a freshly synced snapshot. */
@@ -279,9 +288,10 @@ async function persistSync(
   atlas: AtlasData,
   user: SyncIdentity,
   reportProgress?: SyncProgressReporter,
-): Promise<void> {
+): Promise<AtlasData> {
   const wid = workspaceId();
   const snapshotId = crypto.randomUUID();
+  const syncedAt = new Date();
   const writerEmail = requireSyncWriter(user);
   const data = await dataApi();
 
@@ -313,6 +323,8 @@ async function persistSync(
       sensitivity: i.sensitivity,
       tags: i.tags?.length ? i.tags.join(", ") : undefined,
       lastRefresh: i.lastRefresh ? new Date(i.lastRefresh) : undefined,
+      itemCreatedAt: i.createdAt ? new Date(i.createdAt) : undefined,
+      itemUpdatedAt: i.updatedAt ? new Date(i.updatedAt) : undefined,
     })),
   );
   reportProgress?.(82, "Writing principals and access");
@@ -406,8 +418,8 @@ async function persistSync(
     workspace_id: wid,
     snapshotId,
     writerEmail,
-    startedAt: new Date(),
-    finishedAt: new Date(),
+    startedAt: syncedAt,
+    finishedAt: syncedAt,
     status: "completed",
     itemsSynced: atlas.items.length,
     triggeredBy: user.name,
@@ -428,8 +440,16 @@ async function persistSync(
     jobCount: atlas.jobs.length,
     configCount: atlas.config.length,
     schemaEntryCount: schemaRows.length,
-    syncedAt: new Date(),
+    syncedAt,
   });
+  return {
+    ...atlas,
+    workspace: {
+      ...atlas.workspace,
+      snapshotId,
+      syncedAt: syncedAt.toISOString(),
+    },
+  };
 }
 
 /* ----------------------------- load ----------------------------- */
@@ -561,7 +581,8 @@ function parseSchemaRows(
       if (
         total !== chunks.length ||
         chunks.some((chunk) => chunk.total !== total) ||
-        new Set(chunks.map((chunk) => chunk.part)).size !== total
+        new Set(chunks.map((chunk) => chunk.part)).size !== total ||
+        chunks.some((chunk) => chunk.part < 1 || chunk.part > total)
       ) {
         throw new Error("snapshot contains an incomplete schema");
       }
@@ -595,6 +616,241 @@ function parseSchemaRows(
   return schema;
 }
 
+type ReadEntity = (entity: string, filter: Row) => Promise<Row[]>;
+
+interface SnapshotRows {
+  itemRows: Row[];
+  edgeRows: Row[];
+  principalRows: Row[];
+  grantRows: Row[];
+  jobRows: Row[];
+  regularConfigRows: Row[];
+  schemaRows: Row[];
+  syncRows: Row[];
+}
+
+function readerFor(data: Record<string, EntityApi>): ReadEntity {
+  return (entity, filter) => {
+    const api = data[entity];
+    if (!api) throw new Error(`Rayfin entity ${entity} is unavailable`);
+    const fields = ENTITY_FIELDS[entity];
+    if (!fields) throw new Error(`Rayfin fields for ${entity} are unavailable`);
+    return readWithRetry(api, fields, filter);
+  };
+}
+
+function validDateIso(value: unknown): string | undefined {
+  if (value == null || value === "") return undefined;
+  const date = new Date(value as string | number | Date);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
+function trustedMarkers(rows: Row[], wid: string): Row[] {
+  return rows
+    .filter(
+      (row) =>
+        sameText(row.fabricId, wid) &&
+        !!textOrFallback(row.snapshotId, "") &&
+        sameText(row.writerEmail, ATLAS_CONFIG.syncAdminEmail),
+    )
+    .sort(
+      (left, right) =>
+        (Date.parse(String(right.syncedAt ?? "")) || 0) -
+          (Date.parse(String(left.syncedAt ?? "")) || 0) ||
+        String(right.snapshotId).localeCompare(String(left.snapshotId)),
+    );
+}
+
+async function readSnapshotRows(
+  read: ReadEntity,
+  wid: string,
+  snapshotId: string,
+  includeSyncRuns: boolean,
+): Promise<SnapshotRows> {
+  const filter = {
+    workspace_id: { eq: wid },
+    snapshotId: { eq: snapshotId },
+  };
+  const [
+    allItemRows,
+    allEdgeRows,
+    allPrincipalRows,
+    allGrantRows,
+    allJobRows,
+    allConfigRows,
+    allSyncRows,
+  ] = await Promise.all([
+    read("FabricItem", filter),
+    read("LineageEdge", filter),
+    read("Principal", filter),
+    read("AccessGrant", filter),
+    read("JobRun", filter),
+    read("ConfigEntry", filter),
+    includeSyncRuns ? read("SyncRun", filter) : Promise.resolve([]),
+  ]);
+  const configRows = rowsForSnapshot(allConfigRows, wid, snapshotId);
+  return {
+    itemRows: rowsForSnapshot(allItemRows, wid, snapshotId),
+    edgeRows: rowsForSnapshot(allEdgeRows, wid, snapshotId),
+    principalRows: rowsForSnapshot(allPrincipalRows, wid, snapshotId),
+    grantRows: rowsForSnapshot(allGrantRows, wid, snapshotId),
+    jobRows: rowsForSnapshot(allJobRows, wid, snapshotId),
+    regularConfigRows: configRows.filter(
+      (row) => String(row.section) !== "__schema__",
+    ),
+    schemaRows: configRows.filter(
+      (row) => String(row.section) === "__schema__",
+    ),
+    syncRows: rowsForSnapshot(allSyncRows, wid, snapshotId),
+  };
+}
+
+function catalogFromRows(
+  marker: Row,
+  rows: SnapshotRows,
+): SnapshotCatalog {
+  validateManifest(marker, {
+    itemCount: rows.itemRows.length,
+    edgeCount: rows.edgeRows.length,
+    principalCount: rows.principalRows.length,
+    grantCount: rows.grantRows.length,
+    jobCount: rows.jobRows.length,
+    configCount: rows.regularConfigRows.length,
+    schemaEntryCount: rows.schemaRows.length,
+  });
+
+  const items: Item[] = rows.itemRows.map((row) => {
+    const fabricId = realText(row.fabricId);
+    const itemType = toItemType(row.itemType);
+    if (!fabricId || !itemType) {
+      throw new Error("snapshot contains malformed Fabric item metadata");
+    }
+    return {
+      fabricId,
+      displayName: realText(row.displayName) ?? fabricId,
+      itemType,
+      description: realText(row.description),
+      ownerName: realText(row.ownerName),
+      ownerEmail: realText(row.ownerEmail),
+      health: (row.health as Item["health"]) ?? "unknown",
+      endorsement: (row.endorsement as Item["endorsement"]) ?? "none",
+      sensitivity: realText(row.sensitivity),
+      tags: row.tags
+        ? String(row.tags)
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean)
+        : [],
+      lastRefresh: validDateIso(row.lastRefresh),
+      createdAt: validDateIso(row.itemCreatedAt),
+      updatedAt: validDateIso(row.itemUpdatedAt),
+    };
+  });
+  if (new Set(items.map((item) => item.fabricId)).size !== items.length) {
+    throw new Error("snapshot contains duplicate Fabric item IDs");
+  }
+
+  const itemIds = new Set(items.map((item) => item.fabricId));
+  const edges: Edge[] = normalizeLineageEdges(
+    items,
+    rows.edgeRows.map((row) => ({
+      source: String(row.sourceFabricId),
+      target: String(row.targetFabricId),
+      relation: String(row.relation),
+      broken: !!row.broken,
+    })),
+  );
+  const principals: Principal[] = rows.principalRows.map((row) => ({
+    principalId: String(row.principalId),
+    displayName: String(row.displayName),
+    kind: row.kind as Principal["kind"],
+    email: (row.email as string) || undefined,
+    external: !!row.external,
+    workspaceRole: "Viewer",
+  }));
+  const grants: Grant[] = rows.grantRows.map((row) => ({
+    itemFabricId: (row.itemFabricId as string) || undefined,
+    principalRef: String(row.principalRef),
+    accessLevel: row.accessLevel as Grant["accessLevel"],
+    source: row.source as Grant["source"],
+    roleName: (row.roleName as string) || undefined,
+    flag: (row.flag as Grant["flag"]) || undefined,
+  }));
+  const markerTime =
+    validDateIso(marker.syncedAt) ?? new Date(0).toISOString();
+  const jobs: Job[] = rows.jobRows.map((row) => ({
+    itemFabricId: String(row.itemFabricId),
+    itemName: String(row.itemName),
+    jobType: String(row.jobType),
+    status: row.status as Job["status"],
+    startedAt: validDateIso(row.startedAt) ?? markerTime,
+    durationSec: Number(row.durationSec ?? 0),
+    message: (row.message as string) || undefined,
+  }));
+  const config = rows.regularConfigRows.map((row) => ({
+    itemFabricId: String(row.itemFabricId),
+    section: String(row.section),
+    label: String(row.label),
+    value: String(row.value ?? ""),
+  }));
+  const schema = parseSchemaRows(rows.schemaRows, itemIds);
+  const snapshotId = String(marker.snapshotId);
+  const syncedAt = validDateIso(marker.syncedAt) ?? markerTime;
+  const workspace: WorkspaceInfo = {
+    fabricId: textOrFallback(marker.fabricId, WS_FALLBACK.fabricId),
+    displayName: textOrFallback(marker.displayName, WS_FALLBACK.displayName),
+    capacity: textOrFallback(marker.capacity, WS_FALLBACK.capacity),
+    region: textOrFallback(marker.region, WS_FALLBACK.region),
+    deploymentId: textOrFallback(marker.deploymentId, "") || undefined,
+    snapshotId,
+    syncedAt,
+  };
+
+  return {
+    workspace,
+    items,
+    edges,
+    principals,
+    grants,
+    jobs,
+    config,
+    schema,
+  };
+}
+
+function commentsFromRows(rows: Row[], wid: string): Comment[] {
+  return rows
+    .filter((row) => rowBelongsToWorkspace(row, wid))
+    .map((row) => ({
+      id: String(row.id),
+      itemFabricId: (row.itemFabricId as string) || undefined,
+      authorId: String(row.authorId),
+      authorName: textOrFallback(row.authorEmail, String(row.authorName)),
+      authorEmail: (row.authorEmail as string) || undefined,
+      body: String(row.body),
+      createdAt: validDateIso(row.createdAt) ?? new Date(0).toISOString(),
+    }));
+}
+
+function syncRunsFromRows(rows: Row[], fallbackTime: string): AtlasData["syncRuns"] {
+  return rows
+    .map((row) => ({
+      id: String(row.id),
+      startedAt: validDateIso(row.startedAt) ?? fallbackTime,
+      finishedAt: validDateIso(row.finishedAt),
+      status:
+        (row.status as "running" | "completed" | "failed") ?? "completed",
+      itemsSynced:
+        row.itemsSynced != null ? Number(row.itemsSynced) : undefined,
+      triggeredBy: (row.triggeredBy as string) || undefined,
+      summary: (row.summary as string) || undefined,
+    }))
+    .sort(
+      (left, right) =>
+        Date.parse(right.startedAt) - Date.parse(left.startedAt),
+    );
+}
+
 /**
  * Read the previously synced catalog back out of the Rayfin entities. Returns
  * `null` in preview or when nothing has been synced yet (so the caller shows
@@ -605,234 +861,30 @@ export async function loadFromDb(isPreview: boolean): Promise<AtlasData | null> 
   try {
     const data = await dataApi();
     const wid = workspaceId();
-    const read = (entity: string, filter: Row) => {
-      const api = data[entity];
-      if (!api) throw new Error(`Rayfin entity ${entity} is unavailable`);
-      const fields = ENTITY_FIELDS[entity];
-      if (!fields) throw new Error(`Rayfin fields for ${entity} are unavailable`);
-      return readWithRetry(api, fields, filter);
-    };
-    const workspaceFilter = { workspace_id: { eq: wid } };
-    const [
-      allItemRows,
-      allEdgeRows,
-      allPrincipalRows,
-      allGrantRows,
-      allJobRows,
-      allConfigRows,
-      allCommentRows,
-      allSyncRows,
-      workspaceRows,
-    ] = await Promise.all([
-      read("FabricItem", workspaceFilter),
-      read("LineageEdge", workspaceFilter),
-      read("Principal", workspaceFilter),
-      read("AccessGrant", workspaceFilter),
-      read("JobRun", workspaceFilter),
-      read("ConfigEntry", workspaceFilter),
-      read("Comment", workspaceFilter),
-      read("SyncRun", workspaceFilter),
+    const read = readerFor(data);
+    const [allCommentRows, workspaceRows] = await Promise.all([
+      read("Comment", { workspace_id: { eq: wid } }),
       read("Workspace", { fabricId: { eq: wid } }),
     ]);
+    const comments = commentsFromRows(allCommentRows, wid);
 
-    const markers = workspaceRows
-      .filter(
-        (row) =>
-          sameText(row.fabricId, wid) &&
-          !!textOrFallback(row.snapshotId, "") &&
-          sameText(row.writerEmail, ATLAS_CONFIG.syncAdminEmail),
-      )
-      .sort(
-        (left, right) =>
-          Date.parse(String(right.syncedAt ?? 0)) -
-          Date.parse(String(left.syncedAt ?? 0)),
-      );
-    const candidates: Row[] = markers;
-    const commentRows = allCommentRows.filter((row) =>
-      rowBelongsToWorkspace(row, wid),
-    );
-    const comments: Comment[] = commentRows.map((row) => ({
-      id: String(row.id),
-      itemFabricId: (row.itemFabricId as string) || undefined,
-      authorId: String(row.authorId),
-      authorName: textOrFallback(row.authorEmail, String(row.authorName)),
-      authorEmail: (row.authorEmail as string) || undefined,
-      body: String(row.body),
-      createdAt: row.createdAt
-        ? new Date(row.createdAt as string).toISOString()
-        : new Date().toISOString(),
-    }));
-
-    for (const marker of candidates) {
+    for (const marker of trustedMarkers(workspaceRows, wid)) {
       try {
-        const snapshotId = marker?.snapshotId
-          ? String(marker.snapshotId)
-          : undefined;
-        const itemRows = rowsForSnapshot(allItemRows, wid, snapshotId);
-        const edgeRows = rowsForSnapshot(allEdgeRows, wid, snapshotId);
-        const principalRows = rowsForSnapshot(
-          allPrincipalRows,
-          wid,
-          snapshotId,
-        );
-        const grantRows = rowsForSnapshot(allGrantRows, wid, snapshotId);
-        const jobRows = rowsForSnapshot(allJobRows, wid, snapshotId);
-        const configRows = rowsForSnapshot(allConfigRows, wid, snapshotId);
-        const schemaRows = configRows.filter(
-          (row) => String(row.section) === "__schema__",
-        );
-        const regularConfigRows = configRows.filter(
-          (row) => String(row.section) !== "__schema__",
-        );
-
-        if (marker) {
-          validateManifest(marker, {
-            itemCount: itemRows.length,
-            edgeCount: edgeRows.length,
-            principalCount: principalRows.length,
-            grantCount: grantRows.length,
-            jobCount: jobRows.length,
-            configCount: regularConfigRows.length,
-            schemaEntryCount: schemaRows.length,
-          });
-        }
-
-        const items: Item[] = itemRows.map((row) => {
-          const fabricId = realText(row.fabricId);
-          const itemType = toItemType(row.itemType);
-          if (!fabricId || !itemType) {
-            throw new Error("snapshot contains malformed Fabric item metadata");
-          }
-          return {
-            fabricId,
-            displayName: realText(row.displayName) ?? fabricId,
-            itemType,
-            description: realText(row.description),
-            ownerName: realText(row.ownerName),
-            ownerEmail: realText(row.ownerEmail),
-            health: (row.health as Item["health"]) ?? "unknown",
-            endorsement:
-              (row.endorsement as Item["endorsement"]) ?? "none",
-            sensitivity: realText(row.sensitivity),
-            tags: row.tags
-              ? String(row.tags)
-                  .split(",")
-                  .map((tag) => tag.trim())
-                  .filter(Boolean)
-              : [],
-            lastRefresh: row.lastRefresh
-              ? new Date(row.lastRefresh as string).toISOString()
-              : undefined,
-          };
-        });
-        if (
-          new Set(items.map((item) => item.fabricId)).size !== items.length
-        ) {
-          throw new Error("snapshot contains duplicate Fabric item IDs");
-        }
-        if (items.length === 0 && comments.length === 0) continue;
-
-        const itemIds = new Set(items.map((item) => item.fabricId));
-        const edges: Edge[] = normalizeLineageEdges(
-          items,
-          edgeRows.map((row) => ({
-            source: String(row.sourceFabricId),
-            target: String(row.targetFabricId),
-            relation: String(row.relation),
-            broken: !!row.broken,
-          })),
-        );
-        const principals: Principal[] = principalRows.map((row) => ({
-          principalId: String(row.principalId),
-          displayName: String(row.displayName),
-          kind: row.kind as Principal["kind"],
-          email: (row.email as string) || undefined,
-          external: !!row.external,
-          workspaceRole: "Viewer",
-        }));
-        const grants: Grant[] = grantRows.map((row) => ({
-          itemFabricId: (row.itemFabricId as string) || undefined,
-          principalRef: String(row.principalRef),
-          accessLevel: row.accessLevel as Grant["accessLevel"],
-          source: row.source as Grant["source"],
-          roleName: (row.roleName as string) || undefined,
-          flag: (row.flag as Grant["flag"]) || undefined,
-        }));
-        const jobs: Job[] = jobRows.map((row) => ({
-          itemFabricId: String(row.itemFabricId),
-          itemName: String(row.itemName),
-          jobType: String(row.jobType),
-          status: row.status as Job["status"],
-          startedAt: row.startedAt
-            ? new Date(row.startedAt as string).toISOString()
-            : new Date().toISOString(),
-          durationSec: Number(row.durationSec ?? 0),
-          message: (row.message as string) || undefined,
-        }));
-        const config = regularConfigRows.map((row) => ({
-          itemFabricId: String(row.itemFabricId),
-          section: String(row.section),
-          label: String(row.label),
-          value: String(row.value ?? ""),
-        }));
-        const schema = parseSchemaRows(schemaRows, itemIds);
-        const syncRuns = rowsForSnapshot(allSyncRows, wid, snapshotId)
-          .map((row) => ({
-            id: String(row.id),
-            startedAt: row.startedAt
-              ? new Date(row.startedAt as string).toISOString()
-              : new Date().toISOString(),
-            finishedAt: row.finishedAt
-              ? new Date(row.finishedAt as string).toISOString()
-              : undefined,
-            status:
-              (row.status as "running" | "completed" | "failed") ??
-              "completed",
-            itemsSynced:
-              row.itemsSynced != null ? Number(row.itemsSynced) : undefined,
-            triggeredBy: (row.triggeredBy as string) || undefined,
-            summary: (row.summary as string) || undefined,
-          }))
-          .sort(
-            (left, right) =>
-              Date.parse(right.startedAt) - Date.parse(left.startedAt),
-          );
-        const workspace: WorkspaceInfo = marker
-          ? {
-              fabricId: textOrFallback(
-                marker.fabricId,
-                WS_FALLBACK.fabricId,
-              ),
-              displayName: textOrFallback(
-                marker.displayName,
-                WS_FALLBACK.displayName,
-              ),
-              capacity: textOrFallback(
-                marker.capacity,
-                WS_FALLBACK.capacity,
-              ),
-              region: textOrFallback(marker.region, WS_FALLBACK.region),
-              deploymentId:
-                textOrFallback(marker.deploymentId, "") || undefined,
-            }
-          : WS_FALLBACK;
-
+        const snapshotId = String(marker.snapshotId);
+        const rows = await readSnapshotRows(read, wid, snapshotId, true);
+        const catalog = catalogFromRows(marker, rows);
         return {
-          workspace,
-          items,
-          edges,
-          principals,
-          grants,
-          jobs,
-          config,
-          schema,
+          ...catalog,
           comments,
-          syncRuns,
+          syncRuns: syncRunsFromRows(
+            rows.syncRows,
+            catalog.workspace.syncedAt ?? new Date(0).toISOString(),
+          ),
         };
       } catch (error) {
         console.warn(
           "[atlas] ignored incomplete database snapshot",
-          marker?.snapshotId,
+          marker.snapshotId,
           error,
         );
       }
@@ -842,4 +894,67 @@ export async function loadFromDb(isPreview: boolean): Promise<AtlasData | null> 
     console.warn("[atlas] loadFromDb failed", error);
     return null;
   }
+}
+
+/**
+ * Build snapshot history from the validated current catalog and older trusted
+ * manifests. Invalid older snapshots are skipped without affecting current data.
+ */
+export async function loadHistoryFromDb(
+  isPreview: boolean,
+  currentData: AtlasData,
+  limit = 12,
+): Promise<AtlasHistory> {
+  const cap = Math.max(0, Math.floor(limit));
+  if (cap === 0) return buildAtlasHistory([]);
+
+  const current = snapshotFromData(
+    currentData,
+    currentData.workspace.snapshotId ?? (isPreview ? "preview-current" : "current"),
+    currentData.workspace.syncedAt ??
+      currentData.syncRuns[0]?.finishedAt ??
+      currentData.syncRuns[0]?.startedAt ??
+      "",
+  );
+  if (isPreview || !currentData.workspace.snapshotId || cap === 1) {
+    return buildAtlasHistory([current]);
+  }
+
+  const data = await dataApi();
+  const wid = workspaceId();
+  const read = readerFor(data);
+  const workspaceRows = await read("Workspace", { fabricId: { eq: wid } });
+  const currentTime = Date.parse(current.syncedAt);
+  const snapshots: HistoricalSnapshot[] = [current];
+
+  for (const marker of trustedMarkers(workspaceRows, wid)) {
+    if (snapshots.length >= cap) break;
+    const snapshotId = String(marker.snapshotId);
+    if (sameText(snapshotId, current.snapshotId)) continue;
+    const markerTime = Date.parse(String(marker.syncedAt ?? ""));
+    if (
+      Number.isFinite(currentTime) &&
+      Number.isFinite(markerTime) &&
+      markerTime > currentTime
+    ) {
+      continue;
+    }
+    try {
+      const rows = await readSnapshotRows(read, wid, snapshotId, false);
+      const catalog = catalogFromRows(marker, rows);
+      snapshots.push({
+        snapshotId,
+        syncedAt: catalog.workspace.syncedAt ?? String(marker.syncedAt ?? ""),
+        catalog,
+      });
+    } catch (error) {
+      console.warn(
+        "[atlas] ignored invalid historical snapshot",
+        snapshotId,
+        error,
+      );
+    }
+  }
+
+  return buildAtlasHistory(snapshots);
 }

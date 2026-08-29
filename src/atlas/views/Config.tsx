@@ -10,12 +10,19 @@ import {
   X,
 } from "lucide-react";
 import { useAtlas } from "../store";
+import type { AtlasFocusRequest } from "../navigation";
 import { Card, EndorsementChip, HealthChip, SectionLabel, TypeGlyph, cn } from "../ui";
 import { typeMeta, type ConfigKV, type Item } from "../model";
 
 type ItemFilter = "all" | "configured" | "empty";
 
-export function ConfigView({ embedded = false }: { embedded?: boolean } = {}) {
+export function ConfigView({
+  embedded = false,
+  focus,
+}: {
+  embedded?: boolean;
+  focus?: AtlasFocusRequest;
+} = {}) {
   const { data } = useAtlas();
   const { items, config } = data;
   const sectionIdPrefix = useId();
@@ -31,7 +38,9 @@ export function ConfigView({ embedded = false }: { embedded?: boolean } = {}) {
   }, [config]);
 
   const firstWithConfig = items.find((item) => configByItem.has(item.fabricId)) ?? items[0];
-  const [selectedId, setSelectedId] = useState<string>(firstWithConfig?.fabricId ?? "");
+  const [selectedId, setSelectedId] = useState<string>(
+    focus?.itemId ?? firstWithConfig?.fabricId ?? "",
+  );
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [itemSearch, setItemSearch] = useState("");
   const [itemFilter, setItemFilter] = useState<ItemFilter>("all");

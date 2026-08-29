@@ -1,4 +1,10 @@
-import type { Edge, Item, ItemType } from "./model";
+import type {
+  AtlasData,
+  Edge,
+  Item,
+  ItemType,
+  ModelTableSchema,
+} from "./model";
 
 export type LineageDirection = "upstream" | "downstream";
 
@@ -11,6 +17,38 @@ export interface LineagePath {
 export interface LineageImpact {
   upstream: LineagePath;
   downstream: LineagePath;
+}
+
+export interface LineageImpactItem {
+  id: string;
+  distance: number;
+  item?: Item;
+}
+
+export interface ItemImpactReport {
+  itemId: string;
+  item?: Item;
+  upstream: LineageImpactItem[];
+  downstream: LineageImpactItem[];
+  relevantEdges: Edge[];
+  unresolvedEndpointIds: string[];
+}
+
+export type SchemaObjectKind = "table" | "view" | "column" | "measure";
+
+export interface SchemaObjectRef {
+  itemId: string;
+  kind: SchemaObjectKind;
+  name: string;
+  tableName?: string;
+}
+
+export interface SchemaObjectImpactReport extends ItemImpactReport {
+  object: SchemaObjectRef;
+  objectExists: boolean;
+  granularity: "item";
+  verifiedObjectDependencies: false;
+  detail: string;
 }
 
 export interface StagedLayout {
@@ -114,11 +152,142 @@ export function getLineageImpact(
     return { upstream: empty(), downstream: empty() };
   }
 
+  const depth =
+    Number.isFinite(maxDepth) && maxDepth >= 0
+      ? Math.floor(maxDepth)
+      : maxDepth === Number.POSITIVE_INFINITY
+        ? maxDepth
+        : 0;
+
   return {
-    upstream: walkLineage(edges, startId, "upstream", maxDepth),
-    downstream: walkLineage(edges, startId, "downstream", maxDepth),
+    upstream: walkLineage(edges, startId, "upstream", depth),
+    downstream: walkLineage(edges, startId, "downstream", depth),
   };
 }
+
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function reportImpactItems(
+  path: LineagePath,
+  itemById: Map<string, Item>,
+): LineageImpactItem[] {
+  return [...path.ids]
+    .map((id) => ({
+      id,
+      distance: path.distance.get(id) ?? Number.POSITIVE_INFINITY,
+      item: itemById.get(id),
+    }))
+    .sort(
+      (left, right) =>
+        left.distance - right.distance || compareText(left.id, right.id),
+    );
+}
+
+export function getItemImpactReport(
+  data: Pick<AtlasData, "items" | "edges">,
+  itemId: string,
+  maxDepth?: number,
+): ItemImpactReport;
+export function getItemImpactReport(
+  items: Item[],
+  edges: Edge[],
+  itemId: string,
+  maxDepth?: number,
+): ItemImpactReport;
+export function getItemImpactReport(
+  dataOrItems: Pick<AtlasData, "items" | "edges"> | Item[],
+  itemIdOrEdges: string | Edge[],
+  maxDepthOrItemId?: number | string,
+  maybeMaxDepth?: number,
+): ItemImpactReport {
+  const data = Array.isArray(dataOrItems)
+    ? {
+        items: dataOrItems,
+        edges: itemIdOrEdges as Edge[],
+        itemId: maxDepthOrItemId as string,
+        maxDepth: maybeMaxDepth,
+      }
+    : {
+        items: dataOrItems.items,
+        edges: dataOrItems.edges,
+        itemId: itemIdOrEdges as string,
+        maxDepth: maxDepthOrItemId as number | undefined,
+      };
+  const impact = getLineageImpact(data.edges, data.itemId, data.maxDepth);
+  const itemById = new Map(data.items.map((item) => [item.fabricId, item]));
+  const relevantKeys = new Set([
+    ...impact.upstream.edgeKeys,
+    ...impact.downstream.edgeKeys,
+  ]);
+  const relevantEdges = data.edges
+    .filter((edge) => relevantKeys.has(lineageEdgeKey(edge)))
+    .sort((left, right) =>
+      compareText(lineageEdgeKey(left), lineageEdgeKey(right)),
+    );
+  const unresolvedEndpointIds = [
+    ...new Set(
+      relevantEdges
+        .flatMap((edge) => [edge.source, edge.target])
+        .concat(data.itemId)
+        .filter((id) => !itemById.has(id)),
+    ),
+  ].sort(compareText);
+
+  return {
+    itemId: data.itemId,
+    item: itemById.get(data.itemId),
+    upstream: reportImpactItems(impact.upstream, itemById),
+    downstream: reportImpactItems(impact.downstream, itemById),
+    relevantEdges,
+    unresolvedEndpointIds,
+  };
+}
+
+export const buildItemImpactReport = getItemImpactReport;
+
+function schemaObjectExists(
+  tables: ModelTableSchema[],
+  object: SchemaObjectRef,
+): boolean {
+  if (object.kind === "table" || object.kind === "view") {
+    return tables.some((table) => {
+      if (table.name !== object.name) return false;
+      const isView = table.objectType?.trim().toLowerCase() === "view";
+      return object.kind === "view" ? isView : !isView;
+    });
+  }
+
+  if (!object.tableName) return false;
+  const table = tables.find((candidate) => candidate.name === object.tableName);
+  if (!table) return false;
+  return object.kind === "column"
+    ? table.columns.some((column) => column.name === object.name)
+    : table.measures.some((measure) => measure.name === object.name);
+}
+
+export function getSchemaObjectImpactReport(
+  data: Pick<AtlasData, "items" | "edges" | "schema">,
+  object: SchemaObjectRef,
+  maxDepth?: number,
+): SchemaObjectImpactReport {
+  const itemReport = getItemImpactReport(data, object.itemId, maxDepth);
+  return {
+    ...itemReport,
+    object: { ...object },
+    objectExists: schemaObjectExists(
+      data.schema?.[object.itemId] ?? [],
+      object,
+    ),
+    granularity: "item",
+    verifiedObjectDependencies: false,
+    detail:
+      "Fabric lineage verifies dependencies at item level only; this report does not infer schema-object lineage from matching names.",
+  };
+}
+
+export const buildSchemaObjectImpactReport = getSchemaObjectImpactReport;
 
 export function itemStage(type: ItemType): number {
   return ITEM_STAGE[type] ?? 0;

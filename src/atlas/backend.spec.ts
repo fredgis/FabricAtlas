@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SAMPLE_DATA } from "./model";
-import { loadFromDb, runFabricSync } from "./backend";
+import { loadFromDb, loadHistoryFromDb, runFabricSync } from "./backend";
 import { ATLAS_CONFIG } from "./config";
 
 const mocks = vi.hoisted(() => {
@@ -114,8 +114,13 @@ describe("Rayfin snapshot persistence", () => {
   });
 
   it("publishes the manifest only after all snapshot rows succeed", async () => {
-    await expect(runFabricSync(false, identity)).resolves.toMatchObject({
+    const persisted = await runFabricSync(false, identity);
+    expect(persisted).toMatchObject({
       items: SAMPLE_DATA.items,
+      workspace: {
+        snapshotId: expect.any(String),
+        syncedAt: expect.any(String),
+      },
     });
 
     expect(mocks.data.Workspace.create).toHaveBeenCalledTimes(1);
@@ -134,6 +139,22 @@ describe("Rayfin snapshot persistence", () => {
         mocks.data[name].create.mock.invocationCallOrder as number[],
     );
     expect(Math.max(...contentOrders)).toBeLessThan(markerOrder);
+  });
+
+  it("round-trips Fabric item creation and update timestamps", async () => {
+    const atlas = structuredClone(SAMPLE_DATA);
+    atlas.items[0].createdAt = "2026-08-20T08:00:00.000Z";
+    atlas.items[0].updatedAt = "2026-08-29T08:00:00.000Z";
+    mocks.mapSyncToAtlas.mockReturnValue(atlas);
+
+    await runFabricSync(false, identity);
+
+    expect(mocks.data.FabricItem.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        itemCreatedAt: new Date("2026-08-20T08:00:00.000Z"),
+        itemUpdatedAt: new Date("2026-08-29T08:00:00.000Z"),
+      }),
+    );
   });
 
   it("falls back to the previous complete manifest during hydration", async () => {
@@ -193,7 +214,11 @@ describe("Rayfin snapshot persistence", () => {
     ]);
 
     await expect(loadFromDb(false)).resolves.toMatchObject({
-      workspace: { displayName: "Last known good" },
+      workspace: {
+        displayName: "Last known good",
+        snapshotId: oldSnapshot,
+        syncedAt: "2026-08-29T19:00:00.000Z",
+      },
       items: [{ fabricId: "old-item", displayName: "Preserved" }],
     });
     expect(mocks.data.FabricItem.select).toHaveBeenCalledWith(
@@ -229,6 +254,8 @@ describe("Rayfin snapshot persistence", () => {
         itemType: "Lakehouse",
         health: "unknown",
         endorsement: "none",
+        itemCreatedAt: "2026-08-20T08:00:00.000Z",
+        itemUpdatedAt: "2026-08-29T08:00:00.000Z",
       },
     ]);
 
@@ -238,6 +265,8 @@ describe("Rayfin snapshot persistence", () => {
           fabricId: "real-item-id",
           displayName: "real-item-id",
           itemType: "Lakehouse",
+          createdAt: "2026-08-20T08:00:00.000Z",
+          updatedAt: "2026-08-29T08:00:00.000Z",
         },
       ],
     });
@@ -331,5 +360,93 @@ describe("Rayfin snapshot persistence", () => {
     await expect(loadFromDb(false)).resolves.toMatchObject({
       syncRuns: [{ id: "trusted", triggeredBy: identity.email }],
     });
+  });
+
+  it("loads valid older snapshots with snapshot-scoped filters and skips invalid candidates", async () => {
+    const invalidSnapshot = "88888888-8888-4888-8888-888888888888";
+    const validSnapshot = "99999999-9999-4999-8999-999999999999";
+    mocks.data.Workspace.findMany.mockResolvedValue([
+      {
+        snapshotId: invalidSnapshot,
+        writerEmail: identity.email,
+        fabricId: workspaceId,
+        displayName: "Invalid",
+        itemCount: 2,
+        edgeCount: 0,
+        principalCount: 0,
+        grantCount: 0,
+        jobCount: 0,
+        configCount: 0,
+        schemaEntryCount: 0,
+        syncedAt: "2026-08-29T19:00:00.000Z",
+      },
+      {
+        snapshotId: validSnapshot,
+        writerEmail: identity.email,
+        fabricId: workspaceId,
+        displayName: "Valid",
+        itemCount: 1,
+        edgeCount: 0,
+        principalCount: 0,
+        grantCount: 0,
+        jobCount: 0,
+        configCount: 0,
+        schemaEntryCount: 0,
+        syncedAt: "2026-08-29T18:00:00.000Z",
+      },
+    ]);
+    mocks.data.FabricItem.findMany.mockResolvedValue([
+      {
+        workspace_id: workspaceId,
+        snapshotId: invalidSnapshot,
+        writerEmail: identity.email,
+        fabricId: "partial",
+        displayName: "Partial",
+        itemType: "Lakehouse",
+        health: "unknown",
+        endorsement: "none",
+      },
+      {
+        workspace_id: workspaceId,
+        snapshotId: validSnapshot,
+        writerEmail: identity.email,
+        fabricId: "historical",
+        displayName: "Historical",
+        itemType: "Lakehouse",
+        health: "healthy",
+        endorsement: "none",
+      },
+    ]);
+    const current = structuredClone(SAMPLE_DATA);
+    current.workspace.snapshotId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    current.workspace.syncedAt = "2026-08-29T20:00:00.000Z";
+
+    const history = await loadHistoryFromDb(false, current, 2);
+
+    expect(history.snapshots.map((entry) => entry.snapshotId)).toEqual([
+      current.workspace.snapshotId,
+      validSnapshot,
+    ]);
+    expect(history.snapshots[1].catalog.items).toEqual([
+      expect.objectContaining({ fabricId: "historical" }),
+    ]);
+    expect(history.snapshots[1].catalog).not.toHaveProperty("comments");
+    expect(history.snapshots[1].catalog).not.toHaveProperty("syncRuns");
+    expect(mocks.data.FabricItem.findMany).toHaveBeenCalledWith({
+      workspace_id: { eq: workspaceId },
+      snapshotId: { eq: invalidSnapshot },
+    });
+    expect(mocks.data.FabricItem.findMany).toHaveBeenCalledWith({
+      workspace_id: { eq: workspaceId },
+      snapshotId: { eq: validSnapshot },
+    });
+  });
+
+  it("returns one preview history point without querying Rayfin", async () => {
+    const preview = await loadHistoryFromDb(true, structuredClone(SAMPLE_DATA));
+
+    expect(preview.snapshots).toHaveLength(1);
+    expect(preview.changes).toEqual([]);
+    expect(mocks.data.Workspace.select).not.toHaveBeenCalled();
   });
 });

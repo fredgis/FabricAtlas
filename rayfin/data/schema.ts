@@ -7,6 +7,8 @@ import { JobRun } from './JobRun.js';
 import { ConfigEntry } from './ConfigEntry.js';
 import { Comment } from './Comment.js';
 import { SyncRun } from './SyncRun.js';
+import { SavedView } from './SavedView.js';
+import { AccessReview } from './AccessReview.js';
 
 /**
  * Schema type map — enables full type-safety through RayfinClient
@@ -22,6 +24,8 @@ export type AtlasSchema = {
   ConfigEntry: ConfigEntry;
   Comment: Comment;
   SyncRun: SyncRun;
+  SavedView: SavedView;
+  AccessReview: AccessReview;
 };
 
 export const schema = [
@@ -34,4 +38,6 @@ export const schema = [
   ConfigEntry,
   Comment,
   SyncRun,
+  SavedView,
+  AccessReview,
 ];

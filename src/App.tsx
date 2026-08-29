@@ -14,10 +14,11 @@ import {
   Compass,
   FolderTree,
   Info,
-  Lock,
+  KeyRound,
   Menu,
   Moon,
   RefreshCw,
+  Search,
   Settings2,
   ShieldCheck,
   Sun,
@@ -27,6 +28,13 @@ import {
 
 import { useThemeContext } from "@/hooks/theme.context";
 import { useAtlas } from "./atlas/store";
+import { CommandPalette } from "./atlas/components/CommandPalette";
+import {
+  navigationForSearch,
+  type AtlasFocusRequest,
+  type AtlasNavigation,
+  type Tab,
+} from "./atlas/navigation";
 import { Avatar, cn } from "./atlas/ui";
 import { relativeTime } from "./atlas/model";
 
@@ -35,22 +43,13 @@ import { MapView } from "./atlas/views/Map";
 import { CatalogView } from "./atlas/views/Catalog";
 import { AssetCatalogView } from "./atlas/views/AssetCatalog";
 import { AccessView } from "./atlas/views/Access";
-import { SensitivityView } from "./atlas/views/Sensitivity";
+import { GovernanceCenterView } from "./atlas/views/GovernanceCenter";
 import { JobsView } from "./atlas/views/Jobs";
 import { WorkspaceHubView } from "./atlas/views/WorkspaceHub";
 import { AboutView } from "./atlas/views/About";
 import { AtlasBootView, FirstSyncView } from "./atlas/views/FirstSync";
 
-export type Tab =
-  | "overview"
-  | "map"
-  | "catalog"
-  | "assets"
-  | "access"
-  | "sensitivity"
-  | "jobs"
-  | "workspace"
-  | "about";
+export type { Tab } from "./atlas/navigation";
 
 const NAV_GROUPS: {
   label: string;
@@ -68,8 +67,8 @@ const NAV_GROUPS: {
   {
     label: "Govern",
     items: [
-      { id: "access", label: "Access", icon: ShieldCheck },
-      { id: "sensitivity", label: "Sensitivity", icon: Lock },
+      { id: "governance", label: "Governance Center", icon: ShieldCheck },
+      { id: "access", label: "Access Review", icon: KeyRound },
     ],
   },
   {
@@ -87,14 +86,24 @@ const NAV_GROUPS: {
 const NAV = NAV_GROUPS.flatMap((group) => group.items);
 
 function tabFromHash(): Tab {
-  const raw = window.location.hash.replace("#", "");
+  const raw = window.location.hash.replace("#", "").split("?")[0];
   if (raw === "config" || raw === "comments") return "workspace";
+  if (raw === "sensitivity") return "governance";
   const tab = raw as Tab;
   return NAV.some((item) => item.id === tab) ? tab : "overview";
 }
 
 function App() {
   const [tab, setTab] = useState<Tab>(tabFromHash);
+  const [focus, setFocus] = useState<AtlasFocusRequest | undefined>(() =>
+    window.location.hash.replace("#", "").startsWith("sensitivity")
+      ? {
+          requestId: crypto.randomUUID(),
+          governanceSection: "coverage",
+        }
+      : undefined,
+  );
+  const [commandOpen, setCommandOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const { isDark, toggleTheme } = useThemeContext();
   const {
@@ -114,7 +123,10 @@ function App() {
   } = useAtlas();
 
   useEffect(() => {
-    window.location.hash = tab;
+    const nextHash = `#${tab}`;
+    if (window.location.hash !== nextHash) {
+      window.history.pushState(null, "", nextHash);
+    }
   }, [tab]);
 
   useEffect(() => {
@@ -127,17 +139,44 @@ function App() {
   }, [navOpen]);
 
   useEffect(() => {
-    const onHash = () => {
-      setTab(tabFromHash());
+    const openSearch = (event: KeyboardEvent) => {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "k" &&
+        !(event.target instanceof HTMLInputElement) &&
+        !(event.target instanceof HTMLTextAreaElement) &&
+        !(event.target instanceof HTMLSelectElement)
+      ) {
+        event.preventDefault();
+        setCommandOpen(true);
+      }
     };
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
+    window.addEventListener("keydown", openSearch);
+    return () => window.removeEventListener("keydown", openSearch);
   }, []);
 
-  const nav = (t: Tab) => {
-    setTab(t);
+  useEffect(() => {
+    const onHash = () => {
+      setTab(tabFromHash());
+      setFocus(undefined);
+    };
+    window.addEventListener("hashchange", onHash);
+    window.addEventListener("popstate", onHash);
+    return () => {
+      window.removeEventListener("hashchange", onHash);
+      window.removeEventListener("popstate", onHash);
+    };
+  }, []);
+
+  const navigate = (navigation: AtlasNavigation | Tab) => {
+    const next =
+      typeof navigation === "string" ? { tab: navigation } : navigation;
+    setTab(next.tab);
+    setFocus(next.focus);
     setNavOpen(false);
   };
+
+  const nav = (t: Tab) => navigate(t);
 
   if (!isPreview && hydrating) return <AtlasBootView />;
   if (!isPreview && (!hasData || requiresDeploymentSync)) {
@@ -252,6 +291,25 @@ function App() {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-[8px] sm:gap-[12px] lg:gap-[14px]">
+            <button
+              type="button"
+              onClick={() => setCommandOpen(true)}
+              className="hidden h-[34px] items-center gap-s rounded-lg border border-border bg-card px-m text-200 text-muted-foreground hover:bg-accent hover:text-foreground md:flex"
+            >
+              <Search className="icon-size-100" aria-hidden="true" />
+              Search workspace
+              <kbd className="rounded border border-border bg-muted px-xs py-xxs font-mono text-100">
+                Ctrl K
+              </kbd>
+            </button>
+            <button
+              type="button"
+              onClick={() => setCommandOpen(true)}
+              aria-label="Search workspace"
+              className="flex h-[34px] w-[34px] items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground md:hidden"
+            >
+              <Search className="icon-size-200" />
+            </button>
             <span
               className={cn(
                 "hidden max-w-[240px] truncate text-[12px] text-muted-foreground sm:inline",
@@ -312,26 +370,54 @@ function App() {
         <main className="min-h-0 flex-1 overflow-auto">
           <AnimatePresence mode="wait">
             <motion.div
-              key={tab}
+              key={`${tab}:${focus?.requestId ?? "default"}`}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.16, ease: "easeOut" }}
               className="h-full"
             >
-              {tab === "overview" && <OverviewView onOpen={nav} />}
+              {tab === "overview" && <OverviewView onOpen={navigate} />}
               {tab === "map" && <MapView />}
-              {tab === "catalog" && <CatalogView />}
-              {tab === "assets" && <AssetCatalogView />}
-              {tab === "access" && <AccessView />}
-              {tab === "sensitivity" && <SensitivityView />}
-              {tab === "jobs" && <JobsView />}
-              {tab === "workspace" && <WorkspaceHubView />}
+              {tab === "catalog" && <CatalogView focus={focus} />}
+              {tab === "assets" && <AssetCatalogView focus={focus} />}
+              {tab === "governance" && (
+                <GovernanceCenterView
+                  focus={focus}
+                  onNavigate={navigate}
+                />
+              )}
+              {tab === "access" && (
+                <AccessView
+                  initialItemId={focus?.itemId}
+                  initialPrincipalId={focus?.principalId}
+                  initialFilters={focus?.filters}
+                />
+              )}
+              {tab === "sensitivity" && (
+                <GovernanceCenterView
+                  focus={{
+                    requestId: focus?.requestId ?? "legacy-sensitivity",
+                    governanceSection: "coverage",
+                  }}
+                  onNavigate={navigate}
+                />
+              )}
+              {tab === "jobs" && <JobsView focus={focus} />}
+              {tab === "workspace" && <WorkspaceHubView focus={focus} />}
               {tab === "about" && <AboutView />}
             </motion.div>
           </AnimatePresence>
         </main>
       </div>
+      {commandOpen && (
+        <CommandPalette
+          data={data}
+          open
+          onClose={() => setCommandOpen(false)}
+          onSelect={(result) => navigate(navigationForSearch(result))}
+        />
+      )}
     </div>
   );
 }

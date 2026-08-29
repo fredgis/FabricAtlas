@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { MessagesSquare, Settings2 } from "lucide-react";
+import type { AtlasFocusRequest } from "../navigation";
 import { useAtlas } from "../store";
 import { Card, SectionLabel, cn } from "../ui";
 import { CommentsView } from "./Comments";
@@ -8,9 +9,15 @@ import { ConfigView } from "./Config";
 
 type HubSection = "configuration" | "notes";
 
-export function WorkspaceHubView() {
+export function WorkspaceHubView({
+  focus,
+}: {
+  focus?: AtlasFocusRequest;
+} = {}) {
   const { data } = useAtlas();
-  const [section, setSection] = useState<HubSection>("configuration");
+  const [section, setSection] = useState<HubSection>(
+    focus?.workspaceSection ?? "configuration",
+  );
 
   const tabs = [
     {
@@ -98,9 +105,9 @@ export function WorkspaceHubView() {
           transition={{ duration: 0.16, ease: "easeOut" }}
         >
           {section === "configuration" ? (
-            <ConfigView embedded />
+            <ConfigView embedded focus={focus} />
           ) : (
-            <CommentsView embedded />
+            <CommentsView embedded focus={focus} />
           )}
         </motion.div>
       </AnimatePresence>

@@ -1,4 +1,4 @@
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   Loader2,
@@ -7,15 +7,22 @@ import {
   Send,
 } from "lucide-react";
 import { useAtlas } from "../store";
+import type { AtlasFocusRequest } from "../navigation";
 import { Avatar, Card, SectionLabel, cn } from "../ui";
 import { relativeTime, type Comment, type Item } from "../model";
 
-export function CommentsView({ embedded = false }: { embedded?: boolean } = {}) {
+export function CommentsView({
+  embedded = false,
+  focus,
+}: {
+  embedded?: boolean;
+  focus?: AtlasFocusRequest;
+} = {}) {
   const { data, addComment, currentUser } = useAtlas();
   const { comments, items } = data;
 
   const [text, setText] = useState("");
-  const [target, setTarget] = useState<string>("");
+  const [target, setTarget] = useState<string>(focus?.itemId ?? "");
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState("");
 
@@ -33,6 +40,16 @@ export function CommentsView({ embedded = false }: { embedded?: boolean } = {}) 
   );
 
   const selectedTarget = target ? itemById.get(target) : undefined;
+
+  useEffect(() => {
+    if (focus?.commentId) {
+      window.requestAnimationFrame(() =>
+        document
+          .getElementById(`comment-${focus.commentId}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" }),
+      );
+    }
+  }, [focus?.commentId]);
 
   const post = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -196,8 +213,14 @@ export function CommentsView({ embedded = false }: { embedded?: boolean } = {}) 
                   ? itemById.get(comment.itemFabricId)
                   : undefined;
                 return (
-                  <article key={comment.id}>
-                    <Card className="overflow-hidden border-l border-l-primary/40">
+                  <article key={comment.id} id={`comment-${comment.id}`}>
+                    <Card
+                      className={cn(
+                        "overflow-hidden border-l border-l-primary/40",
+                        focus?.commentId === comment.id &&
+                          "ring-2 ring-primary/35",
+                      )}
+                    >
                       <div className="p-l">
                         <div className="flex items-start gap-m">
                           <Avatar name={comment.authorName} />

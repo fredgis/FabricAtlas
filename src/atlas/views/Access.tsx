@@ -1,104 +1,113 @@
-import { Fragment, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  Bot,
-  Boxes,
+  AlertTriangle,
+  Check,
   ChevronDown,
   ChevronRight,
-  Crown,
-  FolderTree,
-  Globe,
-  ShieldAlert,
-  UserX,
+  Clipboard,
+  Download,
+  FilterX,
+  Flag,
+  Layers3,
+  Search,
+  ShieldCheck,
   Users,
+  X,
 } from "lucide-react";
-import { useAtlas } from "../store";
-import { Card, PrincipalAvatar, TypeGlyph, cn } from "../ui";
+import { SavedViewsMenu } from "../components/SavedViewsMenu";
 import {
-  typeMeta,
-  schemaFor,
-  type AccessLevel,
-  type AccessSource,
-  type Grant,
-  type Item,
-  type ItemType,
-  type Principal,
-  type WorkspaceRole,
-} from "../model";
+  deleteAccessReview,
+  loadAccessReviews,
+  saveAccessReview,
+  type AccessReviewDecision,
+  type AccessReviewStatus,
+} from "../access-reviews";
+import { accessRowsToCsv } from "../access-export";
+import {
+  buildAccessReviewRows,
+  selectAccessByItem,
+  selectAccessByPrincipal,
+  summarizeAccessReview,
+  type AccessReviewRow,
+} from "../governance";
+import type { AccessLevel, AccessSource, Grant } from "../model";
+import type { SavedViewFilters } from "../saved-views";
+import { useAtlas } from "../store";
+import { Card, PrincipalAvatar, SectionLabel, TypeGlyph, cn } from "../ui";
 
-const ACCESS_STYLE: Record<AccessLevel, { className: string; label: string }> = {
+type AccessMode = "matrix" | "principals";
+type OriginFilter = "all" | AccessReviewRow["origin"];
+type RiskFilter =
+  | "all"
+  | "flagged"
+  | "external"
+  | "broad"
+  | "servicePrincipal"
+  | "admin"
+  | "resolution";
+
+const ACCESS_STYLE: Record<
+  AccessLevel,
+  { label: string; className: string }
+> = {
   owner: {
+    label: "Owner",
     className:
       "border-status-warning/30 bg-status-warning/10 text-status-warning",
-    label: "Owner",
   },
   edit: {
+    label: "Edit",
     className:
       "border-status-healthy/30 bg-status-healthy/10 text-status-healthy",
-    label: "Edit",
   },
   view: {
-    className: "border-primary/25 bg-primary/10 text-brand-foreground",
     label: "View",
+    className: "border-primary/25 bg-primary/10 text-brand-foreground",
   },
-  none: { className: "", label: "—" },
+  none: {
+    label: "None",
+    className: "border-border bg-muted text-muted-foreground",
+  },
 };
 
-function AccessChip({ level }: { level: AccessLevel }) {
-  if (level === "none") {
-    return (
-      <span className="text-200 font-medium text-muted-foreground/70">—</span>
-    );
-  }
-
-  const access = ACCESS_STYLE[level];
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-md border px-s py-xxs text-[length:var(--text-200)] font-semibold",
-        access.className,
-      )}
-    >
-      {access.label}
-    </span>
-  );
-}
-
-const ROLE_STYLE: Record<WorkspaceRole, string> = {
-  Admin: "border-status-failing/30 bg-status-failing/10 text-status-failing",
-  Member:
-    "border-lineage-upstream/30 bg-lineage-upstream/10 text-lineage-upstream",
-  Contributor: "border-primary/25 bg-primary/10 text-brand-foreground",
-  Viewer:
-    "border-lineage-neutral/30 bg-lineage-neutral/10 text-muted-foreground",
+const ORIGIN_STYLE: Record<
+  AccessReviewRow["origin"],
+  { label: string; detail: string; className: string }
+> = {
+  workspace: {
+    label: "Inherited",
+    detail: "Workspace scope",
+    className:
+      "border-lineage-neutral/30 bg-lineage-neutral/10 text-muted-foreground",
+  },
+  item: {
+    label: "Direct",
+    detail: "Item scope",
+    className:
+      "border-lineage-upstream/30 bg-lineage-upstream/10 text-lineage-upstream",
+  },
+  mixed: {
+    label: "Mixed",
+    detail: "Workspace + item",
+    className:
+      "border-primary/25 bg-primary/10 text-brand-foreground",
+  },
 };
 
-function RoleBadge({ role }: { role: WorkspaceRole }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex rounded-full border px-s py-xxs text-[length:var(--text-200)] font-semibold",
-        ROLE_STYLE[role],
-      )}
-    >
-      {role}
-    </span>
-  );
-}
+const SOURCE_LABEL: Record<AccessSource, string> = {
+  workspaceRole: "Workspace role",
+  directShare: "Direct share",
+  group: "Group grant (recorded)",
+  orgLink: "Organization link",
+  itemOwner: "Item owner",
+};
 
-const CATEGORIES: { key: string; label: string; types: ItemType[] }[] = [
-  {
-    key: "sources",
-    label: "Sources",
-    types: ["Lakehouse", "Warehouse", "Eventhouse", "KQLDatabase"],
-  },
-  {
-    key: "transforms",
-    label: "Transforms",
-    types: ["Notebook", "DataPipeline", "Dataflow"],
-  },
-  { key: "models", label: "Models", types: ["SemanticModel"] },
-  { key: "reports", label: "Reports", types: ["Report", "Dashboard"] },
-];
+const FLAG_LABEL: Record<NonNullable<Grant["flag"]>, string> = {
+  external: "External",
+  broad: "Broad",
+  servicePrincipal: "Service principal",
+  admin: "Admin",
+};
 
 const ACCESS_RANK: Record<AccessLevel, number> = {
   none: 0,
@@ -107,387 +116,1137 @@ const ACCESS_RANK: Record<AccessLevel, number> = {
   owner: 3,
 };
 
-const SOURCE_LABEL: Record<AccessSource, string> = {
-  workspaceRole: "Inherited · Workspace",
-  group: "Inherited · Group",
-  directShare: "Direct share",
-  orgLink: "Org link",
-  itemOwner: "Item owner",
-};
-
-const SOURCE_TAG: Record<AccessSource, { label: string; className: string }> = {
-  workspaceRole: {
-    label: "Inherited",
-    className:
-      "border-lineage-neutral/30 bg-lineage-neutral/10 text-muted-foreground",
-  },
-  group: {
-    label: "Group",
-    className:
-      "border-lineage-neutral/30 bg-lineage-neutral/10 text-muted-foreground",
-  },
-  directShare: {
-    label: "Direct",
-    className:
-      "border-lineage-upstream/30 bg-lineage-upstream/10 text-lineage-upstream",
-  },
-  orgLink: {
-    label: "Org link",
-    className:
-      "border-status-warning/30 bg-status-warning/10 text-status-warning",
-  },
-  itemOwner: {
-    label: "Owner",
-    className:
-      "border-status-warning/30 bg-status-warning/10 text-status-warning",
-  },
-};
-
-const ASSET_STYLE: Record<string, string> = {
-  measure:
-    "border-object-measure/30 bg-object-measure/10 text-object-measure",
-  table: "border-object-source/30 bg-object-source/10 text-object-source",
-  column: "border-object-column/30 bg-object-column/10 text-object-column",
-};
-
-type RiskTone = "critical" | "warning" | "info";
-
-const RISK_STYLE: Record<
-  RiskTone,
-  { badge: string; icon: string; card: string; label: string }
+const REVIEW_STATUS: Record<
+  AccessReviewStatus,
+  { label: string; className: string }
 > = {
-  critical: {
-    badge:
-      "border-status-failing/30 bg-status-failing/10 text-status-failing",
-    icon: "bg-status-failing/10 text-status-failing",
-    card: "border-status-failing/30",
-    label: "Priority",
+  reviewed: {
+    label: "Reviewed",
+    className: "border-primary/25 bg-primary/10 text-brand-foreground",
   },
-  warning: {
-    badge:
+  accepted: {
+    label: "Accepted",
+    className:
+      "border-status-healthy/30 bg-status-healthy/10 text-status-healthy",
+  },
+  needsAction: {
+    label: "Needs action",
+    className:
       "border-status-warning/30 bg-status-warning/10 text-status-warning",
-    icon: "bg-status-warning/10 text-status-warning",
-    card: "border-status-warning/30",
-    label: "Review",
-  },
-  info: {
-    badge: "border-primary/25 bg-primary/10 text-brand-foreground",
-    icon: "bg-primary/10 text-brand-foreground",
-    card: "border-border",
-    label: "Monitor",
   },
 };
 
-export function AccessView() {
-  const { data } = useAtlas();
-  const { principals, grants, items } = data;
-  const [mode, setMode] = useState<"principal" | "object">("principal");
-
-  const objectItems = useMemo(
-    () =>
-      items.filter((item) =>
-        grants.some((grant) => grant.itemFabricId === item.fabricId),
-      ),
-    [items, grants],
+function AccessBadge({ level }: { level: AccessLevel }) {
+  const style = ACCESS_STYLE[level];
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-md border px-s py-xxs text-[length:var(--text-200)] font-semibold",
+        style.className,
+      )}
+    >
+      {style.label}
+    </span>
   );
-  const [selectedItemId, setSelectedItemId] = useState<string>(
-    objectItems.find((item) => item.itemType === "Report")?.fabricId ??
-      objectItems[0]?.fabricId ??
-      "",
-  );
+}
 
-  const principalByName = useMemo(
-    () =>
-      new Map<string, Principal>(
-        principals.map((principal) => [principal.displayName, principal]),
-      ),
-    [principals],
+function OriginBadge({ origin }: { origin: AccessReviewRow["origin"] }) {
+  const style = ORIGIN_STYLE[origin];
+  return (
+    <span
+      title={style.detail}
+      className={cn(
+        "inline-flex items-center rounded-md border px-s py-xxs text-[length:var(--text-200)] font-semibold",
+        style.className,
+      )}
+    >
+      {style.label}
+    </span>
   );
+}
 
-  const grantsByPrincipal = useMemo(() => {
-    const grouped = new Map<string, Grant[]>();
-    for (const grant of grants) {
-      const principalGrants = grouped.get(grant.principalRef) ?? [];
-      principalGrants.push(grant);
-      grouped.set(grant.principalRef, principalGrants);
+function isExternal(row: AccessReviewRow): boolean {
+  return (
+    row.principal?.kind === "guest" ||
+    row.principal?.external === true ||
+    row.flags.includes("external")
+  );
+}
+
+function rowFlags(row: AccessReviewRow): NonNullable<Grant["flag"]>[] {
+  if (!isExternal(row) || row.flags.includes("external")) return row.flags;
+  return ["external", ...row.flags];
+}
+
+function hasRisk(row: AccessReviewRow): boolean {
+  return rowFlags(row).length > 0 || row.principalResolution !== "resolved";
+}
+
+function matchesRisk(row: AccessReviewRow, risk: RiskFilter): boolean {
+  if (risk === "all") return true;
+  if (risk === "flagged") return hasRisk(row);
+  if (risk === "resolution") return row.principalResolution !== "resolved";
+  if (risk === "external") return isExternal(row);
+  return row.flags.includes(risk);
+}
+
+function searchableText(row: AccessReviewRow): string {
+  return [
+    row.principalRef,
+    row.principal?.email,
+    row.principal?.kind,
+    row.item.displayName,
+    row.item.itemType,
+    row.effectiveAccess,
+    row.origin,
+    ...row.flags,
+    ...row.applicableGrants.flatMap((grant) => [
+      grant.source,
+      grant.roleName,
+      grant.principalRef,
+    ]),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLocaleLowerCase();
+}
+
+function downloadCsv(rows: AccessReviewRow[]) {
+  const blob = new Blob([accessRowsToCsv(rows)], {
+    type: "text/csv;charset=utf-8",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `fabric-atlas-access-review-${new Date()
+    .toISOString()
+    .slice(0, 10)}.csv`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function PrincipalIdentity({ row }: { row: AccessReviewRow }) {
+  return (
+    <div className="flex min-w-0 items-center gap-s">
+      <PrincipalAvatar
+        name={row.principalRef}
+        kind={row.principal?.kind ?? "group"}
+        size={30}
+      />
+      <span className="min-w-0">
+        <span className="block truncate text-300 font-semibold">
+          {row.principalRef}
+        </span>
+        <span className="block truncate text-200 text-muted-foreground">
+          {row.principal?.email ??
+            (row.principalResolution === "resolved"
+              ? row.principal?.kind
+              : `${row.principalResolution} reference`)}
+        </span>
+      </span>
+    </div>
+  );
+}
+
+function ItemIdentity({ row }: { row: AccessReviewRow }) {
+  return (
+    <div className="flex min-w-0 items-center gap-s">
+      <TypeGlyph type={row.item.itemType} size={30} />
+      <span className="min-w-0">
+        <span className="block truncate text-300 font-semibold">
+          {row.item.displayName}
+        </span>
+        <span className="block text-200 text-muted-foreground">
+          {row.item.itemType}
+        </span>
+      </span>
+    </div>
+  );
+}
+
+function FlagBadges({ row }: { row: AccessReviewRow }) {
+  const flags = rowFlags(row);
+  if (flags.length === 0 && row.principalResolution === "resolved") {
+    return <span className="text-200 text-muted-foreground">None</span>;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-xs">
+      {flags.map((flag) => (
+        <span
+          key={flag}
+          className={cn(
+            "inline-flex rounded-md border px-s py-xxs text-[length:var(--text-200)] font-medium",
+            flag === "external" || flag === "broad"
+              ? "border-status-warning/30 bg-status-warning/10 text-status-warning"
+              : "border-border bg-muted text-muted-foreground",
+          )}
+        >
+          {FLAG_LABEL[flag]}
+        </span>
+      ))}
+      {row.principalResolution !== "resolved" && (
+        <span className="inline-flex rounded-md border border-status-warning/30 bg-status-warning/10 px-s py-xxs text-[length:var(--text-200)] font-medium text-status-warning">
+          {row.principalResolution === "ambiguous" ? "Ambiguous" : "Unresolved"}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function ReviewRowButton({
+  row,
+  selected,
+  onSelect,
+}: {
+  row: AccessReviewRow;
+  selected: boolean;
+  onSelect: (row: AccessReviewRow) => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      aria-label={`Review ${row.principalRef} access to ${row.item.displayName}`}
+      onClick={() => onSelect(row)}
+      className="w-full rounded-md text-left hover:text-brand-foreground"
+    >
+      <PrincipalIdentity row={row} />
+    </button>
+  );
+}
+
+function MatrixTable({
+  rows,
+  selectedId,
+  onSelect,
+}: {
+  rows: AccessReviewRow[];
+  selectedId: string | null;
+  onSelect: (row: AccessReviewRow) => void;
+}) {
+  if (rows.length === 0) return <EmptyResults />;
+
+  return (
+    <>
+      <div className="hidden overflow-x-auto md:block">
+        <table className="w-full min-w-max border-collapse">
+          <thead className="bg-secondary/70">
+            <tr className="border-b border-border text-200 text-muted-foreground">
+              <th className="px-l py-m text-left font-semibold">Principal</th>
+              <th className="px-l py-m text-left font-semibold">Item</th>
+              <th className="px-l py-m text-left font-semibold">Effective</th>
+              <th className="px-l py-m text-left font-semibold">Origin</th>
+              <th className="px-l py-m text-left font-semibold">Flags</th>
+              <th className="px-l py-m text-right font-semibold">Grants</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const selected = row.id === selectedId;
+              return (
+                <tr
+                  key={row.id}
+                  data-state={selected ? "selected" : undefined}
+                  className="border-b border-border align-middle transition-colors last:border-b-0 hover:bg-accent/60 data-[state=selected]:bg-primary/10"
+                >
+                  <td className="min-w-xxxl px-l py-m">
+                    <ReviewRowButton
+                      row={row}
+                      selected={selected}
+                      onSelect={onSelect}
+                    />
+                  </td>
+                  <td className="min-w-xxxl px-l py-m">
+                    <ItemIdentity row={row} />
+                  </td>
+                  <td className="px-l py-m">
+                    <AccessBadge level={row.effectiveAccess} />
+                  </td>
+                  <td className="px-l py-m">
+                    <OriginBadge origin={row.origin} />
+                  </td>
+                  <td className="max-w-xxxl px-l py-m">
+                    <FlagBadges row={row} />
+                  </td>
+                  <td className="px-l py-m text-right font-numeric text-300 font-semibold tabular-nums">
+                    {row.applicableGrants.length}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="divide-y divide-border md:hidden">
+        {rows.map((row) => {
+          const selected = row.id === selectedId;
+          return (
+            <button
+              key={row.id}
+              type="button"
+              aria-pressed={selected}
+              aria-label={`Review ${row.principalRef} access to ${row.item.displayName}`}
+              onClick={() => onSelect(row)}
+              className={cn(
+                "flex w-full flex-col gap-m p-l text-left transition-colors hover:bg-accent/60",
+                selected && "bg-primary/10",
+              )}
+            >
+              <div className="flex w-full items-start justify-between gap-m">
+                <PrincipalIdentity row={row} />
+                <AccessBadge level={row.effectiveAccess} />
+              </div>
+              <ItemIdentity row={row} />
+              <div className="flex w-full flex-wrap items-center justify-between gap-s">
+                <div className="flex flex-wrap items-center gap-s">
+                  <OriginBadge origin={row.origin} />
+                  <FlagBadges row={row} />
+                </div>
+                <span className="text-200 font-medium text-muted-foreground">
+                  {row.applicableGrants.length} contributing{" "}
+                  {row.applicableGrants.length === 1 ? "grant" : "grants"}
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function EmptyResults() {
+  return (
+    <div className="flex flex-col items-center gap-s px-l py-xxxl text-center">
+      <span className="flex icon-size-700 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+        <Search className="icon-size-400" aria-hidden="true" />
+      </span>
+      <h3 className="text-300 font-semibold">No access pairs match</h3>
+      <p className="max-w-md text-200 leading-200 text-muted-foreground">
+        Adjust the review filters or clear them to restore the complete access
+        ledger.
+      </p>
+    </div>
+  );
+}
+
+function PrincipalGroups({
+  rows,
+  selectedId,
+  expanded,
+  onToggle,
+  onSelect,
+}: {
+  rows: AccessReviewRow[];
+  selectedId: string | null;
+  expanded: Set<string>;
+  onToggle: (key: string) => void;
+  onSelect: (row: AccessReviewRow) => void;
+}) {
+  const groups = useMemo(() => {
+    const grouped = new Map<string, AccessReviewRow[]>();
+    for (const row of rows) {
+      const principalRows = grouped.get(row.principalKey) ?? [];
+      principalRows.push(row);
+      grouped.set(row.principalKey, principalRows);
     }
-    return grouped;
-  }, [grants]);
+    return [...grouped.entries()].sort((left, right) =>
+      left[1][0].principalRef.localeCompare(right[1][0].principalRef),
+    );
+  }, [rows]);
 
-  const itemTypeById = useMemo(
-    () =>
-      new Map<string, ItemType>(
-        items.map((item) => [item.fabricId, item.itemType]),
-      ),
-    [items],
+  if (groups.length === 0) return <EmptyResults />;
+
+  return (
+    <div className="divide-y divide-border">
+      {groups.map(([principalKey, principalRows], index) => {
+        const isExpanded = expanded.has(principalKey);
+        const first = principalRows[0];
+        const strongest = principalRows.reduce<AccessLevel>(
+          (level, row) =>
+            ACCESS_RANK[row.effectiveAccess] > ACCESS_RANK[level]
+              ? row.effectiveAccess
+              : level,
+          "none",
+        );
+        const regionId = `principal-access-group-${index}`;
+        return (
+          <section key={principalKey}>
+            <button
+              type="button"
+              aria-expanded={isExpanded}
+              aria-controls={regionId}
+              onClick={() => onToggle(principalKey)}
+              className="flex w-full items-center gap-m px-l py-m text-left transition-colors hover:bg-accent/60"
+            >
+              {isExpanded ? (
+                <ChevronDown
+                  className="icon-size-200 shrink-0 text-muted-foreground"
+                  aria-hidden="true"
+                />
+              ) : (
+                <ChevronRight
+                  className="icon-size-200 shrink-0 text-muted-foreground"
+                  aria-hidden="true"
+                />
+              )}
+              <div className="min-w-0 flex-1">
+                <PrincipalIdentity row={first} />
+              </div>
+              <div className="hidden items-center gap-s sm:flex">
+                <span className="text-200 text-muted-foreground">
+                  {principalRows.length}{" "}
+                  {principalRows.length === 1 ? "item" : "items"}
+                </span>
+                <AccessBadge level={strongest} />
+              </div>
+            </button>
+
+            {isExpanded && (
+              <div
+                id={regionId}
+                className="border-t border-border bg-secondary/30 p-s"
+              >
+                <div className="grid gap-xs">
+                  {principalRows.map((row) => {
+                    const selected = row.id === selectedId;
+                    return (
+                      <button
+                        key={row.id}
+                        type="button"
+                        aria-pressed={selected}
+                        aria-label={`Review ${row.principalRef} access to ${row.item.displayName}`}
+                        onClick={() => onSelect(row)}
+                        className={cn(
+                          "grid w-full gap-m rounded-lg px-m py-s text-left transition-colors hover:bg-accent sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center",
+                          selected && "bg-primary/10",
+                        )}
+                      >
+                        <ItemIdentity row={row} />
+                        <AccessBadge level={row.effectiveAccess} />
+                        <OriginBadge origin={row.origin} />
+                        <span className="text-200 text-muted-foreground">
+                          {row.applicableGrants.length}{" "}
+                          {row.applicableGrants.length === 1
+                            ? "grant"
+                            : "grants"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </section>
+        );
+      })}
+    </div>
   );
+}
 
-  const categoryAccess = (
-    principal: Principal,
-    category: { types: ItemType[] },
-  ): AccessLevel => {
-    const principalGrants =
-      grantsByPrincipal.get(principal.displayName) ?? [];
-    const types = new Set(category.types);
-    let best: AccessLevel = "none";
+function grantScope(grant: Grant, row: AccessReviewRow): string {
+  return grant.itemFabricId
+    ? `Item · ${row.item.displayName}`
+    : "Workspace · inherited by item";
+}
 
-    for (const grant of principalGrants) {
-      const applies =
-        !grant.itemFabricId ||
-        types.has(itemTypeById.get(grant.itemFabricId)!);
-      if (applies && ACCESS_RANK[grant.accessLevel] > ACCESS_RANK[best]) {
-        best = grant.accessLevel;
-      }
+function reviewSummary(
+  row: AccessReviewRow,
+  decision?: AccessReviewDecision,
+): string {
+  const flags = rowFlags(row);
+  const grants = row.applicableGrants
+    .map((grant) => {
+      const effective = row.effectiveGrants.includes(grant)
+        ? " — determines effective access"
+        : "";
+      return `- ${SOURCE_LABEL[grant.source]} (${grantScope(grant, row)}): ${
+        ACCESS_STYLE[grant.accessLevel].label
+      }${grant.roleName ? `, role ${grant.roleName}` : ""}${effective}`;
+    })
+    .join("\n");
+  return [
+    `Access review: ${row.principalRef} → ${row.item.displayName}`,
+    `Effective permission: ${ACCESS_STYLE[row.effectiveAccess].label}`,
+    `Origin: ${ORIGIN_STYLE[row.origin].label} (${ORIGIN_STYLE[row.origin].detail})`,
+    `Principal resolution: ${row.principalResolution}`,
+    `Flags: ${flags.length ? flags.map((flag) => FLAG_LABEL[flag]).join(", ") : "None"}`,
+    `Contributing grants: ${row.applicableGrants.length}`,
+    `Review decision: ${decision ? REVIEW_STATUS[decision.status].label : "Not reviewed"}`,
+    ...(decision?.reviewedAt
+      ? [`Reviewed at: ${new Date(decision.reviewedAt).toLocaleString()}`]
+      : []),
+    ...(decision?.note ? [`Review note: ${decision.note}`] : []),
+    "",
+    "Applicable grants (additive; highest permission wins):",
+    grants,
+  ].join("\n");
+}
+
+function DetailPanel({
+  row,
+  decision,
+  reviewsLoading,
+  saving,
+  reviewError,
+  onSaveDecision,
+  onClearDecision,
+  onClose,
+}: {
+  row: AccessReviewRow;
+  decision?: AccessReviewDecision;
+  reviewsLoading: boolean;
+  saving: boolean;
+  reviewError?: string;
+  onSaveDecision: (
+    status: AccessReviewStatus,
+    note: string,
+  ) => Promise<void>;
+  onClearDecision: () => Promise<void>;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [note, setNote] = useState(decision?.note ?? "");
+
+  const copy = async () => {
+    const summary = reviewSummary(row, decision);
+    try {
+      if (!navigator.clipboard) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(summary);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      window.prompt("Copy the access review summary", summary);
     }
-    return best;
   };
 
-  const hasWorkspaceRole = (principal: Principal) =>
-    (grantsByPrincipal.get(principal.displayName) ?? []).some(
-      (grant) => !grant.itemFabricId,
-    );
+  return (
+    <Card className="overflow-hidden xl:sticky xl:top-l">
+      <div className="flex items-start justify-between gap-m border-b border-border bg-secondary/60 p-l">
+        <div className="min-w-0">
+          <SectionLabel>Selected pair</SectionLabel>
+          <h2 className="mt-xs text-400 font-semibold">Review detail</h2>
+        </div>
+        <button
+          type="button"
+          aria-label="Close review detail"
+          onClick={onClose}
+          className="flex icon-size-600 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+        >
+          <X className="icon-size-200" aria-hidden="true" />
+        </button>
+      </div>
 
-  const [expandedPrincipalId, setExpandedPrincipalId] = useState<string | null>(
+      <div className="flex flex-col gap-l p-l">
+        <div className="flex flex-col gap-m">
+          <PrincipalIdentity row={row} />
+          <div className="flex items-center gap-s text-muted-foreground">
+            <ChevronDown className="icon-size-200" aria-hidden="true" />
+            <span className="text-200">has additive effective access to</span>
+          </div>
+          <ItemIdentity row={row} />
+        </div>
+
+        <div className="grid grid-cols-2 gap-s">
+          <div className="rounded-lg border border-border bg-secondary/40 p-m">
+            <div className="text-200 text-muted-foreground">
+              Effective permission
+            </div>
+            <div className="mt-s">
+              <AccessBadge level={row.effectiveAccess} />
+            </div>
+          </div>
+          <div className="rounded-lg border border-border bg-secondary/40 p-m">
+            <div className="text-200 text-muted-foreground">Grant origin</div>
+            <div className="mt-s">
+              <OriginBadge origin={row.origin} />
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-primary/25 bg-primary/5 p-m">
+          <div className="flex gap-s">
+            <Layers3
+              className="mt-xxs icon-size-200 shrink-0 text-brand-foreground"
+              aria-hidden="true"
+            />
+            <p className="text-200 leading-300 text-muted-foreground">
+              Additive access only. The highest applicable grant determines the
+              effective permission. Fabric Atlas does not infer group expansion
+              or deny semantics.
+            </p>
+          </div>
+        </div>
+
+        <section
+          aria-labelledby="review-decision-heading"
+          className="rounded-xl border border-border bg-secondary/30 p-m"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-s">
+            <div>
+              <h3
+                id="review-decision-heading"
+                className="text-300 font-semibold"
+              >
+                Review decision
+              </h3>
+              <p className="mt-xs text-200 text-muted-foreground">
+                {reviewsLoading
+                  ? "Loading current decision…"
+                  : decision
+                    ? `Reviewed ${new Date(decision.reviewedAt).toLocaleString()}`
+                    : "Not reviewed yet"}
+              </p>
+            </div>
+            {decision && (
+              <span
+                className={cn(
+                  "inline-flex rounded-md border px-s py-xxs text-200 font-semibold",
+                  REVIEW_STATUS[decision.status].className,
+                )}
+              >
+                {REVIEW_STATUS[decision.status].label}
+              </span>
+            )}
+          </div>
+
+          <label
+            htmlFor="access-review-note"
+            className="mt-m mb-xs block text-200 font-semibold text-muted-foreground"
+          >
+            Review note (optional)
+          </label>
+          <textarea
+            id="access-review-note"
+            value={note}
+            maxLength={240}
+            rows={3}
+            disabled={saving}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="Capture a short rationale or follow-up…"
+            className="w-full resize-y rounded-lg border border-input bg-card px-m py-s text-300 leading-300 text-foreground placeholder:text-muted-foreground disabled:opacity-60"
+          />
+          <span className="mt-xs block text-right text-200 text-muted-foreground">
+            {note.length}/240
+          </span>
+
+          <div
+            className="mt-m grid gap-s sm:grid-cols-3"
+            role="group"
+            aria-label="Review decision status"
+          >
+            {(Object.keys(REVIEW_STATUS) as AccessReviewStatus[]).map(
+              (status) => {
+                const statusMeta = REVIEW_STATUS[status];
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    aria-pressed={decision?.status === status}
+                    disabled={saving || reviewsLoading}
+                    onClick={() => void onSaveDecision(status, note)}
+                    className={cn(
+                      "inline-flex min-h-xxxl items-center justify-center rounded-lg border px-m py-s text-300 font-semibold transition-colors hover:bg-accent disabled:opacity-60",
+                      decision?.status === status
+                        ? statusMeta.className
+                        : "border-border bg-card text-foreground",
+                    )}
+                  >
+                    {statusMeta.label}
+                  </button>
+                );
+              },
+            )}
+          </div>
+
+          <div className="mt-s flex min-h-m items-center justify-between gap-s">
+            <span
+              className={cn(
+                "text-200",
+                reviewError
+                  ? "text-status-failing"
+                  : "text-muted-foreground",
+              )}
+              role={reviewError ? "alert" : "status"}
+            >
+              {reviewError ??
+                (saving
+                  ? "Saving review decision…"
+                  : decision
+                    ? "Decision is saved for your account."
+                    : "Choose a status to save this review.")}
+            </span>
+            {decision && (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void onClearDecision()}
+                className="shrink-0 rounded-md px-s py-xs text-200 font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-60"
+              >
+                Clear decision
+              </button>
+            )}
+          </div>
+        </section>
+
+        {row.principalResolution !== "resolved" && (
+          <div
+            role="status"
+            className="rounded-lg border border-status-warning/30 bg-status-warning/10 p-m"
+          >
+            <div className="flex gap-s">
+              <AlertTriangle
+                className="mt-xxs icon-size-200 shrink-0 text-status-warning"
+                aria-hidden="true"
+              />
+              <div>
+                <div className="text-300 font-semibold text-status-warning">
+                  {row.principalResolution === "ambiguous"
+                    ? "Principal reference is ambiguous"
+                    : "Principal reference is unresolved"}
+                </div>
+                <p className="mt-xs text-200 leading-200 text-muted-foreground">
+                  {row.principalResolution === "ambiguous"
+                    ? `${row.principalCandidates.length} principals match this recorded reference.`
+                    : "No principal inventory record matches this recorded reference."}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <section aria-labelledby="item-context-heading">
+          <h3
+            id="item-context-heading"
+            className="text-300 font-semibold"
+          >
+            Item context
+          </h3>
+          <dl className="mt-s grid gap-s rounded-lg border border-border p-m text-200">
+            <div className="flex justify-between gap-m">
+              <dt className="text-muted-foreground">Type</dt>
+              <dd className="text-right font-medium">{row.item.itemType}</dd>
+            </div>
+            <div className="flex justify-between gap-m">
+              <dt className="text-muted-foreground">Owner</dt>
+              <dd className="text-right font-medium">
+                {row.item.ownerName ?? "Not recorded"}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-m">
+              <dt className="text-muted-foreground">Sensitivity</dt>
+              <dd className="text-right font-medium">
+                {row.item.sensitivity ?? "Not labeled"}
+              </dd>
+            </div>
+          </dl>
+          {row.item.description && (
+            <p className="mt-s text-200 leading-300 text-muted-foreground">
+              {row.item.description}
+            </p>
+          )}
+        </section>
+
+        <section aria-labelledby="applicable-grants-heading">
+          <div className="flex flex-wrap items-end justify-between gap-s">
+            <div>
+              <h3
+                id="applicable-grants-heading"
+                className="text-300 font-semibold"
+              >
+                Applicable grants
+              </h3>
+              <p className="text-200 text-muted-foreground">
+                {row.applicableGrants.length} contributing{" "}
+                {row.applicableGrants.length === 1 ? "grant" : "grants"} ·{" "}
+                {row.effectiveGrants.length} determine effective access
+              </p>
+            </div>
+            <FlagBadges row={row} />
+          </div>
+
+          <ol className="mt-m grid gap-s">
+            {row.applicableGrants.map((grant, index) => {
+              const effective = row.effectiveGrants.includes(grant);
+              return (
+                <li
+                  key={`${grant.source}-${grant.itemFabricId ?? "workspace"}-${index}`}
+                  className={cn(
+                    "rounded-lg border p-m",
+                    effective
+                      ? "border-primary/30 bg-primary/5"
+                      : "border-border bg-secondary/30",
+                  )}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-s">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-s">
+                        <span className="text-300 font-semibold">
+                          {SOURCE_LABEL[grant.source]}
+                        </span>
+                        {effective && (
+                          <span className="inline-flex items-center gap-xs rounded-md bg-primary/10 px-s py-xxs text-200 font-semibold text-brand-foreground">
+                            <Check
+                              className="icon-size-100"
+                              aria-hidden="true"
+                            />
+                            Determines effective
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-xs text-200 text-muted-foreground">
+                        {grantScope(grant, row)}
+                        {grant.roleName ? ` · ${grant.roleName}` : ""}
+                      </p>
+                    </div>
+                    <AccessBadge level={grant.accessLevel} />
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+
+        <button
+          type="button"
+          onClick={() => void copy()}
+          className="inline-flex min-h-xxxl items-center justify-center gap-s rounded-lg bg-primary px-l py-s text-300 font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+        >
+          {copied ? (
+            <Check className="icon-size-200" aria-hidden="true" />
+          ) : (
+            <Clipboard className="icon-size-200" aria-hidden="true" />
+          )}
+          {copied ? "Summary copied" : "Copy review summary"}
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+export interface AccessViewProps {
+  initialItemId?: string;
+  initialPrincipalId?: string;
+  initialFilters?: SavedViewFilters;
+}
+
+export function AccessView({
+  initialItemId,
+  initialPrincipalId,
+  initialFilters,
+}: AccessViewProps = {}) {
+  const {
+    data,
+    currentUser,
+    isPreview,
+    savedViews,
+    savedViewsLoading,
+    savedViewsError,
+    addSavedView,
+    removeSavedView,
+  } = useAtlas();
+  const [mode, setMode] = useState<AccessMode>(
+    initialFilters?.mode === "principals" ? "principals" : "matrix",
+  );
+  const [search, setSearch] = useState(
+    typeof initialFilters?.search === "string" ? initialFilters.search : "",
+  );
+  const [accessLevel, setAccessLevel] = useState<"all" | AccessLevel>(
+    typeof initialFilters?.accessLevel === "string"
+      ? (initialFilters.accessLevel as "all" | AccessLevel)
+      : "all",
+  );
+  const [origin, setOrigin] = useState<OriginFilter>(
+    typeof initialFilters?.origin === "string"
+      ? (initialFilters.origin as OriginFilter)
+      : "all",
+  );
+  const [risk, setRisk] = useState<RiskFilter>(
+    typeof initialFilters?.risk === "string"
+      ? (initialFilters.risk as RiskFilter)
+      : "all",
+  );
+  const [selectedId, setSelectedId] = useState<string | null | undefined>(
+    undefined,
+  );
+  const [expandedPrincipals, setExpandedPrincipals] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [reviewDecisions, setReviewDecisions] = useState<
+    AccessReviewDecision[]
+  >([]);
+  const [reviewsLoading, setReviewsLoading] = useState(!isPreview);
+  const [reviewError, setReviewError] = useState<string>();
+  const [reviewOperationId, setReviewOperationId] = useState<string | null>(
     null,
   );
-  const [openPanels, setOpenPanels] = useState<Set<string>>(
-    new Set(["items"]),
+
+  useEffect(() => {
+    if (isPreview) return;
+    let active = true;
+    void loadAccessReviews(
+      false,
+      data.workspace.fabricId,
+      currentUser.id,
+    )
+      .then((loaded) => {
+        if (active) {
+          setReviewDecisions(loaded);
+          setReviewError(undefined);
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          setReviewError(
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setReviewsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [currentUser.id, data.workspace.fabricId, isPreview]);
+
+  const rows = useMemo(
+    () =>
+      buildAccessReviewRows(data).filter(
+        (row) => row.effectiveAccess !== "none",
+      ),
+    [data],
+  );
+  const summary = useMemo(() => summarizeAccessReview(rows), [rows]);
+
+  const focusRows = useMemo(() => {
+    let candidates = rows;
+    if (initialItemId) {
+      candidates = selectAccessByItem(candidates, initialItemId);
+    }
+    if (initialPrincipalId) {
+      candidates = selectAccessByPrincipal(candidates, initialPrincipalId);
+    }
+    return candidates;
+  }, [initialItemId, initialPrincipalId, rows]);
+
+  const normalizedSearch = search.trim().toLocaleLowerCase();
+  const filteredRows = useMemo(
+    () =>
+      rows.filter(
+        (row) =>
+          (!normalizedSearch ||
+            searchableText(row).includes(normalizedSearch)) &&
+          (accessLevel === "all" || row.effectiveAccess === accessLevel) &&
+          (origin === "all" || row.origin === origin) &&
+          matchesRisk(row, risk),
+      ),
+    [accessLevel, normalizedSearch, origin, risk, rows],
   );
 
-  const togglePanel = (panel: string) =>
-    setOpenPanels((previous) => {
+  const focusedId =
+    selectedId === undefined &&
+    (initialItemId || initialPrincipalId) &&
+    focusRows[0]
+      ? focusRows[0].id
+      : null;
+  const requestedSelectedId =
+    selectedId === undefined ? focusedId : selectedId;
+  const visibleSelectedId =
+    requestedSelectedId &&
+    filteredRows.some((row) => row.id === requestedSelectedId)
+      ? requestedSelectedId
+      : null;
+  const selectedRow = rows.find((row) => row.id === visibleSelectedId);
+  const activeFilters =
+    search !== "" ||
+    accessLevel !== "all" ||
+    origin !== "all" ||
+    risk !== "all";
+  const directOrMixed = summary.byOrigin.item + summary.byOrigin.mixed;
+  const flaggedCount = rows.filter(hasRisk).length;
+  const reviewsByRowKey = useMemo(
+    () => {
+      const byKey = new Map<string, AccessReviewDecision>();
+      for (const decision of reviewDecisions) {
+        if (!byKey.has(decision.rowKey)) {
+          byKey.set(decision.rowKey, decision);
+        }
+      }
+      return byKey;
+    },
+    [reviewDecisions],
+  );
+
+  const replaceDecision = (decision: AccessReviewDecision) => {
+    setReviewDecisions((previous) => [
+      decision,
+      ...previous.filter((entry) => entry.rowKey !== decision.rowKey),
+    ]);
+  };
+
+  const saveDecision = async (
+    row: AccessReviewRow,
+    status: AccessReviewStatus,
+    note: string,
+  ) => {
+    setReviewOperationId(row.id);
+    setReviewError(undefined);
+    try {
+      const saved = await saveAccessReview(
+        isPreview,
+        data.workspace.fabricId,
+        currentUser.id,
+        {
+          current: reviewsByRowKey.get(row.id),
+          rowKey: row.id,
+          itemFabricId: row.itemId,
+          principalRef: row.principalRef,
+          status,
+          note,
+        },
+      );
+      replaceDecision(saved);
+      if (!isPreview) {
+        setReviewDecisions(
+          await loadAccessReviews(
+            false,
+            data.workspace.fabricId,
+            currentUser.id,
+          ),
+        );
+      }
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setReviewOperationId(null);
+    }
+  };
+
+  const clearDecision = async (row: AccessReviewRow) => {
+    const current = reviewsByRowKey.get(row.id);
+    if (!current) return;
+    setReviewOperationId(row.id);
+    setReviewError(undefined);
+    try {
+      await deleteAccessReview(isPreview, current.id);
+      setReviewDecisions((previous) =>
+        previous.filter((decision) => decision.rowKey !== row.id),
+      );
+      if (!isPreview) {
+        setReviewDecisions(
+          await loadAccessReviews(
+            false,
+            data.workspace.fabricId,
+            currentUser.id,
+          ),
+        );
+      }
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setReviewOperationId(null);
+    }
+  };
+
+  const clearFilters = () => {
+    setSearch("");
+    setAccessLevel("all");
+    setOrigin("all");
+    setRisk("all");
+  };
+
+  const togglePrincipal = (principalKey: string) => {
+    setExpandedPrincipals((previous) => {
       const next = new Set(previous);
-      if (next.has(panel)) next.delete(panel);
-      else next.add(panel);
+      if (next.has(principalKey)) next.delete(principalKey);
+      else next.add(principalKey);
       return next;
     });
-
-  const accessibleItemsFor = (principal: Principal) => {
-    const principalGrants =
-      grantsByPrincipal.get(principal.displayName) ?? [];
-    const baseline = principalGrants.find((grant) => !grant.itemFabricId);
-    const byItem = new Map<
-      string,
-      { level: AccessLevel; inherited: boolean }
-    >();
-
-    if (baseline) {
-      for (const item of items) {
-        byItem.set(item.fabricId, {
-          level: baseline.accessLevel,
-          inherited: true,
-        });
-      }
-    }
-    for (const grant of principalGrants) {
-      if (grant.itemFabricId) {
-        byItem.set(grant.itemFabricId, {
-          level: grant.accessLevel,
-          inherited: false,
-        });
-      }
-    }
-
-    return items
-      .filter((item) => byItem.has(item.fabricId))
-      .map((item) => ({ item, ...byItem.get(item.fabricId)! }));
   };
-
-  const assetsFor = (accessibleItems: { item: Item }[]) => {
-    const assets: {
-      itemName: string;
-      itemType: ItemType;
-      kind: string;
-      name: string;
-      table?: string;
-    }[] = [];
-
-    for (const { item } of accessibleItems) {
-      const schema = schemaFor(data, item.fabricId);
-      if (!schema) continue;
-      for (const table of schema) {
-        assets.push({
-          itemName: item.displayName,
-          itemType: item.itemType,
-          kind: "table",
-          name: table.name,
-        });
-        for (const measure of table.measures) {
-          assets.push({
-            itemName: item.displayName,
-            itemType: item.itemType,
-            kind: "measure",
-            name: measure.name,
-            table: table.name,
-          });
-        }
-        for (const column of table.columns) {
-          assets.push({
-            itemName: item.displayName,
-            itemType: item.itemType,
-            kind: "column",
-            name: column.name,
-            table: table.name,
-          });
-        }
-      }
-    }
-    return assets;
-  };
-
-  const risks = useMemo(() => {
-    const guests = principals.filter((principal) => principal.external);
-    const admins = principals.filter(
-      (principal) => principal.workspaceRole === "Admin",
-    );
-    const servicePrincipals = principals.filter(
-      (principal) => principal.kind === "servicePrincipal",
-    );
-    const workspacePrincipals = new Set(
-      grants
-        .filter((grant) => !grant.itemFabricId)
-        .map((grant) => grant.principalRef),
-    );
-    const itemOnly = principals.filter(
-      (principal) => !workspacePrincipals.has(principal.displayName),
-    );
-    const broad = grants.filter((grant) => grant.flag === "broad");
-    const findings: {
-      icon: typeof ShieldAlert;
-      tone: RiskTone;
-      title: string;
-      detail: string;
-    }[] = [];
-
-    if (guests.length) {
-      findings.push({
-        icon: Globe,
-        tone: "critical",
-        title: `${guests.length} external guest${guests.length > 1 ? "s" : ""} can access this workspace`,
-        detail: guests.map((guest) => guest.displayName).join(", "),
-      });
-    }
-    if (broad.length) {
-      findings.push({
-        icon: ShieldAlert,
-        tone: "warning",
-        title: "Items shared broadly",
-        detail: `${broad.length} grant(s) reach the whole org (tenant link / large group).`,
-      });
-    }
-    if (admins.length > 2) {
-      findings.push({
-        icon: Crown,
-        tone: "warning",
-        title: `${admins.length} workspace admins`,
-        detail: `${admins.map((admin) => admin.displayName).join(", ")} — more than recommended.`,
-      });
-    }
-    if (itemOnly.length) {
-      findings.push({
-        icon: UserX,
-        tone: "info",
-        title: `${itemOnly.length} principal(s) with item-only access`,
-        detail: `${itemOnly.map((principal) => principal.displayName).join(", ")} — shared specific items without workspace membership.`,
-      });
-    }
-    if (servicePrincipals.length) {
-      findings.push({
-        icon: Bot,
-        tone: "info",
-        title: `${servicePrincipals.length} service principal(s)`,
-        detail: `${servicePrincipals.map((principal) => principal.displayName).join(", ")} — automation access, review periodically.`,
-      });
-    }
-    return findings;
-  }, [principals, grants]);
-
-  const selectedItem: Item | undefined = items.find(
-    (item) => item.fabricId === selectedItemId,
-  );
-  const itemGrants: Grant[] = grants.filter(
-    (grant) => grant.itemFabricId === selectedItemId,
-  );
-  const directShareCount = grants.filter(
-    (grant) => grant.source === "directShare",
-  ).length;
-  const externalCount = principals.filter(
-    (principal) => principal.external,
-  ).length;
 
   const metrics = [
     {
-      label: "Principals",
-      value: principals.length,
-      detail: "People, groups and apps",
+      label: "Unique principals",
+      value: summary.principals,
+      detail: "Resolved and recorded identities",
       icon: Users,
-      className: "text-brand-foreground bg-primary/10",
+      className: "bg-primary/10 text-brand-foreground",
     },
     {
-      label: "Direct shares",
-      value: directShareCount,
-      detail: "Explicit item grants",
-      icon: FolderTree,
-      className: "text-lineage-upstream bg-lineage-upstream/10",
+      label: "Reachable pairs",
+      value: summary.rows,
+      detail: `${summary.items} workspace items`,
+      icon: ShieldCheck,
+      className: "bg-status-healthy/10 text-status-healthy",
     },
     {
-      label: "External access",
-      value: externalCount,
-      detail: "Guest principals",
-      icon: Globe,
+      label: "Direct or mixed",
+      value: directOrMixed,
+      detail: "Pairs with item-level grants",
+      icon: Layers3,
+      className: "bg-lineage-upstream/10 text-lineage-upstream",
+    },
+    {
+      label: "External / flagged",
+      value: flaggedCount,
+      detail: "Pairs requiring attention",
+      icon: Flag,
       className:
-        externalCount > 0
-          ? "text-status-failing bg-status-failing/10"
-          : "text-status-healthy bg-status-healthy/10",
-    },
-    {
-      label: "Risks",
-      value: risks.length,
-      detail: risks.length ? "Findings to review" : "No findings",
-      icon: ShieldAlert,
-      className:
-        risks.length > 0
-          ? "text-status-warning bg-status-warning/10"
-          : "text-status-healthy bg-status-healthy/10",
+        flaggedCount > 0
+          ? "bg-status-warning/10 text-status-warning"
+          : "bg-muted text-muted-foreground",
     },
   ];
 
   return (
     <div className="atlas-content-frame flex flex-col gap-l p-l sm:p-xxl">
-      <Card className="overflow-hidden">
-        <div className="flex flex-col gap-l border-b border-border bg-secondary/60 p-l lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="mb-xs text-200 font-semibold uppercase tracking-wider text-brand-foreground">
-              Governance command center
-            </div>
-            <h1 className="text-600 font-bold leading-600">Access control</h1>
+      <Card className="overflow-hidden border-primary/25">
+        <div className="flex flex-col gap-l border-b border-border bg-gradient-to-r from-primary/10 via-card to-lineage-downstream/5 p-l lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl">
+            <SectionLabel>Governance / additive permissions</SectionLabel>
+            <h1 className="mt-xs text-600 font-bold leading-600">
+              Access Review
+            </h1>
             <p className="mt-xs text-300 leading-300 text-muted-foreground">
-              Effective reach across workspace roles, direct grants and object
-              permissions.
+              Review every reachable principal and item pair, trace the grants
+              that contribute access, and export the current evidence set.
             </p>
           </div>
 
           <div
-            className="inline-flex self-start rounded-lg border border-border bg-card p-xs"
+            className="inline-flex self-start rounded-lg border border-border bg-card p-xs shadow-sm"
             role="group"
-            aria-label="Access view"
+            aria-label="Access review mode"
           >
-            {(["principal", "object"] as const).map((viewMode) => (
-              <button
-                key={viewMode}
-                type="button"
-                aria-pressed={mode === viewMode}
-                onClick={() => setMode(viewMode)}
-                className={cn(
-                  "rounded-md px-l py-s text-300 font-semibold transition-colors",
-                  mode === viewMode
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
-                )}
-              >
-                {viewMode === "principal" ? "By principal" : "By object"}
-              </button>
-            ))}
+            <button
+              type="button"
+              aria-pressed={mode === "matrix"}
+              onClick={() => setMode("matrix")}
+              className={cn(
+                "rounded-md px-l py-s text-300 font-semibold transition-colors",
+                mode === "matrix"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+              )}
+            >
+              Review matrix
+            </button>
+            <button
+              type="button"
+              aria-pressed={mode === "principals"}
+              onClick={() => setMode("principals")}
+              className={cn(
+                "rounded-md px-l py-s text-300 font-semibold transition-colors",
+                mode === "principals"
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+              )}
+            >
+              Principals
+            </button>
           </div>
         </div>
 
@@ -495,7 +1254,7 @@ export function AccessView() {
           {metrics.map((metric) => {
             const Icon = metric.icon;
             return (
-              <div key={metric.label} className="flex gap-m p-l">
+              <div key={metric.label} className="flex items-start gap-m p-l">
                 <span
                   className={cn(
                     "flex icon-size-600 shrink-0 items-center justify-center rounded-xl",
@@ -509,7 +1268,7 @@ export function AccessView() {
                     {metric.value}
                   </div>
                   <div className="text-300 font-semibold">{metric.label}</div>
-                  <div className="truncate text-200 text-muted-foreground">
+                  <div className="text-200 leading-200 text-muted-foreground">
                     {metric.detail}
                   </div>
                 </div>
@@ -519,603 +1278,211 @@ export function AccessView() {
         </div>
       </Card>
 
-      {mode === "principal" ? (
-        <div className="grid items-start gap-l xl:grid-cols-3">
-          <Card className="overflow-hidden xl:col-span-2">
-            <div className="flex flex-wrap items-center justify-between gap-s border-b border-border px-l py-m">
-              <div>
-                <h2 className="text-300 font-semibold">Access matrix</h2>
-                <p className="text-200 text-muted-foreground">
-                  Highest effective access by item family
-                </p>
-              </div>
-              <span className="rounded-full border border-border bg-muted/50 px-s py-xs text-200 font-medium text-muted-foreground">
-                {principals.length} rows
+      <Card className="overflow-hidden">
+        <div className="border-b border-border bg-secondary/40 px-l py-m">
+          <div className="flex flex-col gap-m xl:flex-row xl:items-end">
+            <label className="min-w-0 flex-1">
+              <span className="mb-xs block text-200 font-semibold text-muted-foreground">
+                Search
               </span>
-            </div>
-
-            <div className="overflow-auto">
-              <table className="w-full min-w-[calc(var(--spacing-xxxl)*24)] border-collapse">
-                <thead className="sticky top-0 z-10 bg-card shadow-sm">
-                  <tr className="text-200 text-muted-foreground">
-                    <th className="w-2/5 px-l py-m text-left font-semibold">
-                      Principal
-                    </th>
-                    <th className="px-m py-m text-center font-semibold">
-                      Workspace role
-                    </th>
-                    {CATEGORIES.map((category) => (
-                      <th
-                        key={category.key}
-                        className="px-m py-m text-center font-semibold"
-                      >
-                        {category.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {principals.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={2 + CATEGORIES.length}
-                        className="px-l py-xxxl text-center text-300 text-muted-foreground"
-                      >
-                        No principals are available for this workspace.
-                      </td>
-                    </tr>
-                  )}
-                  {principals.map((principal) => {
-                    const expanded =
-                      expandedPrincipalId === principal.principalId;
-                    const accessibleItems = expanded
-                      ? accessibleItemsFor(principal)
-                      : [];
-                    const assets = expanded
-                      ? assetsFor(accessibleItems)
-                      : [];
-                    const itemsOpen = openPanels.has("items");
-                    const assetsOpen = openPanels.has("assets");
-                    const detailId = `principal-access-${principal.principalId}`;
-
-                    return (
-                      <Fragment key={principal.principalId}>
-                        <tr
-                          className={cn(
-                            "border-t border-border/60 text-center transition-colors",
-                            expanded
-                              ? "bg-primary/10"
-                              : "hover:bg-accent/40",
-                          )}
-                        >
-                          <td
-                            className={cn(
-                              "px-l py-m text-left",
-                              expanded && "border-l-2 border-l-primary",
-                            )}
-                          >
-                            <button
-                              type="button"
-                              aria-expanded={expanded}
-                              aria-controls={detailId}
-                              onClick={() =>
-                                setExpandedPrincipalId(
-                                  expanded ? null : principal.principalId,
-                                )
-                              }
-                              className="flex w-full items-center gap-s rounded-md text-left"
-                            >
-                              {expanded ? (
-                                <ChevronDown
-                                  className="icon-size-200 shrink-0 text-brand-foreground"
-                                  aria-hidden="true"
-                                />
-                              ) : (
-                                <ChevronRight
-                                  className="icon-size-200 shrink-0 text-muted-foreground"
-                                  aria-hidden="true"
-                                />
-                              )}
-                              <PrincipalAvatar
-                                name={principal.displayName}
-                                kind={principal.kind}
-                                size={32}
-                              />
-                              <span className="min-w-0 flex-1">
-                                <span className="flex flex-wrap items-center gap-xs text-300 font-semibold">
-                                  <span className="truncate">
-                                    {principal.displayName}
-                                  </span>
-                                  {principal.external && (
-                                    <span className="rounded-md border border-status-warning/30 bg-status-warning/10 px-xs py-xxs text-100 font-semibold uppercase text-status-warning">
-                                      External
-                                    </span>
-                                  )}
-                                  {principal.kind === "servicePrincipal" && (
-                                    <span className="rounded-md border border-lineage-downstream/30 bg-lineage-downstream/10 px-xs py-xxs text-100 font-semibold uppercase text-lineage-downstream">
-                                      SPN
-                                    </span>
-                                  )}
-                                </span>
-                                <span className="block text-200 capitalize text-muted-foreground">
-                                  {principal.kind === "servicePrincipal"
-                                    ? "Service principal"
-                                    : principal.kind}
-                                </span>
-                              </span>
-                            </button>
-                          </td>
-                          <td className="px-m py-m">
-                            {hasWorkspaceRole(principal) ? (
-                              <RoleBadge role={principal.workspaceRole} />
-                            ) : (
-                              <span className="inline-flex rounded-full border border-border bg-muted/50 px-s py-xxs text-200 font-medium text-muted-foreground">
-                                Item-only
-                              </span>
-                            )}
-                          </td>
-                          {CATEGORIES.map((category) => (
-                            <td key={category.key} className="px-m py-m">
-                              <AccessChip
-                                level={categoryAccess(principal, category)}
-                              />
-                            </td>
-                          ))}
-                        </tr>
-
-                        {expanded && (
-                          <tr id={detailId} className="bg-muted/30">
-                            <td
-                              colSpan={2 + CATEGORIES.length}
-                              className="border-l-2 border-l-primary px-l py-l"
-                            >
-                              <div className="grid gap-l text-left md:grid-cols-2">
-                                <section className="overflow-hidden rounded-xl border border-border bg-card">
-                                  <button
-                                    type="button"
-                                    aria-expanded={itemsOpen}
-                                    onClick={() => togglePanel("items")}
-                                    className="flex w-full items-center gap-s px-m py-m text-left hover:bg-accent/50"
-                                  >
-                                    {itemsOpen ? (
-                                      <ChevronDown
-                                        className="icon-size-200"
-                                        aria-hidden="true"
-                                      />
-                                    ) : (
-                                      <ChevronRight
-                                        className="icon-size-200"
-                                        aria-hidden="true"
-                                      />
-                                    )}
-                                    <span className="flex icon-size-500 items-center justify-center rounded-lg bg-primary/10 text-brand-foreground">
-                                      <FolderTree
-                                        className="icon-size-200"
-                                        aria-hidden="true"
-                                      />
-                                    </span>
-                                    <span className="min-w-0 flex-1">
-                                      <span className="block text-300 font-semibold">
-                                        Reachable items
-                                      </span>
-                                      <span className="block text-200 text-muted-foreground">
-                                        Workspace and direct grants
-                                      </span>
-                                    </span>
-                                    <span className="rounded-full bg-muted px-s py-xxs text-200 font-semibold">
-                                      {accessibleItems.length}
-                                    </span>
-                                  </button>
-
-                                  {itemsOpen && (
-                                    <div className="max-h-[calc(var(--spacing-xxxl)*10)] overflow-auto border-t border-border/60">
-                                      {accessibleItems.length === 0 && (
-                                        <div className="px-m py-l text-200 text-muted-foreground">
-                                          This principal has no reachable items.
-                                        </div>
-                                      )}
-                                      {accessibleItems.map(
-                                        ({ item, level, inherited }) => (
-                                          <div
-                                            key={item.fabricId}
-                                            className="flex items-center gap-s border-b border-border/40 px-m py-s last:border-b-0"
-                                          >
-                                            <TypeGlyph
-                                              type={item.itemType}
-                                              size={24}
-                                            />
-                                            <span className="min-w-0 flex-1">
-                                              <span className="block truncate text-200 font-medium">
-                                                {item.displayName}
-                                              </span>
-                                              <span className="block text-100 text-muted-foreground">
-                                                {typeMeta(item.itemType).label}
-                                              </span>
-                                            </span>
-                                            <span
-                                              className={cn(
-                                                "rounded-md border px-xs py-xxs text-[length:var(--text-100)] font-semibold uppercase",
-                                                inherited
-                                                  ? "border-lineage-neutral/30 bg-lineage-neutral/10 text-muted-foreground"
-                                                  : "border-lineage-upstream/30 bg-lineage-upstream/10 text-lineage-upstream",
-                                              )}
-                                            >
-                                              {inherited
-                                                ? "Workspace"
-                                                : "Direct"}
-                                            </span>
-                                            <AccessChip level={level} />
-                                          </div>
-                                        ),
-                                      )}
-                                    </div>
-                                  )}
-                                </section>
-
-                                <section className="overflow-hidden rounded-xl border border-border bg-card">
-                                  <button
-                                    type="button"
-                                    aria-expanded={assetsOpen}
-                                    onClick={() => togglePanel("assets")}
-                                    className="flex w-full items-center gap-s px-m py-m text-left hover:bg-accent/50"
-                                  >
-                                    {assetsOpen ? (
-                                      <ChevronDown
-                                        className="icon-size-200"
-                                        aria-hidden="true"
-                                      />
-                                    ) : (
-                                      <ChevronRight
-                                        className="icon-size-200"
-                                        aria-hidden="true"
-                                      />
-                                    )}
-                                    <span className="flex icon-size-500 items-center justify-center rounded-lg bg-object-column/10 text-object-column">
-                                      <Boxes
-                                        className="icon-size-200"
-                                        aria-hidden="true"
-                                      />
-                                    </span>
-                                    <span className="min-w-0 flex-1">
-                                      <span className="block text-300 font-semibold">
-                                        Reachable assets
-                                      </span>
-                                      <span className="block text-200 text-muted-foreground">
-                                        Tables, measures and columns
-                                      </span>
-                                    </span>
-                                    <span className="rounded-full bg-muted px-s py-xxs text-200 font-semibold">
-                                      {assets.length}
-                                    </span>
-                                  </button>
-
-                                  {assetsOpen && (
-                                    <div className="max-h-[calc(var(--spacing-xxxl)*10)] overflow-auto border-t border-border/60">
-                                      {assets.length === 0 && (
-                                        <div className="px-m py-l text-200 text-muted-foreground">
-                                          No sub-objects exist in the items this
-                                          principal can reach.
-                                        </div>
-                                      )}
-                                      {assets.map((asset, index) => (
-                                        <div
-                                          key={`${asset.itemName}-${asset.kind}-${asset.name}-${index}`}
-                                          className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-s border-b border-border/40 px-m py-s last:border-b-0"
-                                        >
-                                          <span
-                                            className={cn(
-                                              "row-span-2 self-center rounded-md border px-xs py-xxs text-[length:var(--text-100)] font-semibold uppercase",
-                                              ASSET_STYLE[asset.kind],
-                                            )}
-                                          >
-                                            {asset.kind}
-                                          </span>
-                                          <span className="truncate text-200 font-medium">
-                                            {asset.name}
-                                          </span>
-                                          <span className="truncate text-100 text-muted-foreground">
-                                            {asset.table
-                                              ? `${asset.itemName} · ${asset.table}`
-                                              : asset.itemName}
-                                          </span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </section>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-
-          <Card className="overflow-hidden xl:sticky xl:top-l">
-            <div className="flex items-center justify-between gap-s border-b border-border bg-secondary/50 px-l py-m">
-              <div>
-                <h2 className="text-300 font-semibold">Prioritized risks</h2>
-                <p className="text-200 text-muted-foreground">
-                  Highest-impact findings first
-                </p>
-              </div>
-              <span className="rounded-full border border-border bg-card px-s py-xs text-200 font-semibold">
-                {risks.length}
+              <span className="flex min-h-xxxl items-center gap-s rounded-lg border border-input bg-card px-m">
+                <Search
+                  className="icon-size-200 shrink-0 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Principal, item, type, grant source…"
+                  aria-label="Search access reviews"
+                  className="min-w-0 flex-1 bg-transparent py-s text-300 text-foreground placeholder:text-muted-foreground"
+                />
               </span>
-            </div>
+            </label>
 
-            <div className="flex flex-col gap-s p-m">
-              {risks.length === 0 && (
-                <div className="rounded-xl border border-status-healthy/30 bg-status-healthy/10 p-l text-center">
-                  <div className="text-300 font-semibold text-status-healthy">
-                    No access risks detected
-                  </div>
-                  <div className="mt-xs text-200 text-muted-foreground">
-                    Current grants do not trigger a governance finding.
-                  </div>
-                </div>
-              )}
-              {risks.map((risk, index) => {
-                const Icon = risk.icon;
-                const style = RISK_STYLE[risk.tone];
-                return (
-                  <article
-                    key={`${risk.title}-${index}`}
-                    className={cn(
-                      "rounded-xl border bg-card p-m",
-                      style.card,
-                    )}
-                  >
-                    <div className="flex items-start gap-m">
-                      <span
-                        className={cn(
-                          "flex icon-size-600 shrink-0 items-center justify-center rounded-xl",
-                          style.icon,
-                        )}
-                      >
-                        <Icon
-                          className="icon-size-300"
-                          aria-hidden="true"
-                        />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="mb-xs flex items-center justify-between gap-s">
-                          <span
-                            className={cn(
-                              "rounded-md border px-xs py-xxs text-[length:var(--text-100)] font-semibold uppercase tracking-wide",
-                              style.badge,
-                            )}
-                          >
-                            {style.label}
-                          </span>
-                          <span className="font-numeric text-100 text-muted-foreground">
-                            {String(index + 1).padStart(2, "0")}
-                          </span>
-                        </div>
-                        <h3 className="text-300 font-semibold leading-300">
-                          {risk.title}
-                        </h3>
-                        <p className="mt-xs text-200 leading-200 text-muted-foreground">
-                          {risk.detail}
-                        </p>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
+            <label className="min-w-0">
+              <span className="mb-xs block text-200 font-semibold text-muted-foreground">
+                Effective level
+              </span>
+              <select
+                value={accessLevel}
+                onChange={(event) =>
+                  setAccessLevel(event.target.value as "all" | AccessLevel)
+                }
+                className="min-h-xxxl w-full rounded-lg border border-input bg-card px-m py-s text-300 text-foreground xl:w-auto"
+              >
+                <option value="all">All levels</option>
+                <option value="owner">Owner</option>
+                <option value="edit">Edit</option>
+                <option value="view">View</option>
+              </select>
+            </label>
+
+            <label className="min-w-0">
+              <span className="mb-xs block text-200 font-semibold text-muted-foreground">
+                Origin
+              </span>
+              <select
+                value={origin}
+                onChange={(event) =>
+                  setOrigin(event.target.value as OriginFilter)
+                }
+                className="min-h-xxxl w-full rounded-lg border border-input bg-card px-m py-s text-300 text-foreground xl:w-auto"
+              >
+                <option value="all">All origins</option>
+                <option value="workspace">Workspace / inherited</option>
+                <option value="item">Item / direct</option>
+                <option value="mixed">Mixed</option>
+              </select>
+            </label>
+
+            <label className="min-w-0">
+              <span className="mb-xs block text-200 font-semibold text-muted-foreground">
+                Risk flag
+              </span>
+              <select
+                value={risk}
+                onChange={(event) =>
+                  setRisk(event.target.value as RiskFilter)
+                }
+                className="min-h-xxxl w-full rounded-lg border border-input bg-card px-m py-s text-300 text-foreground xl:w-auto"
+              >
+                <option value="all">All flags</option>
+                <option value="flagged">Any flag or warning</option>
+                <option value="external">External</option>
+                <option value="broad">Broad</option>
+                <option value="servicePrincipal">Service principal</option>
+                <option value="admin">Admin</option>
+                <option value="resolution">Resolution warning</option>
+              </select>
+            </label>
+
+            <div className="flex flex-wrap gap-s">
+              <SavedViewsMenu
+                views={savedViews.filter((view) => view.section === "access")}
+                loading={savedViewsLoading}
+                error={savedViewsError}
+                activeSection="access"
+                currentFilters={{
+                  mode,
+                  search,
+                  accessLevel,
+                  origin,
+                  risk,
+                }}
+                onCreate={addSavedView}
+                onApply={(view) => {
+                  setMode(
+                    view.filters.mode === "principals"
+                      ? "principals"
+                      : "matrix",
+                  );
+                  setSearch(
+                    typeof view.filters.search === "string"
+                      ? view.filters.search
+                      : "",
+                  );
+                  setAccessLevel(
+                    typeof view.filters.accessLevel === "string"
+                      ? (view.filters.accessLevel as "all" | AccessLevel)
+                      : "all",
+                  );
+                  setOrigin(
+                    typeof view.filters.origin === "string"
+                      ? (view.filters.origin as OriginFilter)
+                      : "all",
+                  );
+                  setRisk(
+                    typeof view.filters.risk === "string"
+                      ? (view.filters.risk as RiskFilter)
+                      : "all",
+                  );
+                }}
+                onDelete={removeSavedView}
+              />
+              <button
+                type="button"
+                onClick={clearFilters}
+                disabled={!activeFilters}
+                className="inline-flex min-h-xxxl items-center justify-center gap-s rounded-lg border border-border bg-card px-m py-s text-300 font-semibold text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+              >
+                <FilterX className="icon-size-200" aria-hidden="true" />
+                Clear filters
+              </button>
+              <button
+                type="button"
+                onClick={() => downloadCsv(filteredRows)}
+                disabled={filteredRows.length === 0}
+                className="inline-flex min-h-xxxl items-center justify-center gap-s rounded-lg bg-primary px-m py-s text-300 font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                <Download className="icon-size-200" aria-hidden="true" />
+                Export CSV
+              </button>
             </div>
-          </Card>
+          </div>
         </div>
-      ) : (
-        <div className="grid items-start gap-l lg:grid-cols-3">
-          <Card className="overflow-hidden">
-            <div className="flex items-center justify-between border-b border-border bg-secondary/50 px-l py-m">
-              <div>
-                <h2 className="text-300 font-semibold">Shared objects</h2>
-                <p className="text-200 text-muted-foreground">
-                  Select an item to inspect
-                </p>
-              </div>
-              <span className="rounded-full border border-border bg-card px-s py-xs text-200 font-semibold">
-                {objectItems.length}
-              </span>
-            </div>
 
-            <div className="max-h-[calc(var(--spacing-xxxl)*18)] overflow-auto">
-              {objectItems.length === 0 && (
-                <div className="p-xxl text-center">
-                  <FolderTree className="mx-auto icon-size-600 text-muted-foreground" />
-                  <div className="mt-m text-300 font-semibold">
-                    No item-level grants
-                  </div>
-                  <div className="mt-xs text-200 leading-200 text-muted-foreground">
-                    Objects appear here when an item has explicit access
-                    assignments.
-                  </div>
-                </div>
-              )}
-              {objectItems.map((item) => {
-                const selected = selectedItemId === item.fabricId;
-                const grantCount = grants.filter(
-                  (grant) => grant.itemFabricId === item.fabricId,
-                ).length;
-                return (
-                  <button
-                    key={item.fabricId}
-                    type="button"
-                    aria-pressed={selected}
-                    onClick={() => setSelectedItemId(item.fabricId)}
-                    className={cn(
-                      "flex w-full items-center gap-m border-b border-border/60 px-l py-m text-left transition-colors last:border-b-0",
-                      selected
-                        ? "border-l-2 border-l-primary bg-primary/10"
-                        : "border-l-2 border-l-transparent hover:bg-accent/50",
-                    )}
-                  >
-                    <TypeGlyph type={item.itemType} size={32} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-300 font-semibold">
-                        {item.displayName}
-                      </span>
-                      <span className="block text-200 text-muted-foreground">
-                        {typeMeta(item.itemType).label}
-                      </span>
-                    </span>
-                    <span className="rounded-full border border-border bg-card px-s py-xxs text-200 font-semibold tabular-nums">
-                      {grantCount}
-                    </span>
-                    <ChevronRight
-                      className={cn(
-                        "icon-size-200",
-                        selected
-                          ? "text-brand-foreground"
-                          : "text-muted-foreground",
-                      )}
-                      aria-hidden="true"
-                    />
-                  </button>
-                );
-              })}
-            </div>
-          </Card>
-
-          <Card className="overflow-hidden lg:col-span-2">
-            {!selectedItem ? (
-              <div className="flex min-h-[calc(var(--spacing-xxxl)*10)] flex-col items-center justify-center p-xxl text-center">
-                <Boxes className="icon-size-700 text-muted-foreground" />
-                <h2 className="mt-l text-400 font-semibold">
-                  Select a shared object
-                </h2>
-                <p className="mt-xs text-300 text-muted-foreground">
-                  Choose an item to review its principals, access levels and
-                  grant origins.
-                </p>
-              </div>
-            ) : (
-              <>
-                <div className="flex flex-wrap items-center gap-m border-b border-border bg-secondary/50 p-l">
-                  <TypeGlyph type={selectedItem.itemType} size={44} />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-400 font-semibold">
-                      {selectedItem.displayName}
-                    </div>
-                    <div className="text-200 text-muted-foreground">
-                      {typeMeta(selectedItem.itemType).label}
-                      {selectedItem.ownerName
-                        ? ` · owned by ${selectedItem.ownerName}`
-                        : ""}
-                    </div>
-                  </div>
-                  <div className="rounded-xl border border-border bg-card px-l py-s text-right">
-                    <div className="font-numeric text-500 font-bold leading-500 tabular-nums">
-                      {itemGrants.length}
-                    </div>
-                    <div className="text-200 text-muted-foreground">
-                      principals
-                    </div>
-                  </div>
-                </div>
-
-                {itemGrants.length === 0 ? (
-                  <div className="p-xxxl text-center text-300 text-muted-foreground">
-                    This item has no explicit grants to review.
-                  </div>
-                ) : (
-                  <div className="overflow-auto">
-                    <table className="w-full min-w-[calc(var(--spacing-xxxl)*22)] border-collapse">
-                      <thead className="sticky top-0 z-10 bg-card shadow-sm">
-                        <tr className="text-200 text-muted-foreground">
-                          <th className="px-l py-m text-left font-semibold">
-                            Principal
-                          </th>
-                          <th className="px-m py-m text-left font-semibold">
-                            Effective access
-                          </th>
-                          <th className="px-m py-m text-left font-semibold">
-                            Grant origin
-                          </th>
-                          <th className="px-m py-m text-left font-semibold">
-                            Flag
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {itemGrants.map((grant, index) => {
-                          const principal = principalByName.get(
-                            grant.principalRef,
-                          );
-                          const tag = SOURCE_TAG[grant.source];
-                          return (
-                            <tr
-                              key={`${grant.principalRef}-${grant.source}-${index}`}
-                              className="border-t border-border/60 hover:bg-accent/30"
-                            >
-                              <td className="px-l py-m">
-                                <div className="flex items-center gap-s">
-                                  <PrincipalAvatar
-                                    name={grant.principalRef}
-                                    kind={principal?.kind ?? "group"}
-                                    size={28}
-                                  />
-                                  <span className="text-300 font-semibold">
-                                    {grant.principalRef}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="px-m py-m">
-                                <AccessChip level={grant.accessLevel} />
-                              </td>
-                              <td className="px-m py-m">
-                                <div className="flex flex-wrap items-center gap-s">
-                                  <span
-                                    className={cn(
-                                      "rounded-md border px-xs py-xxs text-[length:var(--text-100)] font-semibold uppercase",
-                                      tag.className,
-                                    )}
-                                  >
-                                    {tag.label}
-                                  </span>
-                                  <span className="text-200 text-muted-foreground">
-                                    {SOURCE_LABEL[grant.source]}
-                                    {grant.roleName
-                                      ? ` · ${grant.roleName}`
-                                      : ""}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="px-m py-m">
-                                {grant.flag === "external" && (
-                                  <span className="rounded-md border border-status-warning/30 bg-status-warning/10 px-s py-xxs text-200 font-semibold text-status-warning">
-                                    External
-                                  </span>
-                                )}
-                                {grant.flag === "broad" && (
-                                  <span className="rounded-md border border-status-failing/30 bg-status-failing/10 px-s py-xxs text-200 font-semibold text-status-failing">
-                                    Broad
-                                  </span>
-                                )}
-                                {!grant.flag && (
-                                  <span className="text-200 text-muted-foreground/60">
-                                    —
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </>
-            )}
-          </Card>
+        <div className="flex flex-wrap items-center justify-between gap-s px-l py-m">
+          <div>
+            <h2 className="text-300 font-semibold">
+              {mode === "matrix" ? "Review matrix" : "Principals"}
+            </h2>
+            <p className="text-200 text-muted-foreground" aria-live="polite">
+              {filteredRows.length} of {rows.length} reachable pairs
+            </p>
+          </div>
+          <span className="text-200 text-muted-foreground">
+            Highest applicable permission wins
+          </span>
         </div>
-      )}
+      </Card>
+
+      <div
+        className={cn(
+          "grid items-start gap-l",
+          selectedRow && "xl:grid-cols-3",
+        )}
+      >
+        <Card
+          className={cn(
+            "overflow-hidden",
+            selectedRow && "xl:col-span-2",
+          )}
+        >
+          {mode === "matrix" ? (
+            <MatrixTable
+              rows={filteredRows}
+              selectedId={visibleSelectedId}
+              onSelect={(row) => setSelectedId(row.id)}
+            />
+          ) : (
+            <PrincipalGroups
+              rows={filteredRows}
+              selectedId={visibleSelectedId}
+              expanded={expandedPrincipals}
+              onToggle={togglePrincipal}
+              onSelect={(row) => setSelectedId(row.id)}
+            />
+          )}
+        </Card>
+
+        {selectedRow && (
+          <DetailPanel
+            key={`${selectedRow.id}:${reviewsByRowKey.get(selectedRow.id)?.updatedAt ?? "none"}`}
+            row={selectedRow}
+            decision={reviewsByRowKey.get(selectedRow.id)}
+            reviewsLoading={reviewsLoading}
+            saving={reviewOperationId === selectedRow.id}
+            reviewError={reviewError}
+            onSaveDecision={(status, note) =>
+              saveDecision(selectedRow, status, note)
+            }
+            onClearDecision={() => clearDecision(selectedRow)}
+            onClose={() => setSelectedId(null)}
+          />
+        )}
+      </div>
     </div>
   );
 }

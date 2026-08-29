@@ -82,6 +82,8 @@ export interface WorkspaceInfo {
   capacity: string;
   region: string;
   deploymentId?: string;
+  snapshotId?: string;
+  syncedAt?: string;
 }
 
 export interface Item {

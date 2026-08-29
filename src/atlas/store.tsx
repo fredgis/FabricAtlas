@@ -9,9 +9,27 @@ import {
   type ReactNode,
 } from "react";
 import { SAMPLE_DATA, type AtlasData, type Comment } from "./model";
-import { loadFromDb, persistComment, runFabricSync } from "./backend";
+import {
+  loadFromDb,
+  loadHistoryFromDb,
+  persistComment,
+  runFabricSync,
+} from "./backend";
 import { ATLAS_CONFIG, isSyncConfigured } from "./config";
 import { DEPLOYMENT_ID } from "./release";
+import {
+  buildAtlasHistory,
+  snapshotFromData,
+  type AtlasHistory,
+} from "./history";
+import {
+  createSavedView,
+  deleteSavedView,
+  loadSavedViews,
+  type SavedView,
+  type SavedViewFilters,
+  type SavedViewSection,
+} from "./saved-views";
 
 export interface CurrentUser {
   id: string;
@@ -21,7 +39,13 @@ export interface CurrentUser {
 
 export interface AtlasContextValue {
   data: AtlasData;
+  history: AtlasHistory;
   hydrating: boolean;
+  historyLoading: boolean;
+  historyError?: string;
+  savedViews: SavedView[];
+  savedViewsLoading: boolean;
+  savedViewsError?: string;
   syncing: boolean;
   syncProgress: number;
   syncStage: string;
@@ -35,6 +59,12 @@ export interface AtlasContextValue {
   currentUser: CurrentUser;
   sync: () => Promise<void>;
   addComment: (body: string, itemFabricId?: string) => Promise<void>;
+  addSavedView: (input: {
+    name: string;
+    section: SavedViewSection;
+    filters: SavedViewFilters;
+  }) => Promise<void>;
+  removeSavedView: (id: string) => Promise<void>;
 }
 
 const AtlasContext = createContext<AtlasContextValue | null>(null);
@@ -61,6 +91,11 @@ const EMPTY_DATA: AtlasData = {
   schema: {},
 };
 
+const EMPTY_HISTORY = buildAtlasHistory([]);
+const PREVIEW_HISTORY = buildAtlasHistory([
+  snapshotFromData(SAMPLE_DATA, "preview-current"),
+]);
+
 export function AtlasProvider({
   children,
   isPreview = true,
@@ -75,7 +110,15 @@ export function AtlasProvider({
   const [data, setData] = useState<AtlasData>(() =>
     isPreview ? clone(SAMPLE_DATA) : clone(EMPTY_DATA),
   );
+  const [history, setHistory] = useState<AtlasHistory>(() =>
+    isPreview ? PREVIEW_HISTORY : EMPTY_HISTORY,
+  );
   const [hydrating, setHydrating] = useState(!isPreview);
+  const [historyLoading, setHistoryLoading] = useState(!isPreview);
+  const [historyError, setHistoryError] = useState<string | undefined>();
+  const [savedViews, setSavedViews] = useState<SavedView[]>([]);
+  const [savedViewsLoading, setSavedViewsLoading] = useState(!isPreview);
+  const [savedViewsError, setSavedViewsError] = useState<string | undefined>();
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState(0);
   const [syncStage, setSyncStage] = useState("Ready to sync");
@@ -109,6 +152,32 @@ export function AtlasProvider({
     [],
   );
 
+  useEffect(() => {
+    if (isPreview) return;
+    let alive = true;
+    void loadSavedViews(
+      false,
+      data.workspace.fabricId,
+      currentUser.id,
+    )
+      .then((views) => {
+        if (alive) setSavedViews(views);
+      })
+      .catch((error) => {
+        if (alive) {
+          setSavedViewsError(
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      })
+      .finally(() => {
+        if (alive) setSavedViewsLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [currentUser.id, data.workspace.fabricId, isPreview]);
+
   // On open (deployed): remember the workspace id and re-hydrate from the DB.
   useEffect(() => {
     if (isPreview) return;
@@ -116,17 +185,45 @@ export function AtlasProvider({
       (import.meta.env.VITE_FABRIC_WORKSPACE_ID as string) ?? ATLAS_CONFIG.workspaceId;
     let alive = true;
     const generation = operationGeneration.current;
-    loadFromDb(false)
+    void loadFromDb(false)
       .then((db) => {
-        if (alive && db && operationGeneration.current === generation) {
-          setData(db);
-          setLastSyncedAt(db.syncRuns[0]?.finishedAt);
-          setRequiresDeploymentSync(
-            db.workspace.deploymentId !== DEPLOYMENT_ID,
-          );
+        if (!alive || operationGeneration.current !== generation) return;
+        if (!db) {
+          setHistoryLoading(false);
+          return;
+        }
+        setData(db);
+        setLastSyncedAt(
+          db.workspace.syncedAt ?? db.syncRuns[0]?.finishedAt,
+        );
+        setRequiresDeploymentSync(db.workspace.deploymentId !== DEPLOYMENT_ID);
+        setHydrating(false);
+        setHistoryLoading(true);
+        setHistoryError(undefined);
+        void loadHistoryFromDb(false, db)
+          .then((loadedHistory) => {
+            if (alive && operationGeneration.current === generation) {
+              setHistory(loadedHistory);
+            }
+          })
+          .catch((error) => {
+            if (alive && operationGeneration.current === generation) {
+              setHistoryError(
+                error instanceof Error ? error.message : String(error),
+              );
+            }
+          })
+          .finally(() => {
+            if (alive && operationGeneration.current === generation) {
+              setHistoryLoading(false);
+            }
+          });
+      })
+      .catch(() => {
+        if (alive && operationGeneration.current === generation) {
+          setHistoryLoading(false);
         }
       })
-      .catch(() => undefined)
       .finally(() => {
         if (alive) setHydrating(false);
       });
@@ -151,6 +248,7 @@ export function AtlasProvider({
     setSyncProgress(3);
     setSyncStage("Starting workspace sync");
     setSyncError(undefined);
+    setHistoryLoading(false);
     const startedAt = new Date().toISOString();
     let succeeded = false;
     let reportedProgress = 3;
@@ -190,7 +288,8 @@ export function AtlasProvider({
         );
         next.comments = [...comments.values()];
       }
-      const finishedAt = new Date().toISOString();
+      const finishedAt =
+        next.workspace.syncedAt ?? new Date().toISOString();
       next.syncRuns = [
         {
           id: `s-${Date.now()}`,
@@ -205,6 +304,26 @@ export function AtlasProvider({
       ].slice(0, 20);
       setData(next);
       setLastSyncedAt(finishedAt);
+      setHistoryError(undefined);
+      setHistoryLoading(true);
+      void loadHistoryFromDb(isPreview, next)
+        .then((loadedHistory) => {
+          if (operationGeneration.current === generation) {
+            setHistory(loadedHistory);
+          }
+        })
+        .catch((error) => {
+          if (operationGeneration.current === generation) {
+            setHistoryError(
+              error instanceof Error ? error.message : String(error),
+            );
+          }
+        })
+        .finally(() => {
+          if (operationGeneration.current === generation) {
+            setHistoryLoading(false);
+          }
+        });
       setSyncProgress(100);
       setSyncStage("Workspace is ready");
       if (!isPreview) {
@@ -249,12 +368,64 @@ export function AtlasProvider({
     [currentUser, isPreview],
   );
 
+  const addSavedView = useCallback(
+    async (input: {
+      name: string;
+      section: SavedViewSection;
+      filters: SavedViewFilters;
+    }) => {
+      setSavedViewsError(undefined);
+      try {
+        const view = await createSavedView(
+          isPreview,
+          data.workspace.fabricId,
+          currentUser.id,
+          input,
+        );
+        setSavedViews((previous) => [
+          view,
+          ...previous.filter((candidate) => candidate.id !== view.id),
+        ]);
+      } catch (error) {
+        setSavedViewsError(
+          error instanceof Error ? error.message : String(error),
+        );
+        throw error;
+      }
+    },
+    [currentUser.id, data.workspace.fabricId, isPreview],
+  );
+
+  const removeSavedView = useCallback(
+    async (id: string) => {
+      setSavedViewsError(undefined);
+      try {
+        await deleteSavedView(isPreview, id);
+        setSavedViews((previous) =>
+          previous.filter((candidate) => candidate.id !== id),
+        );
+      } catch (error) {
+        setSavedViewsError(
+          error instanceof Error ? error.message : String(error),
+        );
+        throw error;
+      }
+    },
+    [isPreview],
+  );
+
   const hasData = data.items.length > 0;
 
   const value = useMemo<AtlasContextValue>(
     () => ({
       data,
+      history,
       hydrating,
+      historyLoading,
+      historyError,
+      savedViews,
+      savedViewsLoading,
+      savedViewsError,
       syncing,
       syncProgress,
       syncStage,
@@ -268,8 +439,10 @@ export function AtlasProvider({
       currentUser,
       sync,
       addComment,
+      addSavedView,
+      removeSavedView,
     }),
-    [data, hydrating, syncing, syncProgress, syncStage, lastSyncedAt, isPreview, configured, canSync, hasData, requiresDeploymentSync, syncError, currentUser, sync, addComment],
+    [data, history, hydrating, historyLoading, historyError, savedViews, savedViewsLoading, savedViewsError, syncing, syncProgress, syncStage, lastSyncedAt, isPreview, configured, canSync, hasData, requiresDeploymentSync, syncError, currentUser, sync, addComment, addSavedView, removeSavedView],
   );
 
   return <AtlasContext.Provider value={value}>{children}</AtlasContext.Provider>;
