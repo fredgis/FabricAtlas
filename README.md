@@ -76,18 +76,44 @@ and jobs beside the selected Fabric item.
 
 ![Fabric Atlas item details](docs/screenshots/item-details.png)
 
+### Measures and effective access
+
+The Asset Catalog groups tables, columns and measures by Fabric item. Selecting
+a measure shows its expression, model context and effective access without
+leaving the inventory.
+
+![Fabric Atlas measures and effective access](docs/screenshots/asset-catalog-measures.png)
+
 ## How it works
 
 ```mermaid
 flowchart LR
-  U["Fabric user"] --> APP["Fabric Atlas<br/>React + Rayfin"]
-  APP --> AUTH["Fabric brokered auth"]
-  APP --> UDF["User Data Function<br/>sync_all"]
-  UDF --> API["Fabric and Power BI APIs"]
-  API --> UDF
-  UDF --> APP
-  APP --> DB[("Rayfin database<br/>Fabric SQL")]
-  DB --> APP
+  U["Fabric user"]
+  APP["Fabric Atlas<br/>React + Rayfin"]
+  AUTH["Brokered authentication"]
+  UDF["User Data Function<br/>sync_all"]
+  API["Fabric and Power BI APIs"]
+  DB[("Rayfin database<br/>Fabric SQL")]
+
+  U -->|"open in Fabric"| APP
+  APP <-->|"brokered session"| AUTH
+  APP <-->|"delegated sync"| UDF
+  UDF <-->|"workspace metadata"| API
+  APP <-->|"validated snapshots"| DB
+
+  classDef user fill:#742774,stroke:#a66dd4,color:#ffffff,stroke-width:2px;
+  classDef app fill:#1677c8,stroke:#6fc7ff,color:#ffffff,stroke-width:2px;
+  classDef auth fill:#5b5fc7,stroke:#a7a9ff,color:#ffffff,stroke-width:2px;
+  classDef udf fill:#0e8a99,stroke:#67e8e2,color:#ffffff,stroke-width:2px;
+  classDef api fill:#16855b,stroke:#6ee7a8,color:#ffffff,stroke-width:2px;
+  classDef database fill:#9a6b00,stroke:#f2c94c,color:#ffffff,stroke-width:2px;
+
+  class U user;
+  class APP app;
+  class AUTH auth;
+  class UDF udf;
+  class API api;
+  class DB database;
 ```
 
 The browser cannot call Fabric management APIs directly. A published User Data
