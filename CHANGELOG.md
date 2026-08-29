@@ -4,6 +4,14 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-08-29
+
+### Changed
+
+- Every newly deployed build now opens on the synchronization screen once, even when an older catalog already exists.
+- Lineage selection no longer recalculates the focused layout or moves the selected node.
+- Added an explicit **Focus selection** action for intentionally rebuilding the visible path.
+
 ## [1.1.0] - 2026-08-29
 
 ### Added
@@ -41,5 +49,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
+[1.1.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.1.1
 [1.1.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.1.0
 [1.0.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.0.0

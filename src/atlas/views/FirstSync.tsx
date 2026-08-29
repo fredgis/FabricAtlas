@@ -64,7 +64,10 @@ export function FirstSyncView() {
     syncError,
     syncProgress,
     syncStage,
+    hasData,
+    requiresDeploymentSync,
   } = useAtlas();
+  const deploymentRefresh = hasData && requiresDeploymentSync;
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-background text-foreground">
@@ -87,14 +90,17 @@ export function FirstSyncView() {
             <div>
               <span className="inline-flex items-center gap-s rounded-full border border-primary/30 bg-primary/10 px-m py-s text-200 font-semibold text-primary">
                 <Compass className="icon-size-100" />
-                First workspace sync
+                {deploymentRefresh ? "New deployment sync" : "First workspace sync"}
               </span>
               <h1 className="mt-xl max-w-xl font-heading text-hero-800 font-bold leading-hero-800">
-                Build your live map of Microsoft Fabric.
+                {deploymentRefresh
+                  ? "Refresh the workspace for this deployment."
+                  : "Build your live map of Microsoft Fabric."}
               </h1>
               <p className="mt-l max-w-xl text-300 leading-500 text-muted-foreground">
-                Fabric Atlas reads metadata only. Start one synchronization to index
-                the workspace, then the app opens directly on every future visit.
+                Fabric Atlas reads metadata only. Every newly deployed build starts
+                here once, ensuring its catalog and lineage are refreshed before the
+                dashboard opens.
               </p>
             </div>
 
@@ -133,12 +139,16 @@ export function FirstSyncView() {
               <div className="flex items-center justify-between gap-m">
                 <div>
                   <div className="text-300 font-semibold">
-                    {syncing ? syncStage : "Ready to create the catalog"}
+                    {syncing
+                      ? syncStage
+                      : deploymentRefresh
+                        ? "Ready to refresh this deployment"
+                        : "Ready to create the catalog"}
                   </div>
                   <div className="mt-xxs text-200 text-muted-foreground">
                     {syncing
                       ? "Keep this page open while Fabric metadata is indexed."
-                      : "The first sync can take a minute on a large workspace."}
+                      : "A full sync can take a minute on a large workspace."}
                   </div>
                 </div>
                 <div className="font-numeric text-500 font-bold text-primary">
@@ -171,7 +181,11 @@ export function FirstSyncView() {
                 ) : (
                   <Waypoints className="icon-size-200" />
                 )}
-                {syncing ? "Synchronizing workspace" : "Start first sync"}
+                {syncing
+                  ? "Synchronizing workspace"
+                  : deploymentRefresh
+                    ? "Sync this deployment"
+                    : "Start first sync"}
               </button>
             </div>
 

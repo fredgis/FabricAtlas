@@ -242,7 +242,7 @@ Fabric Atlas follows [Semantic Versioning](https://semver.org/). Release notes a
 - [GitHub Releases](https://github.com/fredgis/FabricAtlas/releases) — tagged releases and source archives.
 
 The running app exposes the same information under **About**. The current release is
-[v1.1.0](https://github.com/fredgis/FabricAtlas/releases/tag/v1.1.0).
+[v1.1.1](https://github.com/fredgis/FabricAtlas/releases/tag/v1.1.1).
 
 ## Reuse it as a Rayfin template
 
@@ -259,7 +259,7 @@ cd my-atlas && npm install
 ```
 
 `rayfin init -t <git-url>` clones the template, renames the project, and leaves you
-with a fresh, deployable app. Pin a version with `...FabricAtlas#v1.1.0` if you want.
+with a fresh, deployable app. Pin a version with `...FabricAtlas#v1.1.1` if you want.
 
 **Publish it to an internal template gallery** so it appears in the interactive
 `rayfin init` picker for everyone. Add one entry to a shared registry file —

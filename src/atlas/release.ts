@@ -15,7 +15,7 @@ export const REPOSITORY_URL =
   "https://github.com/fredgis/FabricAtlas";
 
 export const APP_VERSION =
-  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.1.0";
+  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.1.1";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -25,6 +25,27 @@ export const BUILD_DATE =
   new Date(0).toISOString();
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "1.1.1",
+    date: "2026-08-29",
+    title: "Deployment sync and stable selection",
+    sections: [
+      {
+        title: "Synchronization",
+        items: [
+          "Every newly deployed build opens on its synchronization screen once.",
+          "Completing the sync records the exact build locally before opening the dashboard.",
+        ],
+      },
+      {
+        title: "Lineage",
+        items: [
+          "Selecting a node highlights it without recalculating or moving the current layout.",
+          "Focus selection is now an explicit action when a new centered path is wanted.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.1.0",
     date: "2026-08-29",

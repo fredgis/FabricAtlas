@@ -89,6 +89,7 @@ function App() {
     currentUser,
     isPreview,
     hasData,
+    requiresDeploymentSync,
   } = useAtlas();
 
   useEffect(() => {
@@ -119,7 +120,9 @@ function App() {
   };
 
   if (!isPreview && hydrating) return <AtlasBootView />;
-  if (!isPreview && !hasData) return <FirstSyncView />;
+  if (!isPreview && (!hasData || requiresDeploymentSync)) {
+    return <FirstSyncView />;
+  }
 
   return (
     <div className="relative flex h-screen overflow-hidden bg-background text-foreground">

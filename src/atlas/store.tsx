@@ -11,6 +11,19 @@ import {
 import { SAMPLE_DATA, type AtlasData, type Comment } from "./model";
 import { loadFromDb, persistComment, runFabricSync } from "./backend";
 import { ATLAS_CONFIG, isSyncConfigured } from "./config";
+import { APP_VERSION, BUILD_COMMIT, BUILD_DATE } from "./release";
+
+const DEPLOYMENT_SYNC_KEY = "atlas.syncedDeployment";
+const CURRENT_DEPLOYMENT = `${APP_VERSION}:${BUILD_COMMIT}:${BUILD_DATE}`;
+
+function needsDeploymentSync(isPreview: boolean): boolean {
+  if (isPreview) return false;
+  try {
+    return localStorage.getItem(DEPLOYMENT_SYNC_KEY) !== CURRENT_DEPLOYMENT;
+  } catch {
+    return true;
+  }
+}
 
 export interface CurrentUser {
   name: string;
@@ -27,6 +40,7 @@ export interface AtlasContextValue {
   isPreview: boolean;
   configured: boolean;
   hasData: boolean;
+  requiresDeploymentSync: boolean;
   syncError?: string;
   currentUser: CurrentUser;
   sync: () => Promise<void>;
@@ -79,6 +93,9 @@ export function AtlasProvider({
     isPreview ? SAMPLE_DATA.syncRuns[0]?.finishedAt : undefined,
   );
   const [configured] = useState<boolean>(isSyncConfigured());
+  const [requiresDeploymentSync, setRequiresDeploymentSync] = useState(() =>
+    needsDeploymentSync(isPreview),
+  );
   const [syncError, setSyncError] = useState<string | undefined>();
   const progressResetTimer = useRef<number | undefined>(undefined);
 
@@ -159,6 +176,14 @@ export function AtlasProvider({
       setLastSyncedAt(finishedAt);
       setSyncProgress(100);
       setSyncStage("Workspace is ready");
+      if (!isPreview) {
+        try {
+          localStorage.setItem(DEPLOYMENT_SYNC_KEY, CURRENT_DEPLOYMENT);
+        } catch {
+          // The current session can still continue when storage is unavailable.
+        }
+        setRequiresDeploymentSync(false);
+      }
       succeeded = true;
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : String(err));
@@ -208,12 +233,13 @@ export function AtlasProvider({
       isPreview,
       configured,
       hasData,
+      requiresDeploymentSync,
       syncError,
       currentUser,
       sync,
       addComment,
     }),
-    [data, hydrating, syncing, syncProgress, syncStage, lastSyncedAt, isPreview, configured, hasData, syncError, currentUser, sync, addComment],
+    [data, hydrating, syncing, syncProgress, syncStage, lastSyncedAt, isPreview, configured, hasData, requiresDeploymentSync, syncError, currentUser, sync, addComment],
   );
 
   return <AtlasContext.Provider value={value}>{children}</AtlasContext.Provider>;

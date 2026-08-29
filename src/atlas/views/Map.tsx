@@ -306,8 +306,10 @@ export function MapView() {
     [items],
   );
 
+  const startingId = initialSelected(items, edges);
   const [mode, setMode] = useState<Mode>(initialMode);
-  const [selId, setSelId] = useState(() => initialSelected(items, edges));
+  const [selId, setSelId] = useState(startingId);
+  const [focusId, setFocusId] = useState(startingId);
   const [impactMode, setImpactMode] = useState(searchParam("impact") !== "direct");
   const [query, setQuery] = useState(searchParam("q"));
   const [typeFilter, setTypeFilter] = useState(searchParam("type") || "all");
@@ -332,6 +334,7 @@ export function MapView() {
   const selected =
     itemById.get(selId) ?? itemById.get(initialSelected(items, edges));
   const activeId = selected?.fabricId ?? "";
+  const resolvedFocusId = itemById.has(focusId) ? focusId : activeId;
   const schema = useMemo(
     () => schemaFor(data, activeId) ?? [],
     [activeId, data],
@@ -339,6 +342,15 @@ export function MapView() {
   const impact = useMemo(
     () => getLineageImpact(edges, activeId, impactMode ? Number.POSITIVE_INFINITY : 1),
     [activeId, edges, impactMode],
+  );
+  const focusImpact = useMemo(
+    () =>
+      getLineageImpact(
+        edges,
+        resolvedFocusId,
+        impactMode ? Number.POSITIVE_INFINITY : 1,
+      ),
+    [edges, impactMode, resolvedFocusId],
   );
   const upstream = useMemo(
     () =>
@@ -370,6 +382,15 @@ export function MapView() {
     () => new Set([activeId, ...impact.upstream.ids, ...impact.downstream.ids]),
     [activeId, impact.downstream.ids, impact.upstream.ids],
   );
+  const focusedItems = useMemo(
+    () =>
+      new Set([
+        resolvedFocusId,
+        ...focusImpact.upstream.ids,
+        ...focusImpact.downstream.ids,
+      ]),
+    [focusImpact.downstream.ids, focusImpact.upstream.ids, resolvedFocusId],
+  );
   const types = useMemo(
     () =>
       [...new Set(items.map((item) => item.itemType))].sort((a, b) =>
@@ -388,9 +409,12 @@ export function MapView() {
           item.displayName.toLowerCase().includes(normalized) ||
           typeMeta(item.itemType).label.toLowerCase().includes(normalized) ||
           item.tags.some((tag) => tag.toLowerCase().includes(normalized)));
-      return matchesFilters && (!impactMode || !activeId || connected.has(item.fabricId));
+      return (
+        matchesFilters &&
+        (!impactMode || !resolvedFocusId || focusedItems.has(item.fabricId))
+      );
     });
-  }, [activeId, connected, healthFilter, impactMode, items, query, typeFilter]);
+  }, [activeId, focusedItems, healthFilter, impactMode, items, query, resolvedFocusId, typeFilter]);
   const visibleIds = useMemo(
     () => new Set(visibleItems.map((item) => item.fabricId)),
     [visibleItems],
@@ -408,9 +432,9 @@ export function MapView() {
         nodeWidth: NODE_W,
         nodeHeight: NODE_H,
         columnGap: 230,
-        focusId: activeId,
+        focusId: resolvedFocusId,
       }),
-    [activeId, visibleEdges, visibleItems],
+    [resolvedFocusId, visibleEdges, visibleItems],
   );
   const posOf = (id: string) => drag[id] ?? layout.positions.get(id) ?? { x: 0, y: 0 };
   const bounds = useMemo(() => {
@@ -659,7 +683,11 @@ export function MapView() {
           type="button"
           role="switch"
           aria-checked={impactMode}
-          onClick={() => setImpactMode((value) => !value)}
+          onClick={() => {
+            const next = !impactMode;
+            if (next) setFocusId(activeId);
+            setImpactMode(next);
+          }}
           className={cn(
             "ml-auto flex h-[34px] items-center gap-[7px] rounded-lg border px-[10px] text-[12px] font-semibold",
             impactMode
@@ -675,6 +703,19 @@ export function MapView() {
           />
           Impact mode
         </button>
+        {mode === "items" && (
+          <button
+            type="button"
+            onClick={() => {
+              setFocusId(activeId);
+              setDrag({});
+            }}
+            className="flex h-[34px] items-center gap-[6px] rounded-lg border border-border px-[10px] text-[12px] font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <GitBranch size={13} />
+            Focus selection
+          </button>
+        )}
         <button
           type="button"
           onClick={() => {

@@ -21,6 +21,9 @@ function Harness() {
       <span data-testid="hydrating">{String(atlas.hydrating)}</span>
       <span data-testid="has-data">{String(atlas.hasData)}</span>
       <span data-testid="syncing">{String(atlas.syncing)}</span>
+      <span data-testid="requires-sync">
+        {String(atlas.requiresDeploymentSync)}
+      </span>
       <span data-testid="progress">{atlas.syncProgress}</span>
       <span data-testid="stage">{atlas.syncStage}</span>
     </div>
@@ -29,6 +32,7 @@ function Harness() {
 
 describe("AtlasProvider synchronization", () => {
   beforeEach(() => {
+    localStorage.clear();
     backend.loadFromDb.mockReset();
     backend.persistComment.mockReset();
     backend.runFabricSync.mockReset();
@@ -58,6 +62,7 @@ describe("AtlasProvider synchronization", () => {
       expect(screen.getByTestId("hydrating")).toHaveTextContent("false"),
     );
     expect(screen.getByTestId("has-data")).toHaveTextContent("false");
+    expect(screen.getByTestId("requires-sync")).toHaveTextContent("true");
 
     fireEvent.click(screen.getByRole("button", { name: "Sync" }));
 
@@ -65,6 +70,7 @@ describe("AtlasProvider synchronization", () => {
       expect(screen.getByTestId("has-data")).toHaveTextContent("true"),
     );
     expect(screen.getByTestId("syncing")).toHaveTextContent("false");
+    expect(screen.getByTestId("requires-sync")).toHaveTextContent("false");
     expect(screen.getByTestId("progress")).toHaveTextContent("100");
     expect(screen.getByTestId("stage")).toHaveTextContent("Workspace is ready");
   });
