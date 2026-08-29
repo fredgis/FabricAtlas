@@ -113,51 +113,51 @@
     </g>
 
     <g fill="none" stroke="url(#flow)" stroke-width="3" stroke-dasharray="5 8" marker-end="url(#arrow)" filter="url(#lineGlow)">
-      <path d="M119 151C155 151 162 218 200 218"/>
-      <path d="M297 218C332 218 340 151 378 151"/>
-      <path d="M475 151C510 151 518 218 556 218"/>
-      <path d="M653 218C688 218 696 151 734 151"/>
-      <path d="M653 218C702 218 692 298 734 298"/>
+      <path d="M167 151C179 151 184 218 200 218"/>
+      <path d="M345 218C357 218 362 151 378 151"/>
+      <path d="M523 151C535 151 540 218 556 218"/>
+      <path d="M699 218C711 218 716 151 734 151"/>
+      <path d="M699 218C717 218 716 298 734 298"/>
     </g>
 
     <g filter="url(#shadow)">
       <g transform="translate(18 122)">
-        <rect width="102" height="58" rx="14" fill="#17212b" stroke="#7d67d9"/>
+        <rect width="150" height="58" rx="14" fill="#17212b" stroke="#7d67d9"/>
         <rect x="12" y="11" width="36" height="36" rx="9" fill="#7c5cff"/>
         <text x="30" y="34" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">PL</text>
         <text x="58" y="25" fill="#f7f9fb" font-size="12" font-weight="650">Pipeline</text>
         <text x="58" y="42" fill="#7f95a5" font-size="9">ORCHESTRATE</text>
       </g>
       <g transform="translate(196 189)">
-        <rect width="102" height="58" rx="14" fill="#17212b" stroke="#d87344"/>
+        <rect width="150" height="58" rx="14" fill="#17212b" stroke="#d87344"/>
         <rect x="12" y="11" width="36" height="36" rx="9" fill="#ef7a45"/>
         <text x="30" y="34" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">NB</text>
         <text x="58" y="25" fill="#f7f9fb" font-size="12" font-weight="650">Notebook</text>
         <text x="58" y="42" fill="#7f95a5" font-size="9">TRANSFORM</text>
       </g>
       <g transform="translate(374 122)">
-        <rect width="102" height="58" rx="14" fill="#17212b" stroke="#2f9e6f"/>
+        <rect width="150" height="58" rx="14" fill="#17212b" stroke="#2f9e6f"/>
         <rect x="12" y="11" width="36" height="36" rx="9" fill="#2f9e6f"/>
         <text x="30" y="34" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">LH</text>
         <text x="58" y="25" fill="#f7f9fb" font-size="12" font-weight="650">Lakehouse</text>
         <text x="58" y="42" fill="#7f95a5" font-size="9">STORE</text>
       </g>
       <g transform="translate(550 189)">
-        <rect width="104" height="58" rx="14" fill="#17212b" stroke="#d9a520"/>
+        <rect width="150" height="58" rx="14" fill="#17212b" stroke="#d9a520"/>
         <rect x="12" y="11" width="36" height="36" rx="9" fill="#d9a520"/>
         <text x="30" y="34" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">SM</text>
         <text x="58" y="25" fill="#f7f9fb" font-size="12" font-weight="650">Model</text>
         <text x="58" y="42" fill="#7f95a5" font-size="9">SEMANTIC</text>
       </g>
       <g transform="translate(726 122)">
-        <rect width="104" height="58" rx="14" fill="#17212b" stroke="#eab308"/>
+        <rect width="150" height="58" rx="14" fill="#17212b" stroke="#eab308"/>
         <rect x="12" y="11" width="36" height="36" rx="9" fill="#eab308"/>
         <text x="30" y="34" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">RP</text>
         <text x="58" y="25" fill="#f7f9fb" font-size="12" font-weight="650">Report</text>
         <text x="58" y="42" fill="#7f95a5" font-size="9">CONSUME</text>
       </g>
       <g transform="translate(726 269)">
-        <rect width="104" height="58" rx="14" fill="#17212b" stroke="#eab308"/>
+        <rect width="150" height="58" rx="14" fill="#17212b" stroke="#eab308"/>
         <rect x="12" y="11" width="36" height="36" rx="9" fill="#eab308"/>
         <text x="30" y="34" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">RP</text>
         <text x="58" y="25" fill="#f7f9fb" font-size="12" font-weight="650">Report</text>
