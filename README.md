@@ -32,15 +32,44 @@ Fabric Atlas collects that metadata without copying business data.
 - Inspect jobs, configuration and team notes in one workspace hub.
 - Refresh the catalog through a guided synchronization flow.
 
-## Screenshots
+## Product screenshots
 
-| Governance overview | Lineage |
-|---|---|
-| ![Governance overview](docs/screenshots/overview.png) | ![Map and lineage](docs/screenshots/map.png) |
+### Guided deployment sync
 
-| Catalog | Access |
-|---|---|
-| ![Catalog](docs/screenshots/catalog.png) | ![Access](docs/screenshots/access.png) |
+Each deployed build starts with one controlled metadata refresh. The screen
+shows scan progress before the validated snapshot becomes visible to the team.
+
+![Guided Fabric Atlas deployment sync](docs/screenshots/deployment-sync.png)
+
+### Item lineage
+
+The item map separates independent data products and follows the Fabric path
+from orchestration to reports. Select a node to inspect its impact without
+moving the current layout.
+
+![Fabric Atlas item lineage](docs/screenshots/lineage-items.png)
+
+### Object lineage
+
+Object mode expands the path into source tables, model tables, fields and
+consumers. Nodes support selection, group movement and the same animated
+upstream or downstream tracing as item mode.
+
+![Fabric Atlas object lineage](docs/screenshots/lineage-objects.png)
+
+### Jobs and health
+
+Recent Fabric activity is grouped by date with status, duration and failure
+signals kept in one table.
+
+![Fabric Atlas jobs and health](docs/screenshots/jobs-health.png)
+
+### Item details
+
+The catalog drawer keeps properties, lineage, access, inventory, configuration
+and jobs beside the selected Fabric item.
+
+![Fabric Atlas item details](docs/screenshots/item-details.png)
 
 ## How it works
 
