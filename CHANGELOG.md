@@ -4,6 +4,17 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-08-29
+
+### Changed
+
+- Redesigned Catalog and Asset Catalog with clearer command headers, grouped navigation, denser cards and structured inspectors.
+- Redesigned Access and Sensitivity as higher-signal governance and risk workspaces.
+- Redesigned Jobs, Config and Comments for faster operational scanning and better empty states.
+- Simplified About into an open-source project page with clone, source, release and license context.
+- Grouped the sidebar navigation into Explore, Govern, Operate and System sections.
+- Added a shared content-width frame and strengthened shared cards, chips and section labels.
+
 ## [1.1.2] - 2026-08-29
 
 ### Changed
@@ -58,6 +69,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
+[1.2.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.2.0
 [1.1.2]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.1.2
 [1.1.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.1.1
 [1.1.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.1.0

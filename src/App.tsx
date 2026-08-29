@@ -55,18 +55,40 @@ export type Tab =
   | "comments"
   | "about";
 
-const NAV: { id: Tab; label: string; icon: typeof Compass }[] = [
-  { id: "overview", label: "Overview", icon: BarChart3 },
-  { id: "map", label: "Map & lineage", icon: Waypoints },
-  { id: "catalog", label: "Catalog", icon: FolderTree },
-  { id: "assets", label: "Asset Catalog", icon: Boxes },
-  { id: "access", label: "Access", icon: ShieldCheck },
-  { id: "sensitivity", label: "Sensitivity", icon: Lock },
-  { id: "jobs", label: "Jobs & health", icon: Activity },
-  { id: "config", label: "Config", icon: Settings2 },
-  { id: "comments", label: "Comments", icon: MessagesSquare },
-  { id: "about", label: "About", icon: Info },
+const NAV_GROUPS: {
+  label: string;
+  items: { id: Tab; label: string; icon: typeof Compass }[];
+}[] = [
+  {
+    label: "Explore",
+    items: [
+      { id: "overview", label: "Overview", icon: BarChart3 },
+      { id: "map", label: "Map & lineage", icon: Waypoints },
+      { id: "catalog", label: "Catalog", icon: FolderTree },
+      { id: "assets", label: "Asset Catalog", icon: Boxes },
+    ],
+  },
+  {
+    label: "Govern",
+    items: [
+      { id: "access", label: "Access", icon: ShieldCheck },
+      { id: "sensitivity", label: "Sensitivity", icon: Lock },
+    ],
+  },
+  {
+    label: "Operate",
+    items: [
+      { id: "jobs", label: "Jobs & health", icon: Activity },
+      { id: "config", label: "Config", icon: Settings2 },
+      { id: "comments", label: "Comments", icon: MessagesSquare },
+    ],
+  },
+  {
+    label: "System",
+    items: [{ id: "about", label: "About", icon: Info }],
+  },
 ];
+const NAV = NAV_GROUPS.flatMap((group) => group.items);
 
 function initialTab(): Tab {
   const h = window.location.hash.replace("#", "") as Tab;
@@ -138,7 +160,7 @@ function App() {
       <aside
         aria-label="Primary navigation"
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-[236px] shrink-0 flex-col border-r border-border bg-secondary shadow-2xl transition-transform lg:static lg:translate-x-0 lg:shadow-none",
+          "fixed inset-y-0 left-0 z-40 flex w-[236px] shrink-0 flex-col border-r border-border bg-secondary/95 shadow-2xl backdrop-blur-xl transition-transform lg:static lg:translate-x-0 lg:shadow-none",
           navOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
@@ -148,39 +170,48 @@ function App() {
           >
             <Compass size={19} />
           </span>
-          <div>
+          <div className="min-w-0">
             <div className="text-[16px] font-bold leading-none">Fabric Atlas</div>
             <div className="mt-[3px] text-[11px] text-muted-foreground">
               Workspace explorer
             </div>
-            <button
-              type="button"
-              onClick={() => setNavOpen(false)}
-              aria-label="Close navigation"
-              className="ml-auto flex h-[32px] w-[32px] items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground lg:hidden"
-            >
-              <X size={17} />
-            </button>
           </div>
+          <button
+            type="button"
+            onClick={() => setNavOpen(false)}
+            aria-label="Close navigation"
+            className="ml-auto flex h-[32px] w-[32px] shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground lg:hidden"
+          >
+            <X size={17} />
+          </button>
         </div>
 
-        <nav className="flex flex-col gap-[2px] px-[10px]">
-          {NAV.map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => nav(id)}
-              aria-current={tab === id ? "page" : undefined}
-              className={cn(
-                "flex items-center gap-[11px] rounded-lg px-[11px] py-[9px] text-left text-[13.5px] font-semibold transition-colors",
-                tab === id
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
-              )}
-            >
-              <Icon size={17} />
-              {label}
-            </button>
+        <nav className="min-h-0 flex-1 overflow-y-auto px-[10px] pb-[10px]">
+          {NAV_GROUPS.map((group, groupIndex) => (
+            <div key={group.label} className={cn(groupIndex > 0 && "mt-[12px]")}>
+              <div className="px-[11px] pb-[5px] text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground/70">
+                {group.label}
+              </div>
+              <div className="flex flex-col gap-[2px]">
+                {group.items.map(({ id, label, icon: Icon }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => nav(id)}
+                    aria-current={tab === id ? "page" : undefined}
+                    className={cn(
+                      "flex items-center gap-[11px] rounded-lg px-[11px] py-[8px] text-left text-[13px] font-semibold transition-colors",
+                      tab === id
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                    )}
+                  >
+                    <Icon size={17} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
 
@@ -203,7 +234,7 @@ function App() {
 
       {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="relative flex h-[56px] shrink-0 items-center justify-between gap-[10px] border-b border-border px-[12px] sm:px-[18px] lg:px-[22px]">
+        <header className="relative flex h-[56px] shrink-0 items-center justify-between gap-[10px] border-b border-border bg-background/90 px-[12px] backdrop-blur-xl sm:px-[18px] lg:px-[22px]">
           <div className="flex min-w-0 items-center gap-[8px]">
             <button
               type="button"

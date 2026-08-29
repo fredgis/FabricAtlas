@@ -278,6 +278,12 @@ body,
     max-width: 420px;
 }
 
+.atlas-content-frame {
+    width: 100%;
+    max-width: 1480px;
+    margin-inline: auto;
+}
+
 .atlas-sync-grid {
     background-image:
       linear-gradient(

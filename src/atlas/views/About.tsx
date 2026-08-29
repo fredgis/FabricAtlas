@@ -1,14 +1,15 @@
+import { useState } from "react";
 import {
-  Boxes,
-  CalendarDays,
-  CheckCircle2,
+  Check,
   Code2,
+  Copy,
   ExternalLink,
+  GitBranch,
   GitCommitHorizontal,
-  Layers3,
   Map,
   Package,
   ServerCog,
+  ShieldCheck,
 } from "lucide-react";
 import { useAtlas } from "../store";
 import { Card, SectionLabel } from "../ui";
@@ -21,6 +22,8 @@ import {
   releaseUrl,
 } from "../release";
 
+const CLONE_COMMAND = `git clone ${REPOSITORY_URL}.git`;
+
 function displayBuildDate(): string {
   const date = new Date(BUILD_DATE);
   if (Number.isNaN(date.valueOf()) || date.getUTCFullYear() === 1970) {
@@ -32,224 +35,246 @@ function displayBuildDate(): string {
   }).format(date);
 }
 
-function ExternalCard({
+function ProjectLink({
   href,
   icon: Icon,
-  title,
-  detail,
+  children,
+  primary = false,
 }: {
   href: string;
   icon: typeof Code2;
-  title: string;
-  detail: string;
+  children: React.ReactNode;
+  primary?: boolean;
 }) {
   return (
     <a
       href={href}
       target="_blank"
       rel="noreferrer"
-      className="group flex items-center gap-[12px] rounded-xl border border-border bg-card p-[14px] transition-all hover:-translate-y-[1px] hover:border-primary/50 hover:shadow-lg"
+      className={
+        primary
+          ? "inline-flex items-center justify-center gap-s rounded-lg bg-primary px-l py-m text-300 font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+          : "inline-flex items-center justify-center gap-s rounded-lg border border-border bg-background px-l py-m text-300 font-semibold transition-colors hover:border-primary/50 hover:bg-accent"
+      }
     >
-      <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-        <Icon size={19} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-[13px] font-semibold">{title}</span>
-        <span className="mt-[2px] block truncate text-[11px] text-muted-foreground">
-          {detail}
-        </span>
-      </span>
-      <ExternalLink
-        size={14}
-        className="text-muted-foreground transition-transform group-hover:translate-x-[2px] group-hover:text-primary"
-      />
+      <Icon className="icon-size-200" aria-hidden="true" />
+      {children}
+      <ExternalLink className="icon-size-100" aria-hidden="true" />
     </a>
   );
 }
 
 export function AboutView() {
   const { data, isPreview, configured, lastSyncedAt } = useAtlas();
-  const runtime = isPreview ? "Local preview" : "Fabric Data App";
-  const workspaceId = data.workspace.fabricId || "Not available";
+  const [copied, setCopied] = useState(false);
+
+  const copyCloneCommand = async () => {
+    try {
+      await navigator.clipboard.writeText(CLONE_COMMAND);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      window.prompt("Copy the clone command", CLONE_COMMAND);
+    }
+  };
 
   const facts = [
-    { icon: Package, label: "Version", value: `v${APP_VERSION}` },
-    { icon: GitCommitHorizontal, label: "Build commit", value: BUILD_COMMIT },
-    { icon: CalendarDays, label: "Built", value: displayBuildDate() },
-    { icon: ServerCog, label: "Runtime", value: runtime },
+    { label: "Release", value: `v${APP_VERSION}`, icon: Package },
+    { label: "Build", value: BUILD_COMMIT, icon: GitCommitHorizontal },
+    {
+      label: "Runtime",
+      value: isPreview ? "Local preview" : "Fabric Data App",
+      icon: ServerCog,
+    },
+    {
+      label: "Workspace",
+      value: data.workspace.displayName || "Microsoft Fabric",
+      icon: Map,
+    },
   ];
 
   return (
-    <div className="mx-auto flex w-full max-w-[1240px] flex-col gap-[18px] p-[24px]">
-      <div>
-        <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-primary">
-          Project information
-        </div>
-        <h1 className="mt-[4px] text-[24px] font-bold">About Fabric Atlas</h1>
-        <p className="mt-[5px] max-w-[780px] text-[13px] leading-[1.55] text-muted-foreground">
-          Workspace metadata, governance, effective access and lineage in one
-          Fabric-native application.
-        </p>
-      </div>
+    <div className="atlas-content-frame flex flex-col gap-xl p-xl lg:p-xxl">
+      <Card className="relative isolate overflow-hidden border-primary/30 bg-gradient-to-br from-primary/15 via-card to-lineage-downstream/10 shadow-xl">
+        <div className="atlas-overview-beam" aria-hidden="true" />
+        <div className="grid lg:grid-cols-[1.25fr_0.75fr]">
+          <section className="p-xl sm:p-xxxl">
+            <div className="flex flex-wrap items-center gap-s">
+              <span className="inline-flex items-center gap-s rounded-full border border-status-healthy/30 bg-status-healthy/10 px-m py-s text-200 font-semibold text-status-healthy">
+                <GitBranch className="icon-size-100" aria-hidden="true" />
+                Open source
+              </span>
+              <span className="rounded-full border border-border bg-background/55 px-m py-s text-200 font-semibold">
+                MIT licensed
+              </span>
+              <span className="rounded-full border border-primary/30 bg-primary/10 px-m py-s font-mono text-200 font-semibold text-primary">
+                v{APP_VERSION}
+              </span>
+            </div>
 
-      <Card className="overflow-hidden">
-        <div className="grid gap-0 lg:grid-cols-[1.2fr_1fr]">
-          <div className="border-b border-border p-[20px] lg:border-b-0 lg:border-r">
-            <div className="flex items-center gap-[14px]">
-              <span className="flex h-[54px] w-[54px] items-center justify-center rounded-2xl bg-gradient-to-br from-[#0ea5b7] to-[#3b82f6] text-white shadow-lg">
-                <Map size={27} />
+            <div className="mt-xl flex items-center gap-l">
+              <span className="flex icon-size-700 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-lineage-downstream to-primary text-primary-foreground shadow-lg">
+                <Map className="icon-size-400" aria-hidden="true" />
               </span>
               <div>
-                <div className="text-[20px] font-bold">Fabric Atlas</div>
-                <div className="text-[12px] text-muted-foreground">
-                  Workspace explorer · version {APP_VERSION}
-                </div>
+                <SectionLabel>Microsoft Fabric governance</SectionLabel>
+                <h1 className="mt-xs font-heading text-hero-800 font-bold leading-hero-800 sm:text-hero-900 sm:leading-hero-900">
+                  Fabric Atlas
+                </h1>
               </div>
             </div>
-            <p className="mt-[16px] text-[13px] leading-[1.6] text-muted-foreground">
-              Fabric Atlas reads workspace metadata through the Fabric APIs and
-              semantic-model metadata paths, persists it through Rayfin, and turns it
-              into an operational catalog for engineering and governance teams.
+
+            <p className="atlas-overview-copy mt-l text-300 leading-500 text-muted-foreground">
+              An open-source workspace explorer for catalog, lineage, effective
+              access, sensitivity, jobs and operational context — deployed directly
+              into Microsoft Fabric with Rayfin.
             </p>
-            <div className="mt-[16px] grid gap-[8px] sm:grid-cols-2">
-              <ExternalCard
-                href={REPOSITORY_URL}
-                icon={Code2}
-                title="Source repository"
-                detail="fredgis/FabricAtlas"
-              />
-              <ExternalCard
-                href={releaseUrl()}
-                icon={Package}
-                title={`Release v${APP_VERSION}`}
-                detail="Release notes and downloadable source"
-              />
-            </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-[1px] bg-border">
-            {facts.map(({ icon: Icon, label, value }) => (
-              <div key={label} className="bg-card p-[16px]">
-                <Icon size={16} className="text-primary" />
-                <div className="mt-[10px] text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                  {label}
-                </div>
-                <div className="mt-[4px] break-words font-mono text-[12px] font-semibold">
-                  {value}
-                </div>
+            <div className="mt-xl flex flex-col gap-s sm:flex-row sm:flex-wrap">
+              <ProjectLink href={REPOSITORY_URL} icon={Code2} primary>
+                View source
+              </ProjectLink>
+              <ProjectLink href={releaseUrl()} icon={Package}>
+                Latest release
+              </ProjectLink>
+              <ProjectLink
+                href={`${REPOSITORY_URL}/blob/main/CHANGELOG.md`}
+                icon={GitCommitHorizontal}
+              >
+                Changelog
+              </ProjectLink>
+            </div>
+          </section>
+
+          <aside className="border-t border-border/70 bg-background/40 p-xl backdrop-blur-sm sm:p-xxl lg:border-l lg:border-t-0">
+            <SectionLabel>Clone &amp; explore</SectionLabel>
+            <div className="mt-m overflow-hidden rounded-xl border border-border bg-secondary">
+              <div className="flex items-center gap-s border-b border-border px-m py-s text-200 text-muted-foreground">
+                <span className="h-xs w-xs rounded-full bg-status-failing" />
+                <span className="h-xs w-xs rounded-full bg-status-warning" />
+                <span className="h-xs w-xs rounded-full bg-status-healthy" />
+                <span className="ml-s">terminal</span>
               </div>
-            ))}
-          </div>
+              <div className="flex items-center gap-m p-m">
+                <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-200 text-foreground">
+                  {CLONE_COMMAND}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => void copyCloneCommand()}
+                  aria-label="Copy clone command"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground"
+                >
+                  {copied ? (
+                    <Check className="icon-size-200 text-status-healthy" />
+                  ) : (
+                    <Copy className="icon-size-200" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-l grid grid-cols-2 gap-s">
+              {facts.map(({ label, value, icon: Icon }) => (
+                <div
+                  key={label}
+                  className="min-w-0 rounded-xl border border-border bg-card/65 p-m"
+                >
+                  <Icon className="icon-size-200 text-primary" aria-hidden="true" />
+                  <div className="mt-s text-100 font-semibold uppercase tracking-wide text-muted-foreground">
+                    {label}
+                  </div>
+                  <div className="mt-xs truncate text-200 font-semibold" title={value}>
+                    {value}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </aside>
         </div>
       </Card>
 
-      <div className="grid gap-[16px] lg:grid-cols-[1fr_1fr]">
-        <Card className="p-[16px]">
-          <div className="flex items-center gap-[8px]">
-            <Layers3 size={16} className="text-primary" />
-            <SectionLabel>Current deployment</SectionLabel>
+      <div className="grid items-start gap-l lg:grid-cols-[1.15fr_0.85fr]">
+        <Card className="overflow-hidden">
+          <div className="flex items-center justify-between gap-m border-b border-border bg-secondary/60 px-l py-m">
+            <div>
+              <SectionLabel>Current release</SectionLabel>
+              <h2 className="mt-xs text-500 font-semibold">
+                v{CURRENT_RELEASE.version} · {CURRENT_RELEASE.title}
+              </h2>
+            </div>
+            <span className="text-200 text-muted-foreground">
+              {CURRENT_RELEASE.date}
+            </span>
           </div>
-          <div className="mt-[13px] divide-y divide-border/60">
-            {[
-              ["Workspace", data.workspace.displayName],
-              ["Workspace ID", workspaceId],
-              ["Capacity", data.workspace.capacity || "Not reported"],
-              ["Region", data.workspace.region || "Not reported"],
-              ["Sync endpoint", configured ? "Configured" : "Not configured"],
-              [
-                "Last indexed",
-                lastSyncedAt
-                  ? new Intl.DateTimeFormat(undefined, {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    }).format(new Date(lastSyncedAt))
-                  : "Never",
-              ],
-            ].map(([label, value]) => (
-              <div
-                key={label}
-                className="grid gap-[5px] py-[9px] text-[12px] sm:grid-cols-[140px_1fr]"
-              >
-                <span className="font-semibold text-muted-foreground">{label}</span>
-                <span className={label.includes("ID") ? "break-all font-mono" : ""}>
-                  {value}
-                </span>
-              </div>
+          <div className="grid gap-l p-l md:grid-cols-2">
+            {CURRENT_RELEASE.sections.map((section) => (
+              <section key={section.title}>
+                <SectionLabel>{section.title}</SectionLabel>
+                <ul className="mt-s space-y-s">
+                  {section.items.map((item) => (
+                    <li
+                      key={item}
+                      className="flex gap-s text-300 leading-300 text-muted-foreground"
+                    >
+                      <span className="mt-s h-xs w-xs shrink-0 rounded-full bg-primary" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             ))}
           </div>
         </Card>
 
-        <Card className="p-[16px]">
-          <div className="flex items-center gap-[8px]">
-            <Code2 size={16} className="text-primary" />
-            <SectionLabel>Application stack</SectionLabel>
-          </div>
-          <div className="mt-[13px] grid gap-[9px] sm:grid-cols-2">
-            {[
-              ["React", "19.2.7"],
-              ["Rayfin", "1.33.1"],
-              ["Fabric app data", "1.1.0"],
-              ["Tailwind CSS", "4.3.0"],
-              ["TypeScript", "5.7.2"],
-              ["Vite", "8.0.16"],
-            ].map(([name, version]) => (
-              <div
-                key={name}
-                className="flex items-center justify-between rounded-lg border border-border px-[11px] py-[9px] text-[12px]"
-              >
-                <span className="font-semibold">{name}</span>
-                <span className="font-mono text-muted-foreground">{version}</span>
+        <div className="flex flex-col gap-l">
+          <Card className="p-l">
+            <div className="flex items-start gap-m">
+              <span className="flex icon-size-600 shrink-0 items-center justify-center rounded-xl bg-status-healthy/10 text-status-healthy">
+                <ShieldCheck className="icon-size-300" aria-hidden="true" />
+              </span>
+              <div>
+                <SectionLabel>Open by design</SectionLabel>
+                <h2 className="mt-xs text-400 font-semibold">
+                  Metadata only, MIT licensed
+                </h2>
+                <p className="mt-s text-300 leading-400 text-muted-foreground">
+                  Fabric Atlas does not copy workspace business data. The full source,
+                  architecture and deployment guide are available in the repository.
+                </p>
               </div>
-            ))}
-          </div>
-          <div className="mt-[12px] flex items-start gap-[8px] rounded-lg bg-status-healthy/10 px-[11px] py-[9px] text-[11px] leading-[1.45] text-status-healthy">
-            <CheckCircle2 size={14} className="mt-[1px] shrink-0" />
-            Fabric Atlas reads metadata only. It does not copy or persist workspace
-            business data.
-          </div>
-        </Card>
-      </div>
+            </div>
+          </Card>
 
-      <Card className="overflow-hidden">
-        <div className="flex flex-wrap items-center justify-between gap-[8px] border-b border-border px-[16px] py-[13px]">
-          <div>
-            <div className="text-[14px] font-bold">
-              v{CURRENT_RELEASE.version} · {CURRENT_RELEASE.title}
+          <Card className="overflow-hidden">
+            <div className="border-b border-border bg-secondary/60 px-l py-m">
+              <SectionLabel>Deployment</SectionLabel>
             </div>
-            <div className="mt-[2px] text-[11px] text-muted-foreground">
-              Released {CURRENT_RELEASE.date}
-            </div>
-          </div>
-          <a
-            href={`${REPOSITORY_URL}/blob/main/CHANGELOG.md`}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-[6px] text-[12px] font-semibold text-primary hover:underline"
-          >
-            Full changelog
-            <ExternalLink size={13} />
-          </a>
+            <dl className="divide-y divide-border/60">
+              {[
+                ["Workspace", data.workspace.displayName || "Not available"],
+                ["Build date", displayBuildDate()],
+                ["Sync endpoint", configured ? "Configured" : "Not configured"],
+                [
+                  "Last indexed",
+                  lastSyncedAt
+                    ? new Intl.DateTimeFormat(undefined, {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      }).format(new Date(lastSyncedAt))
+                    : "Never",
+                ],
+              ].map(([label, value]) => (
+                <div key={label} className="grid grid-cols-3 gap-m px-l py-m">
+                  <dt className="text-200 font-semibold text-muted-foreground">
+                    {label}
+                  </dt>
+                  <dd className="col-span-2 break-words text-200">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </Card>
         </div>
-        <div className="grid gap-[16px] p-[16px] md:grid-cols-2">
-          {CURRENT_RELEASE.sections.map((section) => (
-            <div key={section.title}>
-              <SectionLabel>{section.title}</SectionLabel>
-              <ul className="mt-[9px] space-y-[7px]">
-                {section.items.map((item) => (
-                  <li key={item} className="flex gap-[8px] text-[12px] leading-[1.45]">
-                    <span className="mt-[6px] h-[5px] w-[5px] shrink-0 rounded-full bg-primary" />
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      </Card>
-
-      <div className="flex items-center gap-[8px] text-[11px] text-muted-foreground">
-        <Boxes size={14} />
-        Built as a Rayfin Data App and deployed into Microsoft Fabric.
       </div>
     </div>
   );

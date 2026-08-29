@@ -15,7 +15,7 @@ export const REPOSITORY_URL =
   "https://github.com/fredgis/FabricAtlas";
 
 export const APP_VERSION =
-  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.1.2";
+  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.2.0";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -25,6 +25,29 @@ export const BUILD_DATE =
   new Date(0).toISOString();
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "1.2.0",
+    date: "2026-08-29",
+    title: "Workspace experience refresh",
+    sections: [
+      {
+        title: "Catalog & governance",
+        items: [
+          "Catalog and Asset Catalog redesigned for faster scanning and clearer master-detail navigation.",
+          "Access and Sensitivity rebuilt as focused governance and risk workspaces.",
+          "Grouped content remains collapsed until users choose the detail they need.",
+        ],
+      },
+      {
+        title: "Operations & project",
+        items: [
+          "Jobs, Config and Comments redesigned with stronger operational hierarchy.",
+          "About simplified into an open-source project page with clone, source and release actions.",
+          "Sidebar navigation grouped into Explore, Govern, Operate and System sections.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.1.2",
     date: "2026-08-29",

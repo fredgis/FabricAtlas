@@ -57,15 +57,15 @@ runs together, and every selection can be shared as a deep link.
 
 ### Catalog
 Every item as a collapsible tree and as rich cards — owner, health, endorsement, tags, freshness.
-Click any card to slide open a panel with **all of its properties**: identity, lineage, access,
-config facts and recent jobs.
+Use the compact command header and grouped type navigator to narrow the inventory, then click any
+card to open a structured, keyboard-accessible panel with identity, lineage, access, config and jobs.
 
 ![Catalog](docs/screenshots/catalog.png)
 
 ### Asset Catalog
 Goes _inside_ the items: every table, column, measure and KPI across the workspace, searchable and
-grouped by item. Pick any object and see exactly **who can access it** — inherited from the parent
-item's permissions.
+grouped into collapsed item accordions. Pick an object to inspect its parent context, datatype and
+exact effective access — including inherited versus direct permissions.
 
 ![Asset Catalog](docs/screenshots/assets.png)
 
@@ -74,7 +74,7 @@ Who can reach what. Toggle **By principal** or **By object**. The matrix compute
 access** from the actual grants; click a principal to expand every **item and asset** they can reach.
 Item-level shares are surfaced too: someone given a single report or model, without workspace
 membership, shows up as **item-only**, and the risk panel calls out external guests and service
-principals.
+principals in priority order.
 
 ![Access — by principal](docs/screenshots/access.png)
 
@@ -88,7 +88,7 @@ highly-confidential items spotlighted for review.
 
 ### Jobs & health
 Recent refreshes, notebook runs and pipeline runs, with status, duration and details in one responsive
-operational view.
+operational view grouped by date.
 
 ### Config
 Everything retrievable about an item — storage mode, OneLake paths, SQL endpoint, tables and measures —
@@ -104,8 +104,8 @@ everyone sees them.
 ![Comments](docs/screenshots/comments.png)
 
 ### About
-The running app reports its semantic version, build commit and build time, links back to the source and
-GitHub release, identifies the active Fabric workspace and includes the current changelog.
+A compact open-source project page with MIT license context, clone command, source repository,
+current release, deployment details and changelog.
 
 ### Light and dark
 Dark by default, with a one-click persistent light theme when preferred.
@@ -243,7 +243,7 @@ Fabric Atlas follows [Semantic Versioning](https://semver.org/). Release notes a
 - [GitHub Releases](https://github.com/fredgis/FabricAtlas/releases) — tagged releases and source archives.
 
 The running app exposes the same information under **About**. The current release is
-[v1.1.2](https://github.com/fredgis/FabricAtlas/releases/tag/v1.1.2).
+[v1.2.0](https://github.com/fredgis/FabricAtlas/releases/tag/v1.2.0).
 
 ## Reuse it as a Rayfin template
 
@@ -260,7 +260,7 @@ cd my-atlas && npm install
 ```
 
 `rayfin init -t <git-url>` clones the template, renames the project, and leaves you
-with a fresh, deployable app. Pin a version with `...FabricAtlas#v1.1.2` if you want.
+with a fresh, deployable app. Pin a version with `...FabricAtlas#v1.2.0` if you want.
 
 **Publish it to an internal template gallery** so it appears in the interactive
 `rayfin init` picker for everyone. Add one entry to a shared registry file —
