@@ -178,5 +178,4 @@ created, then re-add the new hosting origin to the app registration.
 | `npm run test` | Vitest |
 | `npx rayfin up` | Deploy app + apply schema to Fabric |
 
-See [architecture.md](architecture.md) for how it all fits together and
-[evolving-with-rayfin.md](evolving-with-rayfin.md) for how to grow the app with prompts.
+See [architecture.md](architecture.md) for how it all fits together.
