@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/fabric-atlas-hero.svg" alt="Fabric Atlas, governance map for Microsoft Fabric workspaces" width="100%">
+<img src="docs/assets/fabric-atlas-hero-v2.svg" alt="Fabric Atlas, governance map for Microsoft Fabric workspaces" width="100%">
 
 Fabric Atlas gives a team one readable map of its Fabric workspace. It brings
 together lineage, item metadata, access, sensitivity and run history, then keeps
