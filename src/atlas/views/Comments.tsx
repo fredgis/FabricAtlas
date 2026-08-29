@@ -54,11 +54,11 @@ export function CommentsView() {
               rows={3}
               className="w-full resize-none rounded-xl border border-border bg-background px-[12px] py-[10px] text-[14px] outline-none focus:border-primary"
             />
-            <div className="mt-[10px] flex items-center gap-[10px]">
+            <div className="mt-[10px] flex flex-wrap items-center gap-[10px]">
               <select
                 value={target}
                 onChange={(e) => setTarget(e.target.value)}
-                className="rounded-lg border border-border bg-background px-[10px] py-[7px] text-[13px] outline-none"
+                className="min-w-[180px] flex-1 rounded-lg border border-border bg-background px-[10px] py-[7px] text-[13px] outline-none sm:flex-none"
               >
                 <option value="">Whole workspace</option>
                 {items.map((i) => (

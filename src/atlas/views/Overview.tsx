@@ -20,16 +20,19 @@ const JOB_COLOR: Record<string, string> = {
 };
 
 function Donut({ counts }: { counts: [Health, number][] }) {
-  const total = counts.reduce((a, [, c]) => a + c, 0) || 1;
+  const itemTotal = counts.reduce((a, [, c]) => a + c, 0);
+  const total = itemTotal || 1;
   const r = 52;
   const C = 2 * Math.PI * r;
-  let offset = 0;
   return (
     <svg width="132" height="132" viewBox="0 0 132 132">
       <g transform="rotate(-90 66 66)" fill="none" strokeWidth="20">
-        {counts.map(([h, c]) => {
+        {counts.map(([h, c], index) => {
           const seg = (c / total) * C;
-          const el = (
+          const offset = counts
+            .slice(0, index)
+            .reduce((sum, [, previous]) => sum + (previous / total) * C, 0);
+          return (
             <circle
               key={h}
               cx="66"
@@ -40,12 +43,10 @@ function Donut({ counts }: { counts: [Health, number][] }) {
               strokeDashoffset={-offset}
             />
           );
-          offset += seg;
-          return el;
         })}
       </g>
       <text x="66" y="62" textAnchor="middle" className="fill-foreground" fontSize="26" fontWeight="700">
-        {total}
+        {itemTotal}
       </text>
       <text x="66" y="82" textAnchor="middle" className="fill-muted-foreground" fontSize="11">
         items

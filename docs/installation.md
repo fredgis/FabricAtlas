@@ -116,16 +116,14 @@ az ad app permission admin-consent --id $appId
 > The tenant, client and workspace ids are **not secrets**, but they are also not committed. Provide
 > them to the build through git-ignored env vars (next step).
 
-### 5b. Point the app at your registration
+### 5b. Point the app at your registration and UDF
 
-Add these to `.env.local` (git-ignored). `VITE_FABRIC_WORKSPACE_ID` is written automatically by
-`rayfin up`; you provide the client and tenant:
+Add these public values to `rayfin/.env` (git-ignored). `rayfin env` maps custom
+`RAYFIN_PUBLIC_*` values to Vite variables, and `rayfin up` supplies the Fabric workspace and tenant:
 
 ```bash
-VITE_ATLAS_SPA_CLIENT_ID=<client-id>
-VITE_ATLAS_TENANT_ID=<tenant-id>
-# optional — otherwise pasted in the app's first-run screen and kept in localStorage:
-# VITE_ATLAS_UDF_URL=https://<...>/functions/sync_all/invoke
+RAYFIN_PUBLIC_ATLAS_SPA_CLIENT_ID=<client-id>
+RAYFIN_PUBLIC_ATLAS_UDF_URL=https://<...>/functions/sync_all/invoke
 ```
 
 Then `npx rayfin up` again so the values are baked into the deployed bundle, and add the new hosting
@@ -145,8 +143,9 @@ origin to the app registration's SPA redirect URIs.
 1. Open the `atlas_sync_functions` item in your workspace (Fabric portal). Make sure its code matches
    [`function_app.py`](../fabric/udf/atlas_sync_functions/function_app.py), then click **Publish** and
    copy the `sync_all` invoke URL.
-2. Open the app, paste the `sync_all` invoke URL on the first-run screen, and click **Sync**. The
-   catalog, lineage, per-item access, sensitivity and config are written into the Atlas database.
+2. Put the `sync_all` invoke URL in `RAYFIN_PUBLIC_ATLAS_UDF_URL` as shown above, redeploy, open the
+   app and click **Sync**. The app no longer blocks startup when Sync is not configured; it opens the
+   dashboard directly and reports the configuration state under **About**.
 
 ## 6. Redeploy after a change
 

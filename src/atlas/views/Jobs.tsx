@@ -54,7 +54,7 @@ export function JobsView() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+      <div className="grid grid-cols-1 gap-[14px] sm:grid-cols-2 xl:grid-cols-4">
         {kpis.map((k) => (
           <Card key={k.label} style={{ padding: 16 }}>
             <SectionLabel>{k.label}</SectionLabel>
@@ -65,8 +65,9 @@ export function JobsView() {
         ))}
       </div>
 
-      <Card>
-        <table className="w-full border-collapse">
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[820px] border-collapse">
           <thead>
             <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground">
               <th className="px-[16px] py-[12px] font-bold">Status</th>
@@ -114,6 +115,7 @@ export function JobsView() {
             })}
           </tbody>
         </table>
+        </div>
       </Card>
     </div>
   );

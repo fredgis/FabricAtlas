@@ -13,7 +13,9 @@ import {
   Boxes,
   Compass,
   FolderTree,
+  Info,
   Lock,
+  Menu,
   MessagesSquare,
   Moon,
   RefreshCw,
@@ -21,6 +23,7 @@ import {
   ShieldCheck,
   Sun,
   Waypoints,
+  X,
 } from "lucide-react";
 
 import { useThemeContext } from "@/hooks/theme.context";
@@ -37,7 +40,7 @@ import { SensitivityView } from "./atlas/views/Sensitivity";
 import { JobsView } from "./atlas/views/Jobs";
 import { ConfigView } from "./atlas/views/Config";
 import { CommentsView } from "./atlas/views/Comments";
-import { WelcomeView } from "./atlas/views/Welcome";
+import { AboutView } from "./atlas/views/About";
 
 export type Tab =
   | "overview"
@@ -48,7 +51,8 @@ export type Tab =
   | "sensitivity"
   | "jobs"
   | "config"
-  | "comments";
+  | "comments"
+  | "about";
 
 const NAV: { id: Tab; label: string; icon: typeof Compass }[] = [
   { id: "overview", label: "Overview", icon: BarChart3 },
@@ -60,6 +64,7 @@ const NAV: { id: Tab; label: string; icon: typeof Compass }[] = [
   { id: "jobs", label: "Jobs & health", icon: Activity },
   { id: "config", label: "Config", icon: Settings2 },
   { id: "comments", label: "Comments", icon: MessagesSquare },
+  { id: "about", label: "About", icon: Info },
 ];
 
 function initialTab(): Tab {
@@ -69,13 +74,22 @@ function initialTab(): Tab {
 
 function App() {
   const [tab, setTab] = useState<Tab>(initialTab);
+  const [navOpen, setNavOpen] = useState(false);
   const { isDark, toggleTheme } = useThemeContext();
-  const { data, sync, syncing, lastSyncedAt, currentUser, isPreview, hasData } =
-    useAtlas();
+  const { data, sync, syncing, lastSyncedAt, currentUser } = useAtlas();
 
   useEffect(() => {
     window.location.hash = tab;
   }, [tab]);
+
+  useEffect(() => {
+    if (!navOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setNavOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [navOpen]);
 
   useEffect(() => {
     const onHash = () => {
@@ -86,17 +100,29 @@ function App() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
 
-  const nav = (t: Tab) => setTab(t);
-
-  // Deployed and nothing synced yet → the classy first-run screen.
-  if (!isPreview && !hasData) {
-    return <WelcomeView />;
-  }
+  const nav = (t: Tab) => {
+    setTab(t);
+    setNavOpen(false);
+  };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background text-foreground">
+    <div className="relative flex h-screen overflow-hidden bg-background text-foreground">
+      {navOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          onClick={() => setNavOpen(false)}
+          className="fixed inset-0 z-30 bg-black/45 lg:hidden"
+        />
+      )}
       {/* Sidebar */}
-      <aside className="flex w-[236px] shrink-0 flex-col border-r border-border bg-secondary">
+      <aside
+        aria-label="Primary navigation"
+        className={cn(
+          "fixed inset-y-0 left-0 z-40 flex w-[236px] shrink-0 flex-col border-r border-border bg-secondary shadow-2xl transition-transform lg:static lg:translate-x-0 lg:shadow-none",
+          navOpen ? "translate-x-0" : "-translate-x-full",
+        )}
+      >
         <div className="flex items-center gap-[11px] px-[16px] py-[16px]">
           <span
             className="flex items-center justify-center rounded-xl text-white"
@@ -113,6 +139,14 @@ function App() {
             <div className="mt-[3px] text-[11px] text-muted-foreground">
               Workspace explorer
             </div>
+            <button
+              type="button"
+              onClick={() => setNavOpen(false)}
+              aria-label="Close navigation"
+              className="ml-auto flex h-[32px] w-[32px] items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground lg:hidden"
+            >
+              <X size={17} />
+            </button>
           </div>
         </div>
 
@@ -120,7 +154,9 @@ function App() {
           {NAV.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
+              type="button"
               onClick={() => nav(id)}
+              aria-current={tab === id ? "page" : undefined}
               className={cn(
                 "flex items-center gap-[11px] rounded-lg px-[11px] py-[9px] text-left text-[13.5px] font-semibold transition-colors",
                 tab === id
@@ -154,25 +190,41 @@ function App() {
 
       {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-[56px] shrink-0 items-center justify-between border-b border-border px-[22px]">
-          <div className="text-[13px] text-muted-foreground">
-            Fabric · <b className="text-foreground">{data.workspace.displayName}</b> ·{" "}
-            {NAV.find((n) => n.id === tab)?.label}
+        <header className="flex h-[56px] shrink-0 items-center justify-between gap-[10px] border-b border-border px-[12px] sm:px-[18px] lg:px-[22px]">
+          <div className="flex min-w-0 items-center gap-[8px]">
+            <button
+              type="button"
+              onClick={() => setNavOpen(true)}
+              aria-label="Open navigation"
+              className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:text-foreground lg:hidden"
+            >
+              <Menu size={17} />
+            </button>
+            <div className="truncate text-[12px] text-muted-foreground sm:text-[13px]">
+              <span className="hidden sm:inline">Fabric · </span>
+              <b className="text-foreground">{data.workspace.displayName}</b>
+              <span className="hidden sm:inline">
+                {" "}
+                · {NAV.find((n) => n.id === tab)?.label}
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-[14px]">
+          <div className="flex shrink-0 items-center gap-[8px] sm:gap-[12px] lg:gap-[14px]">
             <span className="hidden text-[12px] text-muted-foreground sm:inline">
               synced {relativeTime(lastSyncedAt)}
             </span>
             <button
+              type="button"
               onClick={() => void sync()}
               disabled={syncing}
               className="flex items-center gap-[8px] rounded-lg px-[13px] py-[8px] text-[13px] font-bold text-white disabled:opacity-70"
               style={{ background: "linear-gradient(135deg,#0ea5b7,#3b82f6)" }}
             >
               <RefreshCw size={15} className={syncing ? "animate-spin" : ""} />
-              {syncing ? "Syncing…" : "Sync"}
+              <span className="hidden sm:inline">{syncing ? "Syncing…" : "Sync"}</span>
             </button>
             <button
+              type="button"
               onClick={toggleTheme}
               title="Toggle theme"
               className="flex items-center justify-center rounded-lg border border-border bg-card p-[8px] text-muted-foreground hover:text-foreground"
@@ -202,6 +254,7 @@ function App() {
               {tab === "jobs" && <JobsView />}
               {tab === "config" && <ConfigView />}
               {tab === "comments" && <CommentsView />}
+              {tab === "about" && <AboutView />}
             </motion.div>
           </AnimatePresence>
         </main>

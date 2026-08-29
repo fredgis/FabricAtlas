@@ -2,9 +2,11 @@
 
 # 🧭 Fabric Atlas
 
+[![Release](https://img.shields.io/github/v/release/fredgis/FabricAtlas?display_name=tag)](https://github.com/fredgis/FabricAtlas/releases/latest)
+
 ### Everything in your Microsoft Fabric workspace, in one place.
 
-Items, lineage, catalog, access, jobs, config — and a team comment layer that lives in the database.
+Items, impact-aware lineage, catalog, access, jobs, config — plus team comments and built-in release information.
 Built as a [Rayfin](https://github.com/microsoft/rayfin) Data App and deployed straight into Fabric.
 
 </div>
@@ -38,10 +40,15 @@ A one-glance dashboard: items by type, health, recent activity and jump-off poin
 ![Overview](docs/screenshots/overview.png)
 
 ### Map & lineage
-A cartography of every item and how they connect. **Drag nodes** to rearrange the graph, and click any
-node to light up its **upstream (violet)** and **downstream (teal)** in both directions while everything
-else dims. The inspector walks the lineage all the way down to a semantic model's tables, columns and
-measures.
+A staged map of every item and how they connect. Directional arrows and relationship labels show the
+flow from **ingest and transform** through **storage**, **models** and **consumption**. Select an item
+to light up its full transitive **upstream (violet)** and **downstream (teal)** impact path, or switch
+to direct-neighbor mode.
+
+The map includes search and type/health filters, drag positioning, minimap, zoom and fit controls.
+Switch from **Items** to **Objects** to move inside semantic models and lakehouses: tables, columns,
+measures and item-level consumers. The inspector keeps summary, schema, effective access and recent
+runs together, and every selection can be shared as a deep link.
 
 ![Map & lineage](docs/screenshots/map.png)
 
@@ -76,6 +83,10 @@ highly-confidential items spotlighted for review.
 
 ![Sensitivity](docs/screenshots/sensitivity.png)
 
+### Jobs & health
+Recent refreshes, notebook runs and pipeline runs, with status, duration and details in one responsive
+operational view.
+
 ### Config
 Everything retrievable about an item — storage mode, OneLake paths, SQL endpoint, tables and measures —
 as an expandable tree. When a detail can't be read (for example a warehouse's tables need a SQL
@@ -88,6 +99,10 @@ Team notes on the workspace or any item, stored in the Fabric-backed database so
 everyone sees them.
 
 ![Comments](docs/screenshots/comments.png)
+
+### About
+The running app reports its semantic version, build commit and build time, links back to the source and
+GitHub release, identifies the active Fabric workspace and includes the current changelog.
 
 ### Light and dark
 Light by default, with a one-click dark theme (most shots here are dark). When embedded, it follows
@@ -129,7 +144,7 @@ And because it is declarative, you can grow it by prompting an AI agent. See
 ```mermaid
 flowchart LR
   subgraph B["🌐 Fabric Atlas — browser SPA (Rayfin app)"]
-    UI["React UI · 7 tabs<br/>Overview · Map · Catalog<br/>Access · Jobs · Config · Comments"]
+    UI["React UI · 10 views<br/>Overview · Map · Catalog · Assets · Access<br/>Sensitivity · Jobs · Config · Comments · About"]
     MSAL["MSAL<br/>Power BI token"]
   end
 
@@ -205,6 +220,16 @@ npx rayfin up --workspace "<workspace-name>"
 
 Full steps in [docs/installation.md](docs/installation.md).
 
+## Releases and changelog
+
+Fabric Atlas follows [Semantic Versioning](https://semver.org/). Release notes are available in two places:
+
+- [`CHANGELOG.md`](CHANGELOG.md) — complete version history in the repository.
+- [GitHub Releases](https://github.com/fredgis/FabricAtlas/releases) — tagged releases and source archives.
+
+The running app exposes the same information under **About**. The current release is
+[v1.0.0](https://github.com/fredgis/FabricAtlas/releases/tag/v1.0.0).
+
 ## Reuse it as a Rayfin template
 
 Fabric Atlas is a standard Rayfin Data App, so you can hand it to the rest of the
@@ -251,6 +276,7 @@ its own `.env`, publishes its own Sync function and app registration
 | [Architecture](docs/architecture.md) | How the SPA, Rayfin data layer and Sync fit together |
 | [Data model](docs/data-model.md) | The nine entities and their fields |
 | [Evolving with Rayfin](docs/evolving-with-rayfin.md) | Grow the app with prompts and `rayfin up` |
+| [Changelog](CHANGELOG.md) | Version history and release notes |
 
 ## Repo layout
 
@@ -262,11 +288,14 @@ src/
   App.tsx               # shell: sidebar, top bar, theme, sync, tab routing
   atlas/
     model.ts            # types, item-type metadata, sample dataset
+    lineage.ts          # transitive impact traversal + staged layout
+    release.ts          # version, build and changelog metadata
     store.tsx           # data + sync + comments (preview / Rayfin backed)
     backend.ts          # persistence + Fabric sync boundary
     ui.tsx              # avatars, glyphs, health chips, cards
-    views/              # Overview, Map, Catalog, Asset Catalog, Access, Sensitivity, Jobs, Config, Comments
+    views/              # Overview, Map, Catalog, Assets, Access, Sensitivity, Jobs, Config, Comments, About
 docs/                   # this documentation + screenshots
+CHANGELOG.md            # release history
 ```
 
 ---

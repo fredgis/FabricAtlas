@@ -97,7 +97,9 @@ export function useSemanticModelQuery(
     }, [connection, query, bypassCache, canExecute]);
 
     useEffect(() => {
-        execute();
+        // Query execution intentionally owns the loading/data state synchronized by this effect.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        void execute();
     }, [execute]);
 
     return { data, isLoading, error, refetch: execute };

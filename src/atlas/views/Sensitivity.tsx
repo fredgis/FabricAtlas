@@ -41,7 +41,6 @@ export function SensitivityView() {
   }, [items]);
 
   const order = [...LABELS, UNLABELED];
-  const labeled = items.filter((i) => i.sensitivity).length;
   const confidential = items.filter((i) => labelFor(i.sensitivity).rank >= 3);
 
   return (
@@ -54,7 +53,7 @@ export function SensitivityView() {
       </div>
 
       {/* label summary */}
-      <div className="grid gap-[12px]" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
+      <div className="grid grid-cols-1 gap-[12px] sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
         {order.map((l) => {
           const n = byLabel.get(l.name)?.length ?? 0;
           const Icon = l.icon;
@@ -86,7 +85,7 @@ export function SensitivityView() {
                 {confidential.length} confidential item{confidential.length > 1 ? "s" : ""} — review access
               </span>
             </div>
-            <div className="grid gap-[10px] p-[14px]" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
+            <div className="grid gap-[10px] p-[14px] md:grid-cols-2">
               {confidential.map((i) => {
                 const l = labelFor(i.sensitivity);
                 return (

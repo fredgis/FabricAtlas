@@ -10,7 +10,10 @@
 // otherwise from localStorage (pasted once in the empty-state screen).
 
 export const ATLAS_CONFIG = {
-  clientId: (import.meta.env.VITE_ATLAS_SPA_CLIENT_ID as string) || "",
+  clientId:
+    (import.meta.env.VITE_RAYFIN_ATLAS_SPA_CLIENT_ID as string) ||
+    (import.meta.env.VITE_ATLAS_SPA_CLIENT_ID as string) ||
+    "",
   tenantId:
     (import.meta.env.VITE_ATLAS_TENANT_ID as string) ||
     (import.meta.env.VITE_FABRIC_TENANT_ID as string) ||
@@ -25,7 +28,9 @@ const UDF_KEY = "atlas.udfUrl";
 
 /** Resolved UDF `sync_all` invoke URL, or null when not configured yet. */
 export function getUdfUrl(): string | null {
-  const env = import.meta.env.VITE_ATLAS_UDF_URL as string | undefined;
+  const env =
+    (import.meta.env.VITE_RAYFIN_ATLAS_UDF_URL as string | undefined) ??
+    (import.meta.env.VITE_ATLAS_UDF_URL as string | undefined);
   if (env) return env;
   try {
     return localStorage.getItem(UDF_KEY);

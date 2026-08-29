@@ -1,0 +1,59 @@
+export interface ReleaseSection {
+  title: string;
+  items: string[];
+}
+
+export interface AtlasRelease {
+  version: string;
+  date: string;
+  title: string;
+  sections: ReleaseSection[];
+}
+
+export const REPOSITORY_URL =
+  (import.meta.env.VITE_APP_REPOSITORY_URL as string | undefined) ??
+  "https://github.com/fredgis/FabricAtlas";
+
+export const APP_VERSION =
+  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.0.0";
+
+export const BUILD_COMMIT =
+  (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
+
+export const BUILD_DATE =
+  (import.meta.env.VITE_APP_BUILD_DATE as string | undefined) ??
+  new Date(0).toISOString();
+
+export const RELEASES: AtlasRelease[] = [
+  {
+    version: "1.0.0",
+    date: "2026-08-29",
+    title: "First public release",
+    sections: [
+      {
+        title: "Lineage",
+        items: [
+          "Transitive upstream and downstream impact analysis.",
+          "Directional arrows, relationship labels, staged layout, minimap, zoom and filters.",
+          "Item and object lineage modes with tables, columns, measures and consumers.",
+          "Tabbed inspector for summary, schema, access and run history.",
+        ],
+      },
+      {
+        title: "Experience",
+        items: [
+          "Responsive layouts that preserve the existing Fabric Atlas navigation.",
+          "Keyboard focus, accessible interactive states and reduced-motion support.",
+          "Deep-linkable lineage selection, filters and object context.",
+          "Project information page with version, source and release history.",
+        ],
+      },
+    ],
+  },
+];
+
+export const CURRENT_RELEASE = RELEASES[0];
+
+export function releaseUrl(version = APP_VERSION): string {
+  return `${REPOSITORY_URL}/releases/tag/v${version}`;
+}

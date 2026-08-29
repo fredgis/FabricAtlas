@@ -38,10 +38,10 @@ roles and jobs, and reports the reason in `errors`.
 
 ## Wire the app
 
-1. Open Fabric Atlas (the `fabricatlas` app item / its hosting URL).
-2. On the first-run screen, paste the `sync_all` invoke URL in **Sync endpoint**
-   and click **Save**.
-3. Click **Sync this workspace**. Approve the sign-in popup once
+1. Add the invoke URL to the git-ignored `rayfin/.env` file:
+   `RAYFIN_PUBLIC_ATLAS_UDF_URL=https://<...>/functions/sync_all/invoke`.
+2. Run `npx rayfin up` so the public URL is included in the deployed bundle.
+3. Open Fabric Atlas and click **Sync**. Approve the sign-in popup once
    (`UserDataFunction.Execute.All` + Power BI read). The catalog loads and is
    written to the Atlas database.
 

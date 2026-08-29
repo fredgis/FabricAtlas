@@ -11,6 +11,16 @@
   --color-brand:            #0f6cbd;  /* bar/area fills, button-like brand surfaces */
   --color-brand-foreground: #0f6cbd;  /* line/point marks, branded text & emphasis */
   --color-hover:            #f5f5f5;  /* row/cell hover surface in DataGrid + visuals */
+  --color-lineage-upstream: #7c3aed;
+  --color-lineage-downstream: #0891b2;
+  --color-lineage-neutral: #94a3b8;
+  --color-object-source: #2f9e6f;
+  --color-object-table: #0f6cbd;
+  --color-object-column: #3b82f6;
+  --color-object-measure: #b7791f;
+  --color-status-healthy: #16855b;
+  --color-status-warning: #b7791f;
+  --color-status-failing: #c50f1f;
 }
 
 @theme {
@@ -166,6 +176,16 @@
     --color-brand:            #115ea3;
     --color-brand-foreground: #479ef5;
     --color-hover:            #3d3d3d;
+    --color-lineage-upstream: #a78bfa;
+    --color-lineage-downstream: #22d3d0;
+    --color-lineage-neutral: #64748b;
+    --color-object-source: #2f9e6f;
+    --color-object-table: #479ef5;
+    --color-object-column: #60a5fa;
+    --color-object-measure: #f2c94c;
+    --color-status-healthy: #38d18b;
+    --color-status-warning: #f7bf4f;
+    --color-status-failing: #ff6577;
   }
 }
 
@@ -177,6 +197,28 @@
   body {
     @apply bg-background text-foreground antialiased;
   }
+
+  button,
+  input,
+  select,
+  textarea {
+    font-family: inherit;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+
+  button:disabled,
+  input:disabled,
+  select:disabled,
+  textarea:disabled {
+    cursor: not-allowed;
+  }
 }
 
 html,
@@ -185,6 +227,55 @@ body,
   height: 100%;
 }
 
-/* Animated flow along active lineage edges */
-@keyframes atlas-flow { to { stroke-dashoffset: -24; } }
-.atlas-flow { stroke-dasharray: 3 7; animation: atlas-flow .9s linear infinite; }
+/* Animated flow along active lineage edges. */
+@keyframes atlas-flow {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+.atlas-flow {
+  stroke-dasharray: 3 7;
+  animation: atlas-flow 0.9s linear infinite;
+}
+
+.atlas-map-grid {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--color-border) 28%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--color-border) 28%, transparent) 1px, transparent 1px),
+    radial-gradient(circle at 55% 42%, color-mix(in srgb, var(--color-lineage-downstream) 8%, transparent), transparent 38%);
+  background-size: 24px 24px, 24px 24px, auto;
+  background-position: -1px -1px;
+}
+
+* {
+  scrollbar-color: color-mix(in srgb, var(--color-border) 88%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-border) 88%, transparent);
+  background-clip: padding-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

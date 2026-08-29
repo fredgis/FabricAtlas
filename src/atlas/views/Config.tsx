@@ -23,7 +23,10 @@ export function ConfigView() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const sel: Item | undefined = items.find((i) => i.fabricId === selId);
-  const entries = configByItem.get(selId) ?? [];
+  const entries = useMemo(
+    () => configByItem.get(selId) ?? [],
+    [configByItem, selId],
+  );
 
   const sections = useMemo(() => {
     const m = new Map<string, ConfigKV[]>();
@@ -38,7 +41,8 @@ export function ConfigView() {
   const toggle = (s: string) =>
     setCollapsed((prev) => {
       const n = new Set(prev);
-      n.has(s) ? n.delete(s) : n.add(s);
+      if (n.has(s)) n.delete(s);
+      else n.add(s);
       return n;
     });
 
@@ -52,7 +56,7 @@ export function ConfigView() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 16, alignItems: "start" }}>
+      <div className="grid items-start gap-[16px] lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)]">
         <Card className="overflow-hidden">
           <div className="border-b border-border px-[14px] py-[11px] text-[13px] font-bold">
             Items
@@ -127,8 +131,8 @@ export function ConfigView() {
                   {open && (
                     <div className="divide-y divide-border/60">
                       {kvs.map((kv, i) => (
-                        <div key={i} className="flex gap-[16px] px-[14px] py-[9px]">
-                          <div className="w-[220px] shrink-0 text-[13px] font-semibold text-muted-foreground">
+                        <div key={i} className="grid gap-[5px] px-[14px] py-[9px] sm:grid-cols-[180px_1fr] xl:grid-cols-[220px_1fr]">
+                          <div className="text-[13px] font-semibold text-muted-foreground">
                             {kv.label}
                           </div>
                           <div className="text-[13px] font-mono break-all">{kv.value}</div>

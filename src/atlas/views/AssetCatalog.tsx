@@ -7,7 +7,6 @@ import {
   schemaFor,
   typeMeta,
   type AccessLevel,
-  type Item,
   type ItemType,
 } from "../model";
 
@@ -84,7 +83,7 @@ export function AssetCatalogView() {
         push({ id: `${it.fabricId}::t::${c.label}`, itemFabricId: it.fabricId, itemName: it.displayName, itemType: it.itemType, kind: "table", name: c.label });
     }
     return out;
-  }, [items, config]);
+  }, [data, items, config]);
 
   const [q, setQ] = useState("");
   const [kind, setKind] = useState<AssetKind | "all">("all");
@@ -154,7 +153,7 @@ export function AssetCatalogView() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search assets…"
-            className="w-[260px] rounded-lg border border-border bg-card py-[9px] pl-[32px] pr-[11px] text-[13px] outline-none focus:border-primary"
+            className="w-full rounded-lg border border-border bg-card py-[9px] pl-[32px] pr-[11px] text-[13px] outline-none focus:border-primary sm:w-[260px]"
           />
         </div>
       </div>
@@ -175,7 +174,7 @@ export function AssetCatalogView() {
         ))}
       </div>
 
-      <div className="grid min-h-0 flex-1" style={{ gridTemplateColumns: "minmax(320px, 400px) 1fr", gap: 16 }}>
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-[16px] xl:grid-cols-[minmax(320px,400px)_minmax(0,1fr)]">
         <Card className="flex min-h-0 flex-col overflow-hidden">
           <div className="border-b border-border px-[16px] py-[11px] text-[13px] font-bold">
             {filtered.length} assets · {groups.length} items

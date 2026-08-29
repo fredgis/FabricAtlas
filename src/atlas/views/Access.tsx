@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { ShieldAlert, Globe, Crown, UserX, Bot, ChevronDown, ChevronRight, Boxes, FolderTree } from "lucide-react";
 import { useAtlas } from "../store";
-import { Card, PrincipalAvatar, SectionLabel, TypeGlyph, cn } from "../ui";
+import { Card, PrincipalAvatar, TypeGlyph, cn } from "../ui";
 import {
   typeMeta,
   schemaFor,
@@ -127,7 +127,8 @@ export function AccessView() {
   const togglePart = (k: string) =>
     setOpenParts((prev) => {
       const n = new Set(prev);
-      n.has(k) ? n.delete(k) : n.add(k);
+      if (n.has(k)) n.delete(k);
+      else n.add(k);
       return n;
     });
 
@@ -172,14 +173,14 @@ export function AccessView() {
     if (sps.length)
       out.push({ icon: Bot, sev: "#3b82f6", title: `${sps.length} service principal(s)`, detail: `${sps.map((s) => s.displayName).join(", ")} — automation access, review periodically.` });
     return out;
-  }, [principals, grants, items]);
+  }, [principals, grants]);
 
   const sel: Item | undefined = items.find((i) => i.fabricId === selItem);
   const itemGrants: Grant[] = grants.filter((g) => g.itemFabricId === selItem);
 
   return (
     <div className="flex flex-col gap-[16px] p-[24px]">
-      <div className="flex items-end justify-between">
+      <div className="flex flex-wrap items-end justify-between gap-[12px]">
         <div>
           <h1 className="text-[22px] font-bold">Access</h1>
           <div className="mt-[4px] text-[13px] text-muted-foreground">
@@ -203,13 +204,13 @@ export function AccessView() {
       </div>
 
       {mode === "principal" ? (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 16, alignItems: "start" }}>
+        <div className="grid items-start gap-[16px] xl:grid-cols-[minmax(0,1fr)_360px]">
           <Card className="overflow-hidden">
             <div className="border-b border-border px-[16px] py-[12px] text-[13px] font-bold">
               Access matrix · highest access per item type
             </div>
             <div className="overflow-auto">
-              <table className="w-full border-collapse">
+              <table className="w-full min-w-[760px] border-collapse">
                 <thead>
                   <tr className="text-[11px] uppercase tracking-wide text-muted-foreground">
                     <th className="px-[16px] py-[11px] text-left font-bold">Principal</th>
@@ -230,7 +231,15 @@ export function AccessView() {
                       <Fragment key={p.principalId}>
                         <tr
                           onClick={() => setOpenP(expanded ? null : p.principalId)}
-                          className="cursor-pointer border-t border-border/60 text-center hover:bg-accent/40"
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              setOpenP(expanded ? null : p.principalId);
+                            }
+                          }}
+                          tabIndex={0}
+                          aria-expanded={expanded}
+                          className="cursor-pointer border-t border-border/60 text-center hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                         >
                           <td className="px-[16px] py-[11px] text-left">
                             <div className="flex items-center gap-[8px]">
@@ -274,7 +283,7 @@ export function AccessView() {
                         {expanded && (
                           <tr className="bg-muted/30">
                             <td colSpan={2 + CATS.length} className="px-[16px] py-[14px]">
-                              <div className="grid gap-[14px]" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                              <div className="grid gap-[14px] md:grid-cols-2">
                                 <div className="overflow-hidden rounded-xl border border-border bg-card">
                                   <button onClick={() => togglePart("items")} className="flex w-full items-center gap-[8px] px-[13px] py-[9px]">
                                     {itemsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -359,7 +368,7 @@ export function AccessView() {
           </Card>
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 16, alignItems: "start" }}>
+        <div className="grid items-start gap-[16px] lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)]">
           <Card className="overflow-hidden">
             <div className="border-b border-border px-[14px] py-[11px] text-[13px] font-bold">Items</div>
             <div className="max-h-[560px] overflow-auto">

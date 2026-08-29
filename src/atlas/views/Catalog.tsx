@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -69,7 +69,8 @@ export function CatalogView() {
   const toggle = (t: string) =>
     setCollapsed((p) => {
       const n = new Set(p);
-      n.has(t) ? n.delete(t) : n.add(t);
+      if (n.has(t)) n.delete(t);
+      else n.add(t);
       return n;
     });
 
@@ -85,6 +86,8 @@ export function CatalogView() {
   }, [items, selType, query]);
 
   const [detailId, setDetailId] = useState<string | null>(null);
+  const drawerRef = useRef<HTMLElement>(null);
+  const previousFocus = useRef<HTMLElement | null>(null);
   const detail = items.find((i) => i.fabricId === detailId);
   const dCfgSections = useMemo(() => {
     const rows = config.filter((c) => c.itemFabricId === detailId);
@@ -101,6 +104,41 @@ export function CatalogView() {
   const dGrants = grants.filter((g) => g.itemFabricId === detailId);
   const dJobs = jobs.filter((j) => j.itemFabricId === detailId);
 
+  useEffect(() => {
+    if (!detailId) return;
+    previousFocus.current = document.activeElement as HTMLElement | null;
+    const drawer = drawerRef.current;
+    if (!drawer) return;
+    drawer.focus();
+
+    const trapFocus = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setDetailId(null);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = [...drawer.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )];
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", trapFocus);
+    return () => {
+      document.removeEventListener("keydown", trapFocus);
+      previousFocus.current?.focus();
+    };
+  }, [detailId]);
+
   return (
     <div className="p-[24px]">
       <div className="mb-[16px]">
@@ -110,7 +148,7 @@ export function CatalogView() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 16, alignItems: "start" }}>
+      <div className="grid items-start gap-[16px] lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)]">
         {/* Tree */}
         <Card className="overflow-hidden">
           <div className="flex items-center gap-[8px] border-b border-border px-[12px] py-[10px]">
@@ -169,7 +207,7 @@ export function CatalogView() {
         </Card>
 
         {/* Cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
+        <div className="grid grid-cols-1 gap-[14px] sm:grid-cols-2 2xl:grid-cols-3">
           {visible.map((i) => (
             <button
               key={i.fabricId}
@@ -226,7 +264,12 @@ export function CatalogView() {
               onClick={() => setDetailId(null)}
             />
             <motion.aside
-              className="fixed right-0 top-0 z-50 flex h-screen w-[440px] flex-col overflow-auto border-l border-border bg-card shadow-2xl"
+              ref={drawerRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label={`${detail.displayName} details`}
+              tabIndex={-1}
+              className="fixed right-0 top-0 z-50 flex h-screen w-full max-w-[440px] flex-col overflow-auto border-l border-border bg-card shadow-2xl"
               initial={{ x: 460 }}
               animate={{ x: 0 }}
               exit={{ x: 460 }}
