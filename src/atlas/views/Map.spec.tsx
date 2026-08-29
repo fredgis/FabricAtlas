@@ -55,4 +55,57 @@ describe("MapView selection", () => {
     expect(selectedLakehouse.style.left).toBe(position.left);
     expect(selectedLakehouse.style.top).toBe(position.top);
   });
+
+  it("supports object selection, highlighting and drag", () => {
+    window.history.replaceState(null, "", "/#map");
+    const { container } = render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "objects" }));
+    const table = screen.getByLabelText(
+      /rentals_daily_summary, \d+ columns · \d+ measures/i,
+    );
+    const initialLeft = table.style.left;
+    const initialTop = table.style.top;
+
+    fireEvent.pointerDown(table, {
+      button: 0,
+      clientX: 100,
+      clientY: 100,
+      pointerId: 2,
+    });
+    fireEvent.pointerMove(table, {
+      clientX: 150,
+      clientY: 130,
+      pointerId: 2,
+    });
+    fireEvent.pointerUp(table, {
+      button: 0,
+      clientX: 150,
+      clientY: 130,
+      pointerId: 2,
+    });
+
+    expect(table.style.left).not.toBe(initialLeft);
+    expect(table.style.top).not.toBe(initialTop);
+
+    fireEvent.pointerDown(table, {
+      button: 0,
+      clientX: 150,
+      clientY: 130,
+      pointerId: 3,
+    });
+    fireEvent.pointerUp(table, {
+      button: 0,
+      clientX: 150,
+      clientY: 130,
+      pointerId: 3,
+    });
+
+    expect(table).toHaveAttribute("aria-pressed", "true");
+    expect(container.querySelectorAll(".atlas-flow").length).toBeGreaterThan(0);
+  });
 });

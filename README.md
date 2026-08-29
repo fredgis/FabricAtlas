@@ -62,6 +62,7 @@ Lineage is normalized from source to consumer and arranged through six stages:
 orchestration, transformation, storage, endpoints, models and consumption.
 Impact mode can isolate one dependency path, while normal mode keeps the entire
 workspace visible. Selecting an item highlights it without moving the graph.
+Item and object nodes share the same drag, selection and animated path behavior.
 
 ![Map and lineage](docs/screenshots/map.png)
 
@@ -198,7 +199,7 @@ npm run build
 ## Reuse as a Rayfin template
 
 ```powershell
-rayfin init my-atlas -t https://github.com/fredgis/FabricAtlas#v1.3.0
+rayfin init my-atlas -t https://github.com/fredgis/FabricAtlas#v1.3.1
 Set-Location my-atlas
 npm install
 ```

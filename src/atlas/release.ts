@@ -15,7 +15,7 @@ export const REPOSITORY_URL =
   "https://github.com/fredgis/FabricAtlas";
 
 export const APP_VERSION =
-  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.3.0";
+  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.3.1";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -25,6 +25,21 @@ export const BUILD_DATE =
   new Date(0).toISOString();
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "1.3.1",
+    date: "2026-08-29",
+    title: "Interactive object lineage",
+    sections: [
+      {
+        title: "Object mode",
+        items: [
+          "Object nodes can now be dragged and arranged like item nodes.",
+          "Clicking an object highlights upstream and downstream paths in place.",
+          "Connected object edges use the same animated lineage treatment as item mode.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.3.0",
     date: "2026-08-29",

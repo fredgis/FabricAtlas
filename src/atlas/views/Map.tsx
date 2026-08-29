@@ -83,6 +83,46 @@ interface ObjectEdge {
   structural?: boolean;
 }
 
+function objectEdgeKey(edge: ObjectEdge): string {
+  return `${edge.source}\u0000${edge.target}\u0000${edge.relation}`;
+}
+
+function getObjectImpact(edges: ObjectEdge[], startId: string) {
+  const walk = (direction: "upstream" | "downstream") => {
+    const ids = new Set<string>();
+    const edgeKeys = new Set<string>();
+    const visited = new Set<string>([startId]);
+    const queue = [startId];
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (!current) continue;
+      for (const edge of edges) {
+        const matches =
+          direction === "upstream"
+            ? edge.target === current
+            : edge.source === current;
+        if (!matches) continue;
+        const next = direction === "upstream" ? edge.source : edge.target;
+        if (next === startId) continue;
+        ids.add(next);
+        edgeKeys.add(objectEdgeKey(edge));
+        if (!visited.has(next)) {
+          visited.add(next);
+          queue.push(next);
+        }
+      }
+    }
+
+    return { ids, edgeKeys };
+  };
+
+  return {
+    upstream: walk("upstream"),
+    downstream: walk("downstream"),
+  };
+}
+
 function searchParam(name: string): string {
   return new URL(window.location.href).searchParams.get(name) ?? "";
 }
@@ -323,9 +363,18 @@ export function MapView() {
   const [openTables, setOpenTables] = useState<Set<string>>(new Set());
   const [drag, setDrag] = useState<Record<string, Point>>({});
   const [dragId, setDragId] = useState<string | null>(null);
+  const [objectDrag, setObjectDrag] = useState<Record<string, Point>>({});
+  const [objectDragId, setObjectDragId] = useState<string | null>(null);
+  const [selectedObjectId, setSelectedObjectId] = useState("");
   const [zoom, setZoom] = useState(1);
   const [copied, setCopied] = useState(false);
   const dragging = useRef<{
+    id: string;
+    origin: Point;
+    pointer: Point;
+    moved: boolean;
+  } | null>(null);
+  const objectDragging = useRef<{
     id: string;
     origin: Point;
     pointer: Point;
@@ -452,6 +501,37 @@ export function MapView() {
     () => objectGraph(data, selected, schema, upstream, items, edges, tableName),
     [data, edges, items, schema, selected, tableName, upstream],
   );
+  const activeObjectId = objects.nodes.some(
+    (node) => node.id === selectedObjectId,
+  )
+    ? selectedObjectId
+    : (objects.nodes.find((node) => node.kind === "owner")?.id ??
+      objects.nodes[0]?.id ??
+      "");
+  const objectImpact = useMemo(
+    () => getObjectImpact(objects.edges, activeObjectId),
+    [activeObjectId, objects.edges],
+  );
+  const objectConnected = useMemo(
+    () =>
+      new Set([
+        activeObjectId,
+        ...objectImpact.upstream.ids,
+        ...objectImpact.downstream.ids,
+      ]),
+    [activeObjectId, objectImpact.downstream.ids, objectImpact.upstream.ids],
+  );
+  const objectPosOf = (node: ObjectNode): Point =>
+    objectDrag[node.id] ?? { x: node.x, y: node.y };
+  const objectBounds = useMemo(() => {
+    let width = objects.width;
+    let height = objects.height;
+    Object.values(objectDrag).forEach((point) => {
+      width = Math.max(width, point.x + OBJECT_W + 48);
+      height = Math.max(height, point.y + OBJECT_H + 48);
+    });
+    return { width, height };
+  }, [objectDrag, objects.height, objects.width]);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -505,6 +585,53 @@ export function MapView() {
     }
   };
 
+  const selectObjectNode = (node: ObjectNode) => {
+    setSelectedObjectId(node.id);
+    if ((node.kind === "source" || node.kind === "table") && node.table) {
+      setTableName(node.table);
+    }
+  };
+
+  const objectNodeDown = (
+    event: RPE<HTMLButtonElement>,
+    node: ObjectNode,
+  ) => {
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    objectDragging.current = {
+      id: node.id,
+      origin: objectPosOf(node),
+      pointer: { x: event.clientX, y: event.clientY },
+      moved: false,
+    };
+    setObjectDragId(node.id);
+  };
+
+  const objectNodeMove = (event: RPE<HTMLButtonElement>) => {
+    const current = objectDragging.current;
+    if (!current) return;
+    const dx = (event.clientX - current.pointer.x) / zoom;
+    const dy = (event.clientY - current.pointer.y) / zoom;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) current.moved = true;
+    setObjectDrag((previous) => ({
+      ...previous,
+      [current.id]: {
+        x: Math.max(12, current.origin.x + dx),
+        y: Math.max(46, current.origin.y + dy),
+      },
+    }));
+  };
+
+  const objectNodeUp = (
+    event: RPE<HTMLButtonElement>,
+    node: ObjectNode,
+  ) => {
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    const moved = objectDragging.current?.moved;
+    objectDragging.current = null;
+    setObjectDragId(null);
+    if (!moved) selectObjectNode(node);
+  };
+
   const toggleTable = (name: string) =>
     setOpenTables((previous) => {
       const next = new Set(previous);
@@ -515,7 +642,7 @@ export function MapView() {
 
   const fit = () => {
     const viewport = mapRef.current;
-    const graph = mode === "items" ? bounds : objects;
+    const graph = mode === "items" ? bounds : objectBounds;
     if (!viewport) return;
     const next = Math.min(
       1.1,
@@ -567,7 +694,7 @@ export function MapView() {
   const selectedJobs = jobs
     .filter((job) => job.itemFabricId === activeId)
     .sort((a, b) => +new Date(b.startedAt) - +new Date(a.startedAt));
-  const graph = mode === "items" ? bounds : objects;
+  const graph = mode === "items" ? bounds : objectBounds;
   const portal = (
     (import.meta.env.VITE_FABRIC_PORTAL_URL as string | undefined) ??
     "https://app.fabric.microsoft.com"
@@ -681,7 +808,7 @@ export function MapView() {
             </select>
           )
         )}
-        <button
+        {mode === "items" && <button
           type="button"
           role="switch"
           aria-checked={impactMode}
@@ -704,7 +831,7 @@ export function MapView() {
             )}
           />
           Impact mode
-        </button>
+        </button>}
         {mode === "items" && (
           <button
             type="button"
@@ -722,6 +849,7 @@ export function MapView() {
           type="button"
           onClick={() => {
             setDrag({});
+            setObjectDrag({});
             setZoom(1);
           }}
           className="flex h-[34px] items-center gap-[6px] rounded-lg border border-border px-[10px] text-[12px] font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
@@ -927,13 +1055,13 @@ export function MapView() {
                   </div>
                   <svg
                     className="pointer-events-none absolute inset-0 overflow-visible"
-                    width={objects.width}
-                    height={objects.height}
+                    width={objectBounds.width}
+                    height={objectBounds.height}
                     aria-hidden="true"
                   >
                     <defs>
                       <marker
-                        id="atlas-object-active"
+                        id="atlas-object-downstream"
                         markerWidth="8"
                         markerHeight="8"
                         refX="7"
@@ -941,6 +1069,16 @@ export function MapView() {
                         orient="auto"
                       >
                         <path d="M0 0 8 4 0 8Z" fill={DOWN} />
+                      </marker>
+                      <marker
+                        id="atlas-object-upstream"
+                        markerWidth="8"
+                        markerHeight="8"
+                        refX="7"
+                        refY="4"
+                        orient="auto"
+                      >
+                        <path d="M0 0 8 4 0 8Z" fill={UP} />
                       </marker>
                       <marker
                         id="atlas-object-neutral"
@@ -954,25 +1092,45 @@ export function MapView() {
                       </marker>
                     </defs>
                     {objects.edges.map((edge) => {
-                      const source = objects.nodes.find((node) => node.id === edge.source);
-                      const target = objects.nodes.find((node) => node.id === edge.target);
-                      if (!source || !target) return null;
+                      const sourceNode = objects.nodes.find(
+                        (node) => node.id === edge.source,
+                      );
+                      const targetNode = objects.nodes.find(
+                        (node) => node.id === edge.target,
+                      );
+                      if (!sourceNode || !targetNode) return null;
+                      const source = objectPosOf(sourceNode);
+                      const target = objectPosOf(targetNode);
+                      const key = objectEdgeKey(edge);
+                      const isUp = objectImpact.upstream.edgeKeys.has(key);
+                      const isDown = objectImpact.downstream.edgeKeys.has(key);
+                      const active = isUp || isDown;
+                      const color = isUp
+                        ? UP
+                        : isDown
+                          ? DOWN
+                          : "var(--color-lineage-neutral)";
                       return (
-                        <g key={`${edge.source}:${edge.target}:${edge.relation}`}>
+                        <g key={key}>
                           <title>{edge.relation}</title>
                           <path
+                            className={active ? "atlas-flow" : undefined}
                             d={curve(source, target, OBJECT_W, OBJECT_H)}
                             fill="none"
-                            stroke={
-                              edge.structural
-                                ? "var(--color-lineage-neutral)"
-                                : DOWN
+                            stroke={color}
+                            strokeWidth={active ? 2.6 : edge.structural ? 1.3 : 1.8}
+                            strokeOpacity={
+                              active ? 0.96 : activeObjectId ? 0.16 : 0.55
                             }
-                            strokeWidth={edge.structural ? 1.3 : 2.1}
-                            strokeOpacity={edge.structural ? 0.42 : 0.9}
-                            strokeDasharray={edge.structural ? "4 5" : undefined}
+                            strokeDasharray={
+                              !active && edge.structural ? "4 5" : undefined
+                            }
                             markerEnd={`url(#atlas-object-${
-                              edge.structural ? "neutral" : "active"
+                              isUp
+                                ? "upstream"
+                                : isDown
+                                  ? "downstream"
+                                  : "neutral"
                             })`}
                           />
                         </g>
@@ -980,36 +1138,63 @@ export function MapView() {
                     })}
                   </svg>
                   {objects.nodes.map((node) => {
-                    const active = node.table === objects.table;
+                    const point = objectPosOf(node);
+                    const selectedNode = node.id === activeObjectId;
+                    const isUp = objectImpact.upstream.ids.has(node.id);
+                    const isDown = objectImpact.downstream.ids.has(node.id);
+                    const dim = !!activeObjectId && !objectConnected.has(node.id);
+                    const draggingNode = objectDragId === node.id;
+                    const activeTable = node.table === objects.table;
                     const matches =
                       !query.trim() ||
                       node.label.toLowerCase().includes(query.trim().toLowerCase()) ||
                       node.subtitle.toLowerCase().includes(query.trim().toLowerCase());
+                    const accent = selectedNode
+                      ? "var(--color-primary)"
+                      : isUp
+                        ? UP
+                        : isDown
+                          ? DOWN
+                          : undefined;
                     return (
                       <button
                         key={node.id}
                         type="button"
-                        onClick={() => {
-                          if ((node.kind === "source" || node.kind === "table") && node.table) {
-                            setTableName(node.table);
-                          }
-                          if ((node.kind === "owner" || node.kind === "consumer") && node.itemId) {
-                            setSelId(node.itemId);
-                            setMode("items");
+                        aria-label={`${node.label}, ${node.subtitle}`}
+                        aria-pressed={selectedNode}
+                        onPointerDown={(event) => objectNodeDown(event, node)}
+                        onPointerMove={objectNodeMove}
+                        onPointerUp={(event) => objectNodeUp(event, node)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            selectObjectNode(node);
                           }
                         }}
                         className={cn(
-                          "absolute flex items-center gap-[10px] rounded-xl border border-border bg-card px-[11px] text-left shadow-sm transition-all hover:-translate-y-[1px] hover:border-primary/50 hover:shadow-lg",
-                          active && (node.kind === "source" || node.kind === "table") && "border-primary/70",
-                          !matches && "opacity-25",
+                          "absolute flex touch-none cursor-grab select-none items-center gap-[10px] rounded-xl border border-border bg-card px-[11px] text-left shadow-sm transition-[box-shadow,opacity,border-color,transform] hover:-translate-y-[1px] hover:shadow-lg active:cursor-grabbing",
+                          selectedNode && "border-primary",
+                          (!matches || dim) && "opacity-25",
                         )}
                         style={{
-                          left: node.x,
-                          top: node.y,
+                          left: point.x,
+                          top: point.y,
                           width: OBJECT_W,
                           height: OBJECT_H,
+                          zIndex: draggingNode ? 7 : selectedNode ? 5 : dim ? 1 : 3,
+                          transform: draggingNode ? "scale(1.04)" : undefined,
+                          borderColor: accent,
+                          boxShadow: selectedNode
+                            ? "0 0 0 2px var(--color-primary), 0 12px 28px -18px rgba(0,0,0,.8)"
+                            : undefined,
                         }}
                       >
+                        {accent && !selectedNode && (
+                          <span
+                            className="absolute -left-[6px] top-1/2 h-[11px] w-[11px] -translate-y-1/2 rounded-full ring-2 ring-card"
+                            style={{ background: accent }}
+                          />
+                        )}
                         <span
                           className="flex h-[31px] w-[31px] shrink-0 items-center justify-center rounded-lg text-[10px] font-bold text-white"
                           style={{ background: node.color }}
@@ -1024,7 +1209,9 @@ export function MapView() {
                             {node.subtitle}
                           </span>
                         </span>
-                        {active && (node.kind === "source" || node.kind === "table") && (
+                        {activeTable &&
+                          (node.kind === "source" || node.kind === "table") &&
+                          !selectedNode && (
                           <span className="h-[8px] w-[8px] rounded-full bg-primary" />
                         )}
                       </button>
@@ -1081,7 +1268,11 @@ export function MapView() {
             <span className="flex items-center gap-[5px]">
               <HealthDot health="healthy" size={7} /> healthy
             </span>
-            <span>{mode === "items" ? "Drag nodes · click to inspect" : "Click a table to inspect fields"}</span>
+            <span>
+              {mode === "items"
+                ? "Drag nodes · click to inspect"
+                : "Drag objects · click to trace"}
+            </span>
           </div>
 
           <div className="sticky bottom-[14px] float-right z-20 mr-[14px] flex w-fit items-center gap-[3px] rounded-xl border border-border bg-card/90 p-[3px] shadow-lg backdrop-blur">

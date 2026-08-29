@@ -4,6 +4,15 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-08-29
+
+### Changed
+
+- Object lineage nodes are now draggable.
+- Object selection highlights upstream and downstream nodes without moving the layout.
+- Connected object edges use the same animated violet/teal treatment as item lineage.
+- Object mode now dims unrelated objects and exposes relationship names through native tooltips.
+
 ## [1.3.0] - 2026-08-29
 
 ### Added
@@ -91,6 +100,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
+[1.3.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.3.1
 [1.3.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.3.0
 [1.2.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.2.0
 [1.1.2]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.1.2
