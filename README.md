@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/fabric-atlas-hero.png" alt="Fabric Atlas, governance map for Microsoft Fabric workspaces" width="100%">
+<img src="docs/assets/fabric-atlas-hero.svg" alt="Fabric Atlas, governance map for Microsoft Fabric workspaces" width="100%">
 
 Fabric Atlas indexes a Fabric workspace and gives teams one place to inspect
 items, lineage, access, sensitivity, jobs, configuration and shared notes.
