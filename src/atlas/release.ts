@@ -15,7 +15,7 @@ export const REPOSITORY_URL =
   "https://github.com/fredgis/FabricAtlas";
 
 export const APP_VERSION =
-  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.2.0";
+  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.3.0";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -25,6 +25,30 @@ export const BUILD_DATE =
   new Date(0).toISOString();
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "1.3.0",
+    date: "2026-08-29",
+    title: "Workspace Hub and open-source cleanup",
+    sections: [
+      {
+        title: "Experience",
+        items: [
+          "Configuration and team notes merged into one Workspace Hub.",
+          "Impact mode now starts disabled and lineage edges remain visually clean.",
+          "Deployment sync details align at the bottom without exposing the workspace ID.",
+          "About reduced to the open-source project essentials.",
+        ],
+      },
+      {
+        title: "Repository",
+        items: [
+          "Removed the unused analytics starter, preview assets and Fabric visual dependencies.",
+          "Moved community policy files into .github and added focused contributor guidance.",
+          "Rebuilt the README as the public open-source project landing page.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.2.0",
     date: "2026-08-29",

@@ -75,9 +75,6 @@ export default defineConfig({
             '@': resolve(projectRoot, 'src'),
         }
     },
-    optimizeDeps: {
-        include: ['@microsoft/fabric-visuals', '@microsoft/fabric-datagrid', '@microsoft/fabric-visuals-core'],
-    },
     build: {
         commonjsOptions: {
             include: [/node_modules/],

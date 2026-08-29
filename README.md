@@ -2,317 +2,229 @@
 
 # 🧭 Fabric Atlas
 
-[![Release](https://img.shields.io/github/v/release/fredgis/FabricAtlas?display_name=tag)](https://github.com/fredgis/FabricAtlas/releases/latest)
+### The open-source governance map for Microsoft Fabric workspaces
 
-### Everything in your Microsoft Fabric workspace, in one place.
+Catalog every item. Trace lineage. Review effective access. Surface risks.
+Keep configuration and team context together — directly inside Fabric.
 
-Items, impact-aware lineage, catalog, access, jobs, config — plus team comments and built-in release information.
-Built as a [Rayfin](https://github.com/microsoft/rayfin) Data App and deployed straight into Fabric.
+[![Release](https://img.shields.io/github/v/release/fredgis/FabricAtlas?display_name=tag&style=flat-square)](https://github.com/fredgis/FabricAtlas/releases/latest)
+[![License](https://img.shields.io/github/license/fredgis/FabricAtlas?style=flat-square)](LICENSE)
+[![React](https://img.shields.io/badge/React-19-149ECA?style=flat-square&logo=react&logoColor=white)](https://react.dev/)
+[![Rayfin](https://img.shields.io/badge/Rayfin-Data_App-1677C8?style=flat-square)](https://github.com/microsoft/rayfin)
+[![Microsoft Fabric](https://img.shields.io/badge/Microsoft-Fabric-742774?style=flat-square)](https://www.microsoft.com/microsoft-fabric)
+
+[See the release](https://github.com/fredgis/FabricAtlas/releases/latest)
+·
+[Install](docs/installation.md)
+·
+[Architecture](docs/architecture.md)
+·
+[Changelog](CHANGELOG.md)
 
 </div>
 
-## Overview in less than one minute
+---
+
+## Why Fabric Atlas?
+
+Fabric workspaces grow quickly: lakehouses, notebooks, pipelines, semantic
+models, reports, permissions, labels and scheduled jobs. The information exists,
+but it is distributed across many portal screens and APIs.
+
+Fabric Atlas creates one living operational map from that metadata.
+
+| Discover | Govern | Operate |
+|---|---|---|
+| Browse every workspace item and sub-object | Review effective access and sensitivity gaps | Track jobs, configuration and team notes |
+| Follow upstream and downstream lineage | Identify guests, broad shares and service principals | Refresh the catalog through one guided sync |
+| Search tables, columns and measures | Understand inherited versus direct permissions | Keep shared context in the Fabric-backed database |
+
+> **Metadata only.** Fabric Atlas does not copy or persist workspace business data.
+
+## See it in action
 
 https://github.com/user-attachments/assets/21b1d273-da69-4869-a96c-26d4b6003aa7
 
 https://github.com/user-attachments/assets/52052323-f1f2-479b-8d39-18f7400fba24
 
----
+## Product tour
 
-## What is Fabric Atlas?
+### Governance command center
 
-A Fabric workspace grows fast: lakehouses, notebooks, pipelines, semantic models, reports. Nobody has
-the full picture — what depends on what, who can see what, what just failed, who owns it.
+A workspace hero, health pulse, coverage signals, risks and direct paths into
+the parts of the estate that need attention.
 
-Fabric Atlas gives you that picture. Click **Sync** and it reads your workspace from the Fabric APIs
-and stores everything in its own data model. Then it draws it: a living map of your items and their
-lineage, a catalog you can browse as a tree or as cards, an access matrix down to each object, a jobs
-board, an exhaustive config tree per item, and a comment thread your whole team shares.
+![Governance overview](docs/screenshots/overview.png)
 
-No business data required. Fabric Atlas only reads your workspace metadata, so you can point it at any
-workspace and get value on the first Sync.
+### Focused lineage
 
-## A tour
+Lineage is normalized from source to consumer and arranged through six stages:
+orchestration, transformation, storage, endpoints, models and consumption.
+Impact mode can isolate one dependency path, while normal mode keeps the entire
+workspace visible. Selecting an item highlights it without moving the graph.
 
-### Overview
-A governance command center: a workspace banner, health pulse, priority risks, recent activity and
-direct jump-off points into lineage, catalog and access.
+![Map and lineage](docs/screenshots/map.png)
 
-![Overview](docs/screenshots/overview.png)
+### Catalog and Asset Catalog
 
-### Map & lineage
-A staged map of every item and how they connect. Directional arrows and relationship labels show the
-flow from **orchestration** through **transformation**, **storage**, **endpoints**, **models** and
-**consumption**. Select an item
-to isolate its full transitive **upstream (violet)** and **downstream (teal)** impact path, or switch
-to direct-neighbor mode. Disconnected data products are placed in separate visual bands when the
-full workspace is shown, so unrelated estates no longer cross through one another.
+The Catalog provides a grouped workspace inventory with dense governance cards
+and a structured details drawer. Asset Catalog goes inside items to expose
+tables, columns, measures, data types and effective access.
 
-The map includes search and type/health filters, drag positioning, minimap, zoom and fit controls.
-Switch from **Items** to **Objects** to move inside semantic models and lakehouses: tables, columns,
-measures and item-level consumers. The inspector keeps summary, schema, effective access and recent
-runs together, and every selection can be shared as a deep link.
+| Catalog | Asset Catalog |
+|---|---|
+| ![Catalog](docs/screenshots/catalog.png) | ![Asset Catalog](docs/screenshots/assets.png) |
 
-![Map & lineage](docs/screenshots/map.png)
+### Access and sensitivity
 
-### Catalog
-Every item as a collapsible tree and as rich cards — owner, health, endorsement, tags, freshness.
-Use the compact command header and grouped type navigator to narrow the inventory, then click any
-card to open a structured, keyboard-accessible panel with identity, lineage, access, config and jobs.
+Review access by principal or by object. Expand a principal to see every item and
+asset they can reach, then inspect external access, item-only shares and
+sensitivity coverage.
 
-![Catalog](docs/screenshots/catalog.png)
+| Access | Sensitivity |
+|---|---|
+| ![Access](docs/screenshots/access.png) | ![Sensitivity](docs/screenshots/sensitivity.png) |
 
-### Asset Catalog
-Goes _inside_ the items: every table, column, measure and KPI across the workspace, searchable and
-grouped into collapsed item accordions. Pick an object to inspect its parent context, datatype and
-exact effective access — including inherited versus direct permissions.
+### Workspace Hub
 
-![Asset Catalog](docs/screenshots/assets.png)
+Configuration and team notes share one operational workspace. Inspect settings,
+schemas and bindings, then keep decisions and follow-ups beside the technical
+context they explain.
 
-### Access
-Who can reach what. Toggle **By principal** or **By object**. The matrix computes **real effective
-access** from the actual grants; click a principal to expand every **item and asset** they can reach.
-Item-level shares are surfaced too: someone given a single report or model, without workspace
-membership, shows up as **item-only**, and the risk panel calls out external guests and service
-principals in priority order.
+| Configuration | Team notes |
+|---|---|
+| ![Configuration](docs/screenshots/config.png) | ![Team notes](docs/screenshots/comments.png) |
 
-![Access — by principal](docs/screenshots/access.png)
+## Features
 
-![Access — by object](docs/screenshots/access-object.png)
-
-### Sensitivity
-Every Microsoft Information Protection label in the workspace, with confidential and
-highly-confidential items spotlighted for review.
-
-![Sensitivity](docs/screenshots/sensitivity.png)
-
-### Jobs & health
-Recent refreshes, notebook runs and pipeline runs, with status, duration and details in one responsive
-operational view grouped by date.
-
-### Config
-Everything retrievable about an item — storage mode, OneLake paths, SQL endpoint, tables and measures —
-as an expandable tree. When a detail can't be read (for example a warehouse's tables need a SQL
-connection), it says so.
-
-![Config](docs/screenshots/config.png)
-
-### Comments
-Team notes on the workspace or any item, stored in the Fabric-backed database so they persist and
-everyone sees them.
-
-![Comments](docs/screenshots/comments.png)
-
-### About
-A compact open-source project page with MIT license context, clone command, source repository,
-current release, deployment details and changelog.
-
-### Light and dark
-Dark by default, with a one-click persistent light theme when preferred.
-
-![Fabric Atlas in light theme](docs/screenshots/overview-light.png)
-
-## Why Rayfin
-
-Fabric Atlas is a Rayfin Data App, so the whole backend is described in TypeScript and provisioned by
-Rayfin on Fabric:
-
-- The **data model** is nine decorator classes in `rayfin/data/`. Rayfin turns them into a governed
-  Fabric SQL database with a typed Data API — that is where the synced metadata and the comments live.
-- **Auth** is Fabric brokered (Entra ID). **Hosting** is Rayfin static hosting. **Storage** is ready
-  for attachments.
-- One command deploys everything and applies schema changes: `rayfin up`.
-
-And because it is declarative, you can grow it by prompting an AI agent. See
-[docs/evolving-with-rayfin.md](docs/evolving-with-rayfin.md).
-
-> ### ℹ️ Why a Fabric User Data Function?
->
-> A deployed Rayfin app is a browser SPA with a Fabric SSO session, but Rayfin never
-> exposes a Fabric access token to app code, and the Fabric REST APIs don't allow browser
-> CORS. So the app cannot call the Fabric management APIs (list items, lineage,
-> permissions, jobs) directly from the browser. Fabric Atlas therefore ships a small Fabric
-> User Data Function (`atlas_sync_functions`, Python) that runs server-side, receives the
-> user's token, calls the Fabric REST APIs on their behalf, and returns the results, which
-> the Sync button writes into the Atlas database. The semantic-model deep lineage (tables,
-> columns, measures) is read in-app through the Fabric embed proxy (DAX `INFO` functions),
-> which is the one Fabric data path a browser app is allowed to use. Fabric does not expose
-> a REST API to publish a User Data Function, so that one step is done once in the Fabric
-> portal (Publish), after which the app invokes it. The function's source and the publish
-> steps live in [`fabric/udf/atlas_sync_functions/`](fabric/udf/atlas_sync_functions/).
+- **Guided synchronization** — every deployed build starts with one metadata
+  refresh and shows live progress.
+- **Impact-aware lineage** — transitive upstream and downstream paths, stable
+  node selection, filters, minimap, zoom and item/object modes.
+- **Workspace catalog** — searchable item inventory with health, owner,
+  endorsement, tags and freshness.
+- **Object catalog** — tables, columns, measures and inherited access.
+- **Effective access** — workspace roles, direct shares, item-only access,
+  guests and service principals.
+- **Sensitivity posture** — label coverage, confidential spotlight and
+  unlabeled gaps.
+- **Operational history** — Fabric jobs grouped by time with duration and
+  status.
+- **Workspace Hub** — configuration explorer and persistent team notes.
+- **Open-source project view** — release, source, clone and license information.
+- **Dark by default** — persistent light theme available on demand.
 
 ## How it works
 
 ```mermaid
 flowchart LR
-  subgraph B["🌐 Fabric Atlas — browser SPA (Rayfin app)"]
-    UI["React UI · 10 views<br/>Overview · Map · Catalog · Assets · Access<br/>Sensitivity · Jobs · Config · Comments · About"]
-    MSAL["MSAL<br/>Power BI token"]
-  end
+  U["Fabric user"] --> APP["Fabric Atlas<br/>React + Rayfin"]
+  APP --> AUTH["Fabric brokered auth"]
+  APP --> UDF["Published User Data Function<br/>sync_all"]
+  UDF --> REST["Fabric + Power BI APIs"]
+  REST --> UDF
+  UDF --> APP
+  APP --> DB[("Rayfin database<br/>Fabric SQL")]
+  DB --> APP
 
-  subgraph F["☁️ Microsoft Fabric workspace"]
-    UDF["User Data Function<br/>atlas_sync_functions · sync_all"]
-    REST["Fabric REST APIs<br/>items · roleAssignments · jobs"]
-    SM["Semantic model<br/>embed proxy · DAX INFO"]
-    DB[("Rayfin database<br/>Fabric SQL")]
-  end
-
-  UI -- "① Sync" --> MSAL
-  MSAL -- "② bearer token" --> UDF
-  UDF -- "③ fabricToken" --> REST
-  REST -- "④ items · users + access · jobs" --> UDF
-  UDF -- "⑤ JSON" --> UI
-  UI -- "⑥ write catalog" --> DB
-  UI -- "⑦ deep lineage" --> SM
-  UI -- "comments" --> DB
-  DB -- "reload on open" --> UI
-
-  classDef browser fill:#3b82f6,stroke:#1e40af,color:#fff;
-  classDef udf fill:#7c5cff,stroke:#4c1d95,color:#fff;
-  classDef rest fill:#0ea5b7,stroke:#0f766e,color:#fff;
-  classDef db fill:#22a565,stroke:#15803d,color:#fff;
-  classDef sm fill:#d9a520,stroke:#a16207,color:#fff;
-
-  class UI,MSAL browser;
-  class UDF udf;
-  class REST rest;
-  class DB db;
-  class SM sm;
+  REST -. metadata .-> ITEMS["Items · lineage · access<br/>jobs · schemas · config"]
+  DB -. persists .-> CONTEXT["Catalog snapshot<br/>comments · sync history"]
 ```
 
-The **Sync** button acquires a Power BI token (MSAL), the `sync_all` User Data
-Function reads the workspace with it, and the result — items, the list of
-workspace **users and their access**, and jobs — is written into the Rayfin
-database and rendered. Comments and the last sync are read back on open.
+The browser cannot call Fabric management APIs directly because those endpoints
+do not support the required browser CORS flow. The published
+`atlas_sync_functions` User Data Function runs server-side, calls the Fabric and
+Power BI APIs with the signed-in user's delegated token, and returns metadata to
+the app. Rayfin persists the synchronized snapshot and team notes.
 
-> ### 💡 What would make this simpler — Rayfin vs Fabric
->
-> Building Fabric Atlas surfaced a few gaps. Some are for **Rayfin** (the Data App
-> framework); the rest need a **new or extended Fabric platform API**.
->
-> **Rayfin (the Data App framework):**
-> - Expose a scoped, opt-in brokered Fabric token to app code, so the app can call
->   Fabric REST without a separate User Data Function and app registration.
-> - Add first-class server functions to the Data App template — a place to run
->   trusted server-side code (like `sync_all`) without provisioning a separate UDF.
-> - Support bulk `upsert` and CLI seeding for `@authenticated` entities, so a first
->   dataset can load at deploy time, not only from the signed-in app.
->
-> **Fabric platform (a new or extended API):**
-> - A REST/CLI way to publish a User Data Function and read its invoke URL, so
->   deployment is fully scriptable instead of a manual portal click.
-> - A native Fabric lineage API (item level and intra-item: tables, columns,
->   measures), so lineage isn't stitched from the admin scanner and DAX `INFO`.
-> - CORS on the Fabric management endpoints, for delegated browser calls.
+See [Architecture](docs/architecture.md) for the complete flow.
 
 ## Quickstart
 
-```bash
+### Local preview
+
+```powershell
 git clone https://github.com/fredgis/FabricAtlas.git
-cd FabricAtlas
+Set-Location FabricAtlas
 npm install
+npm run dev
+```
 
-# explore locally with sample data (no Fabric needed)
-npm run dev            # http://localhost:5173
+The standalone app uses the included AlpineRent preview estate. No business data
+or Fabric workspace is required.
 
-# deploy into your Fabric workspace
-npx rayfin login --tenant <your-tenant-id> --select
+### Deploy to Microsoft Fabric
+
+```powershell
+npx rayfin login --tenant <tenant-id> --select
 npx rayfin up --workspace "<workspace-name>"
 ```
 
-For live workspace Sync, publish `atlas_sync_functions`, then add the public Entra client ID and
-the copied `sync_all` URL to the git-ignored `rayfin/.env` file:
+Publish the User Data Function in
+[`fabric/udf/atlas_sync_functions/`](fabric/udf/atlas_sync_functions/), then add
+the public values to the git-ignored `rayfin/.env` file:
 
-```bash
-RAYFIN_PUBLIC_ATLAS_SPA_CLIENT_ID=<client-id>
-RAYFIN_PUBLIC_ATLAS_UDF_URL=https://<...>/functions/sync_all/invoke
+```dotenv
+RAYFIN_PUBLIC_ATLAS_SPA_CLIENT_ID=<entra-client-id>
+RAYFIN_PUBLIC_ATLAS_UDF_URL=https://<host>/functions/sync_all/invoke
 RAYFIN_PUBLIC_ATLAS_WORKSPACE_NAME=<workspace-display-name>
 ```
 
-Redeploy with `npx rayfin up`. A new deployment opens on a dedicated first-sync screen with staged
-progress. After the first successful index, subsequent visits open the governance overview directly;
-later refreshes use the compact Sync action and progress bar in the app header.
+Run `npx rayfin up` again. The deployed app opens on its guided synchronization
+screen.
 
-Full steps in [docs/installation.md](docs/installation.md).
+Full prerequisites and Entra configuration are documented in
+[Installation and deployment](docs/installation.md).
 
-## Releases and changelog
+## Development
 
-Fabric Atlas follows [Semantic Versioning](https://semver.org/). Release notes are available in two places:
-
-- [`CHANGELOG.md`](CHANGELOG.md) — complete version history in the repository.
-- [GitHub Releases](https://github.com/fredgis/FabricAtlas/releases) — tagged releases and source archives.
-
-The running app exposes the same information under **About**. The current release is
-[v1.2.0](https://github.com/fredgis/FabricAtlas/releases/tag/v1.2.0).
-
-## Reuse it as a Rayfin template
-
-Fabric Atlas is a standard Rayfin Data App, so you can hand it to the rest of the
-org as a Rayfin template: teammates scaffold their own copy, wired to *their*
-workspace, in one command. The [`rayfin-template.yml`](rayfin-template.yml)
-manifest at the repo root already marks it as one.
-
-**Scaffold a fresh app from the repo** — no setup, nothing to publish first:
-
-```bash
-rayfin init my-atlas -t https://github.com/fredgis/FabricAtlas
-cd my-atlas && npm install
+```powershell
+npm test
+npm run lint
+npm run build
 ```
 
-`rayfin init -t <git-url>` clones the template, renames the project, and leaves you
-with a fresh, deployable app. Pin a version with `...FabricAtlas#v1.2.0` if you want.
+| Path | Purpose |
+|---|---|
+| `src/atlas/views/` | Product views |
+| `src/atlas/store.tsx` | Hydration, synchronization and comments |
+| `src/atlas/lineage.ts` | Edge normalization, impact traversal and layout |
+| `src/atlas/backend.ts` | Rayfin persistence boundary |
+| `src/atlas/live-sync.ts` | Fabric UDF invocation and payload mapping |
+| `rayfin/data/` | Persisted entity model |
+| `fabric/udf/atlas_sync_functions/` | Server-side Fabric metadata sync |
+| `docs/` | Architecture, data model and deployment guides |
 
-**Publish it to an internal template gallery** so it appears in the interactive
-`rayfin init` picker for everyone. Add one entry to a shared registry file —
-registries merge in tier order: bundled, then user-global
-`~/.rayfin/template-registries.yml`, then project-local `.rayfin/template-registries.yml`:
+## Reuse as a Rayfin template
 
-```yaml
-# ~/.rayfin/template-registries.yml
-registries:
-  - name: fabric-atlas
-    displayName: Fabric Atlas
-    description: Workspace governance explorer
-    url: https://github.com/fredgis/FabricAtlas   # or your internal GitHub / Azure DevOps mirror
-    ref: main                                     # a tag or commit SHA is safer for a shared registry
-    templateName: fabric-atlas
+```powershell
+rayfin init my-atlas -t https://github.com/fredgis/FabricAtlas#v1.3.0
+Set-Location my-atlas
+npm install
 ```
 
-Because every id is env-driven (the privacy scrub in this repo), the template ships
-code only: no tenant, workspace, or client id travels with it. Each team supplies
-its own `.env`, publishes its own Sync function and app registration
-([docs/installation.md](docs/installation.md)), then runs `rayfin up`.
+The repository includes [`rayfin-template.yml`](rayfin-template.yml), so it can
+also be added to an internal Rayfin template registry.
 
-## Docs
+## Open-source project
 
-| Doc | About |
-| --- | --- |
-| [Installation & deployment](docs/installation.md) | Prerequisites, local preview, deploy to Fabric |
-| [Architecture](docs/architecture.md) | How the SPA, Rayfin data layer and Sync fit together |
-| [Data model](docs/data-model.md) | The nine entities and their fields |
-| [Evolving with Rayfin](docs/evolving-with-rayfin.md) | Grow the app with prompts and `rayfin up` |
-| [Changelog](CHANGELOG.md) | Version history and release notes |
+- [Releases](https://github.com/fredgis/FabricAtlas/releases)
+- [Changelog](CHANGELOG.md)
+- [Contributing](.github/CONTRIBUTING.md)
+- [Security policy](.github/SECURITY.md)
+- [Code of conduct](.github/CODE_OF_CONDUCT.md)
+- [Installation guide](docs/installation.md)
+- [Architecture](docs/architecture.md)
+- [Data model](docs/data-model.md)
 
-## Repo layout
-
-```
-rayfin/
-  rayfin.yml            # services: auth, data (mssql), storage, static hosting
-  data/                 # 9 entity classes + schema.ts
-src/
-  App.tsx               # shell: sidebar, top bar, theme, sync, tab routing
-  atlas/
-    model.ts            # types, item-type metadata, sample dataset
-    lineage.ts          # transitive impact traversal + staged layout
-    release.ts          # version, build and changelog metadata
-    store.tsx           # data + sync + comments (preview / Rayfin backed)
-    backend.ts          # persistence + Fabric sync boundary
-    ui.tsx              # avatars, glyphs, health chips, cards
-    views/              # Overview, Map, Catalog, Assets, Access, Sensitivity, Jobs, Config, Comments, About
-docs/                   # this documentation + screenshots
-CHANGELOG.md            # release history
-```
+Issues and pull requests are welcome. Keep changes focused, preserve the
+metadata-only security boundary, and include tests for new synchronization or
+lineage behavior.
 
 ---
 
-A free sample, shared as-is. Built with [Rayfin](https://github.com/microsoft/rayfin) on Microsoft Fabric.
+<div align="center">
+
+Built openly with React, Rayfin and Microsoft Fabric.
+
+</div>

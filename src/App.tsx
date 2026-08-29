@@ -16,7 +16,6 @@ import {
   Info,
   Lock,
   Menu,
-  MessagesSquare,
   Moon,
   RefreshCw,
   Settings2,
@@ -38,8 +37,7 @@ import { AssetCatalogView } from "./atlas/views/AssetCatalog";
 import { AccessView } from "./atlas/views/Access";
 import { SensitivityView } from "./atlas/views/Sensitivity";
 import { JobsView } from "./atlas/views/Jobs";
-import { ConfigView } from "./atlas/views/Config";
-import { CommentsView } from "./atlas/views/Comments";
+import { WorkspaceHubView } from "./atlas/views/WorkspaceHub";
 import { AboutView } from "./atlas/views/About";
 import { AtlasBootView, FirstSyncView } from "./atlas/views/FirstSync";
 
@@ -51,8 +49,7 @@ export type Tab =
   | "access"
   | "sensitivity"
   | "jobs"
-  | "config"
-  | "comments"
+  | "workspace"
   | "about";
 
 const NAV_GROUPS: {
@@ -79,8 +76,7 @@ const NAV_GROUPS: {
     label: "Operate",
     items: [
       { id: "jobs", label: "Jobs & health", icon: Activity },
-      { id: "config", label: "Config", icon: Settings2 },
-      { id: "comments", label: "Comments", icon: MessagesSquare },
+      { id: "workspace", label: "Workspace Hub", icon: Settings2 },
     ],
   },
   {
@@ -90,13 +86,15 @@ const NAV_GROUPS: {
 ];
 const NAV = NAV_GROUPS.flatMap((group) => group.items);
 
-function initialTab(): Tab {
-  const h = window.location.hash.replace("#", "") as Tab;
-  return NAV.some((n) => n.id === h) ? h : "overview";
+function tabFromHash(): Tab {
+  const raw = window.location.hash.replace("#", "");
+  if (raw === "config" || raw === "comments") return "workspace";
+  const tab = raw as Tab;
+  return NAV.some((item) => item.id === tab) ? tab : "overview";
 }
 
 function App() {
-  const [tab, setTab] = useState<Tab>(initialTab);
+  const [tab, setTab] = useState<Tab>(tabFromHash);
   const [navOpen, setNavOpen] = useState(false);
   const { isDark, toggleTheme } = useThemeContext();
   const {
@@ -129,8 +127,7 @@ function App() {
 
   useEffect(() => {
     const onHash = () => {
-      const h = window.location.hash.replace("#", "") as Tab;
-      if (NAV.some((n) => n.id === h)) setTab(h);
+      setTab(tabFromHash());
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
@@ -323,8 +320,7 @@ function App() {
               {tab === "access" && <AccessView />}
               {tab === "sensitivity" && <SensitivityView />}
               {tab === "jobs" && <JobsView />}
-              {tab === "config" && <ConfigView />}
-              {tab === "comments" && <CommentsView />}
+              {tab === "workspace" && <WorkspaceHubView />}
               {tab === "about" && <AboutView />}
             </motion.div>
           </AnimatePresence>

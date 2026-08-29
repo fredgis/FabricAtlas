@@ -4,6 +4,28 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-08-29
+
+### Added
+
+- Workspace Hub combining configuration and persistent team notes.
+- MIT license and repository-specific contribution and security guidance.
+
+### Changed
+
+- Impact mode now starts disabled so the complete workspace is visible by default.
+- Lineage relationship names moved to native SVG tooltips, leaving animated edges unobstructed.
+- Deployment sync content aligns at the bottom of both hero columns and no longer displays the workspace ID.
+- About now focuses only on the open-source project, clone command and essential build context.
+- README rebuilt as an open-source project landing page.
+
+### Removed
+
+- Separate Config and Comments navigation entries.
+- Unused semantic-model starter hook, Fabric client, DataTable helpers, preview screen and related tests/assets.
+- Unused Fabric visual, DataGrid and app-data runtime dependencies.
+- Unused `components.json` and empty `fabric.yaml`.
+
 ## [1.2.0] - 2026-08-29
 
 ### Changed
@@ -69,6 +91,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
+[1.3.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.3.0
 [1.2.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.2.0
 [1.1.2]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.1.2
 [1.1.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.1.1

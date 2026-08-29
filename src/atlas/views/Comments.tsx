@@ -7,10 +7,10 @@ import {
   Send,
 } from "lucide-react";
 import { useAtlas } from "../store";
-import { Avatar, Card, SectionLabel } from "../ui";
+import { Avatar, Card, SectionLabel, cn } from "../ui";
 import { relativeTime, type Comment, type Item } from "../model";
 
-export function CommentsView() {
+export function CommentsView({ embedded = false }: { embedded?: boolean } = {}) {
   const { data, addComment, currentUser } = useAtlas();
   const { comments, items } = data;
 
@@ -51,8 +51,13 @@ export function CommentsView() {
   };
 
   return (
-    <div className="atlas-content-frame flex flex-col gap-xl p-xl lg:p-xxl">
-      <header className="border-l border-primary pl-l">
+    <div
+      className={cn(
+        "flex flex-col",
+        embedded ? "gap-l" : "atlas-content-frame gap-xl p-xl lg:p-xxl",
+      )}
+    >
+      {!embedded && <header className="border-l border-primary pl-l">
         <SectionLabel>Collaboration / workspace notes</SectionLabel>
         <div className="mt-s flex flex-col gap-s lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -67,7 +72,7 @@ export function CommentsView() {
             {comments.length} team note{comments.length === 1 ? "" : "s"}
           </div>
         </div>
-      </header>
+      </header>}
 
       <div className="grid items-start gap-l lg:grid-cols-3">
         <aside className="lg:sticky lg:top-l" aria-label="Compose a comment">

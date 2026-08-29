@@ -10,17 +10,18 @@ Fabric portal (iframe)
         │  brokered auth (Entra ID)
         ▼
 React + Vite SPA  ── Rayfin static hosting (dist/)
+        ├──────────► Published User Data Function ──► Fabric + Power BI APIs
         │
-        │  RayfinClient (typed)
+        │  RayfinClient
         ▼
 Rayfin Data API (Data API Builder)  ──  Fabric SQL database (mssql)
         ▲
         │  Sync writes here
-   Fabric REST APIs  (items · lineage · jobs · permissions · definitions)
+   synchronized metadata  (items · lineage · jobs · permissions · definitions)
 ```
 
-- The front end lives in `src/`. The Atlas feature code is in `src/atlas/` (model, store, ui, and one
-  file per tab in `src/atlas/views/`).
+- The front end lives in `src/`. Atlas feature code is in `src/atlas/` (model, store, UI helpers,
+  lineage logic and product views).
 - The data model lives in `rayfin/data/` as decorator classes and is registered in
   `rayfin/data/schema.ts`. `rayfin.yml` enables `auth`, `data` (mssql), `storage` and `staticHosting`.
 - `RayfinClient` (`src/lib/rayfin-client.ts`) talks to the Rayfin Data API, which serves the Fabric
@@ -44,26 +45,25 @@ Nine entities capture the workspace and the team layer. See [data-model.md](data
 
 ## Sync
 
-The Sync button calls `runFabricSync` (`src/atlas/backend.ts`). When deployed and embedded in Fabric,
-it reads the Fabric REST APIs (list items, lineage/relations, job history, permissions, item
-definitions) using the brokered token, upserts the results into the entities via
-`client.data.*.create`, and reloads. A `SyncRun` row records what happened. Everything the UI shows
-after a Sync comes from the Fabric-backed table model.
+The Sync button calls `runFabricSync` (`src/atlas/backend.ts`). When deployed, the browser invokes
+the published `sync_all` Fabric User Data Function. That server-side function reads Fabric and
+Power BI metadata APIs with the user's delegated token. The app maps the response, writes it through
+the Rayfin Data API, and records a `SyncRun`.
 
 In preview / standalone mode there is no token, so Sync just refreshes the sample dataset. The data
 layer is one abstraction (`src/atlas/store.tsx`) so the UI code is identical in both modes.
 
-## Comments
+## Workspace Hub
 
 Posting a comment calls `addComment`, which optimistically updates the UI and persists a `Comment`
 row through `client.data.Comment.create`. Because comments are stored in the Fabric SQL database,
-they persist and are shared across the whole team.
+they persist and are shared across the whole team. Configuration and comments are presented together
+in Workspace Hub so technical facts and human context stay adjacent.
 
 ## Theming
 
-Dark is the default. `src/hooks/use-theme.ts` follows the host `data-appearance` attribute
-(so it matches the Fabric portal when embedded) and toggles the `.dark` class for Tailwind. Design
-tokens are Fluent-style CSS variables in `src/global.css`.
+Dark is the default. `src/hooks/use-theme.ts` stores an explicit light or dark preference and toggles
+the `.dark` class for Tailwind. Design tokens are defined in `src/global.css`.
 
 ## Preview vs deployed
 

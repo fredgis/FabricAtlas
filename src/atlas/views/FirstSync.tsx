@@ -90,11 +90,6 @@ export function FirstSyncView() {
     data.workspace.displayName,
     ATLAS_CONFIG.workspaceName,
   );
-  const workspaceId = safeText(
-    data.workspace.fabricId,
-    (import.meta.env.VITE_FABRIC_WORKSPACE_ID as string | undefined) ??
-      "Resolved by Fabric",
-  );
 
   return (
     <div className="relative min-h-screen overflow-auto bg-background text-foreground">
@@ -153,7 +148,7 @@ export function FirstSyncView() {
               initial={{ opacity: 0, x: -24 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.12, duration: 0.55, ease: "easeOut" }}
-              className="flex flex-col justify-center border-b border-border p-xl sm:p-xxxl lg:border-b-0 lg:border-r"
+              className="flex flex-col border-b border-border p-xl sm:p-xxxl lg:border-b-0 lg:border-r"
             >
               <div className="atlas-sync-copy">
                 <span className="inline-flex items-center gap-s rounded-full border border-primary/30 bg-primary/10 px-m py-s text-200 font-semibold text-primary">
@@ -187,7 +182,7 @@ export function FirstSyncView() {
                 </div>
               </div>
 
-              <div className="mt-xxxl grid gap-s sm:grid-cols-2">
+              <div className="mt-auto grid gap-s pt-xxxl sm:grid-cols-2">
                 {CAPABILITIES.map(({ icon: Icon, title, detail }, index) => (
                   <motion.div
                     key={title}
@@ -342,7 +337,7 @@ export function FirstSyncView() {
                 </svg>
               </div>
 
-              <div className="rounded-2xl border border-primary/25 bg-card p-l shadow-xl">
+              <div className="mt-auto rounded-2xl border border-primary/25 bg-card p-l shadow-xl">
                 <div className="flex items-start justify-between gap-m">
                   <div className="min-w-0">
                     <div className="text-100 font-bold uppercase tracking-[0.14em] text-primary">
@@ -350,9 +345,6 @@ export function FirstSyncView() {
                     </div>
                     <div className="mt-xs truncate font-heading text-500 font-bold">
                       {workspaceName}
-                    </div>
-                    <div className="mt-xxs truncate font-mono text-100 text-muted-foreground">
-                      {workspaceId}
                     </div>
                   </div>
                   <div className="font-numeric text-500 font-bold text-primary">

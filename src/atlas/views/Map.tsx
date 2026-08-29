@@ -310,7 +310,9 @@ export function MapView() {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [selId, setSelId] = useState(startingId);
   const [focusId, setFocusId] = useState(startingId);
-  const [impactMode, setImpactMode] = useState(searchParam("impact") !== "direct");
+  const [impactMode, setImpactMode] = useState(
+    searchParam("impact") === "focused",
+  );
   const [query, setQuery] = useState(searchParam("q"));
   const [typeFilter, setTypeFilter] = useState(searchParam("type") || "all");
   const [healthFilter, setHealthFilter] = useState<Health | "all">(
@@ -461,7 +463,7 @@ export function MapView() {
     else url.searchParams.delete("type");
     if (healthFilter !== "all") url.searchParams.set("health", healthFilter);
     else url.searchParams.delete("health");
-    if (!impactMode) url.searchParams.set("impact", "direct");
+    if (impactMode) url.searchParams.set("impact", "focused");
     else url.searchParams.delete("impact");
     if (mode === "objects" && objects.table) url.searchParams.set("table", objects.table);
     else url.searchParams.delete("table");
@@ -821,6 +823,7 @@ export function MapView() {
                             : "var(--color-lineage-neutral)";
                       return (
                         <g key={key}>
+                          <title>{edge.relation}</title>
                           <path
                             className={active && !edge.broken ? "atlas-flow" : undefined}
                             d={curve(source, target)}
@@ -841,17 +844,6 @@ export function MapView() {
                                     : "default"
                             })`}
                           />
-                          {(active || edge.broken) && (
-                            <text
-                              x={(source.x + NODE_W + target.x) / 2}
-                              y={(source.y + target.y) / 2 + NODE_H / 2 - 6}
-                              textAnchor="middle"
-                              fill={color}
-                              className="paint-order-stroke stroke-background stroke-[5px] text-[10px] font-semibold"
-                            >
-                              {edge.relation}
-                            </text>
-                          )}
                         </g>
                       );
                     })}
@@ -967,6 +959,7 @@ export function MapView() {
                       if (!source || !target) return null;
                       return (
                         <g key={`${edge.source}:${edge.target}:${edge.relation}`}>
+                          <title>{edge.relation}</title>
                           <path
                             d={curve(source, target, OBJECT_W, OBJECT_H)}
                             fill="none"
@@ -982,17 +975,6 @@ export function MapView() {
                               edge.structural ? "neutral" : "active"
                             })`}
                           />
-                          {!edge.structural && (
-                            <text
-                              x={(source.x + OBJECT_W + target.x) / 2}
-                              y={(source.y + target.y) / 2 + OBJECT_H / 2 - 5}
-                              textAnchor="middle"
-                              fill={DOWN}
-                              className="paint-order-stroke stroke-background stroke-[5px] text-[10px] font-semibold"
-                            >
-                              {edge.relation}
-                            </text>
-                          )}
                         </g>
                       );
                     })}

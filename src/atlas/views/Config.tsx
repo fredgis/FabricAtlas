@@ -15,7 +15,7 @@ import { typeMeta, type ConfigKV, type Item } from "../model";
 
 type ItemFilter = "all" | "configured" | "empty";
 
-export function ConfigView() {
+export function ConfigView({ embedded = false }: { embedded?: boolean } = {}) {
   const { data } = useAtlas();
   const { items, config } = data;
   const sectionIdPrefix = useId();
@@ -87,8 +87,13 @@ export function ConfigView() {
   };
 
   return (
-    <div className="atlas-content-frame flex flex-col gap-xl p-xl lg:p-xxl">
-      <header className="border-l border-primary pl-l">
+    <div
+      className={cn(
+        "flex flex-col",
+        embedded ? "gap-l" : "atlas-content-frame gap-xl p-xl lg:p-xxl",
+      )}
+    >
+      {!embedded && <header className="border-l border-primary pl-l">
         <SectionLabel>Inventory / configuration</SectionLabel>
         <div className="mt-s flex flex-col gap-s lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -105,7 +110,7 @@ export function ConfigView() {
             {config.length} values across {configByItem.size} configured items
           </div>
         </div>
-      </header>
+      </header>}
 
       <div className="grid items-start gap-l lg:grid-cols-3">
         <aside aria-label="Configuration items" className="lg:sticky lg:top-l">
