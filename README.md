@@ -14,6 +14,7 @@ the last validated snapshot in Fabric so everyone sees the same state.
 
 [Install](docs/installation.md) ·
 [Architecture](docs/architecture.md) ·
+[Roadmap](#roadmap) ·
 [Changelog](CHANGELOG.md) ·
 [Contribute](.github/CONTRIBUTING.md)
 
@@ -123,6 +124,26 @@ snapshot through Rayfin, and keeps the previous valid snapshot if a refresh
 fails.
 
 See [Architecture](docs/architecture.md) for the full data flow.
+
+## Roadmap
+
+Multi-workspace catalog support is planned and tracked in
+[#4](https://github.com/fredgis/FabricAtlas/issues/4). The implementation will
+stay focused on a controlled set of workspaces rather than scanning an entire
+tenant automatically.
+
+| Stage | Planned work |
+|---|---|
+| Foundation | Keep catalog access shared with the authorized app audience, restrict scope and sync changes to the configured synchronizer, and store one atomic snapshot per workspace |
+| Synchronization | Let the synchronizer select workspaces explicitly, then show progress and failures workspace by workspace |
+| Browsing | Add a global selector for all indexed workspaces, one workspace or a small selection; aggregate Overview, Catalog, Asset Catalog, Access, Sensitivity and Jobs |
+| Workspace context | Keep Workspace Hub, configuration and comments attached to one active workspace |
+| Lineage comparison | Open one workspace by default and allow a limited comparison of several workspaces without inventing connections |
+| Cross-workspace lineage | Add verified relationships returned by the Fabric and Power BI metadata APIs after the multi-workspace catalog is stable |
+
+The first usable milestone covers the foundation, synchronization and browsing
+stages. Lineage comparison and cross-workspace relationships will follow
+without blocking the core multi-workspace catalog.
 
 ## Quickstart
 
