@@ -1,6 +1,15 @@
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Table2, Columns3, Sigma, Search, Users, Boxes } from "lucide-react";
+import {
+  Boxes,
+  ChevronDown,
+  ChevronRight,
+  Columns3,
+  Search,
+  Sigma,
+  Table2,
+  Users,
+} from "lucide-react";
 import { useAtlas } from "../store";
 import { Card, PrincipalAvatar, SectionLabel, TypeGlyph, cn } from "../ui";
 import {
@@ -87,6 +96,7 @@ export function AssetCatalogView() {
 
   const [q, setQ] = useState("");
   const [kind, setKind] = useState<AssetKind | "all">("all");
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -111,7 +121,7 @@ export function AssetCatalogView() {
   }, [filtered]);
 
   const [selId, setSelId] = useState<string>("");
-  const sel = assets.find((a) => a.id === selId) ?? filtered[0];
+  const sel = assets.find((a) => a.id === selId);
 
   const access = useMemo(() => {
     if (!sel) return [] as { name: string; level: AccessLevel; inherited: boolean; roleName?: string }[];
@@ -176,8 +186,24 @@ export function AssetCatalogView() {
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-[16px] xl:grid-cols-[minmax(320px,400px)_minmax(0,1fr)]">
         <Card className="flex min-h-0 flex-col overflow-hidden">
-          <div className="border-b border-border px-[16px] py-[11px] text-[13px] font-bold">
-            {filtered.length} assets · {groups.length} items
+          <div className="flex items-center gap-[8px] border-b border-border px-[16px] py-[11px]">
+            <span className="text-[13px] font-bold">
+              {filtered.length} assets · {groups.length} items
+            </span>
+            <button
+              type="button"
+              onClick={() => setExpandedGroups(new Set(groups.map(([id]) => id)))}
+              className="ml-auto text-[10px] font-semibold text-primary hover:underline"
+            >
+              Expand all
+            </button>
+            <button
+              type="button"
+              onClick={() => setExpandedGroups(new Set())}
+              className="text-[10px] font-semibold text-muted-foreground hover:text-foreground"
+            >
+              Collapse
+            </button>
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
             {groups.length === 0 && (
@@ -188,14 +214,32 @@ export function AssetCatalogView() {
             )}
             {groups.map(([itemId, arr]) => {
               const it = itemById.get(itemId);
+              const open = expandedGroups.has(itemId) || q.trim().length > 0;
               return (
                 <div key={itemId}>
-                  <div className="sticky top-0 z-10 flex items-center gap-[9px] border-b border-border/60 bg-secondary/80 px-[14px] py-[8px] backdrop-blur">
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    onClick={() =>
+                      setExpandedGroups((previous) => {
+                        const next = new Set(previous);
+                        if (next.has(itemId)) next.delete(itemId);
+                        else next.add(itemId);
+                        return next;
+                      })
+                    }
+                    className="sticky top-0 z-10 flex w-full items-center gap-[9px] border-b border-border/60 bg-secondary/90 px-[14px] py-[9px] text-left backdrop-blur hover:bg-accent"
+                  >
+                    {open ? (
+                      <ChevronDown size={14} className="text-muted-foreground" />
+                    ) : (
+                      <ChevronRight size={14} className="text-muted-foreground" />
+                    )}
                     {it && <TypeGlyph type={it.itemType} size={22} />}
                     <span className="truncate text-[12.5px] font-bold">{it?.displayName ?? "Unknown"}</span>
                     <span className="ml-auto text-[11px] text-muted-foreground">{arr.length}</span>
-                  </div>
-                  {arr.map((a) => {
+                  </button>
+                  {open && arr.map((a) => {
                     const KM = KIND_META[a.kind];
                     const Icon = KM.icon;
                     const active = sel?.id === a.id;

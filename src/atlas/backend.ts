@@ -16,6 +16,7 @@
 
 import { ATLAS_CONFIG } from "./config";
 import { invokeSyncAll, mapSyncToAtlas } from "./live-sync";
+import { normalizeLineageEdges } from "./lineage";
 import type {
   AtlasData,
   Comment,
@@ -27,6 +28,8 @@ import type {
   Principal,
   WorkspaceInfo,
 } from "./model";
+
+export type SyncProgressReporter = (progress: number, stage: string) => void;
 
 type Row = Record<string, unknown>;
 interface EntityApi {
@@ -89,13 +92,21 @@ export async function persistComment(
 export async function runFabricSync(
   isPreview: boolean,
   user: { name: string; email?: string },
+  reportProgress?: SyncProgressReporter,
 ): Promise<AtlasData | null> {
   if (isPreview) {
-    await new Promise((r) => setTimeout(r, 650));
+    reportProgress?.(15, "Preparing preview sync");
+    await new Promise((r) => setTimeout(r, 250));
+    reportProgress?.(65, "Refreshing sample workspace");
+    await new Promise((r) => setTimeout(r, 400));
+    reportProgress?.(100, "Sync complete");
     return null;
   }
+  reportProgress?.(8, "Connecting to Microsoft Fabric");
   const raw = await invokeSyncAll(workspaceId());
+  reportProgress?.(48, "Workspace metadata received");
   const atlas = mapSyncToAtlas(raw, WS_FALLBACK);
+  reportProgress?.(58, "Building the governance catalog");
   // Carry over comments that already live in the DB (sync doesn't touch them).
   try {
     const existing = await loadFromDb(false);
@@ -103,7 +114,9 @@ export async function runFabricSync(
   } catch {
     /* ignore */
   }
-  await persistSync(atlas, user);
+  reportProgress?.(66, "Preserving team notes");
+  await persistSync(atlas, user, reportProgress);
+  reportProgress?.(100, "Sync complete");
   return atlas;
 }
 
@@ -111,6 +124,7 @@ export async function runFabricSync(
 async function persistSync(
   atlas: AtlasData,
   user: { name: string; email?: string },
+  reportProgress?: SyncProgressReporter,
 ): Promise<void> {
   const wid = workspaceId();
   let data: Record<string, EntityApi>;
@@ -142,9 +156,11 @@ async function persistSync(
     }
   };
 
+  reportProgress?.(70, "Preparing the Atlas database");
   await Promise.all(
     ["FabricItem", "Principal", "AccessGrant", "JobRun", "LineageEdge", "ConfigEntry"].map(wipe),
   );
+  reportProgress?.(76, "Writing workspace items");
 
   await insertAll(
     "FabricItem",
@@ -162,6 +178,7 @@ async function persistSync(
       lastRefresh: i.lastRefresh ? new Date(i.lastRefresh) : undefined,
     })),
   );
+  reportProgress?.(82, "Writing principals and access");
   await insertAll(
     "Principal",
     atlas.principals.map((p) => ({
@@ -183,6 +200,7 @@ async function persistSync(
       flag: g.flag,
     })),
   );
+  reportProgress?.(88, "Writing jobs and lineage");
   await insertAll(
     "JobRun",
     atlas.jobs.map((j) => ({
@@ -213,6 +231,7 @@ async function persistSync(
       value: c.value,
     })),
   );
+  reportProgress?.(94, "Writing object metadata");
   // Persist the sub-object schema (tables/columns/measures) as hidden ConfigEntry
   // rows so the Asset Catalog and deep lineage survive a reload without re-sync.
   const schemaRows: Row[] = [];
@@ -229,6 +248,7 @@ async function persistSync(
   if (schemaRows.length) await insertAll("ConfigEntry", schemaRows);
 
   // Workspace summary (single row) + a sync-run audit record.
+  reportProgress?.(97, "Finalizing the workspace snapshot");
   try {
     await wipe("Workspace");
     await data.Workspace.create({
@@ -319,12 +339,15 @@ export async function loadFromDb(isPreview: boolean): Promise<AtlasData | null> 
 
   if (items.length === 0 && commentRows.length === 0) return null;
 
-  const edges: Edge[] = edgeRows.map((r) => ({
-    source: String(r.sourceFabricId),
-    target: String(r.targetFabricId),
-    relation: String(r.relation),
-    broken: !!r.broken,
-  }));
+  const edges: Edge[] = normalizeLineageEdges(
+    items,
+    edgeRows.map((r) => ({
+      source: String(r.sourceFabricId),
+      target: String(r.targetFabricId),
+      relation: String(r.relation),
+      broken: !!r.broken,
+    })),
+  );
   const principals: Principal[] = principalRows.map((r) => ({
     principalId: String(r.principalId),
     displayName: String(r.displayName),

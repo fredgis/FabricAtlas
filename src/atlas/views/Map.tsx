@@ -91,14 +91,24 @@ function initialMode(): Mode {
   return searchParam("lineage") === "objects" ? "objects" : "items";
 }
 
-function initialSelected(items: Item[]): string {
+function initialSelected(items: Item[], edges: Edge[]): string {
   const requested = searchParam("item");
   if (items.some((item) => item.fabricId === requested)) return requested;
-  return (
-    items.find((item) => item.itemType === "SemanticModel")?.fabricId ??
-    items[0]?.fabricId ??
-    ""
-  );
+  const candidates = items.filter((item) => item.itemType === "SemanticModel");
+  const ranked = (candidates.length > 0 ? candidates : items)
+    .map((item) => {
+      const impact = getLineageImpact(edges, item.fabricId);
+      return {
+        item,
+        score: impact.upstream.ids.size + impact.downstream.ids.size,
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        a.item.displayName.localeCompare(b.item.displayName),
+    );
+  return ranked[0]?.item.fabricId ?? "";
 }
 
 function curve(source: Point, target: Point, width = NODE_W, height = NODE_H): string {
@@ -297,7 +307,7 @@ export function MapView() {
   );
 
   const [mode, setMode] = useState<Mode>(initialMode);
-  const [selId, setSelId] = useState(() => initialSelected(items));
+  const [selId, setSelId] = useState(() => initialSelected(items, edges));
   const [impactMode, setImpactMode] = useState(searchParam("impact") !== "direct");
   const [query, setQuery] = useState(searchParam("q"));
   const [typeFilter, setTypeFilter] = useState(searchParam("type") || "all");
@@ -320,7 +330,7 @@ export function MapView() {
   const mapRef = useRef<HTMLDivElement>(null);
 
   const selected =
-    itemById.get(selId) ?? itemById.get(initialSelected(items));
+    itemById.get(selId) ?? itemById.get(initialSelected(items, edges));
   const activeId = selected?.fabricId ?? "";
   const schema = useMemo(
     () => schemaFor(data, activeId) ?? [],
@@ -356,7 +366,10 @@ export function MapView() {
         ),
     [impact.downstream.distance, impact.downstream.ids, itemById],
   );
-  const connected = new Set([activeId, ...impact.upstream.ids, ...impact.downstream.ids]);
+  const connected = useMemo(
+    () => new Set([activeId, ...impact.upstream.ids, ...impact.downstream.ids]),
+    [activeId, impact.downstream.ids, impact.upstream.ids],
+  );
   const types = useMemo(
     () =>
       [...new Set(items.map((item) => item.itemType))].sort((a, b) =>
@@ -368,16 +381,16 @@ export function MapView() {
     const normalized = query.trim().toLowerCase();
     return items.filter((item) => {
       if (item.fabricId === activeId) return true;
-      return (
+      const matchesFilters =
         (typeFilter === "all" || item.itemType === typeFilter) &&
         (healthFilter === "all" || item.health === healthFilter) &&
         (!normalized ||
           item.displayName.toLowerCase().includes(normalized) ||
           typeMeta(item.itemType).label.toLowerCase().includes(normalized) ||
-          item.tags.some((tag) => tag.toLowerCase().includes(normalized)))
-      );
+          item.tags.some((tag) => tag.toLowerCase().includes(normalized)));
+      return matchesFilters && (!impactMode || !activeId || connected.has(item.fabricId));
     });
-  }, [activeId, healthFilter, items, query, typeFilter]);
+  }, [activeId, connected, healthFilter, impactMode, items, query, typeFilter]);
   const visibleIds = useMemo(
     () => new Set(visibleItems.map((item) => item.fabricId)),
     [visibleItems],
@@ -394,8 +407,10 @@ export function MapView() {
       buildStagedLayout(visibleItems, visibleEdges, {
         nodeWidth: NODE_W,
         nodeHeight: NODE_H,
+        columnGap: 230,
+        focusId: activeId,
       }),
-    [visibleEdges, visibleItems],
+    [activeId, visibleEdges, visibleItems],
   );
   const posOf = (id: string) => drag[id] ?? layout.positions.get(id) ?? { x: 0, y: 0 };
   const bounds = useMemo(() => {
@@ -695,10 +710,21 @@ export function MapView() {
             >
               {mode === "items" ? (
                 <>
+                  {layout.groups.map((group) => (
+                    <div
+                      key={group.id}
+                      className="pointer-events-none absolute left-[14px] right-[14px] rounded-2xl border border-border/60 bg-card/20"
+                      style={{ top: group.y, height: group.height }}
+                    >
+                      <span className="absolute left-[12px] top-[8px] max-w-[280px] truncate rounded-md bg-background/80 px-[7px] py-[2px] text-[9px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
+                        {group.label}
+                      </span>
+                    </div>
+                  ))}
                   <div
-                    className="pointer-events-none absolute inset-x-0 top-[9px] grid"
+                    className="pointer-events-none absolute inset-x-0 top-[9px] z-[2] grid"
                     style={{
-                      gridTemplateColumns: `repeat(${LINEAGE_STAGE_LABELS.length}, 266px)`,
+                      gridTemplateColumns: `repeat(${LINEAGE_STAGE_LABELS.length}, 230px)`,
                       paddingLeft: 28,
                     }}
                   >
@@ -713,7 +739,7 @@ export function MapView() {
                     ))}
                   </div>
                   <svg
-                    className="pointer-events-none absolute inset-0 overflow-visible"
+                    className="pointer-events-none absolute inset-0 z-[1] overflow-visible"
                     width={bounds.width}
                     height={bounds.height}
                     aria-hidden="true"

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildStagedLayout, getLineageImpact, itemStage, lineageEdgeKey } from "./lineage";
+import {
+  buildStagedLayout,
+  getLineageImpact,
+  itemStage,
+  lineageEdgeKey,
+  normalizeLineageEdges,
+} from "./lineage";
 import type { Edge, Item } from "./model";
 
 const edges: Edge[] = [
@@ -46,10 +52,12 @@ describe("staged layout", () => {
   });
 
   it("places Fabric item types in stable lifecycle stages", () => {
-    expect(itemStage("Notebook")).toBe(0);
-    expect(itemStage("Lakehouse")).toBe(1);
-    expect(itemStage("SemanticModel")).toBe(2);
-    expect(itemStage("Report")).toBe(3);
+    expect(itemStage("DataPipeline")).toBe(0);
+    expect(itemStage("Notebook")).toBe(1);
+    expect(itemStage("Lakehouse")).toBe(2);
+    expect(itemStage("SQLEndpoint")).toBe(3);
+    expect(itemStage("SemanticModel")).toBe(4);
+    expect(itemStage("Report")).toBe(5);
   });
 
   it("positions later lifecycle stages farther right", () => {
@@ -70,5 +78,69 @@ describe("staged layout", () => {
     expect(layout.positions.get("model")!.x).toBeLessThan(
       layout.positions.get("report")!.x,
     );
+  });
+
+  it("separates disconnected data products into layout groups", () => {
+    const items = [
+      item("notebook-a", "Notebook"),
+      item("lakehouse-a", "Lakehouse"),
+      item("notebook-b", "Notebook"),
+      item("lakehouse-b", "Lakehouse"),
+    ];
+    const layout = buildStagedLayout(items, [
+      { source: "notebook-a", target: "lakehouse-a", relation: "writes" },
+      { source: "notebook-b", target: "lakehouse-b", relation: "writes" },
+    ]);
+
+    expect(layout.groups).toHaveLength(2);
+    expect(layout.groups[0].y).toBeLessThan(layout.groups[1].y);
+  });
+
+  it("places unconnected items after connected lineage groups", () => {
+    const items = [
+      item("pipeline", "DataPipeline"),
+      item("notebook", "Notebook"),
+      item("orphan-a", "Lakehouse"),
+      item("orphan-b", "Report"),
+      item("orphan-c", "SQLDatabase"),
+    ];
+    const layout = buildStagedLayout(items, [
+      { source: "pipeline", target: "notebook", relation: "orchestrates" },
+    ]);
+
+    expect(layout.groups[0].itemIds).toEqual(["pipeline", "notebook"]);
+    expect(layout.groups[1].label).toBe("Unconnected items");
+  });
+});
+
+describe("normalizeLineageEdges", () => {
+  const item = (fabricId: string, itemType: Item["itemType"]): Item => ({
+    fabricId,
+    displayName: fabricId,
+    itemType,
+    health: "healthy",
+    endorsement: "none",
+    tags: [],
+  });
+
+  it("orients scanner dependencies in lifecycle direction", () => {
+    const items = [
+      item("pipeline", "DataPipeline"),
+      item("notebook", "Notebook"),
+      item("lakehouse", "Lakehouse"),
+      item("model", "SemanticModel"),
+      item("report", "Report"),
+    ];
+    const normalized = normalizeLineageEdges(items, [
+      { source: "notebook", target: "pipeline", relation: "Direct Lake" },
+      { source: "lakehouse", target: "notebook", relation: "reads" },
+      { source: "model", target: "report", relation: "report" },
+    ]);
+
+    expect(normalized).toEqual([
+      { source: "pipeline", target: "notebook", relation: "orchestrates", broken: undefined },
+      { source: "notebook", target: "lakehouse", relation: "writes", broken: undefined },
+      { source: "model", target: "report", relation: "binds", broken: undefined },
+    ]);
   });
 });

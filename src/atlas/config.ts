@@ -5,9 +5,9 @@
 // hard-coded so the repo isn't tied to a specific tenant. VITE_FABRIC_WORKSPACE_ID
 // is written by `rayfin up`; VITE_ATLAS_SPA_CLIENT_ID / VITE_ATLAS_TENANT_ID you set.
 //
-// The UDF invoke URL is only known AFTER the function is Published in the
-// Fabric portal, so it is not baked in: it is read from an env var if present,
-// otherwise from localStorage (pasted once in the empty-state screen).
+// The UDF invoke URL is only known after the function is published in the
+// Fabric portal. New deployments provide it through a public Rayfin env var;
+// the localStorage fallback keeps older configured installations working.
 
 export const ATLAS_CONFIG = {
   clientId:
@@ -39,15 +39,7 @@ export function getUdfUrl(): string | null {
   }
 }
 
-export function setUdfUrl(url: string): void {
-  try {
-    localStorage.setItem(UDF_KEY, url.trim());
-  } catch {
-    /* ignore */
-  }
-}
-
-/** True once the UDF `sync_all` invoke URL is known (env or pasted). */
+/** True once the UDF `sync_all` invoke URL is known. */
 export function isSyncConfigured(): boolean {
   return !!getUdfUrl();
 }

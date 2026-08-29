@@ -144,8 +144,9 @@ origin to the app registration's SPA redirect URIs.
    [`function_app.py`](../fabric/udf/atlas_sync_functions/function_app.py), then click **Publish** and
    copy the `sync_all` invoke URL.
 2. Put the `sync_all` invoke URL in `RAYFIN_PUBLIC_ATLAS_UDF_URL` as shown above, redeploy, open the
-   app and click **Sync**. The app no longer blocks startup when Sync is not configured; it opens the
-   dashboard directly and reports the configuration state under **About**.
+   app and click **Start first sync**. The first-run screen shows live progress but never asks users
+   to paste configuration values. After a successful index, future visits open the dashboard
+   directly and later refreshes use the header Sync button.
 
 ## 6. Redeploy after a change
 

@@ -145,37 +145,37 @@
 @layer base {
   .dark {
     /* Color tokens — dark theme */
-    --color-background: #292929;
-    --color-foreground: #ffffff;
+    --color-background: #15191d;
+    --color-foreground: #f7f9fb;
 
-    --color-card: #292929;
-    --color-card-foreground: #ffffff;
+    --color-card: #1d2329;
+    --color-card-foreground: #f7f9fb;
 
-    --color-popover: #292929;
-    --color-popover-foreground: #ffffff;
+    --color-popover: #232a31;
+    --color-popover-foreground: #f7f9fb;
 
-    --color-primary: #115ea3;
+    --color-primary: #1677c8;
     --color-primary-foreground: #ffffff;
 
-    --color-secondary: #1f1f1f;
-    --color-secondary-foreground: #ffffff;
+    --color-secondary: #101519;
+    --color-secondary-foreground: #f7f9fb;
 
-    --color-muted: #141414;
-    --color-muted-foreground: #adadad;
+    --color-muted: #11171c;
+    --color-muted-foreground: #a9b4bd;
 
-    --color-accent: #3d3d3d;
-    --color-accent-foreground: #ffffff;
+    --color-accent: #29323a;
+    --color-accent-foreground: #f7f9fb;
 
     --color-destructive: #c50f1f;
     --color-destructive-foreground: #ffffff;
 
-    --color-border: #525252;
-    --color-input: #525252;
-    --color-ring: #479ef5;
+    --color-border: #35414a;
+    --color-input: #3d4953;
+    --color-ring: #5cb3ff;
 
-    --color-brand:            #115ea3;
-    --color-brand-foreground: #479ef5;
-    --color-hover:            #3d3d3d;
+    --color-brand:            #1677c8;
+    --color-brand-foreground: #6fc7ff;
+    --color-hover:            #29323a;
     --color-lineage-upstream: #a78bfa;
     --color-lineage-downstream: #22d3d0;
     --color-lineage-neutral: #64748b;
@@ -246,6 +246,20 @@ body,
     radial-gradient(circle at 55% 42%, color-mix(in srgb, var(--color-lineage-downstream) 8%, transparent), transparent 38%);
   background-size: 24px 24px, 24px 24px, auto;
   background-position: -1px -1px;
+}
+
+.atlas-first-sync-bg {
+  background:
+    radial-gradient(
+      circle at 15% 10%,
+      color-mix(in srgb, var(--color-primary) 18%, transparent),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 85% 20%,
+      color-mix(in srgb, var(--color-lineage-downstream) 14%, transparent),
+      transparent 30%
+    );
 }
 
 * {

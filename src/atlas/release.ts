@@ -15,7 +15,7 @@ export const REPOSITORY_URL =
   "https://github.com/fredgis/FabricAtlas";
 
 export const APP_VERSION =
-  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.0.0";
+  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.1.0";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -25,6 +25,30 @@ export const BUILD_DATE =
   new Date(0).toISOString();
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "1.1.0",
+    date: "2026-08-29",
+    title: "Governance command center",
+    sections: [
+      {
+        title: "Experience",
+        items: [
+          "Dark theme by default with a persistent light-theme preference.",
+          "First-sync command screen with staged progress and configuration status.",
+          "Live synchronization progress in the application header.",
+          "Governance overview redesigned around a workspace command banner.",
+        ],
+      },
+      {
+        title: "Navigation",
+        items: [
+          "Lineage direction normalized from source to consumer.",
+          "Focused lineage paths and connected-component layout reduce graph clutter.",
+          "Catalog, assets, configuration and sensitivity groups start collapsed.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.0.0",
     date: "2026-08-29",

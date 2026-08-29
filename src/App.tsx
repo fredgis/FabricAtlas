@@ -41,6 +41,7 @@ import { JobsView } from "./atlas/views/Jobs";
 import { ConfigView } from "./atlas/views/Config";
 import { CommentsView } from "./atlas/views/Comments";
 import { AboutView } from "./atlas/views/About";
+import { AtlasBootView, FirstSyncView } from "./atlas/views/FirstSync";
 
 export type Tab =
   | "overview"
@@ -76,7 +77,19 @@ function App() {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [navOpen, setNavOpen] = useState(false);
   const { isDark, toggleTheme } = useThemeContext();
-  const { data, sync, syncing, lastSyncedAt, currentUser } = useAtlas();
+  const {
+    data,
+    hydrating,
+    sync,
+    syncing,
+    syncProgress,
+    syncStage,
+    syncError,
+    lastSyncedAt,
+    currentUser,
+    isPreview,
+    hasData,
+  } = useAtlas();
 
   useEffect(() => {
     window.location.hash = tab;
@@ -105,6 +118,9 @@ function App() {
     setNavOpen(false);
   };
 
+  if (!isPreview && hydrating) return <AtlasBootView />;
+  if (!isPreview && !hasData) return <FirstSyncView />;
+
   return (
     <div className="relative flex h-screen overflow-hidden bg-background text-foreground">
       {navOpen && (
@@ -125,12 +141,7 @@ function App() {
       >
         <div className="flex items-center gap-[11px] px-[16px] py-[16px]">
           <span
-            className="flex items-center justify-center rounded-xl text-white"
-            style={{
-              width: 34,
-              height: 34,
-              background: "linear-gradient(135deg,#0ea5b7,#3b82f6)",
-            }}
+            className="flex h-[34px] w-[34px] items-center justify-center rounded-xl bg-gradient-to-br from-lineage-downstream to-primary text-primary-foreground shadow-lg"
           >
             <Compass size={19} />
           </span>
@@ -179,8 +190,7 @@ function App() {
             <div className="mt-[4px] text-[11px]">{data.workspace.capacity}</div>
             <div className="mt-[6px] flex items-center gap-[6px] text-[11px]">
               <span
-                className="inline-block rounded-full"
-                style={{ width: 7, height: 7, background: "#22a565" }}
+                className="inline-block h-[7px] w-[7px] rounded-full bg-status-healthy"
               />
               {data.items.length} items indexed
             </div>
@@ -190,7 +200,7 @@ function App() {
 
       {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-[56px] shrink-0 items-center justify-between gap-[10px] border-b border-border px-[12px] sm:px-[18px] lg:px-[22px]">
+        <header className="relative flex h-[56px] shrink-0 items-center justify-between gap-[10px] border-b border-border px-[12px] sm:px-[18px] lg:px-[22px]">
           <div className="flex min-w-0 items-center gap-[8px]">
             <button
               type="button"
@@ -210,29 +220,56 @@ function App() {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-[8px] sm:gap-[12px] lg:gap-[14px]">
-            <span className="hidden text-[12px] text-muted-foreground sm:inline">
-              synced {relativeTime(lastSyncedAt)}
+            <span
+              className={cn(
+                "hidden max-w-[240px] truncate text-[12px] text-muted-foreground sm:inline",
+                syncError && !syncing && "text-destructive",
+              )}
+              title={syncError}
+            >
+              {syncing
+                ? `${syncStage} · ${syncProgress}%`
+                : syncError
+                  ? "Sync failed"
+                  : `synced ${relativeTime(lastSyncedAt)}`}
             </span>
             <button
               type="button"
               onClick={() => void sync()}
               disabled={syncing}
-              className="flex items-center gap-[8px] rounded-lg px-[13px] py-[8px] text-[13px] font-bold text-white disabled:opacity-70"
-              style={{ background: "linear-gradient(135deg,#0ea5b7,#3b82f6)" }}
+              className="flex items-center gap-[8px] rounded-lg bg-gradient-to-br from-lineage-downstream to-primary px-[13px] py-[8px] text-[13px] font-bold text-primary-foreground shadow-sm disabled:opacity-70"
             >
               <RefreshCw size={15} className={syncing ? "animate-spin" : ""} />
-              <span className="hidden sm:inline">{syncing ? "Syncing…" : "Sync"}</span>
+              <span className="hidden sm:inline">
+                {syncing ? `${syncProgress}%` : "Sync"}
+              </span>
             </button>
             <button
               type="button"
               onClick={toggleTheme}
-              title="Toggle theme"
+              title={isDark ? "Switch to light theme" : "Switch to dark theme"}
+              aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
               className="flex items-center justify-center rounded-lg border border-border bg-card p-[8px] text-muted-foreground hover:text-foreground"
             >
               {isDark ? <Sun size={16} /> : <Moon size={16} />}
             </button>
             <Avatar name={currentUser.name} size={30} />
           </div>
+          {(syncing || syncProgress > 0) && (
+            <div
+              role="progressbar"
+              aria-label="Workspace synchronization progress"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={syncProgress}
+              className="absolute inset-x-0 bottom-0 h-[3px] overflow-hidden bg-muted"
+            >
+              <div
+                className="h-full bg-gradient-to-r from-primary to-lineage-downstream transition-[width] duration-500"
+                style={{ width: `${syncProgress}%` }}
+              />
+            </div>
+          )}
         </header>
 
         <main className="min-h-0 flex-1 overflow-auto">

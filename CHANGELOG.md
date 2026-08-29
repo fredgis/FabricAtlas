@@ -4,6 +4,23 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-08-29
+
+### Added
+
+- First-sync command screen with real synchronization stages and progress.
+- Synchronization progress and status in the persistent application header.
+- Connected-component grouping for large lineage maps.
+
+### Changed
+
+- Dark theme is now the default; a light preference is stored when selected.
+- Scanner lineage is normalized into source-to-consumer direction.
+- Impact mode shows only the selected dependency path instead of dimming the entire workspace.
+- The lifecycle layout now separates orchestration, transformation, storage, serving and consumption.
+- Catalog, Asset Catalog, Config and Sensitivity groups start collapsed.
+- Governance Overview uses a stronger workspace banner and clearer operational hierarchy.
+
 ## [1.0.0] - 2026-08-29
 
 ### Added
@@ -24,4 +41,5 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
+[1.1.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.1.0
 [1.0.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.0.0

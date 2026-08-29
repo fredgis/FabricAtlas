@@ -62,12 +62,12 @@ export function CatalogView() {
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [items]);
 
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [selType, setSelType] = useState<ItemType | null>(null);
   const [query, setQuery] = useState("");
 
   const toggle = (t: string) =>
-    setCollapsed((p) => {
+    setExpanded((p) => {
       const n = new Set(p);
       if (n.has(t)) n.delete(t);
       else n.add(t);
@@ -172,7 +172,7 @@ export function CatalogView() {
               <span className="ml-auto text-[11px] text-muted-foreground">{items.length}</span>
             </button>
             {groups.map(([type, list]) => {
-              const open = !collapsed.has(type);
+              const open = expanded.has(type);
               return (
                 <div key={type}>
                   <button

@@ -35,15 +35,18 @@ workspace and get value on the first Sync.
 ## A tour
 
 ### Overview
-A one-glance dashboard: items by type, health, recent activity and jump-off points into the rest of the app.
+A governance command center: a workspace banner, health pulse, priority risks, recent activity and
+direct jump-off points into lineage, catalog and access.
 
 ![Overview](docs/screenshots/overview.png)
 
 ### Map & lineage
 A staged map of every item and how they connect. Directional arrows and relationship labels show the
-flow from **ingest and transform** through **storage**, **models** and **consumption**. Select an item
-to light up its full transitive **upstream (violet)** and **downstream (teal)** impact path, or switch
-to direct-neighbor mode.
+flow from **orchestration** through **transformation**, **storage**, **endpoints**, **models** and
+**consumption**. Select an item
+to isolate its full transitive **upstream (violet)** and **downstream (teal)** impact path, or switch
+to direct-neighbor mode. Disconnected data products are placed in separate visual bands when the
+full workspace is shown, so unrelated estates no longer cross through one another.
 
 The map includes search and type/health filters, drag positioning, minimap, zoom and fit controls.
 Switch from **Items** to **Objects** to move inside semantic models and lakehouses: tables, columns,
@@ -105,8 +108,7 @@ The running app reports its semantic version, build commit and build time, links
 GitHub release, identifies the active Fabric workspace and includes the current changelog.
 
 ### Light and dark
-Light by default, with a one-click dark theme (most shots here are dark). When embedded, it follows
-the Fabric portal theme.
+Dark by default, with a one-click persistent light theme when preferred.
 
 ![Fabric Atlas in light theme](docs/screenshots/overview-light.png)
 
@@ -226,8 +228,9 @@ RAYFIN_PUBLIC_ATLAS_SPA_CLIENT_ID=<client-id>
 RAYFIN_PUBLIC_ATLAS_UDF_URL=https://<...>/functions/sync_all/invoke
 ```
 
-Redeploy with `npx rayfin up`. If these values are absent, Fabric Atlas still opens directly; only
-the optional Sync action remains unavailable.
+Redeploy with `npx rayfin up`. A new deployment opens on a dedicated first-sync screen with staged
+progress. After the first successful index, subsequent visits open the governance overview directly;
+later refreshes use the compact Sync action and progress bar in the app header.
 
 Full steps in [docs/installation.md](docs/installation.md).
 
@@ -239,7 +242,7 @@ Fabric Atlas follows [Semantic Versioning](https://semver.org/). Release notes a
 - [GitHub Releases](https://github.com/fredgis/FabricAtlas/releases) — tagged releases and source archives.
 
 The running app exposes the same information under **About**. The current release is
-[v1.0.0](https://github.com/fredgis/FabricAtlas/releases/tag/v1.0.0).
+[v1.1.0](https://github.com/fredgis/FabricAtlas/releases/tag/v1.1.0).
 
 ## Reuse it as a Rayfin template
 
@@ -256,7 +259,7 @@ cd my-atlas && npm install
 ```
 
 `rayfin init -t <git-url>` clones the template, renames the project, and leaves you
-with a fresh, deployable app. Pin a version with `...FabricAtlas#v1.0.0` if you want.
+with a fresh, deployable app. Pin a version with `...FabricAtlas#v1.1.0` if you want.
 
 **Publish it to an internal template gallery** so it appears in the interactive
 `rayfin init` picker for everyone. Add one entry to a shared registry file —

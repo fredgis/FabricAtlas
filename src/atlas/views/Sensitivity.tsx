@@ -1,6 +1,14 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { ShieldAlert, Lock, ShieldCheck, Globe, EyeOff } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  EyeOff,
+  Globe,
+  Lock,
+  ShieldAlert,
+  ShieldCheck,
+} from "lucide-react";
 import { useAtlas } from "../store";
 import { Card, TypeGlyph, cn } from "../ui";
 import { typeMeta, type Item } from "../model";
@@ -42,6 +50,7 @@ export function SensitivityView() {
 
   const order = [...LABELS, UNLABELED];
   const confidential = items.filter((i) => labelFor(i.sensitivity).rank >= 3);
+  const [expandedLabels, setExpandedLabels] = useState<Set<string>>(new Set());
 
   return (
     <div className="flex flex-col gap-[16px] p-[24px]">
@@ -115,16 +124,30 @@ export function SensitivityView() {
           const list = byLabel.get(l.name) ?? [];
           if (list.length === 0) return null;
           const Icon = l.icon;
+          const open = expandedLabels.has(l.name);
           return (
             <Card key={l.name} className="overflow-hidden">
-              <div className="flex items-center gap-[9px] border-b border-border px-[16px] py-[11px]">
+              <button
+                type="button"
+                aria-expanded={open}
+                onClick={() =>
+                  setExpandedLabels((previous) => {
+                    const next = new Set(previous);
+                    if (next.has(l.name)) next.delete(l.name);
+                    else next.add(l.name);
+                    return next;
+                  })
+                }
+                className="flex w-full items-center gap-[9px] border-b border-border px-[16px] py-[11px] text-left hover:bg-accent"
+              >
                 <span className="flex h-[24px] w-[24px] items-center justify-center rounded-md" style={{ background: `${l.color}22`, color: l.color }}>
                   <Icon size={14} />
                 </span>
                 <span className="text-[13px] font-bold">{l.name}</span>
                 <span className="ml-auto text-[11px] text-muted-foreground">{list.length}</span>
-              </div>
-              <div className="divide-y divide-border/50">
+                {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </button>
+              {open && <div className="divide-y divide-border/50">
                 {list.map((i) => (
                   <div key={i.fabricId} className={cn("flex items-center gap-[11px] px-[16px] py-[9px]")}>
                     <TypeGlyph type={i.itemType} size={26} />
@@ -135,7 +158,7 @@ export function SensitivityView() {
                     {i.ownerName && <span className="text-[11.5px] text-muted-foreground">{i.ownerName}</span>}
                   </div>
                 ))}
-              </div>
+              </div>}
             </Card>
           );
         })}

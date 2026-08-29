@@ -41,7 +41,8 @@ roles and jobs, and reports the reason in `errors`.
 1. Add the invoke URL to the git-ignored `rayfin/.env` file:
    `RAYFIN_PUBLIC_ATLAS_UDF_URL=https://<...>/functions/sync_all/invoke`.
 2. Run `npx rayfin up` so the public URL is included in the deployed bundle.
-3. Open Fabric Atlas and click **Sync**. Approve the sign-in popup once
+3. Open Fabric Atlas and click **Start first sync** (or **Sync** after the workspace has already
+   been indexed). Approve the sign-in popup once
    (`UserDataFunction.Execute.All` + Power BI read). The catalog loads and is
    written to the Atlas database.
 

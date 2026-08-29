@@ -20,7 +20,7 @@ export function ConfigView() {
 
   const firstWithConfig = items.find((i) => configByItem.has(i.fabricId)) ?? items[0];
   const [selId, setSelId] = useState<string>(firstWithConfig?.fabricId ?? "");
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   const sel: Item | undefined = items.find((i) => i.fabricId === selId);
   const entries = useMemo(
@@ -39,7 +39,7 @@ export function ConfigView() {
   }, [entries]);
 
   const toggle = (s: string) =>
-    setCollapsed((prev) => {
+    setExpandedSections((prev) => {
       const n = new Set(prev);
       if (n.has(s)) n.delete(s);
       else n.add(s);
@@ -67,7 +67,10 @@ export function ConfigView() {
               return (
                 <button
                   key={i.fabricId}
-                  onClick={() => setSelId(i.fabricId)}
+                  onClick={() => {
+                    setSelId(i.fabricId);
+                    setExpandedSections(new Set());
+                  }}
                   className={cn(
                     "flex w-full items-center gap-[10px] border-t border-border/60 px-[14px] py-[10px] text-left first:border-t-0",
                     selId === i.fabricId ? "bg-accent" : "hover:bg-accent/60",
@@ -115,7 +118,7 @@ export function ConfigView() {
 
           <div className="flex flex-col gap-[10px]">
             {sections.map(([section, kvs]) => {
-              const open = !collapsed.has(section);
+              const open = expandedSections.has(section);
               return (
                 <div key={section} className="overflow-hidden rounded-xl border border-border">
                   <button

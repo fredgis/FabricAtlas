@@ -1,271 +1,742 @@
 import { useMemo } from "react";
 import type { Tab } from "@/App";
-import { Boxes, Activity, AlertTriangle, Users, Lock, BadgeCheck } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  ArrowRight,
+  BadgeCheck,
+  Boxes,
+  Clock3,
+  FolderTree,
+  LockKeyhole,
+  ShieldCheck,
+  Users,
+  Waypoints,
+} from "lucide-react";
 import { useAtlas } from "../store";
 import { Avatar, Card, HealthDot, SectionLabel, TypeGlyph } from "../ui";
 import {
-  HEALTH_COLOR,
   typeMeta,
   relativeTime,
-  MODEL_SCHEMA,
+  schemaFor,
   type Health,
   type ItemType,
+  type JobStatus,
 } from "../model";
 
-const JOB_COLOR: Record<string, string> = {
-  completed: "#22a565",
-  failed: "#e5484d",
-  running: "#3b82f6",
-  cancelled: "#8b95a5",
+const HEALTH_TONE: Record<Health, string> = {
+  healthy: "bg-status-healthy",
+  stale: "bg-status-warning",
+  failing: "bg-status-failing",
+  unknown: "bg-lineage-neutral",
 };
 
-function Donut({ counts }: { counts: [Health, number][] }) {
-  const itemTotal = counts.reduce((a, [, c]) => a + c, 0);
-  const total = itemTotal || 1;
-  const r = 52;
-  const C = 2 * Math.PI * r;
-  return (
-    <svg width="132" height="132" viewBox="0 0 132 132">
-      <g transform="rotate(-90 66 66)" fill="none" strokeWidth="20">
-        {counts.map(([h, c], index) => {
-          const seg = (c / total) * C;
-          const offset = counts
-            .slice(0, index)
-            .reduce((sum, [, previous]) => sum + (previous / total) * C, 0);
-          return (
-            <circle
-              key={h}
-              cx="66"
-              cy="66"
-              r={r}
-              stroke={HEALTH_COLOR[h]}
-              strokeDasharray={`${seg} ${C - seg}`}
-              strokeDashoffset={-offset}
-            />
-          );
-        })}
-      </g>
-      <text x="66" y="62" textAnchor="middle" className="fill-foreground" fontSize="26" fontWeight="700">
-        {itemTotal}
-      </text>
-      <text x="66" y="82" textAnchor="middle" className="fill-muted-foreground" fontSize="11">
-        items
-      </text>
-    </svg>
-  );
-}
+const JOB_TONE: Record<JobStatus, string> = {
+  completed: "bg-status-healthy",
+  failed: "bg-status-failing",
+  running: "bg-primary",
+  cancelled: "bg-lineage-neutral",
+};
 
 export function OverviewView({ onOpen }: { onOpen: (t: Tab) => void }) {
   const { data, lastSyncedAt } = useAtlas();
   const { items, principals, jobs, syncRuns, grants, edges } = data;
 
   const health = useMemo(() => {
-    const c: Record<Health, number> = { healthy: 0, stale: 0, failing: 0, unknown: 0 };
-    items.forEach((i) => (c[i.health] += 1));
-    return c;
+    const counts: Record<Health, number> = {
+      healthy: 0,
+      stale: 0,
+      failing: 0,
+      unknown: 0,
+    };
+    items.forEach((item) => {
+      counts[item.health] += 1;
+    });
+    return counts;
   }, [items]);
 
   const byType = useMemo(() => {
-    const m = new Map<ItemType, number>();
-    items.forEach((i) => m.set(i.itemType, (m.get(i.itemType) ?? 0) + 1));
-    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+    const counts = new Map<ItemType, number>();
+    items.forEach((item) => {
+      counts.set(item.itemType, (counts.get(item.itemType) ?? 0) + 1);
+    });
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
   }, [items]);
 
   const recentJobs = useMemo(
-    () => [...jobs].sort((a, b) => +new Date(b.startedAt) - +new Date(a.startedAt)).slice(0, 6),
+    () =>
+      [...jobs]
+        .sort((a, b) => +new Date(b.startedAt) - +new Date(a.startedAt))
+        .slice(0, 6),
     [jobs],
   );
 
-  const maxType = Math.max(...byType.map(([, c]) => c), 1);
+  const latestSync = useMemo(
+    () =>
+      [...syncRuns].sort(
+        (a, b) =>
+          +new Date(b.finishedAt ?? b.startedAt) -
+          +new Date(a.finishedAt ?? a.startedAt),
+      )[0],
+    [syncRuns],
+  );
 
-  const CONF = new Set(["confidential", "highly confidential"]);
-  const confidential = items.filter((i) => CONF.has((i.sensitivity ?? "").toLowerCase()));
-  const endorsed = items.filter((i) => i.endorsement !== "none");
-  const labeled = items.filter((i) => i.sensitivity);
-  const external = principals.filter((p) => p.external);
-  const wsPrincipals = new Set(grants.filter((g) => !g.itemFabricId).map((g) => g.principalRef));
-  const itemOnly = principals.filter((p) => !wsPrincipals.has(p.displayName));
-  const assetCount = items.reduce((n, i) => {
-    const s = MODEL_SCHEMA[i.fabricId];
-    return n + (s ? s.reduce((m, t) => m + 1 + t.columns.length + t.measures.length, 0) : 0);
-  }, 0);
-  const pct = (n: number) => Math.round((n / (items.length || 1)) * 100);
+  const owners = useMemo(() => {
+    const counts = new Map<string, number>();
+    items.forEach((item) => {
+      if (item.ownerName) {
+        counts.set(item.ownerName, (counts.get(item.ownerName) ?? 0) + 1);
+      }
+    });
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [items]);
 
-  const kpis: { icon: typeof Boxes; label: string; value: number; color: string; go?: Tab; sub: string }[] = [
-    { icon: Boxes, label: "Items", value: items.length, color: "#3b82f6", go: "catalog", sub: `${byType.length} types` },
-    { icon: Activity, label: "Healthy", value: health.healthy, color: HEALTH_COLOR.healthy, go: "jobs", sub: `of ${items.length}` },
-    { icon: AlertTriangle, label: "Needs attention", value: health.stale + health.failing, color: "#e0a417", go: "jobs", sub: `${health.failing} failing` },
-    { icon: Users, label: "People & groups", value: principals.length, color: "#7c5cff", go: "access", sub: `${external.length} external` },
-    { icon: Lock, label: "Confidential", value: confidential.length, color: "#e5484d", go: "sensitivity", sub: `${labeled.length} labeled` },
-    { icon: BadgeCheck, label: "Endorsed", value: endorsed.length, color: "#0ea5b7", go: "catalog", sub: `${pct(endorsed.length)}% coverage` },
+  const assetCount = useMemo(
+    () =>
+      items.reduce((total, item) => {
+        const schema = schemaFor(data, item.fabricId);
+        return (
+          total +
+          (schema?.reduce(
+            (schemaTotal, table) =>
+              schemaTotal + 1 + table.columns.length + table.measures.length,
+            0,
+          ) ?? 0)
+        );
+      }, 0),
+    [data, items],
+  );
+
+  const maxType = Math.max(...byType.map(([, count]) => count), 1);
+  const confidentialLabels = new Set(["confidential", "highly confidential"]);
+  const confidential = items.filter((item) =>
+    confidentialLabels.has((item.sensitivity ?? "").toLowerCase()),
+  );
+  const endorsed = items.filter((item) => item.endorsement !== "none");
+  const labeled = items.filter((item) => item.sensitivity);
+  const owned = items.filter((item) => item.ownerName);
+  const external = principals.filter((principal) => principal.external);
+  const workspacePrincipals = new Set(
+    grants
+      .filter((grant) => !grant.itemFabricId)
+      .map((grant) => grant.principalRef),
+  );
+  const itemOnly = principals.filter(
+    (principal) => !workspacePrincipals.has(principal.displayName),
+  );
+  const attentionCount = health.stale + health.failing;
+  const percentage = (count: number) =>
+    Math.round((count / (items.length || 1)) * 100);
+  const healthPercentage = items.length
+    ? percentage(health.healthy)
+    : undefined;
+  const syncFreshness = lastSyncedAt
+    ? relativeTime(lastSyncedAt)
+    : "Not synced yet";
+  const workspaceDetails = [
+    data.workspace.capacity,
+    data.workspace.region,
+  ].filter(Boolean);
+
+  const pulse = health.failing
+    ? {
+        label: "Action required",
+        className:
+          "border-status-failing/30 bg-status-failing/10 text-status-failing",
+      }
+    : health.stale
+      ? {
+          label: "Freshness review",
+          className:
+            "border-status-warning/30 bg-status-warning/10 text-status-warning",
+        }
+      : health.unknown
+        ? {
+            label: `${health.unknown} health status unknown`,
+            className:
+              "border-status-warning/30 bg-status-warning/10 text-status-warning",
+          }
+      : items.length
+        ? {
+            label: "Operational",
+            className:
+              "border-status-healthy/30 bg-status-healthy/10 text-status-healthy",
+          }
+        : {
+            label: "Awaiting inventory",
+            className:
+              "border-lineage-neutral/30 bg-lineage-neutral/10 text-muted-foreground",
+          };
+
+  const coverage = [
+    {
+      label: "Endorsement",
+      detail: `${endorsed.length} of ${items.length} items`,
+      value: percentage(endorsed.length),
+      tone: "bg-lineage-downstream",
+    },
+    {
+      label: "Sensitivity labels",
+      detail: `${labeled.length} of ${items.length} items`,
+      value: percentage(labeled.length),
+      tone: "bg-lineage-upstream",
+    },
+    {
+      label: "Owner assignment",
+      detail: `${owned.length} of ${items.length} items`,
+      value: percentage(owned.length),
+      tone: "bg-primary",
+    },
   ];
 
-  const tiles = [
-    { label: "External access", value: external.length, tab: "access" as Tab, tone: external.length ? "#e5484d" : "#22a565" },
-    { label: "Item-only shares", value: itemOnly.length, tab: "access" as Tab, tone: "#e0a417" },
-    { label: "Lineage links", value: edges.length, tab: "map" as Tab, tone: "#0ea5b7" },
-    { label: "Data assets", value: assetCount, tab: "assets" as Tab, tone: "#3b82f6" },
+  const riskSignals = [
+    {
+      label: "Needs attention",
+      value: attentionCount,
+      detail: `${health.failing} failing · ${health.stale} stale`,
+      tab: "jobs" as Tab,
+      icon: AlertTriangle,
+      tone:
+        attentionCount > 0
+          ? "text-status-warning"
+          : "text-status-healthy",
+    },
+    {
+      label: "External access",
+      value: external.length,
+      detail: `${principals.length} people and groups`,
+      tab: "access" as Tab,
+      icon: Users,
+      tone:
+        external.length > 0
+          ? "text-status-failing"
+          : "text-status-healthy",
+    },
+    {
+      label: "Confidential items",
+      value: confidential.length,
+      detail: `${labeled.length} items labeled`,
+      tab: "sensitivity" as Tab,
+      icon: LockKeyhole,
+      tone: "text-lineage-upstream",
+    },
+    {
+      label: "Item-only access",
+      value: itemOnly.length,
+      detail: `${grants.length} grants indexed`,
+      tab: "access" as Tab,
+      icon: ShieldCheck,
+      tone:
+        itemOnly.length > 0
+          ? "text-status-warning"
+          : "text-status-healthy",
+    },
   ];
 
   return (
-    <div className="flex flex-col gap-[18px] p-[24px]">
-      <div>
-        <h1 className="text-[22px] font-bold">Governance overview</h1>
-        <div className="mt-[4px] text-[13px] text-muted-foreground">
-          Everything in {data.workspace.displayName}, indexed by Fabric Atlas · last sync{" "}
-          {relativeTime(lastSyncedAt)}
-          {syncRuns[0]?.triggeredBy ? ` by ${syncRuns[0].triggeredBy}` : ""}
-        </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(158px, 1fr))", gap: 12 }}>
-        {kpis.map((k) => {
-          const Icon = k.icon;
-          return (
-            <button
-              key={k.label}
-              onClick={() => k.go && onOpen(k.go)}
-              className="flex flex-col gap-[8px] rounded-2xl border border-border bg-card p-[15px] text-left transition-all hover:-translate-y-[2px] hover:border-primary/40 hover:shadow-lg"
-            >
-              <div className="flex items-center gap-[10px]">
-                <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-xl" style={{ background: `${k.color}1c`, color: k.color }}>
-                  <Icon size={18} />
+    <div className="flex flex-col gap-xl p-l sm:p-xxl">
+      <Card className="relative isolate overflow-hidden border-primary/30 shadow-lg">
+        <div
+          className="pointer-events-none absolute inset-y-0 right-0 -z-10 hidden w-1/3 border-l border-primary/10 bg-primary/5 lg:block"
+          aria-hidden="true"
+        />
+        <div className="grid lg:grid-cols-5">
+          <div className="flex flex-col justify-between gap-xxxl p-xl sm:p-xxl lg:col-span-3 lg:p-xxxl">
+            <div>
+              <div className="mb-l flex flex-wrap items-center gap-s">
+                <span className="inline-flex items-center gap-s rounded-full border border-primary/30 bg-primary/10 px-m py-s text-200 font-semibold uppercase tracking-wide text-primary">
+                  <Activity className="icon-size-100" aria-hidden="true" />
+                  Governance command center
                 </span>
-                <span className="text-[26px] font-extrabold leading-none tabular-nums" style={{ color: k.color }}>{k.value}</span>
+                <span
+                  className={`inline-flex items-center gap-s rounded-full border px-m py-s text-200 font-semibold ${pulse.className}`}
+                >
+                  <span className="relative flex">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-30" />
+                    <span className="relative inline-flex icon-size-100 rounded-full bg-current" />
+                  </span>
+                  {pulse.label}
+                </span>
               </div>
-              <div className="min-w-0">
-                <div className="truncate text-[12.5px] font-semibold">{k.label}</div>
-                <div className="truncate text-[11px] text-muted-foreground">{k.sub}</div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
 
-      {/* Governance snapshot */}
-      <Card style={{ padding: 16 }}>
-        <div className="flex items-center justify-between">
-          <SectionLabel>Governance snapshot</SectionLabel>
-          <button className="text-[12px] font-semibold text-primary" onClick={() => onOpen("sensitivity")}>Sensitivity</button>
-        </div>
-        <div className="mt-[14px] grid gap-[18px]" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
-          <div className="flex flex-col gap-[13px]">
-            {[
-              { label: "Endorsement coverage", n: endorsed.length, color: "#0ea5b7" },
-              { label: "Sensitivity labeled", n: labeled.length, color: "#e5484d" },
-            ].map((b) => (
-              <div key={b.label}>
-                <div className="mb-[5px] flex items-center justify-between text-[12.5px]">
-                  <span className="font-semibold">{b.label}</span>
-                  <span className="tabular-nums text-muted-foreground">{b.n}/{items.length} · {pct(b.n)}%</span>
-                </div>
-                <div className="h-[9px] overflow-hidden rounded-full bg-muted">
-                  <div className="h-full rounded-full transition-all" style={{ width: `${pct(b.n)}%`, background: b.color }} />
+              <SectionLabel>Workspace</SectionLabel>
+              <h1 className="mt-s max-w-4xl text-balance font-heading text-hero-800 font-bold leading-hero-800 sm:text-hero-900 sm:leading-hero-900">
+                {data.workspace.displayName || "Fabric workspace"}
+              </h1>
+              <p className="mt-m max-w-3xl text-300 leading-300 text-muted-foreground">
+                {items.length} {items.length === 1 ? "item" : "items"} across{" "}
+                {byType.length} {byType.length === 1 ? "type" : "types"}, with{" "}
+                {assetCount} indexed data {assetCount === 1 ? "asset" : "assets"}.
+                {workspaceDetails.length > 0
+                  ? ` ${workspaceDetails.join(" · ")}.`
+                  : ""}
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-m sm:flex-row sm:flex-wrap">
+              <button
+                type="button"
+                onClick={() => onOpen("map")}
+                aria-label="Open workspace map and lineage"
+                className="inline-flex items-center justify-center gap-s rounded-lg bg-primary px-l py-m text-300 font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+              >
+                <Waypoints className="icon-size-200" aria-hidden="true" />
+                Explore map
+                <ArrowRight className="icon-size-200" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpen("catalog")}
+                aria-label="Open workspace catalog"
+                className="inline-flex items-center justify-center gap-s rounded-lg border border-border bg-background px-l py-m text-300 font-semibold transition-colors hover:border-primary/40 hover:bg-accent"
+              >
+                <FolderTree className="icon-size-200" aria-hidden="true" />
+                Browse catalog
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpen("access")}
+                aria-label="Open workspace access controls"
+                className="inline-flex items-center justify-center gap-s rounded-lg border border-border bg-background px-l py-m text-300 font-semibold transition-colors hover:border-primary/40 hover:bg-accent"
+              >
+                <ShieldCheck className="icon-size-200" aria-hidden="true" />
+                Review access
+              </button>
+            </div>
+          </div>
+
+          <div className="relative flex flex-col justify-between gap-xxl border-t border-border/70 bg-muted/30 p-xl sm:p-xxl lg:col-span-2 lg:border-l lg:border-t-0 lg:p-xxxl">
+            <div>
+              <SectionLabel>Governance pulse</SectionLabel>
+              <div className="mt-m flex items-end gap-m">
+                <span className="font-numeric text-hero-1000 font-bold leading-hero-1000 tabular-nums text-primary">
+                  {healthPercentage == null ? "—" : healthPercentage}
+                </span>
+                {healthPercentage != null && (
+                  <span className="pb-l text-500 font-semibold text-primary">
+                    %
+                  </span>
+                )}
+              </div>
+              <p className="text-300 leading-300 text-muted-foreground">
+                {items.length
+                  ? `${health.healthy} healthy of ${items.length} indexed items`
+                  : "Health will appear after items are indexed."}
+              </p>
+              <div className="mt-l flex h-s overflow-hidden rounded-full bg-muted">
+                {(Object.entries(health) as [Health, number][])
+                  .filter(([, count]) => count > 0)
+                  .map(([status, count]) => (
+                    <span
+                      key={status}
+                      className={HEALTH_TONE[status]}
+                      style={{ width: `${percentage(count)}%` }}
+                      title={`${status}: ${count}`}
+                    />
+                  ))}
+              </div>
+            </div>
+
+            <div className="border-t border-border/70 pt-l">
+              <div className="flex items-start gap-m">
+                <span className="flex icon-size-600 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Clock3 className="icon-size-200" aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <div className="text-200 font-semibold uppercase tracking-wide text-muted-foreground">
+                    Sync freshness
+                  </div>
+                  <div className="mt-xs text-400 font-semibold">
+                    {syncFreshness}
+                  </div>
+                  <div className="mt-xs truncate text-200 text-muted-foreground">
+                    {latestSync?.triggeredBy
+                      ? `Triggered by ${latestSync.triggeredBy}`
+                      : latestSync
+                        ? `Latest run ${latestSync.status}`
+                        : "No sync runs recorded"}
+                  </div>
                 </div>
               </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-[10px]">
-            {tiles.map((t) => (
-              <button key={t.label} onClick={() => onOpen(t.tab)} className="rounded-xl border border-border p-[11px] text-left transition-colors hover:border-primary/40">
-                <div className="text-[21px] font-extrabold tabular-nums" style={{ color: t.tone }}>{t.value}</div>
-                <div className="text-[11.5px] text-muted-foreground">{t.label}</div>
-              </button>
-            ))}
+            </div>
           </div>
         </div>
       </Card>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 18 }}>
-        <Card style={{ padding: 16 }}>
-          <SectionLabel>Items by type</SectionLabel>
-          <div className="mt-[12px] flex flex-col gap-[10px]">
-            {byType.map(([t, c]) => (
-              <button
-                key={t}
-                onClick={() => onOpen("catalog")}
-                className="flex items-center gap-[11px] text-left"
-              >
-                <TypeGlyph type={t} size={28} />
-                <div className="w-[130px] text-[13px] font-semibold">{typeMeta(t).label}</div>
-                <div className="h-[8px] flex-1 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full"
-                    style={{ width: `${(c / maxType) * 100}%`, background: typeMeta(t).color }}
+      <section aria-labelledby="attention-title">
+        <Card className="overflow-hidden">
+          <div className="flex flex-col gap-s border-b border-border bg-muted/40 px-l py-m sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <SectionLabel>Attention strip</SectionLabel>
+              <h2 id="attention-title" className="mt-xs text-400 font-semibold">
+                {attentionCount || external.length || itemOnly.length
+                  ? "Signals worth reviewing"
+                  : "No immediate governance signals"}
+              </h2>
+            </div>
+            <span className="inline-flex items-center gap-s text-200 text-muted-foreground">
+              <BadgeCheck
+                className="icon-size-200 text-status-healthy"
+                aria-hidden="true"
+              />
+              Live workspace index
+            </span>
+          </div>
+          <div className="grid sm:grid-cols-2 xl:grid-cols-4">
+            {riskSignals.map((signal) => {
+              const Icon = signal.icon;
+              return (
+                <button
+                  type="button"
+                  key={signal.label}
+                  onClick={() => onOpen(signal.tab)}
+                  aria-label={`Open ${signal.label.toLowerCase()}`}
+                  className="group flex items-center gap-m border-b border-border p-l text-left transition-colors hover:bg-accent sm:odd:border-r xl:border-b-0 xl:border-r xl:last:border-r-0"
+                >
+                  <span
+                    className={`flex icon-size-600 shrink-0 items-center justify-center rounded-lg bg-muted ${signal.tone}`}
+                  >
+                    <Icon className="icon-size-200" aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-baseline justify-between gap-s">
+                      <span className="truncate text-300 font-semibold">
+                        {signal.label}
+                      </span>
+                      <span
+                        className={`font-numeric text-500 font-bold tabular-nums ${signal.tone}`}
+                      >
+                        {signal.value}
+                      </span>
+                    </span>
+                    <span className="mt-xs block truncate text-200 text-muted-foreground">
+                      {signal.detail}
+                    </span>
+                  </span>
+                  <ArrowRight
+                    className="icon-size-200 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-xs"
+                    aria-hidden="true"
                   />
-                </div>
-                <div className="w-[24px] text-right text-[13px] font-bold tabular-nums">{c}</div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
         </Card>
+      </section>
 
-        <Card style={{ padding: 16 }}>
-          <SectionLabel>Health</SectionLabel>
-          <div className="mt-[8px] flex items-center gap-[16px]">
-            <Donut
-              counts={(Object.entries(health) as [Health, number][]).filter(([, c]) => c > 0)}
-            />
-            <div className="flex flex-col gap-[8px]">
-              {(Object.entries(health) as [Health, number][])
-                .filter(([, c]) => c > 0)
-                .map(([h, c]) => (
-                  <div key={h} className="flex items-center gap-[8px] text-[13px]">
-                    <HealthDot health={h} />
-                    <span className="capitalize">{h}</span>
-                    <span className="ml-auto font-bold tabular-nums">{c}</span>
+      <div className="grid gap-xl xl:grid-cols-12">
+        <Card className="p-xl xl:col-span-7">
+          <div className="flex items-start justify-between gap-l">
+            <div>
+              <SectionLabel>Governance coverage</SectionLabel>
+              <h2 className="mt-xs text-500 font-semibold">
+                Controls across the inventory
+              </h2>
+            </div>
+            <button
+              type="button"
+              className="shrink-0 text-200 font-semibold text-primary hover:underline"
+              onClick={() => onOpen("sensitivity")}
+            >
+              Review labels
+            </button>
+          </div>
+
+          <div className="mt-xl grid gap-xxl md:grid-cols-5">
+            <div className="flex flex-col gap-xl md:col-span-3">
+              {coverage.map((metric) => (
+                <div key={metric.label}>
+                  <div className="mb-s flex items-end justify-between gap-l">
+                    <div>
+                      <div className="text-300 font-semibold">{metric.label}</div>
+                      <div className="mt-xs text-200 text-muted-foreground">
+                        {metric.detail}
+                      </div>
+                    </div>
+                    <div className="font-numeric text-500 font-bold tabular-nums">
+                      {metric.value}%
+                    </div>
                   </div>
-                ))}
+                  <div className="h-s overflow-hidden rounded-full bg-muted">
+                    <div
+                      className={`h-full rounded-full ${metric.tone}`}
+                      style={{ width: `${metric.value}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-col justify-between gap-l rounded-xl border border-border bg-muted/30 p-l md:col-span-2">
+              <div>
+                <SectionLabel>Inventory reach</SectionLabel>
+                <div className="mt-s font-numeric text-hero-800 font-bold leading-hero-800 text-primary">
+                  {assetCount}
+                </div>
+                <div className="text-200 text-muted-foreground">
+                  tables, columns, and measures indexed
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-m border-t border-border pt-l">
+                <div>
+                  <div className="font-numeric text-500 font-bold tabular-nums text-lineage-downstream">
+                    {edges.length}
+                  </div>
+                  <div className="text-200 text-muted-foreground">
+                    lineage links
+                  </div>
+                </div>
+                <div>
+                  <div className="font-numeric text-500 font-bold tabular-nums text-primary">
+                    {grants.length}
+                  </div>
+                  <div className="text-200 text-muted-foreground">
+                    access grants
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onOpen("assets")}
+                className="inline-flex items-center justify-between gap-s rounded-lg border border-border bg-background px-m py-s text-200 font-semibold transition-colors hover:border-primary/40 hover:bg-accent"
+              >
+                Open asset catalog
+                <ArrowRight className="icon-size-200" aria-hidden="true" />
+              </button>
             </div>
           </div>
         </Card>
 
-        <Card style={{ padding: 16 }}>
-          <div className="flex items-center justify-between">
-            <SectionLabel>Recent activity</SectionLabel>
-            <button className="text-[12px] font-semibold text-primary" onClick={() => onOpen("jobs")}>
+        <Card className="flex flex-col p-xl xl:col-span-5">
+          <div className="flex items-start justify-between gap-l">
+            <div>
+              <SectionLabel>Health posture</SectionLabel>
+              <h2 className="mt-xs text-500 font-semibold">
+                Workspace reliability
+              </h2>
+            </div>
+            <button
+              type="button"
+              className="shrink-0 text-200 font-semibold text-primary hover:underline"
+              onClick={() => onOpen("jobs")}
+            >
+              Open jobs
+            </button>
+          </div>
+
+          {items.length ? (
+            <div className="mt-xl flex flex-1 flex-col justify-between gap-xl">
+              <div className="flex items-end justify-between gap-l rounded-xl bg-muted/30 p-l">
+                <div>
+                  <div className="text-200 font-semibold uppercase tracking-wide text-muted-foreground">
+                    Healthy inventory
+                  </div>
+                  <div className="mt-xs font-numeric text-hero-900 font-bold leading-hero-900 text-status-healthy">
+                    {healthPercentage}%
+                  </div>
+                </div>
+                <Activity
+                  className="icon-size-700 text-status-healthy"
+                  aria-hidden="true"
+                />
+              </div>
+              <div className="flex flex-col gap-m">
+                {(Object.entries(health) as [Health, number][]).map(
+                  ([status, count]) => (
+                    <div key={status} className="flex items-center gap-m">
+                      <HealthDot health={status} />
+                      <span className="w-1/4 text-300 font-semibold capitalize">
+                        {status}
+                      </span>
+                      <div className="h-s flex-1 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className={`h-full rounded-full ${HEALTH_TONE[status]}`}
+                          style={{ width: `${percentage(count)}%` }}
+                        />
+                      </div>
+                      <span className="w-xl text-right font-numeric text-300 font-bold tabular-nums">
+                        {count}
+                      </span>
+                    </div>
+                  ),
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-xl flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 p-xxl text-center">
+              <Activity
+                className="icon-size-600 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <p className="mt-m text-300 font-semibold">No health data yet</p>
+              <p className="mt-xs text-200 text-muted-foreground">
+                Item health will appear after the workspace is indexed.
+              </p>
+            </div>
+          )}
+        </Card>
+
+        <Card className="p-xl xl:col-span-7">
+          <div className="flex items-start justify-between gap-l">
+            <div>
+              <SectionLabel>Item mix</SectionLabel>
+              <h2 className="mt-xs text-500 font-semibold">
+                Fabric estate composition
+              </h2>
+            </div>
+            <button
+              type="button"
+              className="shrink-0 text-200 font-semibold text-primary hover:underline"
+              onClick={() => onOpen("catalog")}
+            >
+              View catalog
+            </button>
+          </div>
+
+          {byType.length ? (
+            <div className="mt-xl grid gap-m md:grid-cols-2">
+              {byType.map(([type, count]) => (
+                <button
+                  type="button"
+                  key={type}
+                  onClick={() => onOpen("catalog")}
+                  aria-label={`View ${typeMeta(type).label} items in catalog`}
+                  className="group flex items-center gap-m rounded-xl border border-transparent p-s text-left transition-colors hover:border-border hover:bg-accent"
+                >
+                  <TypeGlyph type={type} />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center justify-between gap-s">
+                      <span className="truncate text-300 font-semibold">
+                        {typeMeta(type).label}
+                      </span>
+                      <span className="font-numeric text-300 font-bold tabular-nums">
+                        {count}
+                      </span>
+                    </span>
+                    <span className="mt-s block h-xs overflow-hidden rounded-full bg-muted">
+                      <span
+                        className="block h-full rounded-full bg-primary transition-all group-hover:bg-lineage-downstream"
+                        style={{ width: `${(count / maxType) * 100}%` }}
+                      />
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-xl rounded-xl border border-dashed border-border bg-muted/20 p-xxl text-center">
+              <Boxes
+                className="mx-auto icon-size-600 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <p className="mt-m text-300 font-semibold">No items indexed</p>
+              <p className="mt-xs text-200 text-muted-foreground">
+                The item mix will populate after a successful sync.
+              </p>
+            </div>
+          )}
+        </Card>
+
+        <Card className="flex flex-col p-xl xl:col-span-5">
+          <div className="flex items-start justify-between gap-l">
+            <div>
+              <SectionLabel>Recent activity</SectionLabel>
+              <h2 className="mt-xs text-500 font-semibold">Jobs and owners</h2>
+            </div>
+            <button
+              type="button"
+              className="shrink-0 text-200 font-semibold text-primary hover:underline"
+              onClick={() => onOpen("jobs")}
+            >
               View all
             </button>
           </div>
-          <div className="mt-[12px] flex flex-col gap-[10px]">
-            {recentJobs.map((j, i) => (
-              <div key={i} className="flex items-center gap-[10px] text-[13px]">
-                <span
-                  className="inline-block rounded-full"
-                  style={{ width: 8, height: 8, background: JOB_COLOR[j.status] }}
-                />
-                <span className="truncate font-semibold">{j.itemName}</span>
-                <span className="truncate text-muted-foreground">{j.jobType}</span>
-                <span className="ml-auto shrink-0 text-[12px] text-muted-foreground">
-                  {relativeTime(j.startedAt)}
-                </span>
+
+          <div className="mt-xl flex flex-1 flex-col">
+            {recentJobs.length ? (
+              <div className="flex flex-col">
+                {recentJobs.map((job) => (
+                  <div
+                    key={`${job.itemFabricId}-${job.startedAt}-${job.jobType}`}
+                    className="flex items-center gap-m border-b border-border py-m first:pt-0"
+                  >
+                    <span
+                      className={`icon-size-100 shrink-0 rounded-full ${JOB_TONE[job.status]}`}
+                      title={job.status}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-300 font-semibold">
+                        {job.itemName}
+                      </div>
+                      <div className="mt-xs truncate text-200 text-muted-foreground">
+                        {job.jobType} · {job.status}
+                      </div>
+                    </div>
+                    <span className="shrink-0 text-200 text-muted-foreground">
+                      {relativeTime(job.startedAt)}
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
+            ) : (
+              <div className="rounded-xl border border-dashed border-border bg-muted/20 p-l text-center">
+                <Clock3
+                  className="mx-auto icon-size-500 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <p className="mt-s text-300 font-semibold">No jobs recorded</p>
+                <p className="mt-xs text-200 text-muted-foreground">
+                  Recent Fabric activity will appear here.
+                </p>
+              </div>
+            )}
+
+            <div className="mt-auto border-t border-border pt-l">
+              <div className="mb-m flex items-center justify-between gap-l">
+                <SectionLabel>Ownership</SectionLabel>
+                <button
+                  type="button"
+                  className="text-200 font-semibold text-primary hover:underline"
+                  onClick={() => onOpen("access")}
+                >
+                  Open access
+                </button>
+              </div>
+              {owners.length ? (
+                <div className="flex flex-wrap items-center gap-m">
+                  {owners.slice(0, 5).map(([name, count]) => (
+                    <div key={name} className="flex items-center gap-s">
+                      <Avatar name={name} />
+                      <div>
+                        <div className="max-w-48 truncate text-200 font-semibold">
+                          {name}
+                        </div>
+                        <div className="text-100 text-muted-foreground">
+                          {count} {count === 1 ? "item" : "items"}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {owners.length > 5 && (
+                    <button
+                      type="button"
+                      onClick={() => onOpen("access")}
+                      className="rounded-full border border-border bg-muted px-m py-s text-200 font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                      aria-label={`View ${owners.length - 5} more owners`}
+                    >
+                      +{owners.length - 5} more
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p className="text-200 text-muted-foreground">
+                  Owner metadata is not available yet.
+                </p>
+              )}
+            </div>
           </div>
         </Card>
       </div>
-
-      <Card style={{ padding: 16 }}>
-        <div className="flex items-center justify-between">
-          <SectionLabel>Owners</SectionLabel>
-          <button className="text-[12px] font-semibold text-primary" onClick={() => onOpen("access")}>
-            Open access
-          </button>
-        </div>
-        <div className="mt-[12px] flex flex-wrap gap-[16px]">
-          {[...new Set(items.map((i) => i.ownerName).filter(Boolean))].map((name) => (
-            <div key={name} className="flex items-center gap-[9px]">
-              <Avatar name={name as string} size={30} />
-              <div className="text-[13px]">
-                <div className="font-semibold">{name}</div>
-                <div className="text-[11px] text-muted-foreground">
-                  {items.filter((i) => i.ownerName === name).length} items
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
     </div>
   );
 }

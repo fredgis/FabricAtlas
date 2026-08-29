@@ -4,6 +4,7 @@
 // why this hop through a server-side function is required.
 
 import { ATLAS_CONFIG, getUdfUrl } from "./config";
+import { normalizeLineageEdges } from "./lineage";
 import {
   type AtlasData,
   type Item,
@@ -319,7 +320,7 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
   return {
     workspace,
     items,
-    edges,
+    edges: normalizeLineageEdges(items, edges),
     principals,
     grants,
     jobs,
