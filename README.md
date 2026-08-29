@@ -218,6 +218,17 @@ npx rayfin login --tenant <your-tenant-id> --select
 npx rayfin up --workspace "<workspace-name>"
 ```
 
+For live workspace Sync, publish `atlas_sync_functions`, then add the public Entra client ID and
+the copied `sync_all` URL to the git-ignored `rayfin/.env` file:
+
+```bash
+RAYFIN_PUBLIC_ATLAS_SPA_CLIENT_ID=<client-id>
+RAYFIN_PUBLIC_ATLAS_UDF_URL=https://<...>/functions/sync_all/invoke
+```
+
+Redeploy with `npx rayfin up`. If these values are absent, Fabric Atlas still opens directly; only
+the optional Sync action remains unavailable.
+
 Full steps in [docs/installation.md](docs/installation.md).
 
 ## Releases and changelog
