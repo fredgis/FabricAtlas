@@ -132,18 +132,17 @@ Multi-workspace catalog support is planned and tracked in
 stay focused on a controlled set of workspaces rather than scanning an entire
 tenant automatically.
 
-| Stage | Planned work |
-|---|---|
-| Foundation | Keep catalog access shared with the authorized app audience, restrict scope and sync changes to the configured synchronizer, and store one atomic snapshot per workspace |
-| Synchronization | Let the synchronizer select workspaces explicitly, then show progress and failures workspace by workspace |
-| Browsing | Add a global selector for all indexed workspaces, one workspace or a small selection; aggregate Overview, Catalog, Asset Catalog, Access, Sensitivity and Jobs |
-| Workspace context | Keep Workspace Hub, configuration and comments attached to one active workspace |
-| Lineage comparison | Open one workspace by default and allow a limited comparison of several workspaces without inventing connections |
-| Cross-workspace lineage | Add verified relationships returned by the Fabric and Power BI metadata APIs after the multi-workspace catalog is stable |
+| Target | Planned PR | Release | Engineering scope | Exit criteria |
+|---|---:|---|---|---|
+| Q4 CY26 | PR 1 | `v1.5.0` | Keep catalog reads shared with the authorized app audience and restrict scope changes to the configured synchronizer. Refactor persistence around an explicit `workspaceId`, add independent manifests and migrate the existing single-workspace snapshot. | A failed or incomplete workspace refresh cannot invalidate another workspace snapshot. |
+| Q4 CY26 | PR 2 | `v1.5.0` | Add UDF workspace discovery, persist the selected indexing scope, and run a bounded synchronization queue with progress and errors reported per workspace. | The synchronizer can select workspaces, refresh them independently and retry only failures. |
+| Q4 CY26 | PR 3 | `v1.5.0` | Add available, selected and active workspace state with lazy snapshot loading. Aggregate Overview, Catalog, Asset Catalog, Access, Sensitivity and Jobs. Keep Workspace Hub, configuration and comments tied to one active workspace. | Multi-workspace catalog MVP ready for release. |
+| Q1 CY27 | PR 4 | `v1.6.0` | Use composite graph IDs, open one workspace by default and allow comparison of up to three workspaces in separate visual groups. Show local lineage only at this stage. | Comparison stays readable and never creates an inferred connection. |
+| Q1 CY27 | PR 5 | `v1.6.0` | Run grouped metadata scans for the selected workspaces, build a global item index and persist source and target workspace IDs on relationships returned by Microsoft. | Verified cross-workspace lineage appears only when both endpoints are part of the indexed scope. |
 
-The first usable milestone covers the foundation, synchronization and browsing
-stages. Lineage comparison and cross-workspace relationships will follow
-without blocking the core multi-workspace catalog.
+`v1.5.0` is the multi-workspace catalog milestone planned for Q4 CY26.
+`v1.6.0` adds lineage comparison and verified cross-workspace relationships in
+Q1 CY27. These dates are targets and may move if Fabric API coverage changes.
 
 ## Quickstart
 
