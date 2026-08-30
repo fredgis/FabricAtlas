@@ -188,13 +188,6 @@ Fabric Atlas collects that metadata without copying business data.
 
 ## Product screenshots
 
-### Workspace overview
-
-The overview brings health, freshness, governance signals and inventory reach
-together in a Fabric-native operational landing page.
-
-![Fabric Atlas workspace overview](docs/screenshots/overview-fabric-menu-v191.png)
-
 ### Guided deployment sync
 
 The first deployment or a new major/minor snapshot contract starts with a
@@ -203,6 +196,13 @@ donut stay visible throughout the scan; compatible patch releases reuse the
 validated catalog.
 
 ![Guided Fabric Atlas deployment sync](docs/screenshots/deployment-sync-v191.png)
+
+### Workspace overview
+
+The overview brings health, freshness, governance signals and inventory reach
+together in a Fabric-native operational landing page.
+
+![Fabric Atlas workspace overview](docs/screenshots/overview-fabric-menu-v191.png)
 
 ### Interactive lineage
 
