@@ -161,7 +161,7 @@ Fabric Atlas collects that metadata without copying business data.
 The overview brings health, freshness, governance signals and inventory reach
 together in a Fabric-native operational landing page.
 
-![Fabric Atlas workspace overview](docs/screenshots/overview.png)
+![Fabric Atlas workspace overview](docs/screenshots/overview-fabric-menu.png)
 
 ### Guided deployment sync
 
