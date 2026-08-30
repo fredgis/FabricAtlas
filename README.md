@@ -176,7 +176,7 @@ The map follows Fabric assets from orchestration to consumption. Selecting an
 item highlights its verified path while the inspector keeps schema, access,
 runs and impact actions beside the graph.
 
-![Fabric Atlas item lineage](docs/screenshots/lineage-items.png)
+![Fabric Atlas item lineage](docs/screenshots/interactive-lineage-v2.png)
 
 ### Object lineage
 
