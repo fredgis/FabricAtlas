@@ -9,6 +9,12 @@ describe("sameDeploymentGeneration", () => {
         "1.9.1:new-commit:2026-08-31",
       ),
     ).toBe(true);
+    expect(
+      sameDeploymentGeneration(
+        "1.9.0:snapshot-v1:old-commit:2026-08-30",
+        "1.9.1:snapshot-v1:new-commit:2026-08-31",
+      ),
+    ).toBe(true);
   });
 
   it("requires a new baseline when the minor contract changes", () => {
@@ -16,6 +22,15 @@ describe("sameDeploymentGeneration", () => {
       sameDeploymentGeneration(
         "1.9.1:old-commit:2026-08-31",
         "1.10.0:new-commit:2026-09-01",
+      ),
+    ).toBe(false);
+  });
+
+  it("requires one guided sync when an explicit contract replaces legacy IDs", () => {
+    expect(
+      sameDeploymentGeneration(
+        "1.9.1:old-commit:2026-08-30",
+        "1.9.1:snapshot-v1:new-commit:2026-08-30",
       ),
     ).toBe(false);
   });

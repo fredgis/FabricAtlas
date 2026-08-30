@@ -24,11 +24,18 @@ export const BUILD_DATE =
   (import.meta.env.VITE_APP_BUILD_DATE as string | undefined) ??
   new Date(0).toISOString();
 
-export const DEPLOYMENT_ID = `${APP_VERSION}:${BUILD_COMMIT}:${BUILD_DATE}`;
+export const SNAPSHOT_CONTRACT_ID = "snapshot-v1";
+
+export const DEPLOYMENT_ID =
+  `${APP_VERSION}:${SNAPSHOT_CONTRACT_ID}:${BUILD_COMMIT}:${BUILD_DATE}`;
 
 function deploymentGeneration(value: string | undefined): string | undefined {
   const match = /^(\d+)\.(\d+)(?:\.|:|$)/.exec(value?.trim() ?? "");
-  return match ? `${match[1]}.${match[2]}` : undefined;
+  if (!match) return undefined;
+  const contract =
+    /^\d+\.\d+\.\d+:(snapshot-v\d+):/.exec(value?.trim() ?? "")?.[1] ??
+    "legacy";
+  return `${match[1]}.${match[2]}:${contract}`;
 }
 
 export function sameDeploymentGeneration(
@@ -55,6 +62,7 @@ export const RELEASES: AtlasRelease[] = [
           "Every successful sync replaces the active catalog and history immediately, then remounts the current view against the new snapshot.",
           "Fresh snapshots retain their deployment identity so Radar no longer resets to a baseline after every synchronization.",
           "Patch releases preserve the existing snapshot contract and do not force an unnecessary deployment sync.",
+          "This deployment establishes the explicit snapshot-v1 marker through one guided synchronization without deleting validated history.",
         ],
       },
       {

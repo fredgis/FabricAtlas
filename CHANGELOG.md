@@ -16,6 +16,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - Successful synchronization replaces current data and history atomically and remounts the active view against the new snapshot.
 - Patch releases within the same major/minor snapshot contract reuse existing history instead of forcing another deployment sync.
+- The deployment identity now carries an explicit `snapshot-v1` contract marker; existing legacy snapshots receive one guided synchronization without being deleted.
 - Asset searches by item name or type retain all real child assets.
 
 ### Fixed

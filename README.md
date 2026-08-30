@@ -229,8 +229,8 @@ asset exposes its source, model context and additive effective access.
 
 ### Governance Center
 
-Findings, snapshot changes, history, coverage and sensitivity are grouped into
-one governance workspace with saved views and evidence links.
+Governance Radar, findings, snapshot changes, history, coverage and posture are
+grouped into one governance workspace with saved views and evidence links.
 
 ![Fabric Atlas Governance Center](docs/screenshots/governance-center.png)
 
