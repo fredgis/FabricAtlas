@@ -246,7 +246,7 @@ focused filtering, personal decisions and CSV export.
 An item or schema object can produce an exportable report with verified
 upstream, downstream and relationship evidence.
 
-![Fabric Atlas impact report](docs/screenshots/impact-report.png)
+![Fabric Atlas impact report](docs/screenshots/impact-report-v191.png)
 
 ## How it works
 
