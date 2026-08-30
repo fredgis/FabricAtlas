@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/fabric-atlas-hero-v4.svg" alt="Fabric Atlas, open-source workspace intelligence for Microsoft Fabric" width="100%">
+<img src="docs/assets/fabric-atlas-hero-v5.svg" alt="Fabric Atlas, open-source workspace intelligence for Microsoft Fabric" width="100%">
 
 Fabric Atlas gives a team one readable map of its Fabric workspace. It brings
 together lineage, item metadata, access, sensitivity and run history, then keeps
@@ -154,6 +154,39 @@ Fabric Atlas collects that metadata without copying business data.
 
 </details>
 
+## Scan coverage matrix
+
+Atlas always indexes top-level items from the Fabric Items API. Deeper
+inventory, lineage and item-level access depend on what the Fabric and Power BI
+APIs expose for each type and on the required tenant settings.
+
+| Fabric element | Catalog and configuration | Internal inventory | Lineage | Access | Recent jobs | Known boundary |
+|---|---|---|---|---|---|---|
+| Workspace | Name, ID, capacity and region | Not applicable | Not applicable | Workspace role assignments | Not applicable | One workspace per `v1.x` deployment |
+| Lakehouse | Description, OneLake paths, default schema and SQL endpoint status | Tables and columns from Lakehouse REST, scanner metadata or a downstream-model subset | Scanner relations and SQL endpoint path | Workspace roles and item users | When supported | Schema-enabled variants may require the downstream Semantic Model path |
+| Warehouse | Description, collation, created and updated dates | Tables, views and columns from the scanner; downstream-model subset fallback | Scanner relations | Workspace roles and item users | When supported | Complete inventory can require SQL catalog connectivity |
+| SQL Database | Database name, collation and backup retention | Tables, views and columns from the scanner; downstream-model subset fallback | Scanner relations | Workspace roles and item users | When supported | Complete inventory can require SQL catalog connectivity |
+| SQL endpoint | Item identity and scanner metadata | No dedicated internal-object scan | Storage-to-endpoint-to-model relations | Workspace roles and item users | When supported | Used primarily as a lineage bridge |
+| Semantic Model | Description, storage mode and provider | Tables, columns, measures, descriptions, hidden flags and expressions | Scanner relations to sources and reports | Workspace roles and item users | When supported | Requires admin scanner schema and expression options |
+| Report | Report type, bound Semantic Model and page inventory | Pages and order | Model binding plus scanner relations | Workspace roles and item users | When supported | Visuals and field bindings are not exposed by this flow |
+| Dashboard | Item and scanner metadata | No deep object inventory | Scanner relations when returned | Workspace roles and item users | When supported | Tile and visual bindings are not expanded |
+| Notebook | Item description, configured-by and modified metadata | Source code and cells are not read | Scanner relations | Workspace roles and item users | Up to 3 returned instances | Business content remains outside Atlas |
+| Data Pipeline | Item description, configured-by and modified metadata | Activities and expressions are not expanded | Scanner relations | Workspace roles and item users | Up to 3 returned instances | Pipeline definitions are not copied |
+| Dataflow | Item and scanner metadata | Entities and Power Query definitions are not expanded | Scanner relations | Workspace roles and item users | When supported | Query content is not copied |
+| Datamart | Item and scanner metadata | No deep object inventory | Scanner relations | Workspace roles and item users | When supported | Coverage follows scanner availability |
+| Eventhouse | Item and scanner metadata | No KQL object inventory | Scanner relations | Workspace roles and item users | When supported | Hosted database objects are not expanded |
+| KQL Database | Item and scanner metadata | Tables, functions and policies are not expanded | Scanner relations | Workspace roles and item users | When supported | KQL catalog connectivity is not used |
+| Eventstream | Item and scanner metadata | Internal stream topology is not expanded | Scanner relations | Workspace roles and item users | When supported | Event payloads are never read |
+| Mirrored Database | Item and scanner metadata | Mirrored tables are not expanded | Scanner relations | Workspace roles and item users | When supported | Source data and replication contents are not read |
+| User Data Function | Item and scanner metadata | Function source and endpoints are not expanded | Scanner relations | Workspace roles and item users | When supported | Function code is not copied |
+| Fabric App / AppBackend | Item identity from the Fabric Items API | No internal service inventory | Only when a Fabric API exposes a relation | Workspace roles | When supported | Not currently an admin-scanner artifact type |
+| Other or new Fabric item type | ID, name, type and description when returned | Top-level item only | Only when the APIs expose a relation | Workspace roles; item users when exposed | The jobs endpoint is attempted | Unknown types stay visible with a neutral item glyph |
+
+Across these elements, Atlas also records configuration facts, up to three
+recent job instances per supported item, scanner-reported relationships,
+workspace principals and explicit item users. It stores metadata only, never
+workspace business data.
+
 ## Product screenshots
 
 ### Workspace overview
@@ -261,13 +294,13 @@ Multi-workspace catalog support is planned and tracked in
 stay focused on a controlled set of workspaces rather than scanning an entire
 tenant automatically.
 
-| Target | Planned PR | Release | Engineering scope | Exit criteria |
+| <sub>Target</sub> | <sub>Planned PR</sub> | <sub>Release</sub> | <sub>Engineering scope</sub> | <sub>Exit criteria</sub> |
 |---|---:|---|---|---|
-| Q4 CY26 | PR 1 | `v2.0.0` | Keep catalog reads shared with the authorized app audience and restrict scope changes to the configured synchronizer. Refactor persistence around an explicit `workspaceId`, add independent manifests and migrate the existing single-workspace snapshot. | A failed or incomplete workspace refresh cannot invalidate another workspace snapshot. |
-| Q4 CY26 | PR 2 | `v2.0.0` | Add UDF workspace discovery, persist the selected indexing scope, and run a bounded synchronization queue with progress and errors reported per workspace. | The synchronizer can select workspaces, refresh them independently and retry only failures. |
-| Q4 CY26 | PR 3 | `v2.0.0` | Add available, selected and active workspace state with lazy snapshot loading. Aggregate Overview, Catalog, Asset Catalog, Access, Sensitivity and Jobs. Keep Workspace Hub, configuration and comments tied to one active workspace. | Multi-workspace catalog MVP ready for release. |
-| Q1 CY27 | PR 4 | `v2.0.1` | Use composite graph IDs, open one workspace by default and allow comparison of up to three workspaces in separate visual groups. Show local lineage only at this stage. | Comparison stays readable and never creates an inferred connection. |
-| Q1 CY27 | PR 5 | `v2.0.2` | Run grouped metadata scans for the selected workspaces, build a global item index and persist source and target workspace IDs on relationships returned by Microsoft. | Verified cross-workspace lineage appears only when both endpoints are part of the indexed scope. |
+| <sub>Q4 CY26</sub> | <sub>PR 1</sub> | <sub>v2.0.0</sub> | <sub>Keep catalog reads shared with the authorized app audience and restrict scope changes to the configured synchronizer. Refactor persistence around an explicit `workspaceId`, add independent manifests and migrate the existing single-workspace snapshot.</sub> | <sub>A failed or incomplete workspace refresh cannot invalidate another workspace snapshot.</sub> |
+| <sub>Q4 CY26</sub> | <sub>PR 2</sub> | <sub>v2.0.0</sub> | <sub>Add UDF workspace discovery, persist the selected indexing scope, and run a bounded synchronization queue with progress and errors reported per workspace.</sub> | <sub>The synchronizer can select workspaces, refresh them independently and retry only failures.</sub> |
+| <sub>Q4 CY26</sub> | <sub>PR 3</sub> | <sub>v2.0.0</sub> | <sub>Add available, selected and active workspace state with lazy snapshot loading. Aggregate Overview, Catalog, Asset Catalog, Access, Sensitivity and Jobs. Keep Workspace Hub, configuration and comments tied to one active workspace.</sub> | <sub>Multi-workspace catalog MVP ready for release.</sub> |
+| <sub>Q1 CY27</sub> | <sub>PR 4</sub> | <sub>v2.0.1</sub> | <sub>Use composite graph IDs, open one workspace by default and allow comparison of up to three workspaces in separate visual groups. Show local lineage only at this stage.</sub> | <sub>Comparison stays readable and never creates an inferred connection.</sub> |
+| <sub>Q1 CY27</sub> | <sub>PR 5</sub> | <sub>v2.0.2</sub> | <sub>Run grouped metadata scans for the selected workspaces, build a global item index and persist source and target workspace IDs on relationships returned by Microsoft.</sub> | <sub>Verified cross-workspace lineage appears only when both endpoints are part of the indexed scope.</sub> |
 
 `v2.0.0` is the multi-workspace catalog milestone planned for Q4 CY26.
 `v2.0.1` adds lineage comparison, followed by verified cross-workspace
