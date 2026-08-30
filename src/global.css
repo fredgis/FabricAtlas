@@ -269,6 +269,16 @@ body,
   animation: atlas-flow 0.9s linear infinite;
 }
 
+.atlas-windowed-block {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 72px;
+}
+
+.atlas-windowed-group {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 180px;
+}
+
 .atlas-map-grid {
   background-image:
     linear-gradient(color-mix(in srgb, var(--color-border) 28%, transparent) 1px, transparent 1px),

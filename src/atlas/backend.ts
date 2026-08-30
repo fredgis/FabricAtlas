@@ -27,9 +27,11 @@ import { DEPLOYMENT_ID } from "./release";
 import {
   buildAtlasHistory,
   snapshotFromData,
+  summarizeSnapshot,
   type AtlasHistory,
   type HistoricalSnapshot,
   type SnapshotCatalog,
+  type SnapshotSummary,
 } from "./history";
 import type {
   AtlasData,
@@ -61,6 +63,7 @@ interface EntityApi {
   select?: (fields: readonly string[]) => EntityQuery;
   findMany?: (f?: unknown) => Promise<Row[]>;
   create: (v: Row) => Promise<Row>;
+  delete?: (filter: Row) => Promise<unknown>;
 }
 
 const ENTITY_FIELDS: Record<string, readonly string[]> = {
@@ -81,6 +84,17 @@ const ENTITY_FIELDS: Record<string, readonly string[]> = {
     "jobCount",
     "configCount",
     "schemaEntryCount",
+    "summaryVersion",
+    "healthyCount",
+    "staleCount",
+    "failingCount",
+    "labelCount",
+    "externalPrincipalCount",
+    "failedJobCount",
+    "brokenEdgeCount",
+    "tableCount",
+    "columnCount",
+    "measureCount",
     "syncedAt",
   ],
   FabricItem: [
@@ -456,6 +470,9 @@ async function persistSync(
   // marker is written. That final marker is the atomic visibility switch:
   // orphaned rows from a failed attempt are never selected by hydration.
   reportProgress?.(97, "Finalizing the workspace snapshot");
+  const snapshotSummary = summarizeSnapshot(
+    snapshotFromData(atlas, snapshotId, syncedAt.toISOString()),
+  );
   await data.SyncRun.create({
     workspace_id: wid,
     snapshotId,
@@ -485,8 +502,25 @@ async function persistSync(
     jobCount: atlas.jobs.length,
     configCount: atlas.config.length,
     schemaEntryCount: schemaRows.length,
+    summaryVersion: 1,
+    healthyCount: snapshotSummary.healthyCount,
+    staleCount: snapshotSummary.staleCount,
+    failingCount: snapshotSummary.failingCount,
+    labelCount: snapshotSummary.labelCount,
+    externalPrincipalCount: snapshotSummary.externalPrincipalCount,
+    failedJobCount: snapshotSummary.failedJobCount,
+    brokenEdgeCount: snapshotSummary.brokenEdgeCount,
+    tableCount: snapshotSummary.tableCount,
+    columnCount: snapshotSummary.columnCount,
+    measureCount: snapshotSummary.measureCount,
     syncedAt,
   });
+  reportProgress?.(99, "Applying snapshot retention");
+  try {
+    await pruneSnapshots(data, wid, snapshotId, writerEmail);
+  } catch (error) {
+    console.warn("[atlas] snapshot retention deferred", error);
+  }
   return {
     ...atlas,
     workspace: {
@@ -541,6 +575,23 @@ function sameText(left: unknown, right: unknown): boolean {
   return String(left ?? "").toLowerCase() === String(right ?? "").toLowerCase();
 }
 
+function trustedWriterEmails(): string[] {
+  return [
+    ...new Set(
+      [
+        ATLAS_CONFIG.syncAdminEmail,
+        ...ATLAS_CONFIG.previousSyncWriters,
+      ]
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function isTrustedWriter(value: unknown): boolean {
+  return trustedWriterEmails().some((email) => sameText(value, email));
+}
+
 function rowBelongsToWorkspace(row: Row, wid: string): boolean {
   return sameText(row.workspace_id, wid);
 }
@@ -549,12 +600,13 @@ function rowsForSnapshot(
   rows: Row[],
   wid: string,
   snapshotId?: string,
+  writerEmail = ATLAS_CONFIG.syncAdminEmail,
 ): Row[] {
   return rows.filter(
     (row) =>
       rowBelongsToWorkspace(row, wid) &&
       sameText(row.snapshotId, snapshotId) &&
-      sameText(row.writerEmail, ATLAS_CONFIG.syncAdminEmail),
+      sameText(row.writerEmail, writerEmail),
   );
 }
 
@@ -574,7 +626,7 @@ function validateManifest(
 ): void {
   if (
     !marker.snapshotId ||
-    !sameText(marker.writerEmail, ATLAS_CONFIG.syncAdminEmail)
+    !isTrustedWriter(marker.writerEmail)
   ) {
     throw new Error("snapshot manifest is not signed by the configured writer");
   }
@@ -681,10 +733,109 @@ function readerFor(data: Record<string, EntityApi>): ReadEntity {
   };
 }
 
+async function readTrustedWorkspaceMarkers(
+  read: ReadEntity,
+  wid: string,
+  snapshotId?: string,
+): Promise<Row[]> {
+  const groups = await Promise.all(
+    trustedWriterEmails().map((writerEmail) =>
+      read("Workspace", {
+        fabricId: { eq: wid },
+        ...(snapshotId ? { snapshotId: { eq: snapshotId } } : {}),
+        writerEmail: { eq: writerEmail },
+      }),
+    ),
+  );
+  return groups.flat();
+}
+
 function validDateIso(value: unknown): string | undefined {
   if (value == null || value === "") return undefined;
   const date = new Date(value as string | number | Date);
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
+function nonNegativeInteger(row: Row, field: string): number | undefined {
+  const value = Number(row[field]);
+  return Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
+export function snapshotSummaryFromManifest(
+  marker: Row,
+): SnapshotSummary | undefined {
+  if (Number(marker.summaryVersion) !== 1) return undefined;
+  const snapshotId = realText(marker.snapshotId);
+  const syncedAt = validDateIso(marker.syncedAt);
+  if (!snapshotId || !syncedAt) return undefined;
+
+  const values = {
+    items: nonNegativeInteger(marker, "itemCount"),
+    healthy: nonNegativeInteger(marker, "healthyCount"),
+    stale: nonNegativeInteger(marker, "staleCount"),
+    failing: nonNegativeInteger(marker, "failingCount"),
+    labels: nonNegativeInteger(marker, "labelCount"),
+    principals: nonNegativeInteger(marker, "principalCount"),
+    externalPrincipals: nonNegativeInteger(
+      marker,
+      "externalPrincipalCount",
+    ),
+    grants: nonNegativeInteger(marker, "grantCount"),
+    failedJobs: nonNegativeInteger(marker, "failedJobCount"),
+    lineage: nonNegativeInteger(marker, "edgeCount"),
+    brokenEdges: nonNegativeInteger(marker, "brokenEdgeCount"),
+    tables: nonNegativeInteger(marker, "tableCount"),
+    columns: nonNegativeInteger(marker, "columnCount"),
+    measures: nonNegativeInteger(marker, "measureCount"),
+  };
+  if (Object.values(values).some((value) => value == null)) return undefined;
+
+  const summary = values as Record<keyof typeof values, number>;
+  if (
+    summary.healthy + summary.stale + summary.failing > summary.items ||
+    summary.labels > summary.items ||
+    summary.externalPrincipals > summary.principals ||
+    summary.failedJobs >
+      (nonNegativeInteger(marker, "jobCount") ?? -1) ||
+    summary.brokenEdges > summary.lineage
+  ) {
+    return undefined;
+  }
+
+  return {
+    snapshotId,
+    syncedAt,
+    label: syncedAt.slice(0, 10),
+    items: summary.items,
+    itemCount: summary.items,
+    healthy: summary.healthy,
+    healthyCount: summary.healthy,
+    stale: summary.stale,
+    staleCount: summary.stale,
+    failing: summary.failing,
+    failingCount: summary.failing,
+    labels: summary.labels,
+    labelCount: summary.labels,
+    principals: summary.principals,
+    principalCount: summary.principals,
+    externalPrincipals: summary.externalPrincipals,
+    externalPrincipalCount: summary.externalPrincipals,
+    grants: summary.grants,
+    grantCount: summary.grants,
+    failedJobs: summary.failedJobs,
+    failedJobCount: summary.failedJobs,
+    lineage: summary.lineage,
+    lineageEdges: summary.lineage,
+    lineageEdgeCount: summary.lineage,
+    brokenEdges: summary.brokenEdges,
+    brokenEdgeCount: summary.brokenEdges,
+    tables: summary.tables,
+    tableCount: summary.tables,
+    columns: summary.columns,
+    columnCount: summary.columns,
+    measures: summary.measures,
+    measureCount: summary.measures,
+  };
 }
 
 function trustedMarkers(rows: Row[], wid: string): Row[] {
@@ -693,7 +844,7 @@ function trustedMarkers(rows: Row[], wid: string): Row[] {
       (row) =>
         sameText(row.fabricId, wid) &&
         !!textOrFallback(row.snapshotId, "") &&
-        sameText(row.writerEmail, ATLAS_CONFIG.syncAdminEmail),
+        isTrustedWriter(row.writerEmail),
     )
     .sort(
       (left, right) =>
@@ -743,11 +894,12 @@ async function readSnapshotRows(
   wid: string,
   snapshotId: string,
   includeSyncRuns: boolean,
+  writerEmail = ATLAS_CONFIG.syncAdminEmail,
 ): Promise<SnapshotRows> {
   const filter = {
     workspace_id: { eq: wid },
     snapshotId: { eq: snapshotId },
-    writerEmail: { eq: ATLAS_CONFIG.syncAdminEmail },
+    writerEmail: { eq: writerEmail },
   };
   const [
     allItemRows,
@@ -766,20 +918,30 @@ async function readSnapshotRows(
     read("ConfigEntry", filter),
     includeSyncRuns ? read("SyncRun", filter) : Promise.resolve([]),
   ]);
-  const configRows = rowsForSnapshot(allConfigRows, wid, snapshotId);
+  const configRows = rowsForSnapshot(
+    allConfigRows,
+    wid,
+    snapshotId,
+    writerEmail,
+  );
   return {
-    itemRows: rowsForSnapshot(allItemRows, wid, snapshotId),
-    edgeRows: rowsForSnapshot(allEdgeRows, wid, snapshotId),
-    principalRows: rowsForSnapshot(allPrincipalRows, wid, snapshotId),
-    grantRows: rowsForSnapshot(allGrantRows, wid, snapshotId),
-    jobRows: rowsForSnapshot(allJobRows, wid, snapshotId),
+    itemRows: rowsForSnapshot(allItemRows, wid, snapshotId, writerEmail),
+    edgeRows: rowsForSnapshot(allEdgeRows, wid, snapshotId, writerEmail),
+    principalRows: rowsForSnapshot(
+      allPrincipalRows,
+      wid,
+      snapshotId,
+      writerEmail,
+    ),
+    grantRows: rowsForSnapshot(allGrantRows, wid, snapshotId, writerEmail),
+    jobRows: rowsForSnapshot(allJobRows, wid, snapshotId, writerEmail),
     regularConfigRows: configRows.filter(
       (row) => String(row.section) !== "__schema__",
     ),
     schemaRows: configRows.filter(
       (row) => String(row.section) === "__schema__",
     ),
-    syncRows: rowsForSnapshot(allSyncRows, wid, snapshotId),
+    syncRows: rowsForSnapshot(allSyncRows, wid, snapshotId, writerEmail),
   };
 }
 
@@ -924,6 +1086,179 @@ function catalogFromRows(
   };
 }
 
+const SNAPSHOT_DELETE_BATCH_SIZE = 8;
+const MAX_SNAPSHOTS_PRUNED_PER_SYNC = 4;
+const MAX_RETENTION_CANDIDATES = 100;
+
+async function deleteScopedRows(
+  data: Record<string, EntityApi>,
+  entity: string,
+  rows: Row[],
+  wid: string,
+  snapshotId: string,
+  writerEmail: string,
+  workspaceMarker = false,
+): Promise<void> {
+  const api = data[entity];
+  if (!api?.delete) {
+    throw new Error(`Rayfin entity ${entity} does not support deletion`);
+  }
+  const scoped = rows.filter((row) => {
+    const belongsToTarget = workspaceMarker
+      ? sameText(row.fabricId, wid)
+      : rowBelongsToWorkspace(row, wid);
+    return (
+      belongsToTarget &&
+      sameText(row.snapshotId, snapshotId) &&
+      sameText(row.writerEmail, writerEmail) &&
+      !!realText(row.id)
+    );
+  });
+  if (scoped.length !== rows.length) {
+    throw new Error(`snapshot retention rejected unscoped ${entity} rows`);
+  }
+
+  for (
+    let offset = 0;
+    offset < scoped.length;
+    offset += SNAPSHOT_DELETE_BATCH_SIZE
+  ) {
+    const results = await Promise.allSettled(
+      scoped
+        .slice(offset, offset + SNAPSHOT_DELETE_BATCH_SIZE)
+        .map((row) => api.delete!({ id: String(row.id) })),
+    );
+    const failure = results.find(
+      (result): result is PromiseRejectedResult =>
+        result.status === "rejected",
+    );
+    if (failure) throw failure.reason;
+  }
+}
+
+async function deleteSnapshot(
+  data: Record<string, EntityApi>,
+  marker: Row,
+  rows: SnapshotRows,
+  wid: string,
+  writerEmail: string,
+): Promise<void> {
+  const snapshotId = String(marker.snapshotId);
+  const groups: Array<[string, Row[]]> = [
+    ["ConfigEntry", [...rows.regularConfigRows, ...rows.schemaRows]],
+    ["JobRun", rows.jobRows],
+    ["AccessGrant", rows.grantRows],
+    ["Principal", rows.principalRows],
+    ["LineageEdge", rows.edgeRows],
+    ["FabricItem", rows.itemRows],
+    ["SyncRun", rows.syncRows],
+  ];
+  for (const [entity, entityRows] of groups) {
+    await deleteScopedRows(
+      data,
+      entity,
+      entityRows,
+      wid,
+      snapshotId,
+      writerEmail,
+    );
+  }
+  await deleteScopedRows(
+    data,
+    "Workspace",
+    [marker],
+    wid,
+    snapshotId,
+    writerEmail,
+    true,
+  );
+}
+
+async function pruneSnapshots(
+  data: Record<string, EntityApi>,
+  wid: string,
+  currentSnapshotId: string,
+  writerEmail: string,
+): Promise<void> {
+  const read = readerFor(data);
+  const workspaceRows = await readTrustedWorkspaceMarkers(read, wid);
+  const unique = new Map<string, Row>();
+  for (const marker of trustedMarkers(workspaceRows, wid)) {
+    const snapshotId = String(marker.snapshotId);
+    if (!unique.has(snapshotId)) unique.set(snapshotId, marker);
+  }
+  const current = unique.get(currentSnapshotId);
+  if (!current || !sameText(current.writerEmail, writerEmail)) return;
+  const candidates = [
+    current,
+    ...[...unique.values()].filter(
+      (marker) => !sameText(marker.snapshotId, currentSnapshotId),
+    ),
+  ].slice(0, MAX_RETENTION_CANDIDATES);
+
+  let retained = 0;
+  let pruned = 0;
+  for (const marker of candidates) {
+    const snapshotId = String(marker.snapshotId);
+    const markerWriter = realText(marker.writerEmail);
+    if (!markerWriter) continue;
+    const manifestSummary = snapshotSummaryFromManifest(marker);
+    let rows: SnapshotRows | undefined;
+    let valid = !!manifestSummary;
+
+    if (!valid || retained >= ATLAS_CONFIG.snapshotRetentionCount) {
+      try {
+        rows = await readSnapshotRows(
+          read,
+          wid,
+          snapshotId,
+          true,
+          markerWriter,
+        );
+        catalogFromRows(marker, rows);
+        valid = true;
+      } catch (error) {
+        console.warn(
+          "[atlas] skipped invalid retention candidate",
+          snapshotId,
+          error,
+        );
+        if (
+          rows &&
+          retained >= ATLAS_CONFIG.snapshotRetentionCount &&
+          pruned < MAX_SNAPSHOTS_PRUNED_PER_SYNC
+        ) {
+          await deleteSnapshot(data, marker, rows, wid, markerWriter);
+          pruned += 1;
+        }
+        continue;
+      }
+    }
+    if (!valid) continue;
+
+    if (
+      sameText(snapshotId, currentSnapshotId) ||
+      retained < ATLAS_CONFIG.snapshotRetentionCount
+    ) {
+      retained += 1;
+      continue;
+    }
+    if (pruned >= MAX_SNAPSHOTS_PRUNED_PER_SYNC) break;
+    if (!rows) {
+      rows = await readSnapshotRows(
+        read,
+        wid,
+        snapshotId,
+        true,
+        markerWriter,
+      );
+      catalogFromRows(marker, rows);
+    }
+    await deleteSnapshot(data, marker, rows, wid, markerWriter);
+    pruned += 1;
+  }
+}
+
 function commentsFromRows(rows: Row[], wid: string): Comment[] {
   return rows
     .filter((row) => rowBelongsToWorkspace(row, wid))
@@ -970,17 +1305,22 @@ export async function loadFromDb(isPreview: boolean): Promise<AtlasData | null> 
     const read = readerFor(data);
     const [allCommentRows, workspaceRows] = await Promise.all([
       read("Comment", { workspace_id: { eq: wid } }),
-      read("Workspace", {
-        fabricId: { eq: wid },
-        writerEmail: { eq: ATLAS_CONFIG.syncAdminEmail },
-      }),
+      readTrustedWorkspaceMarkers(read, wid),
     ]);
     const comments = commentsFromRows(allCommentRows, wid);
 
     for (const marker of trustedMarkers(workspaceRows, wid)) {
       try {
         const snapshotId = String(marker.snapshotId);
-        const rows = await readSnapshotRows(read, wid, snapshotId, true);
+        const markerWriter = realText(marker.writerEmail);
+        if (!markerWriter) continue;
+        const rows = await readSnapshotRows(
+          read,
+          wid,
+          snapshotId,
+          true,
+          markerWriter,
+        );
         const catalog = catalogFromRows(marker, rows);
         return {
           ...catalog,
@@ -1005,6 +1345,40 @@ export async function loadFromDb(isPreview: boolean): Promise<AtlasData | null> 
   }
 }
 
+export async function loadHistoricalSnapshotFromDb(
+  isPreview: boolean,
+  snapshotId: string,
+): Promise<HistoricalSnapshot | undefined> {
+  if (isPreview || !snapshotId) return undefined;
+  const data = await dataApi();
+  const wid = workspaceId();
+  const read = readerFor(data);
+  const workspaceRows = await readTrustedWorkspaceMarkers(
+    read,
+    wid,
+    snapshotId,
+  );
+  const marker = trustedMarkers(workspaceRows, wid).find((candidate) =>
+    sameText(candidate.snapshotId, snapshotId),
+  );
+  if (!marker) return undefined;
+  const markerWriter = realText(marker.writerEmail);
+  if (!markerWriter) return undefined;
+  const rows = await readSnapshotRows(
+    read,
+    wid,
+    snapshotId,
+    false,
+    markerWriter,
+  );
+  const catalog = catalogFromRows(marker, rows);
+  return {
+    snapshotId,
+    syncedAt: catalog.workspace.syncedAt ?? String(marker.syncedAt ?? ""),
+    catalog,
+  };
+}
+
 /**
  * Build snapshot history from the validated current catalog and older trusted
  * manifests. Invalid older snapshots are skipped without affecting current data.
@@ -1012,7 +1386,7 @@ export async function loadFromDb(isPreview: boolean): Promise<AtlasData | null> 
 export async function loadHistoryFromDb(
   isPreview: boolean,
   currentData: AtlasData,
-  limit = 12,
+  limit = ATLAS_CONFIG.snapshotRetentionCount,
 ): Promise<AtlasHistory> {
   const cap = Math.max(0, Math.floor(limit));
   if (cap === 0) return buildAtlasHistory([]);
@@ -1032,16 +1406,17 @@ export async function loadHistoryFromDb(
   const data = await dataApi();
   const wid = workspaceId();
   const read = readerFor(data);
-  const workspaceRows = await read("Workspace", {
-    fabricId: { eq: wid },
-    writerEmail: { eq: ATLAS_CONFIG.syncAdminEmail },
-  });
+  const workspaceRows = await readTrustedWorkspaceMarkers(read, wid);
   const currentTime = Date.parse(current.syncedAt);
   const snapshots: HistoricalSnapshot[] = [current];
+  const summaries: SnapshotSummary[] = [];
+  let previousLoaded = false;
 
   for (const marker of trustedMarkers(workspaceRows, wid)) {
-    if (snapshots.length >= cap) break;
+    if (summaries.length >= cap - 1 && previousLoaded) break;
     const snapshotId = String(marker.snapshotId);
+    const markerWriter = realText(marker.writerEmail);
+    if (!markerWriter) continue;
     if (sameText(snapshotId, current.snapshotId)) continue;
     const markerTime = Date.parse(String(marker.syncedAt ?? ""));
     if (
@@ -1051,22 +1426,41 @@ export async function loadHistoryFromDb(
     ) {
       continue;
     }
-    try {
-      const rows = await readSnapshotRows(read, wid, snapshotId, false);
-      const catalog = catalogFromRows(marker, rows);
-      snapshots.push({
-        snapshotId,
-        syncedAt: catalog.workspace.syncedAt ?? String(marker.syncedAt ?? ""),
-        catalog,
-      });
-    } catch (error) {
-      console.warn(
-        "[atlas] ignored invalid historical snapshot",
-        snapshotId,
-        error,
-      );
+    const manifestSummary = snapshotSummaryFromManifest(marker);
+    let loaded: HistoricalSnapshot | undefined;
+    if (!manifestSummary || !previousLoaded) {
+      try {
+        const rows = await readSnapshotRows(
+          read,
+          wid,
+          snapshotId,
+          false,
+          markerWriter,
+        );
+        const catalog = catalogFromRows(marker, rows);
+        loaded = {
+          snapshotId,
+          syncedAt:
+            catalog.workspace.syncedAt ?? String(marker.syncedAt ?? ""),
+          catalog,
+        };
+      } catch (error) {
+        console.warn(
+          "[atlas] ignored invalid historical snapshot details",
+          snapshotId,
+          error,
+        );
+      }
+    }
+    if (summaries.length < cap - 1) {
+      if (manifestSummary) summaries.push(manifestSummary);
+      else if (loaded) summaries.push(summarizeSnapshot(loaded));
+    }
+    if (loaded && !previousLoaded) {
+      snapshots.push(loaded);
+      previousLoaded = true;
     }
   }
 
-  return buildAtlasHistory(snapshots);
+  return buildAtlasHistory(snapshots, summaries);
 }

@@ -7,6 +7,9 @@ import { SYNC_WRITER_EMAIL } from './sync-policy.js';
  */
 @entity()
 @authenticated('read')
+@authenticated('delete', {
+  policy: (claims) => claims.email.eq(SYNC_WRITER_EMAIL),
+})
 @authenticated('create', {
   policy: (claims, item) =>
     claims.email
@@ -30,5 +33,16 @@ export class Workspace {
   @int({ optional: true }) jobCount?: number;
   @int({ optional: true }) configCount?: number;
   @int({ optional: true }) schemaEntryCount?: number;
+  @int({ optional: true }) summaryVersion?: number;
+  @int({ optional: true }) healthyCount?: number;
+  @int({ optional: true }) staleCount?: number;
+  @int({ optional: true }) failingCount?: number;
+  @int({ optional: true }) labelCount?: number;
+  @int({ optional: true }) externalPrincipalCount?: number;
+  @int({ optional: true }) failedJobCount?: number;
+  @int({ optional: true }) brokenEdgeCount?: number;
+  @int({ optional: true }) tableCount?: number;
+  @int({ optional: true }) columnCount?: number;
+  @int({ optional: true }) measureCount?: number;
   @date({ optional: true }) syncedAt?: Date;
 }

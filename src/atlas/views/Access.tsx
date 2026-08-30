@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Check,
@@ -295,28 +295,6 @@ function FlagBadges({ row }: { row: AccessReviewRow }) {
   );
 }
 
-function ReviewRowButton({
-  row,
-  selected,
-  onSelect,
-}: {
-  row: AccessReviewRow;
-  selected: boolean;
-  onSelect: (row: AccessReviewRow) => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      aria-label={`Review ${row.principalRef} access to ${row.item.displayName}`}
-      onClick={() => onSelect(row)}
-      className="w-full rounded-md text-left hover:text-brand-foreground"
-    >
-      <PrincipalIdentity row={row} />
-    </button>
-  );
-}
-
 function MatrixTable({
   rows,
   selectedId,
@@ -326,95 +304,115 @@ function MatrixTable({
   selectedId: string | null;
   onSelect: (row: AccessReviewRow) => void;
 }) {
+  const rowRefs = useRef(new Map<string, HTMLDivElement>());
+  const [focusIndex, setFocusIndex] = useState(0);
   if (rows.length === 0) return <EmptyResults />;
+  const activeIndex = Math.min(focusIndex, rows.length - 1);
+  const focusRow = (index: number) => {
+    const nextIndex = Math.max(0, Math.min(rows.length - 1, index));
+    setFocusIndex(nextIndex);
+    rowRefs.current.get(rows[nextIndex].id)?.focus();
+  };
 
   return (
-    <>
-      <div className="hidden overflow-x-auto md:block">
-        <table className="w-full min-w-max border-collapse">
-          <thead className="bg-secondary/70">
-            <tr className="border-b border-border text-200 text-muted-foreground">
-              <th className="px-l py-m text-left font-semibold">Principal</th>
-              <th className="px-l py-m text-left font-semibold">Item</th>
-              <th className="px-l py-m text-left font-semibold">Effective</th>
-              <th className="px-l py-m text-left font-semibold">Origin</th>
-              <th className="px-l py-m text-left font-semibold">Flags</th>
-              <th className="px-l py-m text-right font-semibold">Grants</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const selected = row.id === selectedId;
-              return (
-                <tr
-                  key={row.id}
-                  data-state={selected ? "selected" : undefined}
-                  className="border-b border-border align-middle transition-colors last:border-b-0 hover:bg-accent/60 data-[state=selected]:bg-primary/10"
-                >
-                  <td className="min-w-xxxl px-l py-m">
-                    <ReviewRowButton
-                      row={row}
-                      selected={selected}
-                      onSelect={onSelect}
-                    />
-                  </td>
-                  <td className="min-w-xxxl px-l py-m">
-                    <ItemIdentity row={row} />
-                  </td>
-                  <td className="px-l py-m">
-                    <AccessBadge level={row.effectiveAccess} />
-                  </td>
-                  <td className="px-l py-m">
-                    <OriginBadge origin={row.origin} />
-                  </td>
-                  <td className="max-w-xxxl px-l py-m">
-                    <FlagBadges row={row} />
-                  </td>
-                  <td className="px-l py-m text-right font-numeric text-300 font-semibold tabular-nums">
-                    {row.applicableGrants.length}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+    <div role="listbox" aria-label="Access review matrix">
+      <div
+        aria-hidden="true"
+        className="hidden grid-cols-[minmax(190px,1.2fr)_minmax(190px,1.2fr)_auto_auto_minmax(150px,1fr)_70px] gap-m border-b border-border bg-secondary/70 px-l py-m text-200 font-semibold text-muted-foreground md:grid"
+      >
+        <span>Principal</span>
+        <span>Item</span>
+        <span>Effective</span>
+        <span>Origin</span>
+        <span>Flags</span>
+        <span className="text-right">Grants</span>
       </div>
-
-      <div className="divide-y divide-border md:hidden">
-        {rows.map((row) => {
+      <div className="divide-y divide-border">
+        {rows.map((row, index) => {
           const selected = row.id === selectedId;
+          const flags = rowFlags(row)
+            .map((flag) => FLAG_LABEL[flag])
+            .join(", ");
           return (
-            <button
+            <div
               key={row.id}
-              type="button"
-              aria-pressed={selected}
-              aria-label={`Review ${row.principalRef} access to ${row.item.displayName}`}
-              onClick={() => onSelect(row)}
+              ref={(element) => {
+                if (element) rowRefs.current.set(row.id, element);
+                else rowRefs.current.delete(row.id);
+              }}
+              role="option"
+              tabIndex={index === activeIndex ? 0 : -1}
+              aria-selected={selected}
+              aria-label={`Review ${row.principalRef} access to ${row.item.displayName}. Effective ${row.effectiveAccess}. Origin ${row.origin}. Flags ${flags || "none"}. ${row.applicableGrants.length} grants.`}
+              onFocus={() => setFocusIndex(index)}
+              onClick={() => {
+                setFocusIndex(index);
+                onSelect(row);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  focusRow(index + 1);
+                } else if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  focusRow(index - 1);
+                } else if (event.key === "Home") {
+                  event.preventDefault();
+                  focusRow(0);
+                } else if (event.key === "End") {
+                  event.preventDefault();
+                  focusRow(rows.length - 1);
+                } else if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelect(row);
+                }
+              }}
               className={cn(
-                "flex w-full flex-col gap-m p-l text-left transition-colors hover:bg-accent/60",
+                "atlas-windowed-block grid w-full cursor-pointer gap-m p-l text-left transition-colors hover:bg-accent/60 md:grid-cols-[minmax(190px,1.2fr)_minmax(190px,1.2fr)_auto_auto_minmax(150px,1fr)_70px] md:items-center",
                 selected && "bg-primary/10",
               )}
             >
-              <div className="flex w-full items-start justify-between gap-m">
+              <div>
+                <span className="mb-xs block text-100 font-semibold uppercase tracking-wide text-muted-foreground md:hidden">
+                  Principal
+                </span>
                 <PrincipalIdentity row={row} />
+              </div>
+              <div>
+                <span className="mb-xs block text-100 font-semibold uppercase tracking-wide text-muted-foreground md:hidden">
+                  Item
+                </span>
+                <ItemIdentity row={row} />
+              </div>
+              <div>
+                <span className="mb-xs block text-100 font-semibold uppercase tracking-wide text-muted-foreground md:hidden">
+                  Effective
+                </span>
                 <AccessBadge level={row.effectiveAccess} />
               </div>
-              <ItemIdentity row={row} />
-              <div className="flex w-full flex-wrap items-center justify-between gap-s">
-                <div className="flex flex-wrap items-center gap-s">
-                  <OriginBadge origin={row.origin} />
-                  <FlagBadges row={row} />
-                </div>
-                <span className="text-200 font-medium text-muted-foreground">
-                  {row.applicableGrants.length} contributing{" "}
-                  {row.applicableGrants.length === 1 ? "grant" : "grants"}
+              <div>
+                <span className="mb-xs block text-100 font-semibold uppercase tracking-wide text-muted-foreground md:hidden">
+                  Origin
                 </span>
+                <OriginBadge origin={row.origin} />
               </div>
-            </button>
+              <div>
+                <span className="mb-xs block text-100 font-semibold uppercase tracking-wide text-muted-foreground md:hidden">
+                  Flags
+                </span>
+                <FlagBadges row={row} />
+              </div>
+              <div className="text-left font-numeric text-300 font-semibold tabular-nums md:text-right">
+                <span className="mr-s text-100 font-semibold uppercase tracking-wide text-muted-foreground md:hidden">
+                  Grants
+                </span>
+                {row.applicableGrants.length}
+              </div>
+            </div>
           );
         })}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -476,7 +474,7 @@ function PrincipalGroups({
         );
         const regionId = `principal-access-group-${index}`;
         return (
-          <section key={principalKey}>
+          <section key={principalKey} className="atlas-windowed-group">
             <button
               type="button"
               aria-expanded={isExpanded}

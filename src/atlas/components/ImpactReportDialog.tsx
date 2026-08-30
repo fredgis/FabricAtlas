@@ -14,6 +14,8 @@ import { useMemo, useRef, useState } from "react";
 import {
   buildItemImpactReport,
   buildSchemaObjectImpactReport,
+  type ItemImpactReport,
+  type SchemaObjectImpactReport,
   type SchemaObjectRef,
 } from "../lineage";
 import type { AtlasData } from "../model";
@@ -31,12 +33,9 @@ function safeFileName(value: string): string {
 
 function reportMarkdown(
   data: AtlasData,
-  itemId: string,
+  report: ItemImpactReport | SchemaObjectImpactReport,
   object?: SchemaObjectRef,
 ): string {
-  const report = object
-    ? buildSchemaObjectImpactReport(data, object)
-    : buildItemImpactReport(data, itemId);
   const itemName = report.item?.displayName ?? report.itemId;
   const title = object
     ? `${object.kind}: ${object.name} (${itemName})`
@@ -138,8 +137,8 @@ function ImpactReportContent({
   const subject =
     object?.name ?? report.item?.displayName ?? report.itemId ?? "Impact report";
   const markdown = useMemo(
-    () => reportMarkdown(data, itemId, object),
-    [data, itemId, object],
+    () => reportMarkdown(data, report, object),
+    [data, object, report],
   );
 
   const copy = async () => {

@@ -53,6 +53,8 @@ Fabric Atlas collects that metadata without copying business data.
 | Header synchronization | Reuses the same progress model for later refreshes without leaving the current page |
 | Immutable snapshots | Writes catalog rows first and publishes the workspace manifest only after every write succeeds |
 | Last-known-good fallback | Ignores incomplete snapshots and loads the newest valid workspace state |
+| Trusted snapshot retention | Keeps 2–50 validated snapshots, supports explicit writer rotation and removes stale rows only after a new manifest is published |
+| Lightweight history | Stores versioned trend summaries in manifests and loads detailed comparisons only when selected |
 | Versioned sync contract | Records required, optional and metadata-capability status for every synchronized snapshot |
 | Bounded UDF execution | Applies one deadline, bounded retries and payload limits below Fabric's public endpoint ceilings |
 | Accessible sync feedback | Announces stages and errors, while reduced-motion preferences disable repeating motion |
@@ -71,6 +73,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Change Center | Compares any two validated snapshots across items, schema, access, sensitivity, lineage and jobs |
 | Shareable comparisons | Preserves both selected snapshots, section and filters in the URL |
 | Governance history | Tracks items, labels, external principals, failures, lineage and schema inventory over time |
+| Lazy Change Center evidence | Keeps the ledger immediate and hydrates older detailed catalogs only for the selected comparison |
 | Metadata coverage | Separates collected gaps from metadata that Fabric did not expose, using explicit `N/A` states |
 | Sensitivity posture | Groups protected and unlabeled items and surfaces confidential assets |
 | Saved governance views | Persists personal filters such as metadata gaps, external access or failed operations |
@@ -98,6 +101,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Item lineage | Places Fabric items in lifecycle stages from orchestration to consumption |
 | Object mode | Expands synchronized tables, columns and measures without claiming unsupported field bindings |
 | Impact tracing | Highlights upstream and downstream paths without moving the selected node |
+| Indexed graph engine | Reuses adjacency indexes for traversal, impact, connected groups and staged layout |
 | Accessible relationships | Exposes item and object edges as text and distinguishes upstream paths with a dashed pattern |
 | Multi-selection | Moves several selected item or object nodes together |
 | Layout controls | Provides zoom, fit, reset, filters, minimap and persistent deep links |
@@ -113,6 +117,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Additive effective access | Combines workspace and item grants so a direct share never reduces inherited access |
 | Stable principal identity | Uses Fabric principal IDs and safely correlates legacy name or email references across snapshots |
 | Access Review matrix | Reviews every reachable principal and item pair with permission, source and evidence |
+| Responsive access ledger | Uses one keyboard-navigable representation across mobile and desktop without hidden duplicate rows |
 | Principal review | Groups all reachable items under collapsible principal sections |
 | Review decisions | Persists Reviewed, Accepted or Needs action status with an optional personal note |
 | CSV export | Downloads the currently filtered access evidence |
@@ -126,7 +131,9 @@ Fabric Atlas collects that metadata without copying business data.
 | Functionality | What it provides |
 |---|---|
 | Jobs and health | Groups refresh, pipeline and notebook activity with status, duration and errors |
+| Responsive job timeline | Shows compact mobile cards and an aligned desktop grid without horizontal table scrolling |
 | Job filters | Searches run history, isolates failures and saves recurring operational views |
+| Active filter chips | Removes search, status, focused item or focused run constraints independently |
 | Workspace Hub | Keeps synchronized configuration and shared team notes in one grouped interface |
 | Item notes | Attaches persistent context to the workspace or a specific Fabric item |
 | Sync audit | Records who synchronized the workspace, when it ran and how much metadata was indexed |
@@ -146,6 +153,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Light and dark themes | Uses a Fabric-aligned light mode by default with an optional persistent dark mode |
 | Responsive navigation | Keeps grouped Explore, Govern, Operate and System sections usable on smaller screens |
 | Keyboard-first controls | Adds managed dialogs, focus restoration, skip navigation and Arrow/Home/End tab navigation |
+| Large-list containment | Lets Chromium skip off-screen rendering work for dense Access, Asset Catalog and Jobs blocks |
 
 </details>
 
@@ -313,6 +321,9 @@ RAYFIN_PUBLIC_ATLAS_SPA_CLIENT_ID=<entra-client-id>
 RAYFIN_PUBLIC_ATLAS_UDF_URL=https://<host>/functions/sync_all/invoke
 RAYFIN_PUBLIC_ATLAS_WORKSPACE_NAME=<workspace-display-name>
 RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_EMAIL=<authorized-sync-user>
+RAYFIN_PUBLIC_ATLAS_SNAPSHOT_RETENTION_COUNT=12
+# Optional during synchronizer rotation:
+RAYFIN_PUBLIC_ATLAS_PREVIOUS_SYNC_WRITERS=<former-user@example.com>
 ```
 
 Run `npx rayfin up` again. The app opens on a guided synchronization screen.

@@ -32,7 +32,7 @@ describe("AccessView", () => {
       screen.getAllByLabelText(
         /Review ext-partner@vendor\.com access to AlpineRent Executive Dashboard/,
       ),
-    ).not.toHaveLength(0);
+    ).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
     expect(
@@ -42,12 +42,22 @@ describe("AccessView", () => {
     ).toBeInTheDocument();
   });
 
+  it("moves keyboard focus through the single responsive matrix", () => {
+    renderAccess();
+    const rows = screen.getAllByLabelText(/Review .+ access to .+/);
+    rows[0].focus();
+    fireEvent.keyDown(rows[0], { key: "ArrowDown" });
+    expect(rows[1]).toHaveFocus();
+    fireEvent.keyDown(rows[1], { key: "End" });
+    expect(rows.at(-1)).toHaveFocus();
+  });
+
   it("shows additive grants and identifies the grants that determine access", () => {
     renderAccess();
 
     fireEvent.click(
       screen.getAllByLabelText(
-        "Review System Administrator access to AlpineRent Executive Dashboard",
+        /Review System Administrator access to AlpineRent Executive Dashboard/,
       )[0],
     );
 
@@ -136,7 +146,7 @@ describe("AccessView", () => {
     );
     fireEvent.click(
       screen.getAllByLabelText(
-        "Review System Administrator access to AlpineRent Executive Dashboard",
+        /Review System Administrator access to AlpineRent Executive Dashboard/,
       )[0],
     );
 
@@ -170,7 +180,7 @@ describe("AccessView", () => {
 
     fireEvent.click(
       screen.getAllByLabelText(
-        "Review System Administrator access to AlpineRent Executive Dashboard",
+        /Review System Administrator access to AlpineRent Executive Dashboard/,
       )[0],
     );
     expect(screen.getByText("Not reviewed yet")).toBeInTheDocument();

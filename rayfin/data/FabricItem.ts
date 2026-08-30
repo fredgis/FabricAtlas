@@ -11,6 +11,9 @@ export type Endorsement = 'none' | 'promoted' | 'certified';
  */
 @entity()
 @authenticated('read')
+@authenticated('delete', {
+  policy: (claims) => claims.email.eq(SYNC_WRITER_EMAIL),
+})
 @authenticated('create', {
   policy: (claims, item) =>
     claims.email

@@ -9,6 +9,29 @@
 // Fabric portal. New deployments provide it through a public Rayfin env var;
 // the localStorage fallback keeps older configured installations working.
 
+function boundedInteger(
+  value: string | undefined,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed)
+    ? Math.min(maximum, Math.max(minimum, parsed))
+    : fallback;
+}
+
+function emailList(value: string | undefined): string[] {
+  return [
+    ...new Set(
+      (value ?? "")
+        .split(",")
+        .map((email) => email.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
+}
+
 export const ATLAS_CONFIG = {
   clientId:
     (import.meta.env.VITE_RAYFIN_ATLAS_SPA_CLIENT_ID as string) ||
@@ -24,6 +47,15 @@ export const ATLAS_CONFIG = {
     "Microsoft Fabric workspace",
   syncAdminEmail:
     (import.meta.env.VITE_RAYFIN_ATLAS_SYNC_ADMIN_EMAIL as string) || "",
+  snapshotRetentionCount: boundedInteger(
+    import.meta.env.VITE_RAYFIN_ATLAS_SNAPSHOT_RETENTION_COUNT,
+    12,
+    2,
+    50,
+  ),
+  previousSyncWriters: emailList(
+    import.meta.env.VITE_RAYFIN_ATLAS_PREVIOUS_SYNC_WRITERS,
+  ),
   // A Power BI-audience token both invokes the UDF (UserDataFunction.Execute.All)
   // and is forwarded to Fabric REST inside the function.
   scope: "https://analysis.windows.net/powerbi/api/.default",

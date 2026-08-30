@@ -9,6 +9,9 @@ export type JobStatus = 'completed' | 'failed' | 'running' | 'cancelled';
  */
 @entity()
 @authenticated('read')
+@authenticated('delete', {
+  policy: (claims) => claims.email.eq(SYNC_WRITER_EMAIL),
+})
 @authenticated('create', {
   policy: (claims, item) =>
     claims.email

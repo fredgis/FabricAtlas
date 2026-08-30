@@ -796,6 +796,7 @@ export function snapshotFromData(
 
 export function buildAtlasHistory(
   input: readonly HistoricalSnapshot[],
+  summaryInput: readonly SnapshotSummary[] = [],
 ): AtlasHistory {
   const snapshots = [
     ...new Map(
@@ -810,7 +811,22 @@ export function buildAtlasHistory(
         .map((snapshot) => [snapshot.snapshotId, snapshot]),
     ).values(),
   ];
-  const summaries = snapshots.map(summarizeSnapshot);
+  const summaries = [
+    ...new Map(
+      [
+        ...summaryInput,
+        ...snapshots.map(summarizeSnapshot),
+      ]
+        .filter((summary) => !!summary.snapshotId)
+        .sort(
+          (left, right) =>
+            Date.parse(right.syncedAt || "1970-01-01") -
+              Date.parse(left.syncedAt || "1970-01-01") ||
+            right.snapshotId.localeCompare(left.snapshotId),
+        )
+        .map((summary) => [summary.snapshotId, summary]),
+    ).values(),
+  ];
   const trend = [...summaries].reverse();
   const changes: AtlasChange[] = [];
   for (let index = 0; index + 1 < snapshots.length; index += 1) {

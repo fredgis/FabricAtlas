@@ -12,6 +12,7 @@ import { SAMPLE_DATA, type AtlasData, type Comment } from "./model";
 import {
   loadFromDb,
   loadHistoryFromDb,
+  loadHistoricalSnapshotFromDb,
   persistComment,
   runFabricSync,
 } from "./backend";
@@ -65,6 +66,7 @@ export interface AtlasContextValue {
     filters: SavedViewFilters;
   }) => Promise<void>;
   removeSavedView: (id: string) => Promise<void>;
+  loadHistorySnapshot: (snapshotId: string) => Promise<void>;
 }
 
 const AtlasContext = createContext<AtlasContextValue | null>(null);
@@ -138,10 +140,17 @@ export function AtlasProvider({
   const progressResetTimer = useRef<number | undefined>(undefined);
   const operationGeneration = useRef(0);
   const dataRef = useRef(data);
+  const historyRef = useRef(history);
+  const historyLoadCount = useRef(0);
+  const historyLoads = useRef(new Set<string>());
 
   useEffect(() => {
     dataRef.current = data;
   }, [data]);
+
+  useEffect(() => {
+    historyRef.current = history;
+  }, [history]);
 
   useEffect(
     () => () => {
@@ -241,6 +250,8 @@ export function AtlasProvider({
     }
     const generation = operationGeneration.current + 1;
     operationGeneration.current = generation;
+    historyLoads.current.clear();
+    historyLoadCount.current = 0;
     if (progressResetTimer.current != null) {
       window.clearTimeout(progressResetTimer.current);
     }
@@ -414,6 +425,53 @@ export function AtlasProvider({
     [isPreview],
   );
 
+  const loadHistorySnapshot = useCallback(
+    async (snapshotId: string) => {
+      if (
+        !snapshotId ||
+        historyRef.current.snapshots.some(
+          (snapshot) => snapshot.snapshotId === snapshotId,
+        ) ||
+        historyLoads.current.has(snapshotId)
+      ) {
+        return;
+      }
+      historyLoads.current.add(snapshotId);
+      historyLoadCount.current += 1;
+      const generation = operationGeneration.current;
+      setHistoryLoading(true);
+      setHistoryError(undefined);
+      try {
+        const snapshot = await loadHistoricalSnapshotFromDb(
+          isPreview,
+          snapshotId,
+        );
+        if (generation !== operationGeneration.current) return;
+        if (!snapshot) {
+          throw new Error("The selected snapshot is no longer available.");
+        }
+        setHistory((previous) =>
+          buildAtlasHistory(
+            [...previous.snapshots, snapshot],
+            previous.summaries,
+          ),
+        );
+      } catch (error) {
+        if (generation !== operationGeneration.current) return;
+        setHistoryError(
+          error instanceof Error ? error.message : String(error),
+        );
+      } finally {
+        if (generation === operationGeneration.current) {
+          historyLoads.current.delete(snapshotId);
+          historyLoadCount.current -= 1;
+          if (historyLoadCount.current === 0) setHistoryLoading(false);
+        }
+      }
+    },
+    [isPreview],
+  );
+
   const hasData = data.items.length > 0 || !!data.workspace.snapshotId;
 
   const value = useMemo<AtlasContextValue>(
@@ -441,8 +499,9 @@ export function AtlasProvider({
       addComment,
       addSavedView,
       removeSavedView,
+      loadHistorySnapshot,
     }),
-    [data, history, hydrating, historyLoading, historyError, savedViews, savedViewsLoading, savedViewsError, syncing, syncProgress, syncStage, lastSyncedAt, isPreview, configured, canSync, hasData, requiresDeploymentSync, syncError, currentUser, sync, addComment, addSavedView, removeSavedView],
+    [data, history, hydrating, historyLoading, historyError, savedViews, savedViewsLoading, savedViewsError, syncing, syncProgress, syncStage, lastSyncedAt, isPreview, configured, canSync, hasData, requiresDeploymentSync, syncError, currentUser, sync, addComment, addSavedView, removeSavedView, loadHistorySnapshot],
   );
 
   return <AtlasContext.Provider value={value}>{children}</AtlasContext.Provider>;

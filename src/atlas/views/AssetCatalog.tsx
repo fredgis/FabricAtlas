@@ -556,7 +556,7 @@ export function AssetCatalogView({
                 return (
                   <article
                     key={itemId}
-                    className="overflow-hidden rounded-xl border border-border bg-card"
+                    className="atlas-windowed-group overflow-hidden rounded-xl border border-border bg-card"
                   >
                     <button
                       type="button"

@@ -27,6 +27,10 @@ interface ImportMetaEnv {
   readonly VITE_RAYFIN_ATLAS_WORKSPACE_NAME?: string;
   /** Rayfin-mapped email allowed to publish synchronized snapshots. */
   readonly VITE_RAYFIN_ATLAS_SYNC_ADMIN_EMAIL?: string;
+  /** Number of trusted workspace snapshots retained after synchronization. */
+  readonly VITE_RAYFIN_ATLAS_SNAPSHOT_RETENTION_COUNT?: string;
+  /** Comma-separated former synchronizers trusted during writer rotation. */
+  readonly VITE_RAYFIN_ATLAS_PREVIOUS_SYNC_WRITERS?: string;
   /** Legacy local override for the Atlas Entra application client ID. */
   readonly VITE_ATLAS_SPA_CLIENT_ID?: string;
   /** Legacy local override for the Atlas sync_all UDF invoke URL. */

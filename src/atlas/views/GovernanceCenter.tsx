@@ -18,6 +18,7 @@ import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import { SavedViewsMenu } from "../components/SavedViewsMenu";
 import { TrendChart } from "../components/TrendChart";
+import { ATLAS_CONFIG } from "../config";
 import {
   buildGovernanceFindings,
   getCoverageDiagnostics,
@@ -218,6 +219,7 @@ export function GovernanceCenterView({
     savedViewsError,
     addSavedView,
     removeSavedView,
+    loadHistorySnapshot,
   } = useAtlas();
   const initialSection =
     focus?.governanceSection ??
@@ -269,18 +271,18 @@ export function GovernanceCenterView({
   );
 
   const availableSnapshotIds = new Set(
-    history.snapshots.map((snapshot) => snapshot.snapshotId),
+    history.summaries.map((snapshot) => snapshot.snapshotId),
   );
   const effectiveCurrentSnapshotId =
     currentSnapshotId && availableSnapshotIds.has(currentSnapshotId)
       ? currentSnapshotId
-      : history.snapshots[0]?.snapshotId ?? "";
+      : history.summaries[0]?.snapshotId ?? "";
   const effectivePreviousSnapshotId =
     previousSnapshotId &&
     availableSnapshotIds.has(previousSnapshotId) &&
     previousSnapshotId !== effectiveCurrentSnapshotId
       ? previousSnapshotId
-      : history.snapshots.find(
+      : history.summaries.find(
           (snapshot) =>
             snapshot.snapshotId !== effectiveCurrentSnapshotId,
         )?.snapshotId ?? "";
@@ -306,6 +308,34 @@ export function GovernanceCenterView({
   const selectedPrevious = history.snapshots.find(
     (snapshot) => snapshot.snapshotId === effectivePreviousSnapshotId,
   );
+  const comparisonLoading =
+    section === "changes" &&
+    !historyError &&
+    Boolean(effectiveCurrentSnapshotId && effectivePreviousSnapshotId) &&
+    (!selectedCurrent || !selectedPrevious);
+
+  useEffect(() => {
+    if (section !== "changes") return;
+    const missing = [
+      effectiveCurrentSnapshotId,
+      effectivePreviousSnapshotId,
+    ].filter(
+      (snapshotId) =>
+        snapshotId &&
+        !history.snapshots.some(
+          (snapshot) => snapshot.snapshotId === snapshotId,
+        ),
+    );
+    for (const snapshotId of missing) {
+      void loadHistorySnapshot(snapshotId);
+    }
+  }, [
+    effectiveCurrentSnapshotId,
+    effectivePreviousSnapshotId,
+    history.snapshots,
+    loadHistorySnapshot,
+    section,
+  ]);
   const snapshotChanges = useMemo(() => {
     if (!selectedCurrent || !selectedPrevious) return [];
     const newer =
@@ -373,7 +403,7 @@ export function GovernanceCenterView({
       id: "history",
       label: "History",
       detail: "Governance trends over time",
-      count: history.snapshots.length,
+      count: history.summaries.length,
       icon: History,
     },
     {
@@ -530,7 +560,7 @@ export function GovernanceCenterView({
               {
                 label: "Latest changes",
                 value: currentChanges,
-                detail: history.snapshots.length > 1 ? "Since previous sync" : "Needs two snapshots",
+                detail: history.summaries.length > 1 ? "Since previous sync" : "Needs two snapshots",
               },
               {
                 label: "Coverage",
@@ -539,7 +569,7 @@ export function GovernanceCenterView({
               },
               {
                 label: "History",
-                value: history.snapshots.length,
+                value: history.summaries.length,
                 detail: "Validated snapshots",
               },
             ].map((metric) => (
@@ -663,7 +693,7 @@ export function GovernanceCenterView({
             previousSnapshotId={effectivePreviousSnapshotId}
             search={changeSearch}
             domain={changeDomain}
-            loading={historyLoading}
+            loading={historyLoading || comparisonLoading}
             onCurrentSnapshot={setCurrentSnapshotId}
             onPreviousSnapshot={setPreviousSnapshotId}
             onSearch={setChangeSearch}
@@ -1160,7 +1190,7 @@ function HistorySection({
         <div className="border-b border-border bg-secondary/55 px-l py-m">
           <h2 className="text-400 font-semibold">Snapshot ledger</h2>
           <p className="text-200 text-muted-foreground">
-            Newest validated snapshots first
+            Newest first · up to {ATLAS_CONFIG.snapshotRetentionCount} retained
           </p>
         </div>
         <div className="max-h-[520px] divide-y divide-border overflow-y-auto">

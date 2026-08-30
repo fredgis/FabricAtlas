@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildStagedLayout,
+  createLineageIndex,
   getLineageImpact,
   getItemImpactReport,
   getSchemaObjectImpactReport,
@@ -40,6 +41,25 @@ describe("getLineageImpact", () => {
 
     expect(impact.downstream.ids.has("report-a")).toBe(true);
     expect(impact.downstream.ids.has("model")).toBe(false);
+  });
+
+  it("traverses a supplied index without scanning unrelated entries", () => {
+    const unrelated = Array.from({ length: 1_000 }, (_, index) => ({
+      source: `unrelated-${index}`,
+      target: `unrelated-${index + 1}`,
+      relation: "unrelated",
+    }));
+    const index = createLineageIndex([...edges, ...unrelated]);
+    Object.defineProperty(index, "entries", {
+      get() {
+        throw new Error("global edge entries should not be scanned");
+      },
+    });
+
+    const impact = getLineageImpact(index, "model");
+
+    expect([...impact.upstream.ids]).toEqual(["lakehouse", "pipeline"]);
+    expect([...impact.downstream.ids]).toEqual(["report-a", "report-b"]);
   });
 });
 

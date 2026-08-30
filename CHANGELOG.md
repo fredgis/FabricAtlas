@@ -4,6 +4,37 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-08-30
+
+### Added
+
+- Configurable trusted snapshot retention, defaulting to 12 and bounded between 2 and 50.
+- Versioned governance summaries in Workspace manifests for fast trend and ledger loading.
+- Lazy loading and caching of historical catalogs selected in Change Center.
+- Browser-native render containment for large Access, Asset Catalog and Jobs collections.
+
+### Changed
+
+- Lineage traversal, impact reports, connected components and staged layout now share adjacency indexes instead of repeatedly scanning every edge.
+- Map selection reuses the same lineage index and avoids rebuilding the default layout when the visible graph has not changed.
+- Access Review uses one responsive selectable list instead of mounting separate desktop and mobile copies.
+- Jobs history uses one responsive timeline: compact cards on mobile and a dense aligned grid on desktop.
+- Active job filters are individually visible and removable.
+
+### Security
+
+- Only the configured synchronizer can delete synchronized snapshot entities.
+- Retention runs only after the new Workspace manifest is published, scopes every read and deletion by workspace, snapshot and writer, and deletes each stale manifest last.
+- Synchronizer rotation can explicitly trust former writer emails so their validated history remains readable and eligible for retention cleanup.
+- Partial cleanup retries are idempotent; a cleanup failure never changes a successful synchronization into a failed one.
+
+### Fixed
+
+- Historical lazy loads are discarded when a newer synchronization generation starts.
+- Retention and visible history use the same configured snapshot count.
+- Access rows retain complete programmatic labels and listbox keyboard navigation.
+- Job fields retain programmatic Status, Item, Job, Started, Duration and Detail labels at every breakpoint.
+
 ## [1.7.0] - 2026-08-30
 
 ### Added
@@ -217,6 +248,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
+[1.8.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.8.0
 [1.7.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.7.0
 [1.6.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.6.1
 [1.6.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.6.0

@@ -15,7 +15,7 @@ export const REPOSITORY_URL =
   "https://github.com/fredgis/FabricAtlas";
 
 export const APP_VERSION =
-  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.7.0";
+  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.8.0";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -27,6 +27,29 @@ export const BUILD_DATE =
 export const DEPLOYMENT_ID = `${APP_VERSION}:${BUILD_COMMIT}:${BUILD_DATE}`;
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "1.8.0",
+    date: "2026-08-30",
+    title: "Faster history, lineage and responsive operations",
+    sections: [
+      {
+        title: "Scale & reliability",
+        items: [
+          "Trusted snapshot retention keeps a configurable history window and retries partial cleanup safely.",
+          "Manifest summaries load governance trends immediately while detailed comparisons hydrate only when selected.",
+          "Lineage traversal and layout reuse adjacency indexes instead of rescanning the complete graph.",
+        ],
+      },
+      {
+        title: "Responsive experience",
+        items: [
+          "Access Review renders one keyboard-navigable responsive ledger instead of duplicate desktop and mobile trees.",
+          "Jobs history becomes a mobile timeline and an aligned desktop grid from the same semantic content.",
+          "Large grouped collections use Chromium render containment and active job filters become individually removable.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.7.0",
     date: "2026-08-30",

@@ -8,6 +8,7 @@ import { AtlasProvider, useAtlas } from "./store";
 const backend = vi.hoisted(() => ({
   loadFromDb: vi.fn(),
   loadHistoryFromDb: vi.fn(),
+  loadHistoricalSnapshotFromDb: vi.fn(),
   persistComment: vi.fn(),
   runFabricSync: vi.fn(),
 }));
@@ -31,6 +32,12 @@ function Harness() {
     <div>
       <button type="button" onClick={() => void atlas.sync()}>
         Sync
+      </button>
+      <button
+        type="button"
+        onClick={() => void atlas.loadHistorySnapshot("older-snapshot")}
+      >
+        Load older snapshot
       </button>
       <span data-testid="hydrating">{String(atlas.hydrating)}</span>
       <span data-testid="history-loading">{String(atlas.historyLoading)}</span>
@@ -56,8 +63,10 @@ describe("AtlasProvider synchronization", () => {
   beforeEach(() => {
     localStorage.clear();
     ATLAS_CONFIG.syncAdminEmail = currentUser.email;
+    ATLAS_CONFIG.previousSyncWriters = [];
     backend.loadFromDb.mockReset();
     backend.loadHistoryFromDb.mockReset();
+    backend.loadHistoricalSnapshotFromDb.mockReset();
     backend.persistComment.mockReset();
     backend.runFabricSync.mockReset();
     backend.loadFromDb.mockResolvedValue(null);
@@ -243,6 +252,46 @@ describe("AtlasProvider synchronization", () => {
       ),
     );
     expect(screen.getByTestId("history-loading")).toHaveTextContent("false");
+  });
+
+  it("lazily loads a selected historical catalog once", async () => {
+    const older = structuredClone(SAMPLE_DATA);
+    older.workspace.snapshotId = "older-snapshot";
+    older.workspace.syncedAt = "2026-08-28T20:00:00.000Z";
+    backend.loadHistoricalSnapshotFromDb.mockResolvedValue(
+      snapshotFromData(
+        older,
+        older.workspace.snapshotId,
+        older.workspace.syncedAt,
+      ),
+    );
+
+    render(
+      <AtlasProvider isPreview={false} currentUser={currentUser}>
+        <Harness />
+      </AtlasProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("hydrating")).toHaveTextContent("false"),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Load older snapshot" }),
+    );
+    await waitFor(() =>
+      expect(backend.loadHistoricalSnapshotFromDb).toHaveBeenCalledWith(
+        false,
+        "older-snapshot",
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("history-count")).toHaveTextContent("1"),
+    );
+    expect(backend.loadHistoricalSnapshotFromDb).toHaveBeenCalledTimes(1);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Load older snapshot" }),
+    );
+    expect(backend.loadHistoricalSnapshotFromDb).toHaveBeenCalledTimes(1);
   });
 
   it("refreshes history after sync and keeps a history failure separate from sync", async () => {

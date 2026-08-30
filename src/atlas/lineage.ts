@@ -19,6 +19,21 @@ export interface LineageImpact {
   downstream: LineagePath;
 }
 
+export interface IndexedLineageEdge {
+  edge: Edge;
+  key: string;
+  ordinal: number;
+}
+
+export interface LineageIndex {
+  entries: IndexedLineageEdge[];
+  incoming: Map<string, IndexedLineageEdge[]>;
+  outgoing: Map<string, IndexedLineageEdge[]>;
+  incident: Map<string, Array<{ entry: IndexedLineageEdge; neighborId: string }>>;
+  neighbors: Map<string, Set<string>>;
+  incidentIds: Set<string>;
+}
+
 export interface LineageImpactItem {
   id: string;
   distance: number;
@@ -107,8 +122,56 @@ export function lineageEdgeKey(edge: Edge): string {
   return `${edge.source}\u0000${edge.target}\u0000${edge.relation}`;
 }
 
+export function createLineageIndex(edges: Edge[]): LineageIndex {
+  const incoming = new Map<string, IndexedLineageEdge[]>();
+  const outgoing = new Map<string, IndexedLineageEdge[]>();
+  const incident = new Map<
+    string,
+    Array<{ entry: IndexedLineageEdge; neighborId: string }>
+  >();
+  const neighbors = new Map<string, Set<string>>();
+  const incidentIds = new Set<string>();
+  const entries = edges.map((edge, ordinal) => ({
+    edge,
+    key: lineageEdgeKey(edge),
+    ordinal,
+  }));
+
+  const append = <T,>(map: Map<string, T[]>, key: string, value: T) => {
+    const values = map.get(key) ?? [];
+    values.push(value);
+    map.set(key, values);
+  };
+  const connect = (source: string, target: string) => {
+    const values = neighbors.get(source) ?? new Set<string>();
+    values.add(target);
+    neighbors.set(source, values);
+  };
+
+  for (const entry of entries) {
+    const { source, target } = entry.edge;
+    append(outgoing, source, entry);
+    append(incoming, target, entry);
+    append(incident, source, { entry, neighborId: target });
+    append(incident, target, { entry, neighborId: source });
+    connect(source, target);
+    connect(target, source);
+    incidentIds.add(source);
+    incidentIds.add(target);
+  }
+
+  return {
+    entries,
+    incoming,
+    outgoing,
+    incident,
+    neighbors,
+    incidentIds,
+  };
+}
+
 function walkLineage(
-  edges: Edge[],
+  index: LineageIndex,
   startId: string,
   direction: LineageDirection,
   maxDepth: number,
@@ -118,20 +181,22 @@ function walkLineage(
   const distance = new Map<string, number>();
   const queue: Array<{ id: string; depth: number }> = [{ id: startId, depth: 0 }];
   const visited = new Set<string>([startId]);
+  let head = 0;
 
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (!current || current.depth >= maxDepth) continue;
+  while (head < queue.length) {
+    const current = queue[head++];
+    if (current.depth >= maxDepth) continue;
 
-    for (const edge of edges) {
-      const matches =
-        direction === "upstream" ? edge.target === current.id : edge.source === current.id;
-      if (!matches) continue;
-
-      const nextId = direction === "upstream" ? edge.source : edge.target;
+    const entries =
+      direction === "upstream"
+        ? index.incoming.get(current.id) ?? []
+        : index.outgoing.get(current.id) ?? [];
+    for (const entry of entries) {
+      const nextId =
+        direction === "upstream" ? entry.edge.source : entry.edge.target;
       if (nextId === startId) continue;
 
-      edgeKeys.add(lineageEdgeKey(edge));
+      edgeKeys.add(entry.key);
       ids.add(nextId);
 
       const nextDepth = current.depth + 1;
@@ -149,7 +214,7 @@ function walkLineage(
 }
 
 export function getLineageImpact(
-  edges: Edge[],
+  edgesOrIndex: Edge[] | LineageIndex,
   startId: string,
   maxDepth = Number.POSITIVE_INFINITY,
 ): LineageImpact {
@@ -168,10 +233,13 @@ export function getLineageImpact(
       : maxDepth === Number.POSITIVE_INFINITY
         ? maxDepth
         : 0;
+  const index = Array.isArray(edgesOrIndex)
+    ? createLineageIndex(edgesOrIndex)
+    : edgesOrIndex;
 
   return {
-    upstream: walkLineage(edges, startId, "upstream", depth),
-    downstream: walkLineage(edges, startId, "downstream", depth),
+    upstream: walkLineage(index, startId, "upstream", depth),
+    downstream: walkLineage(index, startId, "downstream", depth),
   };
 }
 
@@ -225,17 +293,17 @@ export function getItemImpactReport(
         itemId: itemIdOrEdges as string,
         maxDepth: maxDepthOrItemId as number | undefined,
       };
-  const impact = getLineageImpact(data.edges, data.itemId, data.maxDepth);
+  const index = createLineageIndex(data.edges);
+  const impact = getLineageImpact(index, data.itemId, data.maxDepth);
   const itemById = new Map(data.items.map((item) => [item.fabricId, item]));
   const relevantKeys = new Set([
     ...impact.upstream.edgeKeys,
     ...impact.downstream.edgeKeys,
   ]);
-  const relevantEdges = data.edges
-    .filter((edge) => relevantKeys.has(lineageEdgeKey(edge)))
-    .sort((left, right) =>
-      compareText(lineageEdgeKey(left), lineageEdgeKey(right)),
-    );
+  const relevantEdges = index.entries
+    .filter((entry) => relevantKeys.has(entry.key))
+    .sort((left, right) => compareText(left.key, right.key))
+    .map((entry) => entry.edge);
   const unresolvedEndpointIds = [
     ...new Set(
       relevantEdges
@@ -377,15 +445,7 @@ export function normalizeLineageEdges(items: Item[], edges: Edge[]): Edge[] {
   return normalized;
 }
 
-function connectedComponents(items: Item[], edges: Edge[]): string[][] {
-  const neighbors = new Map<string, Set<string>>(
-    items.map((item) => [item.fabricId, new Set<string>()]),
-  );
-  for (const edge of edges) {
-    neighbors.get(edge.source)?.add(edge.target);
-    neighbors.get(edge.target)?.add(edge.source);
-  }
-
+function connectedComponents(items: Item[], index: LineageIndex): string[][] {
   const components: string[][] = [];
   const visited = new Set<string>();
   for (const item of items) {
@@ -393,11 +453,11 @@ function connectedComponents(items: Item[], edges: Edge[]): string[][] {
     const ids: string[] = [];
     const queue = [item.fabricId];
     visited.add(item.fabricId);
-    while (queue.length > 0) {
-      const id = queue.shift();
-      if (!id) continue;
+    let head = 0;
+    while (head < queue.length) {
+      const id = queue[head++];
       ids.push(id);
-      for (const neighbor of neighbors.get(id) ?? []) {
+      for (const neighbor of index.neighbors.get(id) ?? []) {
         if (!visited.has(neighbor)) {
           visited.add(neighbor);
           queue.push(neighbor);
@@ -429,7 +489,8 @@ export function buildStagedLayout(
   const padding = options?.padding ?? 28;
   const componentGap = options?.componentGap ?? 42;
   const itemById = new Map(items.map((item) => [item.fabricId, item]));
-  const rawComponents = connectedComponents(items, edges);
+  const index = createLineageIndex(edges);
+  const rawComponents = connectedComponents(items, index);
   const isolated = rawComponents.filter((component) => component.length === 1).flat();
   const isolatedIds = new Set(isolated);
   const components = rawComponents.filter((component) => component.length > 1);
@@ -477,26 +538,23 @@ export function buildStagedLayout(
               (_, index) => LINEAGE_STAGE_LABELS.length - 2 - index,
             );
       for (const stageIndex of indexes) {
+        const scores = new Map<string, number>();
+        for (const item of stages[stageIndex]) {
+          const neighborOrders = (index.incident.get(item.fabricId) ?? [])
+            .map(({ neighborId }) => order.get(neighborId))
+            .filter((value): value is number => value != null);
+          scores.set(
+            item.fabricId,
+            neighborOrders.length === 0
+              ? Number.POSITIVE_INFINITY
+              : neighborOrders.reduce((sum, value) => sum + value, 0) /
+                  neighborOrders.length,
+          );
+        }
         stages[stageIndex].sort((a, b) => {
-          const score = (item: Item) => {
-            const neighborOrders = edges
-              .filter(
-                (edge) =>
-                  edge.source === item.fabricId || edge.target === item.fabricId,
-              )
-              .map((edge) =>
-                order.get(
-                  edge.source === item.fabricId ? edge.target : edge.source,
-                ),
-              )
-              .filter((value): value is number => value != null);
-            if (neighborOrders.length === 0) return Number.POSITIVE_INFINITY;
-            return (
-              neighborOrders.reduce((sum, value) => sum + value, 0) /
-              neighborOrders.length
-            );
-          };
-          const delta = score(a) - score(b);
+          const delta =
+            (scores.get(a.fabricId) ?? Number.POSITIVE_INFINITY) -
+            (scores.get(b.fabricId) ?? Number.POSITIVE_INFINITY);
           return Number.isFinite(delta) && delta !== 0
             ? delta
             : a.displayName.localeCompare(b.displayName);
@@ -525,9 +583,7 @@ export function buildStagedLayout(
     );
     const isIsolatedGroup =
       component.length > 1 &&
-      component.every(
-        (id) => !edges.some((edge) => edge.source === id || edge.target === id),
-      );
+      component.every((id) => !index.incidentIds.has(id));
     const label =
       isIsolatedGroup
         ? "Unconnected items"

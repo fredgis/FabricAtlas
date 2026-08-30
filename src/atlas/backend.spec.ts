@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SAMPLE_DATA } from "./model";
-import { loadFromDb, loadHistoryFromDb, runFabricSync } from "./backend";
+import {
+  loadFromDb,
+  loadHistoryFromDb,
+  runFabricSync,
+  snapshotSummaryFromManifest,
+} from "./backend";
 import { ATLAS_CONFIG } from "./config";
 
 const mocks = vi.hoisted(() => {
@@ -20,6 +25,7 @@ const mocks = vi.hoisted(() => {
       const api = {
         findMany: vi.fn(),
         create: vi.fn(),
+        delete: vi.fn(),
         select: vi.fn(),
       };
       return [name, api];
@@ -52,15 +58,52 @@ const identity = {
   email: "user@example.com",
 };
 
+function summaryMarker(
+  snapshotId: string,
+  syncedAt: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    id: `marker-${snapshotId}`,
+    snapshotId,
+    writerEmail: identity.email,
+    fabricId: workspaceId,
+    displayName: "Historical",
+    itemCount: 0,
+    edgeCount: 0,
+    principalCount: 0,
+    grantCount: 0,
+    jobCount: 0,
+    configCount: 0,
+    schemaEntryCount: 0,
+    summaryVersion: 1,
+    healthyCount: 0,
+    staleCount: 0,
+    failingCount: 0,
+    labelCount: 0,
+    externalPrincipalCount: 0,
+    failedJobCount: 0,
+    brokenEdgeCount: 0,
+    tableCount: 0,
+    columnCount: 0,
+    measureCount: 0,
+    syncedAt,
+    ...overrides,
+  };
+}
+
 describe("Rayfin snapshot persistence", () => {
   beforeEach(() => {
     ATLAS_CONFIG.syncAdminEmail = identity.email;
+    ATLAS_CONFIG.snapshotRetentionCount = 12;
+    ATLAS_CONFIG.previousSyncWriters = [];
     (
       window as unknown as { __atlasWorkspaceId?: string }
     ).__atlasWorkspaceId = workspaceId;
     for (const api of Object.values(mocks.data)) {
       api.findMany.mockReset().mockResolvedValue([]);
       api.create.mockReset().mockImplementation(async (row) => row);
+      api.delete.mockReset().mockResolvedValue(undefined);
       api.select.mockReset().mockImplementation(() => {
         let filter: Record<string, unknown> = {};
         const query = {
@@ -100,6 +143,9 @@ describe("Rayfin snapshot persistence", () => {
     );
     expect(mocks.data.Workspace.create).not.toHaveBeenCalled();
     expect(mocks.data.SyncRun.create).not.toHaveBeenCalled();
+    expect(
+      Object.values(mocks.data).some((api) => api.delete.mock.calls.length),
+    ).toBe(false);
   });
 
   it("rejects snapshot publication from a different authenticated user", async () => {
@@ -234,8 +280,395 @@ describe("Rayfin snapshot persistence", () => {
     expect(mocks.data.Workspace.create).toHaveBeenCalledWith(
       expect.objectContaining({
         syncSectionsJson: JSON.stringify(atlas.workspace.syncSections),
+        summaryVersion: 1,
+        healthyCount: expect.any(Number),
+        labelCount: expect.any(Number),
+        tableCount: expect.any(Number),
       }),
     );
+  });
+
+  it("prunes only stale trusted snapshots after publishing the new manifest", async () => {
+    ATLAS_CONFIG.snapshotRetentionCount = 2;
+    const oldSnapshots = [
+      {
+        id: "workspace-old-1",
+        snapshotId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+        writerEmail: identity.email,
+        fabricId: workspaceId,
+        displayName: "Old 1",
+        itemCount: 1,
+        edgeCount: 0,
+        principalCount: 0,
+        grantCount: 0,
+        jobCount: 0,
+        configCount: 0,
+        schemaEntryCount: 0,
+        summaryVersion: 1,
+        healthyCount: 1,
+        staleCount: 0,
+        failingCount: 0,
+        labelCount: 0,
+        externalPrincipalCount: 0,
+        failedJobCount: 0,
+        brokenEdgeCount: 0,
+        tableCount: 0,
+        columnCount: 0,
+        measureCount: 0,
+        syncedAt: "2026-08-29T20:00:00.000Z",
+      },
+      {
+        id: "workspace-old-2",
+        snapshotId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2",
+        writerEmail: identity.email,
+        fabricId: workspaceId,
+        displayName: "Old 2",
+        itemCount: 1,
+        edgeCount: 0,
+        principalCount: 0,
+        grantCount: 0,
+        jobCount: 0,
+        configCount: 0,
+        schemaEntryCount: 0,
+        summaryVersion: 1,
+        healthyCount: 1,
+        staleCount: 0,
+        failingCount: 0,
+        labelCount: 0,
+        externalPrincipalCount: 0,
+        failedJobCount: 0,
+        brokenEdgeCount: 0,
+        tableCount: 0,
+        columnCount: 0,
+        measureCount: 0,
+        syncedAt: "2026-08-28T20:00:00.000Z",
+      },
+    ];
+    mocks.data.Workspace.findMany.mockImplementation(async () => {
+      const published = mocks.data.Workspace.create.mock.calls.at(-1)?.[0] as
+        | Record<string, unknown>
+        | undefined;
+      return published
+        ? [
+            {
+              ...published,
+              id: "workspace-current",
+              fabricId: workspaceId,
+            },
+            ...oldSnapshots,
+          ]
+        : oldSnapshots;
+    });
+    mocks.data.FabricItem.findMany.mockImplementation(async (filter) => {
+      const snapshotId = (
+        filter as { snapshotId?: { eq?: string } }
+      ).snapshotId?.eq;
+      if (snapshotId === oldSnapshots[1].snapshotId) {
+        return [
+          {
+            id: "item-old-2",
+            workspace_id: workspaceId,
+            snapshotId,
+            writerEmail: identity.email,
+            fabricId: "old-item",
+            displayName: "Old item",
+            itemType: "Lakehouse",
+            health: "healthy",
+            endorsement: "none",
+          },
+          {
+            id: "forged-item",
+            workspace_id: workspaceId,
+            snapshotId,
+            writerEmail: "viewer@example.com",
+            fabricId: "forged",
+            displayName: "Forged",
+            itemType: "Lakehouse",
+            health: "healthy",
+            endorsement: "none",
+          },
+        ];
+      }
+      return [];
+    });
+
+    await expect(runFabricSync(false, identity)).resolves.toBeTruthy();
+
+    expect(mocks.data.FabricItem.delete).toHaveBeenCalledWith({
+      id: "item-old-2",
+    });
+    expect(mocks.data.FabricItem.delete).not.toHaveBeenCalledWith({
+      id: "forged-item",
+    });
+    expect(mocks.data.Workspace.delete).toHaveBeenCalledWith({
+      id: "workspace-old-2",
+    });
+    expect(mocks.data.Workspace.delete).not.toHaveBeenCalledWith({
+      id: "workspace-old-1",
+    });
+    expect(
+      mocks.data.Workspace.create.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.data.FabricItem.delete.mock.invocationCallOrder[0]);
+    expect(
+      mocks.data.FabricItem.delete.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.data.Workspace.delete.mock.invocationCallOrder[0]);
+  });
+
+  it("keeps a published snapshot successful when retention is deferred", async () => {
+    ATLAS_CONFIG.snapshotRetentionCount = 2;
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const staleSnapshot = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    mocks.data.Workspace.findMany.mockImplementation(async () => {
+      const published = mocks.data.Workspace.create.mock.calls.at(-1)?.[0] as
+        | Record<string, unknown>
+        | undefined;
+      return [
+        {
+          ...published,
+          id: "workspace-current",
+          fabricId: workspaceId,
+        },
+        {
+          id: "workspace-retained",
+          snapshotId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1",
+          writerEmail: identity.email,
+          fabricId: workspaceId,
+          displayName: "Retained",
+          itemCount: 0,
+          edgeCount: 0,
+          principalCount: 0,
+          grantCount: 0,
+          jobCount: 0,
+          configCount: 0,
+          schemaEntryCount: 0,
+          summaryVersion: 1,
+          healthyCount: 0,
+          staleCount: 0,
+          failingCount: 0,
+          labelCount: 0,
+          externalPrincipalCount: 0,
+          failedJobCount: 0,
+          brokenEdgeCount: 0,
+          tableCount: 0,
+          columnCount: 0,
+          measureCount: 0,
+          syncedAt: "2026-08-29T20:00:00.000Z",
+        },
+        {
+          id: "workspace-stale",
+          snapshotId: staleSnapshot,
+          writerEmail: identity.email,
+          fabricId: workspaceId,
+          displayName: "Stale",
+          itemCount: 1,
+          edgeCount: 0,
+          principalCount: 0,
+          grantCount: 0,
+          jobCount: 0,
+          configCount: 0,
+          schemaEntryCount: 0,
+          summaryVersion: 1,
+          healthyCount: 1,
+          staleCount: 0,
+          failingCount: 0,
+          labelCount: 0,
+          externalPrincipalCount: 0,
+          failedJobCount: 0,
+          brokenEdgeCount: 0,
+          tableCount: 0,
+          columnCount: 0,
+          measureCount: 0,
+          syncedAt: "2026-08-28T20:00:00.000Z",
+        },
+      ];
+    });
+    mocks.data.FabricItem.findMany.mockResolvedValue([
+      {
+        id: "stale-item",
+        workspace_id: workspaceId,
+        snapshotId: staleSnapshot,
+        writerEmail: identity.email,
+        fabricId: "stale-item",
+        displayName: "Stale item",
+        itemType: "Lakehouse",
+        health: "healthy",
+        endorsement: "none",
+      },
+    ]);
+    mocks.data.FabricItem.delete.mockRejectedValueOnce(
+      new Error("cleanup unavailable"),
+    );
+
+    await expect(runFabricSync(false, identity)).resolves.toBeTruthy();
+    expect(mocks.data.Workspace.create).toHaveBeenCalledTimes(1);
+    expect(mocks.data.Workspace.delete).not.toHaveBeenCalled();
+    expect(warning).toHaveBeenCalledWith(
+      "[atlas] snapshot retention deferred",
+      expect.any(Error),
+    );
+    warning.mockRestore();
+  });
+
+  it("retries a partially deleted stale snapshot idempotently", async () => {
+    ATLAS_CONFIG.snapshotRetentionCount = 2;
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const retained = summaryMarker(
+      "dddddddd-dddd-4ddd-8ddd-ddddddddddd1",
+      "2026-08-29T20:00:00.000Z",
+    );
+    const partial = summaryMarker(
+      "dddddddd-dddd-4ddd-8ddd-ddddddddddd2",
+      "2026-08-28T20:00:00.000Z",
+      {
+        id: "workspace-partial",
+        itemCount: 2,
+        healthyCount: 2,
+        summaryVersion: undefined,
+      },
+    );
+    mocks.data.Workspace.findMany.mockImplementation(async () => {
+      const published = mocks.data.Workspace.create.mock.calls.at(-1)?.[0] as
+        | Record<string, unknown>
+        | undefined;
+      return [
+        {
+          ...published,
+          id: "workspace-current",
+          fabricId: workspaceId,
+        },
+        retained,
+        partial,
+      ];
+    });
+    mocks.data.FabricItem.findMany.mockImplementation(async (filter) => {
+      const snapshotId = (
+        filter as { snapshotId?: { eq?: string } }
+      ).snapshotId?.eq;
+      return snapshotId === partial.snapshotId
+        ? [
+            {
+              id: "remaining-item",
+              workspace_id: workspaceId,
+              snapshotId,
+              writerEmail: identity.email,
+              fabricId: "remaining",
+              displayName: "Remaining",
+              itemType: "Lakehouse",
+              health: "healthy",
+              endorsement: "none",
+            },
+          ]
+        : [];
+    });
+
+    await expect(runFabricSync(false, identity)).resolves.toBeTruthy();
+
+    expect(mocks.data.FabricItem.delete).toHaveBeenCalledWith({
+      id: "remaining-item",
+    });
+    expect(mocks.data.Workspace.delete).toHaveBeenCalledWith({
+      id: "workspace-partial",
+    });
+    warning.mockRestore();
+  });
+
+  it("prunes snapshots from an explicitly trusted previous writer", async () => {
+    ATLAS_CONFIG.snapshotRetentionCount = 2;
+    ATLAS_CONFIG.previousSyncWriters = ["former@example.com"];
+    const retained = summaryMarker(
+      "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1",
+      "2026-08-29T20:00:00.000Z",
+    );
+    const previousWriter = summaryMarker(
+      "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee2",
+      "2026-08-28T20:00:00.000Z",
+      {
+        id: "workspace-former",
+        writerEmail: "former@example.com",
+        itemCount: 1,
+        healthyCount: 1,
+      },
+    );
+    mocks.data.Workspace.findMany.mockImplementation(async (filter) => {
+      const writer = (
+        filter as { writerEmail?: { eq?: string } }
+      ).writerEmail?.eq;
+      if (writer === "former@example.com") return [previousWriter];
+      const published = mocks.data.Workspace.create.mock.calls.at(-1)?.[0] as
+        | Record<string, unknown>
+        | undefined;
+      return [
+        {
+          ...published,
+          id: "workspace-current",
+          fabricId: workspaceId,
+        },
+        retained,
+      ];
+    });
+    mocks.data.FabricItem.findMany.mockImplementation(async (filter) => {
+      const snapshotId = (
+        filter as { snapshotId?: { eq?: string } }
+      ).snapshotId?.eq;
+      return snapshotId === previousWriter.snapshotId
+        ? [
+            {
+              id: "former-item",
+              workspace_id: workspaceId,
+              snapshotId,
+              writerEmail: "former@example.com",
+              fabricId: "former-item",
+              displayName: "Former item",
+              itemType: "Lakehouse",
+              health: "healthy",
+              endorsement: "none",
+            },
+          ]
+        : [];
+    });
+
+    await expect(runFabricSync(false, identity)).resolves.toBeTruthy();
+
+    expect(mocks.data.FabricItem.delete).toHaveBeenCalledWith({
+      id: "former-item",
+    });
+    expect(mocks.data.Workspace.delete).toHaveBeenCalledWith({
+      id: "workspace-former",
+    });
+  });
+
+  it("parses valid manifest summaries and rejects inconsistent values", () => {
+    const marker = {
+      snapshotId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      syncedAt: "2026-08-30T10:00:00.000Z",
+      summaryVersion: 1,
+      itemCount: 2,
+      healthyCount: 1,
+      staleCount: 1,
+      failingCount: 0,
+      labelCount: 1,
+      principalCount: 2,
+      externalPrincipalCount: 1,
+      grantCount: 3,
+      jobCount: 2,
+      failedJobCount: 1,
+      edgeCount: 1,
+      brokenEdgeCount: 0,
+      tableCount: 4,
+      columnCount: 8,
+      measureCount: 2,
+    };
+    expect(snapshotSummaryFromManifest(marker)).toMatchObject({
+      items: 2,
+      healthy: 1,
+      labels: 1,
+      externalPrincipals: 1,
+      failedJobs: 1,
+      tables: 4,
+    });
+    expect(
+      snapshotSummaryFromManifest({ ...marker, labelCount: 3 }),
+    ).toBeUndefined();
   });
 
   it("never serializes business rows into schema snapshot chunks", async () => {
@@ -587,6 +1020,80 @@ describe("Rayfin snapshot persistence", () => {
       fabricId: { eq: workspaceId },
       writerEmail: { eq: identity.email },
     });
+  });
+
+  it("loads modern history summaries without reading every catalog", async () => {
+    const snapshotIds = [
+      "11111111-aaaa-4aaa-8aaa-111111111111",
+      "22222222-bbbb-4bbb-8bbb-222222222222",
+      "33333333-cccc-4ccc-8ccc-333333333333",
+    ];
+    const marker = (snapshotId: string, syncedAt: string, id: string) => ({
+      id,
+      snapshotId,
+      writerEmail: identity.email,
+      fabricId: workspaceId,
+      displayName: "Historical",
+      itemCount: 1,
+      edgeCount: 0,
+      principalCount: 0,
+      grantCount: 0,
+      jobCount: 0,
+      configCount: 0,
+      schemaEntryCount: 0,
+      summaryVersion: 1,
+      healthyCount: 1,
+      staleCount: 0,
+      failingCount: 0,
+      labelCount: 0,
+      externalPrincipalCount: 0,
+      failedJobCount: 0,
+      brokenEdgeCount: 0,
+      tableCount: 0,
+      columnCount: 0,
+      measureCount: 0,
+      syncedAt,
+    });
+    mocks.data.Workspace.findMany.mockResolvedValue([
+      marker(snapshotIds[0], "2026-08-29T19:00:00.000Z", "marker-1"),
+      marker(snapshotIds[1], "2026-08-29T18:00:00.000Z", "marker-2"),
+      marker(snapshotIds[2], "2026-08-29T17:00:00.000Z", "marker-3"),
+    ]);
+    mocks.data.FabricItem.findMany.mockImplementation(async (filter) => {
+      const snapshotId = (
+        filter as { snapshotId?: { eq?: string } }
+      ).snapshotId?.eq;
+      return snapshotId === snapshotIds[0]
+        ? [
+            {
+              workspace_id: workspaceId,
+              snapshotId,
+              writerEmail: identity.email,
+              fabricId: "historical",
+              displayName: "Historical",
+              itemType: "Lakehouse",
+              health: "healthy",
+              endorsement: "none",
+            },
+          ]
+        : [];
+    });
+    const current = structuredClone(SAMPLE_DATA);
+    current.workspace.snapshotId =
+      "44444444-dddd-4ddd-8ddd-444444444444";
+    current.workspace.syncedAt = "2026-08-29T20:00:00.000Z";
+
+    const history = await loadHistoryFromDb(false, current, 4);
+
+    expect(history.summaries.map((entry) => entry.snapshotId)).toEqual([
+      current.workspace.snapshotId,
+      ...snapshotIds,
+    ]);
+    expect(history.snapshots.map((entry) => entry.snapshotId)).toEqual([
+      current.workspace.snapshotId,
+      snapshotIds[0],
+    ]);
+    expect(mocks.data.FabricItem.findMany).toHaveBeenCalledTimes(1);
   });
 
   it("returns one preview history point without querying Rayfin", async () => {

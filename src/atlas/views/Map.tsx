@@ -46,7 +46,6 @@ import {
   schemaFor,
   relativeTime,
   type AtlasData,
-  type Edge,
   type Health,
   type Item,
   type ModelTableSchema,
@@ -54,8 +53,10 @@ import {
 import {
   LINEAGE_STAGE_LABELS,
   buildStagedLayout,
+  createLineageIndex,
   getLineageImpact,
   lineageEdgeKey,
+  type LineageIndex,
   type SchemaObjectRef,
 } from "../lineage";
 
@@ -92,26 +93,44 @@ interface ObjectEdge {
   structural?: boolean;
 }
 
+interface ObjectLineageIndex {
+  incoming: Map<string, ObjectEdge[]>;
+  outgoing: Map<string, ObjectEdge[]>;
+}
+
 function objectEdgeKey(edge: ObjectEdge): string {
   return `${edge.source}\u0000${edge.target}\u0000${edge.relation}`;
 }
 
-function getObjectImpact(edges: ObjectEdge[], startId: string) {
+function createObjectLineageIndex(edges: ObjectEdge[]): ObjectLineageIndex {
+  const incoming = new Map<string, ObjectEdge[]>();
+  const outgoing = new Map<string, ObjectEdge[]>();
+  for (const edge of edges) {
+    const sourceEdges = outgoing.get(edge.source) ?? [];
+    sourceEdges.push(edge);
+    outgoing.set(edge.source, sourceEdges);
+    const targetEdges = incoming.get(edge.target) ?? [];
+    targetEdges.push(edge);
+    incoming.set(edge.target, targetEdges);
+  }
+  return { incoming, outgoing };
+}
+
+function getObjectImpact(index: ObjectLineageIndex, startId: string) {
   const walk = (direction: "upstream" | "downstream") => {
     const ids = new Set<string>();
     const edgeKeys = new Set<string>();
     const visited = new Set<string>([startId]);
     const queue = [startId];
+    let head = 0;
 
-    while (queue.length > 0) {
-      const current = queue.shift();
-      if (!current) continue;
+    while (head < queue.length) {
+      const current = queue[head++];
+      const edges =
+        direction === "upstream"
+          ? index.incoming.get(current) ?? []
+          : index.outgoing.get(current) ?? [];
       for (const edge of edges) {
-        const matches =
-          direction === "upstream"
-            ? edge.target === current
-            : edge.source === current;
-        if (!matches) continue;
         const next = direction === "upstream" ? edge.source : edge.target;
         if (next === startId) continue;
         ids.add(next);
@@ -147,13 +166,13 @@ function initialInspectorTab(): InspectorTab {
     : "summary";
 }
 
-function initialSelected(items: Item[], edges: Edge[]): string {
+function initialSelected(items: Item[], index: LineageIndex): string {
   const requested = searchParam("item");
   if (items.some((item) => item.fabricId === requested)) return requested;
   const candidates = items.filter((item) => item.itemType === "SemanticModel");
   const ranked = (candidates.length > 0 ? candidates : items)
     .map((item) => {
-      const impact = getLineageImpact(edges, item.fabricId);
+      const impact = getLineageImpact(index, item.fabricId);
       return {
         item,
         score: impact.upstream.ids.size + impact.downstream.ids.size,
@@ -181,8 +200,8 @@ function objectGraph(
   selected: Item | undefined,
   selectedSchema: ModelTableSchema[],
   upstream: Item[],
-  items: Item[],
-  edges: Edge[],
+  itemById: Map<string, Item>,
+  lineageIndex: LineageIndex,
   tableName: string,
 ): { nodes: ObjectNode[]; edges: ObjectEdge[]; width: number; height: number; table?: string } {
   if (!selected || selectedSchema.length === 0) {
@@ -230,10 +249,10 @@ function objectGraph(
         source: sourceNode.id,
         target: modelNode.id,
         relation:
-          edges.find(
-            (edge) =>
-              edge.source === sourceItem.fabricId && edge.target === selected.fabricId,
-          )?.relation ?? "feeds",
+          lineageIndex.outgoing
+            .get(sourceItem.fabricId)
+            ?.find((entry) => entry.edge.target === selected.fabricId)
+            ?.edge.relation ?? "feeds",
       });
     }
   });
@@ -296,10 +315,10 @@ function objectGraph(
     });
   });
 
-  edges
-    .filter((edge) => edge.source === selected.fabricId)
-    .forEach((edge, index) => {
-      const consumer = items.find((item) => item.fabricId === edge.target);
+  (lineageIndex.outgoing.get(selected.fabricId) ?? [])
+    .forEach((entry, index) => {
+      const edge = entry.edge;
+      const consumer = itemById.get(edge.target);
       if (!consumer) return;
       const node: ObjectNode = {
         id: `consumer:${consumer.fabricId}`,
@@ -360,8 +379,12 @@ export function MapView() {
     () => new Map<string, Item>(items.map((item) => [item.fabricId, item])),
     [items],
   );
+  const lineageIndex = useMemo(() => createLineageIndex(edges), [edges]);
 
-  const startingId = initialSelected(items, edges);
+  const startingId = useMemo(
+    () => initialSelected(items, lineageIndex),
+    [items, lineageIndex],
+  );
   const [mode, setMode] = useState<Mode>(initialMode);
   const [selId, setSelId] = useState(startingId);
   const [focusId, setFocusId] = useState(startingId);
@@ -409,7 +432,7 @@ export function MapView() {
   const mapRef = useRef<HTMLDivElement>(null);
 
   const selected =
-    itemById.get(selId) ?? itemById.get(initialSelected(items, edges));
+    itemById.get(selId) ?? itemById.get(startingId);
   const activeId = selected?.fabricId ?? "";
   const resolvedFocusId = itemById.has(focusId) ? focusId : activeId;
   const schema = useMemo(
@@ -417,17 +440,24 @@ export function MapView() {
     [activeId, data],
   );
   const impact = useMemo(
-    () => getLineageImpact(edges, activeId, impactMode ? Number.POSITIVE_INFINITY : 1),
-    [activeId, edges, impactMode],
+    () =>
+      getLineageImpact(
+        lineageIndex,
+        activeId,
+        impactMode ? Number.POSITIVE_INFINITY : 1,
+      ),
+    [activeId, impactMode, lineageIndex],
   );
   const focusImpact = useMemo(
     () =>
-      getLineageImpact(
-        edges,
-        resolvedFocusId,
-        impactMode ? Number.POSITIVE_INFINITY : 1,
-      ),
-    [edges, impactMode, resolvedFocusId],
+      resolvedFocusId === activeId
+        ? impact
+        : getLineageImpact(
+            lineageIndex,
+            resolvedFocusId,
+            impactMode ? Number.POSITIVE_INFINITY : 1,
+          ),
+    [activeId, impact, impactMode, lineageIndex, resolvedFocusId],
   );
   const upstream = useMemo(
     () =>
@@ -476,6 +506,14 @@ export function MapView() {
     [items],
   );
   const visibleItems = useMemo(() => {
+    if (
+      !impactMode &&
+      typeFilter === "all" &&
+      healthFilter === "all" &&
+      !query.trim()
+    ) {
+      return items;
+    }
     const normalized = query.trim().toLowerCase();
     return items.filter((item) => {
       if (item.fabricId === activeId) return true;
@@ -524,8 +562,25 @@ export function MapView() {
     return { width, height };
   }, [drag, layout.height, layout.width]);
   const objects = useMemo(
-    () => objectGraph(data, selected, schema, upstream, items, edges, tableName),
-    [data, edges, items, schema, selected, tableName, upstream],
+    () =>
+      objectGraph(
+        data,
+        selected,
+        schema,
+        upstream,
+        itemById,
+        lineageIndex,
+        tableName,
+      ),
+    [data, itemById, lineageIndex, schema, selected, tableName, upstream],
+  );
+  const objectLineageIndex = useMemo(
+    () => createObjectLineageIndex(objects.edges),
+    [objects.edges],
+  );
+  const objectNodeById = useMemo(
+    () => new Map(objects.nodes.map((node) => [node.id, node])),
+    [objects.nodes],
   );
   const activeObjectId = objects.nodes.some(
     (node) => node.id === selectedObjectId,
@@ -534,7 +589,7 @@ export function MapView() {
     : (objects.nodes.find((node) => node.kind === "owner")?.id ??
       objects.nodes[0]?.id ??
       "");
-  const activeObject = objects.nodes.find((node) => node.id === activeObjectId);
+  const activeObject = objectNodeById.get(activeObjectId);
   const reportItemId =
     mode === "objects" ? activeObject?.itemId ?? activeId : activeId;
   const reportObject: SchemaObjectRef | undefined =
@@ -559,8 +614,8 @@ export function MapView() {
             }
           : undefined;
   const objectImpact = useMemo(
-    () => getObjectImpact(objects.edges, activeObjectId),
-    [activeObjectId, objects.edges],
+    () => getObjectImpact(objectLineageIndex, activeObjectId),
+    [activeObjectId, objectLineageIndex],
   );
   const objectConnected = useMemo(
     () =>
@@ -692,7 +747,7 @@ export function MapView() {
       ids,
       origins: Object.fromEntries(
         ids.map((id) => {
-          const selectedNode = objects.nodes.find((candidate) => candidate.id === id);
+          const selectedNode = objectNodeById.get(id);
           return [
             id,
             selectedNode ? objectPosOf(selectedNode) : { x: 0, y: 0 },
@@ -748,7 +803,7 @@ export function MapView() {
       setSelectedObjectIds(next);
       const active = next.has(node.id)
         ? node
-        : objects.nodes.find((candidate) => candidate.id === [...next][0]);
+        : objectNodeById.get([...next][0]);
       if (active) selectObjectNode(active);
     } else {
       setSelectedObjectIds(new Set([node.id]));
@@ -1282,12 +1337,8 @@ export function MapView() {
                       </marker>
                     </defs>
                     {objects.edges.map((edge) => {
-                      const sourceNode = objects.nodes.find(
-                        (node) => node.id === edge.source,
-                      );
-                      const targetNode = objects.nodes.find(
-                        (node) => node.id === edge.target,
-                      );
+                      const sourceNode = objectNodeById.get(edge.source);
+                      const targetNode = objectNodeById.get(edge.target);
                       if (!sourceNode || !targetNode) return null;
                       const source = objectPosOf(sourceNode);
                       const target = objectPosOf(targetNode);
@@ -1339,9 +1390,8 @@ export function MapView() {
                     >
                       <h2>
                         Object lineage relationships for{" "}
-                        {objects.nodes.find(
-                          (node) => node.id === activeObjectId,
-                        )?.label ?? activeObjectId}
+                        {objectNodeById.get(activeObjectId)?.label ??
+                          activeObjectId}
                       </h2>
                       <ul>
                         {objects.edges
@@ -1359,13 +1409,11 @@ export function MapView() {
                                 ? "Upstream"
                                 : "Downstream";
                             const source =
-                              objects.nodes.find(
-                                (node) => node.id === edge.source,
-                              )?.label ?? edge.source;
+                              objectNodeById.get(edge.source)?.label ??
+                              edge.source;
                             const target =
-                              objects.nodes.find(
-                                (node) => node.id === edge.target,
-                              )?.label ?? edge.target;
+                              objectNodeById.get(edge.target)?.label ??
+                              edge.target;
                             return (
                               <li key={key}>
                                 {direction}: {source} to {target},{" "}

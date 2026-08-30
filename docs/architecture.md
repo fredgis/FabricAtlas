@@ -75,6 +75,15 @@ remain sequential, each in-flight batch settles before an error is propagated,
 and neither the `SyncRun` audit nor the `Workspace` visibility manifest starts
 after a failed batch.
 
+After the new manifest is visible, Atlas applies trusted snapshot retention.
+Every candidate is filtered by workspace, snapshot and writer, child rows are
+deleted in bounded batches, and the Workspace manifest is deleted last. Only
+the configured synchronizer has delete permission. Cleanup failures are logged
+and retried by a later sync without invalidating the published snapshot.
+When the synchronizer changes, explicitly configured former writers remain
+trusted for reads and cleanup while only the current writer can create or
+delete rows.
+
 Snapshot creation is bound to the configured synchronization administrator.
 Rayfin create policies compare the authenticated email with each row's
 `writerEmail` and with the deployment's configured synchronizer. Database reads
@@ -100,6 +109,12 @@ order. It detects changes to items, schema objects, access grants, sensitivity,
 lineage and jobs, then derives the trend series used by Governance Center.
 Fabric principal IDs are authoritative. Unique normalized email correlation
 keeps legacy snapshots comparable when older access rows used a name or email.
+
+Workspace manifests from summary version 1 also carry the complete trend
+metrics. Startup loads those compact summaries for the ledger and trend, plus
+the current and previous detailed catalogs. Selecting another Change Center
+snapshot lazily loads and validates that catalog through a snapshot-scoped
+query; in-flight loads are discarded when a newer sync starts.
 
 ## Personal governance state
 
@@ -176,6 +191,16 @@ and keyboard navigation without changing the Fabric-aligned visual layer.
 Global search builds one metadata index per loaded snapshot and applies a short
 debounce before ranking results. Item and object lineage retain their visual
 graph while also exposing selected relationships as assistive text.
+
+The lineage engine builds incoming, outgoing, incident and neighbor indexes
+once per edge set. Traversal is proportional to the reachable subgraph, layout
+scores do not filter all edges inside sort comparators, and Map reuses active
+impact when focus and selection match.
+
+Dense Access, Asset Catalog and Jobs blocks use Chromium
+`content-visibility:auto` containment. Access has one responsive selectable
+list, and Jobs has one semantic definition-list timeline that changes layout
+without duplicating content.
 
 ## Preview vs deployed
 

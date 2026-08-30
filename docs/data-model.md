@@ -11,7 +11,9 @@ snapshots and falls back to the previous valid one.
 Synchronized entities allow reads to authenticated users. Creates require the
 authenticated email to match the row's `writerEmail`, and hydration only trusts
 the writer configured for the deployment. They do not expose update or delete
-actions. Comments allow authenticated reads and policy-checked creates whose
+actions to ordinary users. The configured synchronizer alone can delete stale
+snapshot rows for retention; update remains disabled. Comments allow
+authenticated reads and policy-checked creates whose
 `authorEmail` matches the authenticated claim.
 
 `SavedView` and `AccessReview` records are user-scoped. Their read, create,
@@ -24,11 +26,18 @@ The manifest for a complete synchronized snapshot.
 
 `snapshotId`, `writerEmail?`, `deploymentId?`, `fabricId`, `displayName`, `capacity?`, `region?`, `itemCount?`,
 `edgeCount?`, `principalCount?`, `grantCount?`, `jobCount?`, `configCount?`,
-`schemaEntryCount?`, `syncSectionsJson?`, `syncedAt?`
+`schemaEntryCount?`, `syncSectionsJson?`, `summaryVersion?`, `healthyCount?`,
+`staleCount?`, `failingCount?`, `labelCount?`, `externalPrincipalCount?`,
+`failedJobCount?`, `brokenEdgeCount?`, `tableCount?`, `columnCount?`,
+`measureCount?`, `syncedAt?`
 
 `syncSectionsJson` persists the versioned UDF section and metadata-capability
 status used by Governance Center. It contains collection state, not business
 data.
+
+Summary version 1 reproduces the Governance history metrics without loading
+child rows. Older manifests remain compatible and fall back to full validated
+catalog loading.
 
 ## FabricItem
 
@@ -120,6 +129,14 @@ History does not require another table. Atlas uses trusted `Workspace`
 manifests as the index and loads older child rows by `workspace_id` and
 `snapshotId`. Comments, saved views and access-review decisions are not part of
 snapshot comparisons.
+
+The configured retention window keeps 12 snapshots by default. Retention runs
+after publication, removes child entities before their manifest, and leaves a
+temporarily over-retained history when cleanup fails.
+
+Writer rotation is explicit: former synchronizer emails can be allowlisted for
+historical reads and cleanup. They cannot create or delete rows after the
+current deployment policies are generated.
 
 ## Adding a field
 

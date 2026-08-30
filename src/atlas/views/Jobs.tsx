@@ -15,7 +15,7 @@ import type { AtlasFocusRequest, AtlasNavigation } from "../navigation";
 import { SavedViewsMenu } from "../components/SavedViewsMenu";
 import { searchJobId } from "../search";
 import { useAtlas } from "../store";
-import { Card, SectionLabel, TypeGlyph } from "../ui";
+import { Card, SectionLabel, TypeGlyph, cn } from "../ui";
 import { relativeTime, type Item, type Job, type JobStatus } from "../model";
 
 const STATUS: Record<
@@ -51,6 +51,18 @@ function duration(sec: number, status: JobStatus): string {
   const minutes = Math.floor(sec / 60);
   const seconds = sec % 60;
   return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
+}
+
+const EXACT_START_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
+function exactStart(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : EXACT_START_FORMATTER.format(date);
 }
 
 function dateGroup(value: string): string {
@@ -159,6 +171,11 @@ export function JobsView({
     });
     return [...groups.entries()];
   }, [filteredJobs]);
+  const hasActiveFilters =
+    Boolean(query) ||
+    statusFilter !== "all" ||
+    Boolean(focusedItemId) ||
+    Boolean(focusedJobId);
 
   const summary = useMemo(() => {
     const completed = jobs.filter((job) => job.status === "completed");
@@ -315,32 +332,61 @@ export function JobsView({
               }}
               onDelete={removeSavedView}
             />
-            {focusedItemId && (
-              <button
-                type="button"
-                onClick={() => {
-                  setFocusedItemId("");
-                  setFocusedJobId("");
-                }}
-                className="inline-flex h-9 items-center gap-s rounded-full border border-primary/30 bg-primary/10 px-m text-200 font-semibold text-brand-foreground"
-                aria-label="Clear focused item"
-              >
-                {itemById.get(focusedItemId)?.displayName ?? "Focused item"}
-                <XCircle className="icon-size-100" aria-hidden="true" />
-              </button>
-            )}
-            {focusedJobId && (
-              <button
-                type="button"
-                onClick={() => setFocusedJobId("")}
-                className="inline-flex h-9 items-center gap-s rounded-full border border-lineage-downstream/30 bg-lineage-downstream/10 px-m text-200 font-semibold text-lineage-downstream"
-                aria-label="Clear focused job"
-              >
-                Focused run
-                <XCircle className="icon-size-100" aria-hidden="true" />
-              </button>
-            )}
-            {(query || statusFilter !== "all" || focusedItemId || focusedJobId) && (
+          </div>
+
+          {hasActiveFilters && (
+            <div
+              role="group"
+              aria-label="Active job filters"
+              className="flex flex-wrap items-center gap-s border-b border-border bg-card px-l py-s"
+            >
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  aria-label="Remove job search filter"
+                  className="inline-flex items-center gap-s rounded-full border border-border bg-secondary px-m py-s text-200 font-semibold text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                >
+                  Search: “{query}”
+                  <XCircle className="icon-size-100" aria-hidden="true" />
+                </button>
+              )}
+              {statusFilter !== "all" && (
+                <button
+                  type="button"
+                  onClick={() => setStatusFilter("all")}
+                  aria-label={`Remove ${statusFilter} status filter`}
+                  className="inline-flex items-center gap-s rounded-full border border-status-warning/30 bg-status-warning/10 px-m py-s text-200 font-semibold text-status-warning"
+                >
+                  Status: {STATUS[statusFilter].label}
+                  <XCircle className="icon-size-100" aria-hidden="true" />
+                </button>
+              )}
+              {focusedItemId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFocusedItemId("");
+                    setFocusedJobId("");
+                  }}
+                  className="inline-flex items-center gap-s rounded-full border border-primary/30 bg-primary/10 px-m py-s text-200 font-semibold text-brand-foreground"
+                  aria-label="Clear focused item"
+                >
+                  {itemById.get(focusedItemId)?.displayName ?? "Focused item"}
+                  <XCircle className="icon-size-100" aria-hidden="true" />
+                </button>
+              )}
+              {focusedJobId && (
+                <button
+                  type="button"
+                  onClick={() => setFocusedJobId("")}
+                  className="inline-flex items-center gap-s rounded-full border border-lineage-downstream/30 bg-lineage-downstream/10 px-m py-s text-200 font-semibold text-lineage-downstream"
+                  aria-label="Clear focused job"
+                >
+                  Focused run
+                  <XCircle className="icon-size-100" aria-hidden="true" />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
@@ -349,13 +395,13 @@ export function JobsView({
                   setFocusedItemId("");
                   setFocusedJobId("");
                 }}
-                className="inline-flex h-9 items-center justify-center gap-s rounded-lg px-m text-200 font-semibold text-primary hover:bg-primary/10"
+                className="ml-auto inline-flex items-center justify-center gap-s rounded-lg px-m py-s text-200 font-semibold text-primary hover:bg-primary/10"
               >
                 <FilterX className="icon-size-100" />
-                Reset
+                Clear all
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
           {filteredJobs.length === 0 ? (
             <div className="flex flex-col items-center px-xl py-xxxl text-center">
@@ -372,45 +418,7 @@ export function JobsView({
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full border-collapse text-left text-300 leading-300">
-                <caption className="sr-only">
-                  Fabric job runs grouped by start date
-                </caption>
-                <thead>
-                  <tr className="border-b border-border bg-muted/60 text-200 uppercase tracking-wide text-muted-foreground">
-                    <th scope="col" className="whitespace-nowrap px-l py-m font-semibold">
-                      Status
-                    </th>
-                    <th scope="col" className="whitespace-nowrap px-l py-m font-semibold">
-                      Item
-                    </th>
-                    <th scope="col" className="whitespace-nowrap px-l py-m font-semibold">
-                      Job
-                    </th>
-                    <th scope="col" className="whitespace-nowrap px-l py-m font-semibold">
-                      Started
-                    </th>
-                    <th scope="col" className="whitespace-nowrap px-l py-m font-semibold">
-                      Duration
-                    </th>
-                    <th scope="col" className="px-l py-m font-semibold">
-                      Detail
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {groupedJobs.map(([group, groupJobs]) => (
-                    <JobGroup
-                      key={group}
-                      label={group}
-                      jobs={groupJobs}
-                      itemById={itemById}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <JobTimeline groups={groupedJobs} itemById={itemById} />
           )}
         </Card>
       </section>
@@ -418,73 +426,125 @@ export function JobsView({
   );
 }
 
-function JobGroup({
-  label,
-  jobs,
+function JobTimeline({
+  groups,
   itemById,
 }: {
-  label: string;
-  jobs: Job[];
+  groups: Array<[string, Job[]]>;
   itemById: Map<string, Item>;
 }) {
   return (
-    <>
-      <tr className="border-b border-border bg-secondary">
-        <th
-          scope="rowgroup"
-          colSpan={6}
-          className="px-l py-s text-200 font-semibold uppercase tracking-wide text-muted-foreground"
-        >
-          {label}
-          <span className="ml-s font-normal normal-case">
-            {jobs.length} run{jobs.length === 1 ? "" : "s"}
-          </span>
-        </th>
-      </tr>
-      {jobs.map((job) => {
-        const status = STATUS[job.status];
-        const Icon = status.icon;
-        const item = itemById.get(job.itemFabricId);
-
-        return (
-          <tr
-            key={`${job.itemFabricId}-${job.jobType}-${job.startedAt}`}
-            className="border-b border-border/60 last:border-b-0 hover:bg-accent/50"
+    <div>
+      <div
+        aria-hidden="true"
+        className="hidden grid-cols-[auto_minmax(180px,1.3fr)_minmax(120px,0.8fr)_minmax(150px,0.9fr)_100px_minmax(180px,1fr)] gap-m border-b border-border bg-muted/60 px-l py-m text-200 font-semibold uppercase tracking-wide text-muted-foreground md:grid"
+      >
+        <span>Status</span>
+        <span>Item</span>
+        <span>Job</span>
+        <span>Started</span>
+        <span>Duration</span>
+        <span>Detail</span>
+      </div>
+      <ol aria-label="Fabric job runs grouped by start date">
+        {groups.flatMap(([label, jobs]) => [
+          <li
+            key={`group:${label}`}
+            className="border-b border-border bg-secondary px-l py-s text-200 font-semibold uppercase tracking-wide text-muted-foreground"
           >
-            <td className="whitespace-nowrap px-l py-m">
-              <span
-                className={`inline-flex items-center gap-xs rounded-full border px-s py-xs text-200 font-semibold ${status.className}`}
+            {label}
+            <span className="ml-s font-normal normal-case">
+              {jobs.length} run{jobs.length === 1 ? "" : "s"}
+            </span>
+          </li>,
+          ...jobs.map((job) => {
+            const status = STATUS[job.status];
+            const Icon = status.icon;
+            const item = itemById.get(job.itemFabricId);
+            const startedAtLabel = exactStart(job.startedAt);
+            return (
+              <li
+                key={`${job.itemFabricId}-${job.jobType}-${job.startedAt}`}
+                className={cn(
+                  "atlas-windowed-block relative grid gap-m border-b border-border/60 px-l py-m transition-colors last:border-b-0 hover:bg-accent/50 md:grid-cols-[auto_minmax(180px,1.3fr)_minmax(120px,0.8fr)_minmax(150px,0.9fr)_100px_minmax(180px,1fr)] md:items-center",
+                  job.status === "failed" && "bg-status-failing/5",
+                )}
               >
-                <Icon
-                  className={`icon-size-100 ${
-                    job.status === "running" ? "animate-spin" : ""
-                  }`}
-                  aria-hidden="true"
+                <span className="absolute bottom-0 left-l top-0 w-px bg-border md:hidden" />
+                <span
+                  className={cn(
+                    "absolute left-[17px] top-l h-s w-s rounded-full ring-4 ring-card md:hidden",
+                    job.status === "completed"
+                      ? "bg-status-healthy"
+                      : job.status === "failed"
+                        ? "bg-status-failing"
+                        : job.status === "running"
+                          ? "bg-primary"
+                          : "bg-lineage-neutral",
+                  )}
                 />
-                {status.label}
-              </span>
-            </td>
-            <td className="whitespace-nowrap px-l py-m">
-              <div className="flex items-center gap-s">
-                {item && <TypeGlyph type={item.itemType} />}
-                <span className="font-semibold text-foreground">{job.itemName}</span>
-              </div>
-            </td>
-            <td className="whitespace-nowrap px-l py-m text-muted-foreground">
-              {job.jobType}
-            </td>
-            <td className="whitespace-nowrap px-l py-m text-muted-foreground">
-              <time dateTime={job.startedAt}>{relativeTime(job.startedAt)}</time>
-            </td>
-            <td className="whitespace-nowrap px-l py-m font-numeric tabular-nums">
-              {duration(job.durationSec, job.status)}
-            </td>
-            <td className="px-l py-m text-muted-foreground">
-              {job.message ?? "No additional detail"}
-            </td>
-          </tr>
-        );
-      })}
-    </>
+                <dl className="contents">
+                  <div className="pl-l md:pl-0">
+                    <dt className="sr-only">Status</dt>
+                    <dd>
+                      <span
+                        className={`inline-flex items-center gap-xs rounded-full border px-s py-xs text-200 font-semibold ${status.className}`}
+                      >
+                        <Icon
+                          className={cn(
+                            "icon-size-100",
+                            job.status === "running" && "animate-spin",
+                          )}
+                          aria-hidden="true"
+                        />
+                        {status.label}
+                      </span>
+                    </dd>
+                  </div>
+                  <div className="flex min-w-0 items-center gap-s pl-l md:pl-0">
+                    <dt className="sr-only">Item</dt>
+                    <dd className="flex min-w-0 items-center gap-s">
+                      {item && <TypeGlyph type={item.itemType} />}
+                      <span className="truncate font-semibold text-foreground">
+                        {job.itemName}
+                      </span>
+                    </dd>
+                  </div>
+                  <div className="pl-l text-300 font-semibold md:pl-0">
+                    <dt className="sr-only">Job</dt>
+                    <dd>{job.jobType}</dd>
+                  </div>
+                  <div className="pl-l text-200 text-muted-foreground md:pl-0">
+                    <dt className="sr-only">Started</dt>
+                    <dd>
+                      <time dateTime={job.startedAt} title={startedAtLabel}>
+                        {relativeTime(job.startedAt)}
+                      </time>
+                      <span className="mt-xxs block font-numeric text-100 tabular-nums">
+                        {startedAtLabel}
+                      </span>
+                    </dd>
+                  </div>
+                  <div className="pl-l font-numeric text-300 font-semibold tabular-nums md:pl-0">
+                    <dt className="sr-only">Duration</dt>
+                    <dd>{duration(job.durationSec, job.status)}</dd>
+                  </div>
+                  <div
+                    className={cn(
+                      "ml-l rounded-lg border border-border bg-secondary/55 px-m py-s text-200 text-muted-foreground md:ml-0",
+                      job.status === "failed" &&
+                        "border-status-failing/25 bg-status-failing/10 text-status-failing",
+                    )}
+                  >
+                    <dt className="sr-only">Detail</dt>
+                    <dd>{job.message ?? "No additional detail"}</dd>
+                  </div>
+                </dl>
+              </li>
+            );
+          }),
+        ])}
+      </ol>
+    </div>
   );
 }
