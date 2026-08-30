@@ -31,6 +31,7 @@ brokered authentication. It runs as an item inside a Microsoft Fabric workspace.
    can be done in the portal; later source updates can use the full-definition
    `getDefinition` / `updateDefinition` REST flow described in
    [`fabric/udf/atlas_sync_functions/`](../fabric/udf/atlas_sync_functions/).
+   Keep its pinned `fabric-user-data-functions` version from `requirements.txt`.
 
 ## 1. Clone and install
 
@@ -133,6 +134,10 @@ RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_EMAIL=<authorized-sync-user>
 Then `npx rayfin up` again so the values are baked into the deployed bundle, and add the new hosting
 origin to the app registration's SPA redirect URIs.
 
+`RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_EMAIL` is also compiled into the Rayfin create
+policies. Set it before schema generation and deployment; changing it requires
+another `npx rayfin up`.
+
 > **One SPA redirect URI per hosting origin.** MSAL signs in against the app's own origin
 > (`https://<app>.fabricapps.net`), so that exact origin must be listed under the app registration's
 > **Authentication → Single-page application** redirect URIs — otherwise the Sync popup fails with an
@@ -153,8 +158,9 @@ origin to the app registration's SPA redirect URIs.
    directly and later refreshes use the header Sync button.
 
 For an existing published UDF, retrieve the complete definition, replace only
-the Base64 `function_app.py` payload, submit it to `updateDefinition`, then read
-the definition back and compare the Python hash before invoking `sync_all`.
+the Base64 `function_app.py` and `requirements.txt` payloads, submit every
+definition part to `updateDefinition`, then read the definition back and
+compare both hashes before invoking `sync_all`.
 
 ## 6. Redeploy after a change
 
@@ -175,6 +181,7 @@ created, then re-add the new hosting origin to the app registration.
 | --- | --- |
 | `npm run dev` | Vite dev server (preview mode with sample data) |
 | `npm run build` | Type-check and build the production bundle to `dist/` |
+| `npm run typecheck` | Run the full TypeScript project check |
 | `npm run lint` | ESLint |
 | `npm run test` | Vitest |
 | `npx rayfin up` | Deploy app + apply schema to Fabric |

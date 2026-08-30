@@ -141,10 +141,23 @@ describe("Rayfin snapshot persistence", () => {
     expect(Math.max(...contentOrders)).toBeLessThan(markerOrder);
   });
 
-  it("round-trips Fabric item creation and update timestamps", async () => {
+  it("persists Fabric item metadata provenance and sync section status", async () => {
     const atlas = structuredClone(SAMPLE_DATA);
     atlas.items[0].createdAt = "2026-08-20T08:00:00.000Z";
     atlas.items[0].updatedAt = "2026-08-29T08:00:00.000Z";
+    atlas.items[0].configuredBy = "builder@example.com";
+    atlas.items[0].endorsementRaw = "Certified";
+    atlas.items[0].endorsementBy = "certifier@example.com";
+    atlas.items[0].sensitivityLabelId = "label-guid";
+    atlas.items[0].tagIds = ["tag-guid"];
+    atlas.items[0].ownerMetadataAvailable = false;
+    atlas.items[0].sensitivityMetadataAvailable = true;
+    atlas.items[0].endorsementMetadataAvailable = true;
+    atlas.items[0].tagMetadataAvailable = true;
+    atlas.workspace.syncSections = {
+      scanner: { status: "complete" },
+      jobs: { status: "unsupported", code: "unsupported-item-types" },
+    };
     mocks.mapSyncToAtlas.mockReturnValue(atlas);
 
     await runFabricSync(false, identity);
@@ -153,8 +166,47 @@ describe("Rayfin snapshot persistence", () => {
       expect.objectContaining({
         itemCreatedAt: new Date("2026-08-20T08:00:00.000Z"),
         itemUpdatedAt: new Date("2026-08-29T08:00:00.000Z"),
+        configuredBy: "builder@example.com",
+        endorsementRaw: "Certified",
+        endorsementBy: "certifier@example.com",
+        sensitivityLabelId: "label-guid",
+        tagIds: "tag-guid",
+        ownerMetadataAvailable: false,
+        sensitivityMetadataAvailable: true,
+        endorsementMetadataAvailable: true,
+        tagMetadataAvailable: true,
       }),
     );
+    expect(mocks.data.Workspace.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        syncSectionsJson: JSON.stringify(atlas.workspace.syncSections),
+      }),
+    );
+  });
+
+  it("never serializes business rows into schema snapshot chunks", async () => {
+    const atlas = structuredClone(SAMPLE_DATA);
+    const itemId = atlas.items[0].fabricId;
+    atlas.schema = {
+      [itemId]: [
+        {
+          name: "Unsafe",
+          rows: [{ businessValue: "secret" }] as unknown as number,
+          columns: [],
+          measures: [],
+        },
+      ],
+    };
+    mocks.mapSyncToAtlas.mockReturnValue(atlas);
+
+    await runFabricSync(false, identity);
+
+    const schemaWrites = mocks.data.ConfigEntry.create.mock.calls
+      .map(([row]) => row as Record<string, unknown>)
+      .filter((row) => row.section === "__schema__");
+    expect(schemaWrites).toHaveLength(1);
+    expect(schemaWrites[0].value).not.toContain("businessValue");
+    expect(schemaWrites[0].value).not.toContain("secret");
   });
 
   it("falls back to the previous complete manifest during hydration", async () => {
@@ -269,6 +321,41 @@ describe("Rayfin snapshot persistence", () => {
           updatedAt: "2026-08-29T08:00:00.000Z",
         },
       ],
+    });
+  });
+
+  it("hydrates a complete empty workspace snapshot", async () => {
+    const snapshotId = "56565656-5656-4656-8656-565656565656";
+    mocks.data.Workspace.findMany.mockResolvedValue([
+      {
+        snapshotId,
+        writerEmail: identity.email,
+        fabricId: workspaceId,
+        displayName: "Empty workspace",
+        itemCount: 0,
+        edgeCount: 0,
+        principalCount: 0,
+        grantCount: 0,
+        jobCount: 0,
+        configCount: 0,
+        schemaEntryCount: 0,
+        syncedAt: "2026-08-30T08:00:00.000Z",
+        syncSectionsJson: JSON.stringify({
+          scanner: { status: "complete" },
+        }),
+      },
+    ]);
+
+    await expect(loadFromDb(false)).resolves.toMatchObject({
+      workspace: {
+        displayName: "Empty workspace",
+        snapshotId,
+        syncSections: {
+          scanner: { status: "complete" },
+        },
+      },
+      items: [],
+      edges: [],
     });
   });
 
@@ -435,10 +522,16 @@ describe("Rayfin snapshot persistence", () => {
     expect(mocks.data.FabricItem.findMany).toHaveBeenCalledWith({
       workspace_id: { eq: workspaceId },
       snapshotId: { eq: invalidSnapshot },
+      writerEmail: { eq: identity.email },
     });
     expect(mocks.data.FabricItem.findMany).toHaveBeenCalledWith({
       workspace_id: { eq: workspaceId },
       snapshotId: { eq: validSnapshot },
+      writerEmail: { eq: identity.email },
+    });
+    expect(mocks.data.Workspace.findMany).toHaveBeenCalledWith({
+      fabricId: { eq: workspaceId },
+      writerEmail: { eq: identity.email },
     });
   });
 

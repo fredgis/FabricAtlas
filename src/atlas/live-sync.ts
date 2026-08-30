@@ -30,6 +30,18 @@ export interface SyncIdentity {
   email?: string;
 }
 
+export function normalizeFabricTimestamp(
+  value: unknown,
+): string | undefined {
+  const text = realText(value);
+  if (!text) return undefined;
+  const zoned = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(text)
+    ? text
+    : `${text}Z`;
+  const date = new Date(zoned);
+  return Number.isNaN(date.valueOf()) ? undefined : date.toISOString();
+}
+
 export interface MsalAccount {
   homeAccountId?: string;
   localAccountId?: string;
@@ -176,13 +188,66 @@ async function acquireToken(identity: SyncIdentity): Promise<string> {
 /* ----------------------------- UDF invoke ------------------------------ */
 
 export interface RawSync {
+  schemaVersion?: number;
   workspace?: Record<string, unknown>;
   items?: Array<Record<string, unknown>>;
   roleAssignments?: Array<Record<string, unknown>>;
   jobs?: Array<Record<string, unknown>>;
   lineage?: Array<{ source?: string; target?: string; relation?: string }>;
-  access?: Array<{ itemId?: string; principalName?: string; principalEmail?: string; principalType?: string; accessRight?: string }>;
+  access?: Array<{
+    itemId?: string;
+    principalId?: string;
+    principalName?: string;
+    principalEmail?: string;
+    principalType?: string;
+    userType?: string;
+    tenantWide?: boolean;
+    accessRight?: string;
+  }>;
   config?: Array<{ itemId?: string; section?: string; label?: string; value?: string }>;
+  sections?: Record<
+    string,
+    {
+      status?: "complete" | "unsupported" | "failed";
+      code?: string;
+    }
+  >;
+  capabilities?: Record<
+    "endorsement" | "sensitivity" | "tags" | "ownership",
+    {
+      status?: "complete" | "unsupported" | "failed";
+      code?: string;
+    }
+  >;
+  itemMetadata?: Record<
+    string,
+    {
+      scannerMatched?: boolean;
+      ownerAvailable?: boolean;
+      configuredBy?: string;
+      modifiedBy?: string;
+      modifiedDateTime?: string;
+      owner?: {
+        principalId?: string;
+        displayName?: string;
+        email?: string;
+        source?: string;
+      };
+      endorsement?: {
+        value?: string;
+        certifiedBy?: string;
+      };
+      sensitivity?: {
+        labelId?: string;
+        displayName?: string;
+      };
+      tags?: Array<{
+        id?: string;
+        displayName?: string;
+      }>;
+    }
+  >;
+  syncedAt?: string;
   schema?: Record<
     string,
     Array<{
@@ -210,6 +275,143 @@ export interface RawSync {
   errors?: string[];
 }
 
+function itemEndorsement(value: unknown): Item["endorsement"] {
+  const normalizedValue = normalized(value);
+  if (normalizedValue === "certified") return "certified";
+  if (normalizedValue === "promoted") return "promoted";
+  return "none";
+}
+
+function finiteRowCount(value: unknown): number | undefined {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0
+    ? value
+    : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && !Array.isArray(value) && typeof value === "object";
+}
+
+function optionalText(value: unknown): boolean {
+  return value == null || typeof value === "string";
+}
+
+function validateItemMetadata(
+  value: RawSync["itemMetadata"],
+  itemIds: Set<string>,
+): void {
+  if (value == null) return;
+  if (!isRecord(value)) {
+    throw new Error(
+      "The sync result contained invalid item metadata. The previous snapshot was preserved.",
+    );
+  }
+  for (const [itemId, metadata] of Object.entries(value)) {
+    if (!itemIds.has(itemId) || !isRecord(metadata)) {
+      throw new Error(
+        "The sync result contained invalid item metadata. The previous snapshot was preserved.",
+      );
+    }
+    if (
+      metadata.scannerMatched != null &&
+      typeof metadata.scannerMatched !== "boolean"
+    ) {
+      throw new Error(
+        "The sync result contained invalid item metadata. The previous snapshot was preserved.",
+      );
+    }
+    if (
+      metadata.ownerAvailable != null &&
+      typeof metadata.ownerAvailable !== "boolean"
+    ) {
+      throw new Error(
+        "The sync result contained invalid item metadata. The previous snapshot was preserved.",
+      );
+    }
+    for (const field of [
+      "configuredBy",
+      "modifiedBy",
+      "modifiedDateTime",
+    ] as const) {
+      if (!optionalText(metadata[field])) {
+        throw new Error(
+          "The sync result contained invalid item metadata. The previous snapshot was preserved.",
+        );
+      }
+    }
+    for (const field of ["owner", "endorsement", "sensitivity"] as const) {
+      if (metadata[field] != null && !isRecord(metadata[field])) {
+        throw new Error(
+          "The sync result contained invalid item metadata. The previous snapshot was preserved.",
+        );
+      }
+    }
+    if (
+      (isRecord(metadata.owner) &&
+        (!optionalText(metadata.owner.principalId) ||
+          !optionalText(metadata.owner.displayName) ||
+          !optionalText(metadata.owner.email) ||
+          !optionalText(metadata.owner.source))) ||
+      (isRecord(metadata.endorsement) &&
+        (!optionalText(metadata.endorsement.value) ||
+          !optionalText(metadata.endorsement.certifiedBy))) ||
+      (isRecord(metadata.sensitivity) &&
+        (!optionalText(metadata.sensitivity.labelId) ||
+          !optionalText(metadata.sensitivity.displayName)))
+    ) {
+      throw new Error(
+        "The sync result contained invalid item metadata. The previous snapshot was preserved.",
+      );
+    }
+    if (
+      metadata.tags != null &&
+      (!Array.isArray(metadata.tags) ||
+        metadata.tags.some(
+          (tag) =>
+            !isRecord(tag) ||
+            !optionalText(tag.id) ||
+            !optionalText(tag.displayName),
+        ))
+    ) {
+      throw new Error(
+        "The sync result contained invalid item metadata. The previous snapshot was preserved.",
+      );
+    }
+  }
+}
+
+function validatedSyncSections(
+  sections: RawSync["sections"],
+): WorkspaceInfo["syncSections"] {
+  if (!sections) return undefined;
+  if (Array.isArray(sections) || typeof sections !== "object") {
+    throw new Error(
+      "The sync result contained invalid section status. The previous snapshot was preserved.",
+    );
+  }
+  const result: NonNullable<WorkspaceInfo["syncSections"]> = {};
+  for (const [name, section] of Object.entries(sections)) {
+    if (
+      !section ||
+      typeof section !== "object" ||
+      (section.status !== "complete" &&
+        section.status !== "unsupported" &&
+        section.status !== "failed")
+    ) {
+      throw new Error(
+        "The sync result contained invalid section status. The previous snapshot was preserved.",
+      );
+    }
+    result[name] = {
+      status: section.status,
+      code: realText(section.code),
+    };
+  }
+  return result;
+}
+
 const REQUIRED_ARRAYS = [
   "items",
   "roleAssignments",
@@ -219,16 +421,137 @@ const REQUIRED_ARRAYS = [
   "config",
 ] as const;
 
+const REQUIRED_V2_SECTIONS = [
+  "workspace",
+  "items",
+  "roleAssignments",
+  "scanner",
+  "schema",
+  "lineage",
+  "access",
+  "config",
+] as const;
+const MAX_SYNC_RESPONSE_BYTES = 26 * 1024 * 1024;
+
+export function parseSyncResponseText(
+  text: string,
+  maxBytes = MAX_SYNC_RESPONSE_BYTES,
+): RawSync {
+  if (new TextEncoder().encode(text).byteLength > maxBytes) {
+    throw new Error(
+      "Fabric returned a sync payload that exceeded the Atlas safety limit. The previous snapshot was preserved.",
+    );
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error(
+      "Fabric returned an invalid sync response. The previous snapshot was preserved.",
+    );
+  }
+  if (!isRecord(json)) {
+    throw new Error(
+      "Fabric returned an invalid sync response. The previous snapshot was preserved.",
+    );
+  }
+  return (json.output ?? json.body ?? json) as RawSync;
+}
+
+export async function readBoundedResponseText(
+  response: Response,
+  maxBytes = MAX_SYNC_RESPONSE_BYTES,
+): Promise<string> {
+  if (!response.body) {
+    const text = await response.text();
+    if (new TextEncoder().encode(text).byteLength > maxBytes) {
+      throw new Error(
+        "Fabric returned a sync payload that exceeded the Atlas safety limit. The previous snapshot was preserved.",
+      );
+    }
+    return text;
+  }
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw new Error(
+        "Fabric returned a sync payload that exceeded the Atlas safety limit. The previous snapshot was preserved.",
+      );
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 export function validateRawSync(
   raw: RawSync,
   expectedWorkspaceId: string,
 ): void {
+  if (
+    raw.schemaVersion != null &&
+    raw.schemaVersion !== 1 &&
+    raw.schemaVersion !== 2
+  ) {
+    throw new Error(
+      "The sync result used an unsupported schema version. The previous snapshot was preserved.",
+    );
+  }
+  const sections = validatedSyncSections(raw.sections);
+  const capabilities = validatedSyncSections(raw.capabilities);
   if (!Array.isArray(raw.errors)) {
     throw new Error(
       "The sync result did not include completion status. The previous snapshot was preserved.",
     );
   }
-  if (raw.errors.length > 0) {
+  if (raw.errors.some((error) => typeof error !== "string")) {
+    throw new Error(
+      "The sync result contained invalid completion status. The previous snapshot was preserved.",
+    );
+  }
+  if (raw.schemaVersion === 2) {
+    if (!sections) {
+      throw new Error(
+        "The sync result did not include section status. The previous snapshot was preserved.",
+      );
+    }
+    if (
+      !capabilities ||
+      [
+        "endorsement",
+        "sensitivity",
+        "tags",
+        "ownership",
+      ].some((name) => capabilities[name] == null)
+    ) {
+      throw new Error(
+        "The sync result did not include metadata capability status. The previous snapshot was preserved.",
+      );
+    }
+    const failedRequired = REQUIRED_V2_SECTIONS.filter(
+      (name) => sections[name]?.status !== "complete",
+    );
+    if (failedRequired.length > 0) {
+      console.warn(
+        "[atlas] Fabric sync returned incomplete required sections",
+        failedRequired,
+      );
+      throw new Error(
+        `Fabric returned an incomplete sync (${failedRequired.join(", ")}). The previous snapshot was preserved.`,
+      );
+    }
+  } else if (raw.errors.length > 0) {
     const sources = [
       ...new Set(
         raw.errors.map((error) => String(error).split(":", 1)[0].trim()),
@@ -260,14 +583,64 @@ export function validateRawSync(
       );
     }
   }
+  if (
+    raw.roleAssignments?.some(
+      (assignment) =>
+        !isRecord(assignment) ||
+        !realText(assignment.role) ||
+        !isRecord(assignment.principal),
+    ) === true ||
+    raw.lineage?.some(
+      (edge) =>
+        !isRecord(edge) ||
+        !realText(edge.source) ||
+        !realText(edge.target) ||
+        !optionalText(edge.relation),
+    ) === true ||
+    raw.access?.some(
+      (grant) =>
+        !isRecord(grant) ||
+        !optionalText(grant.itemId) ||
+        !optionalText(grant.principalId) ||
+        !optionalText(grant.principalName) ||
+        !optionalText(grant.principalEmail) ||
+        !optionalText(grant.principalType) ||
+        !optionalText(grant.userType) ||
+        (grant.tenantWide != null &&
+          typeof grant.tenantWide !== "boolean") ||
+        !optionalText(grant.accessRight) ||
+        (!realText(grant.principalId) &&
+          !realText(grant.principalName) &&
+          !realText(grant.principalEmail) &&
+          grant.tenantWide !== true),
+    ) === true ||
+    raw.config?.some(
+      (entry) =>
+        !isRecord(entry) ||
+        !realText(entry.itemId) ||
+        !realText(entry.section) ||
+        !realText(entry.label) ||
+        !optionalText(entry.value),
+    ) === true ||
+    raw.jobs?.some(
+      (job) =>
+        !isRecord(job) ||
+        !realText(job.itemId) ||
+        !realText(job.jobType) ||
+        !realText(job.status) ||
+        (job.startTimeUtc != null &&
+          normalizeFabricTimestamp(job.startTimeUtc) == null) ||
+        (job.endTimeUtc != null &&
+          normalizeFabricTimestamp(job.endTimeUtc) == null),
+    ) === true
+  ) {
+    throw new Error(
+      "The sync result contained malformed section records. The previous snapshot was preserved.",
+    );
+  }
   if (!Array.isArray(raw.items) || !Array.isArray(raw.roleAssignments)) {
     throw new Error(
       "The sync result was missing mandatory catalog data. The previous snapshot was preserved.",
-    );
-  }
-  if (raw.items.length === 0) {
-    throw new Error(
-      "Fabric returned no workspace items. The previous snapshot was preserved.",
     );
   }
   if (raw.roleAssignments.length === 0) {
@@ -300,6 +673,81 @@ export function validateRawSync(
     throw new Error(
       "Fabric returned duplicate workspace item IDs. The previous snapshot was preserved.",
     );
+  }
+  validateItemMetadata(
+    raw.itemMetadata,
+    new Set(itemIds.filter((id): id is string => !!id)),
+  );
+  if (
+    raw.schemaVersion === 2 &&
+    (!raw.itemMetadata ||
+      itemIds.some((itemId) => {
+        if (!itemId) return true;
+        const metadata = raw.itemMetadata?.[itemId];
+        return (
+          !metadata ||
+          typeof metadata.scannerMatched !== "boolean"
+        );
+      }))
+  ) {
+    throw new Error(
+      "The sync result did not include complete item metadata status. The previous snapshot was preserved.",
+    );
+  }
+  for (const [itemId, tables] of Object.entries(raw.schema)) {
+    if (!itemIds.includes(itemId) || !Array.isArray(tables)) {
+      throw new Error(
+        "The sync result contained invalid object schema. The previous snapshot was preserved.",
+      );
+    }
+    for (const table of tables) {
+      if (!table || typeof table !== "object" || !realText(table.name)) {
+        throw new Error(
+          "The sync result contained invalid object schema. The previous snapshot was preserved.",
+        );
+      }
+      if (
+        table.rows != null &&
+        finiteRowCount(table.rows) == null
+      ) {
+        throw new Error(
+          "The sync result contained a non-numeric row count. The previous snapshot was preserved.",
+        );
+      }
+      if (
+        !Array.isArray(table.columns) ||
+        !Array.isArray(table.measures)
+      ) {
+        throw new Error(
+          "The sync result contained invalid object schema. The previous snapshot was preserved.",
+        );
+      }
+      if (
+        table.columns.some(
+          (column) =>
+            !isRecord(column) ||
+            !realText(column.name) ||
+            !optionalText(column.dataType) ||
+            !optionalText(column.description) ||
+            (column.isHidden != null &&
+              typeof column.isHidden !== "boolean"),
+        ) ||
+        table.measures.some(
+          (measure) =>
+            !isRecord(measure) ||
+            !realText(measure.name) ||
+            !optionalText(measure.expression) ||
+            !optionalText(measure.expr) ||
+            !optionalText(measure.description) ||
+            (measure.isHidden != null &&
+              typeof measure.isHidden !== "boolean"),
+        )
+      ) {
+        throw new Error(
+          "The sync result contained invalid object schema. The previous snapshot was preserved.",
+        );
+      }
+    }
   }
 }
 
@@ -340,9 +788,19 @@ export async function invokeSyncAll(
       `Fabric sync failed (HTTP ${resp.status}). The previous snapshot was preserved.`,
     );
   }
-  const json = (await resp.json()) as Record<string, unknown>;
+  const contentLength = Number(resp.headers.get("content-length"));
+  if (
+    Number.isFinite(contentLength) &&
+    contentLength > MAX_SYNC_RESPONSE_BYTES
+  ) {
+    throw new Error(
+      "Fabric returned a sync payload that exceeded the Atlas safety limit. The previous snapshot was preserved.",
+    );
+  }
   // Fabric UDF wraps the return under `output`; accept a raw body too.
-  const result = (json.output ?? json.body ?? json) as RawSync;
+  const result = parseSyncResponseText(
+    await readBoundedResponseText(resp),
+  );
   validateRawSync(result, workspaceId);
   return result;
 }
@@ -380,7 +838,19 @@ function accessLevelFrom(ar?: string | null): AccessLevel {
   return "none";
 }
 
+function canonicalPrincipalId(value: unknown): string | undefined {
+  const text = realText(value);
+  if (!text) return undefined;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    text,
+  ) || text.includes("@")
+    ? text.toLowerCase()
+    : text;
+}
+
 export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData {
+  const syncSections = validatedSyncSections(raw.sections);
+  const metadataCapabilities = validatedSyncSections(raw.capabilities);
   const items: Item[] = (raw.items ?? [])
     .map((it): Item | null => {
       const fabricId = realText(it.id);
@@ -388,14 +858,69 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
       if (!fabricId || !type) {
         throw new Error("Cannot map malformed Fabric item metadata.");
       }
+      const metadata = raw.itemMetadata?.[fabricId];
+      const scannerMatched = metadata?.scannerMatched;
+      const tagEntries = Array.isArray(metadata?.tags)
+        ? metadata.tags
+        : [];
+      const endorsementRaw = realText(
+        metadata?.endorsement?.value,
+      );
+      const sensitivityLabelId = realText(
+        metadata?.sensitivity?.labelId,
+      );
+      const sensitivity = realText(
+        metadata?.sensitivity?.displayName,
+      );
+      const ownerName = realText(metadata?.owner?.displayName);
+      const ownerEmail = realText(metadata?.owner?.email);
       return {
         fabricId,
         displayName: realText(it.displayName) ?? fabricId,
         itemType: type,
         description: realText(it.description),
+        ownerName,
+        ownerEmail,
+        configuredBy: realText(metadata?.configuredBy),
+        modifiedBy: realText(metadata?.modifiedBy),
         health: "unknown" as Health,
-        endorsement: "none",
-        tags: [],
+        endorsement: itemEndorsement(endorsementRaw),
+        endorsementRaw,
+        endorsementBy: realText(metadata?.endorsement?.certifiedBy),
+        sensitivity,
+        sensitivityLabelId,
+        tags: tagEntries
+          .map((tag) => realText(tag.displayName))
+          .filter((tag): tag is string => !!tag),
+        tagIds: tagEntries
+          .map((tag) => realText(tag.id))
+          .filter((tag): tag is string => !!tag),
+        ownerMetadataAvailable:
+          metadata == null
+            ? undefined
+            : metadataCapabilities?.ownership?.status === "complete"
+              ? metadata.ownerAvailable ??
+                metadata.owner != null
+              : false,
+        sensitivityMetadataAvailable:
+          metadata == null
+            ? undefined
+            : scannerMatched === true &&
+              (metadataCapabilities?.sensitivity?.status ?? "complete") ===
+                "complete",
+        endorsementMetadataAvailable:
+          metadata == null
+            ? undefined
+            : scannerMatched === true &&
+              (metadataCapabilities?.endorsement?.status ?? "complete") ===
+                "complete",
+        tagMetadataAvailable:
+          metadata == null
+            ? undefined
+            : scannerMatched === true &&
+              (metadataCapabilities?.tags?.status ?? "complete") ===
+                "complete",
+        updatedAt: normalizeFabricTimestamp(metadata?.modifiedDateTime),
       };
     })
     .filter((x): x is Item => x !== null);
@@ -403,14 +928,14 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
   const itemIds = new Set(items.map((i) => i.fabricId));
 
   const jobs: Job[] = (raw.jobs ?? []).map((j) => {
-    const start = j.startTimeUtc as string | undefined;
-    const end = j.endTimeUtc as string | undefined;
+    const start = normalizeFabricTimestamp(j.startTimeUtc);
+    const end = normalizeFabricTimestamp(j.endTimeUtc);
     return {
       itemFabricId: String(j.itemId ?? ""),
       itemName: String(j.itemDisplayName ?? j.itemId ?? ""),
       jobType: String(j.jobType ?? "Job"),
       status: jobStatus(j.status),
-      startedAt: start ?? new Date().toISOString(),
+      startedAt: start ?? new Date(0).toISOString(),
       durationSec:
         start && end
           ? Math.max(0, Math.round((Date.parse(end) - Date.parse(start)) / 1000))
@@ -437,6 +962,23 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
   // Workspace users + their access, from role assignments.
   const principals: Principal[] = [];
   const grants: Grant[] = [];
+  const principalsById = new Map<string, Principal>();
+  const upsertPrincipal = (principal: Principal): Principal => {
+    const canonicalId =
+      canonicalPrincipalId(principal.principalId) ??
+      principal.principalId;
+    principal.principalId = canonicalId;
+    const key = normalized(canonicalId);
+    const existing = principalsById.get(key);
+    if (existing) {
+      if (!existing.email && principal.email) existing.email = principal.email;
+      existing.external = existing.external || principal.external;
+      return existing;
+    }
+    principalsById.set(key, principal);
+    principals.push(principal);
+    return principal;
+  };
   for (const ra of raw.roleAssignments ?? []) {
     const p = (ra.principal ?? {}) as Record<string, unknown>;
     const details = (p.userDetails ?? {}) as Record<string, unknown>;
@@ -451,9 +993,11 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
             ? "guest"
             : "user";
     const name = String(p.displayName ?? email ?? p.id ?? "Unknown");
+    const principalId =
+      canonicalPrincipalId(p.id ?? email ?? name) ?? name;
     const role = String(ra.role ?? "Viewer") as WorkspaceRole;
-    principals.push({
-      principalId: String(p.id ?? name),
+    upsertPrincipal({
+      principalId,
       displayName: name,
       kind,
       email,
@@ -461,7 +1005,7 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
       workspaceRole: role,
     });
     grants.push({
-      principalRef: name,
+      principalRef: principalId,
       accessLevel: ROLE_TO_ACCESS[role] ?? "view",
       source: "workspaceRole",
       roleName: role,
@@ -477,57 +1021,83 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
   }
 
   // Per-item access from the scanner (who can see each item, beyond workspace roles).
-  const principalRefs = new Set(principals.map((p) => p.displayName));
   for (const g of raw.access ?? []) {
-    const name = String(g.principalName || g.principalEmail || "Unknown");
+    const tenantWide =
+      g.tenantWide === true ||
+      normalized(g.principalType) === "entiretenant" ||
+      normalized(g.principalType) === "none";
+    const name = tenantWide
+      ? "Entire tenant"
+      : String(g.principalName || g.principalEmail || "Unknown");
     const email = g.principalEmail;
     const isGuest = !!email && email.toUpperCase().includes("#EXT#");
     const kind: PrincipalKind =
-      g.principalType === "Group"
+      tenantWide || g.principalType === "Group"
         ? "group"
         : g.principalType === "App" || g.principalType === "ServicePrincipal"
           ? "servicePrincipal"
           : isGuest
             ? "guest"
             : "user";
-    if (!principalRefs.has(name)) {
-      principalRefs.add(name);
-      principals.push({
-        principalId: String(email || name),
-        displayName: name,
-        kind,
-        email: email || undefined,
-        external: isGuest,
-        workspaceRole: "Viewer",
-      });
-    }
+    const explicitPrincipalId = canonicalPrincipalId(g.principalId);
+    const existingById = explicitPrincipalId
+      ? principalsById.get(normalized(explicitPrincipalId))
+      : undefined;
+    const emailMatches = email
+      ? principals.filter(
+          (principal) =>
+            normalized(principal.email) === normalized(email),
+        )
+      : [];
+    const nameMatches = principals.filter(
+      (principal) =>
+        normalized(principal.displayName) === normalized(name),
+    );
+    const principalId =
+      existingById?.principalId ??
+      explicitPrincipalId ??
+      (emailMatches.length === 1
+        ? emailMatches[0].principalId
+        : undefined) ??
+      (nameMatches.length === 1
+        ? nameMatches[0].principalId
+        : undefined) ??
+      canonicalPrincipalId(email) ??
+      (tenantWide ? "entire-tenant" : name);
+    upsertPrincipal({
+      principalId,
+      displayName: name,
+      kind,
+      email: email || undefined,
+      external: isGuest,
+      workspaceRole: "Viewer",
+    });
     if (g.itemId && itemIds.has(g.itemId)) {
       grants.push({
         itemFabricId: g.itemId,
-        principalRef: name,
+        principalRef: principalId,
         accessLevel: accessLevelFrom(g.accessRight),
         source: "directShare",
         roleName: g.accessRight || undefined,
-        flag: isGuest ? "external" : kind === "servicePrincipal" ? "servicePrincipal" : undefined,
+        flag: tenantWide
+          ? "broad"
+          : isGuest
+            ? "external"
+            : kind === "servicePrincipal"
+              ? "servicePrincipal"
+              : undefined,
       });
     }
   }
 
-  // Real lineage computed server-side by the UDF (item relations + report→model).
-  // Fall back to the one edge we can assert locally (Lakehouse and its SQL endpoint).
+  // Real lineage is computed server-side from Fabric and Power BI identifiers.
+  // An absent edge is safer than inferring a relationship from display names.
   const edges: Edge[] = [];
   if (Array.isArray(raw.lineage) && raw.lineage.length) {
     for (const e of raw.lineage) {
       if (e.source && e.target && itemIds.has(e.source) && itemIds.has(e.target)) {
         edges.push({ source: e.source, target: e.target, relation: e.relation || "depends on" });
       }
-    }
-  } else {
-    const lakes = items.filter((i) => i.itemType === "Lakehouse");
-    for (const se of items.filter((i) => i.itemType === "SQLEndpoint")) {
-      const n = se.displayName.toLowerCase();
-      const lh = lakes.find((l) => n === l.displayName.toLowerCase() || n.includes(l.displayName.toLowerCase()));
-      if (lh) edges.push({ source: lh.fabricId, target: se.fabricId, relation: "SQL endpoint" });
     }
   }
 
@@ -545,7 +1115,7 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
     if (!itemIds.has(id) || !Array.isArray(tables)) continue;
     schema[id] = tables.map((t) => ({
       name: String(t.name ?? ""),
-      rows: t.rows,
+      rows: finiteRowCount(t.rows),
       objectType: t.objectType,
       source: t.source,
       description: t.description,
@@ -569,8 +1139,18 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
   const workspace: WorkspaceInfo = {
     fabricId: String(ws.id ?? fallback.fabricId),
     displayName: String(ws.displayName ?? fallback.displayName),
-    capacity: fallback.capacity,
-    region: fallback.region,
+    capacity: realText(ws.capacityId) ?? fallback.capacity,
+    region: realText(ws.capacityRegion) ?? fallback.region,
+    syncedAt: normalizeFabricTimestamp(raw.syncedAt),
+    syncSections: {
+      ...(syncSections ?? {}),
+      ...Object.fromEntries(
+        Object.entries(metadataCapabilities ?? {}).map(([name, status]) => [
+          `metadata${name[0].toUpperCase()}${name.slice(1)}`,
+          status,
+        ]),
+      ),
+    },
   };
 
   return {

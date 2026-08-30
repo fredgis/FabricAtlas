@@ -414,7 +414,7 @@ export function AtlasProvider({
     [isPreview],
   );
 
-  const hasData = data.items.length > 0;
+  const hasData = data.items.length > 0 || !!data.workspace.snapshotId;
 
   const value = useMemo<AtlasContextValue>(
     () => ({

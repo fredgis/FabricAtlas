@@ -15,7 +15,7 @@ export const REPOSITORY_URL =
   "https://github.com/fredgis/FabricAtlas";
 
 export const APP_VERSION =
-  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.5.1";
+  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.6.0";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -27,6 +27,29 @@ export const BUILD_DATE =
 export const DEPLOYMENT_ID = `${APP_VERSION}:${BUILD_COMMIT}:${BUILD_DATE}`;
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "1.6.0",
+    date: "2026-08-30",
+    title: "Trusted metadata synchronization",
+    sections: [
+      {
+        title: "Reliability & security",
+        items: [
+          "The versioned sync contract records required, optional and metadata-capability status for every validated snapshot.",
+          "UDF requests, retries, response reads and payload size share bounded execution limits below the Fabric public endpoint ceiling.",
+          "Server-side writer filters and Rayfin create policies restrict snapshot publication to the configured synchronizer.",
+        ],
+      },
+      {
+        title: "Metadata accuracy",
+        items: [
+          "Governance views distinguish metadata that was not collected from a real missing value or zero.",
+          "Fabric IDs stabilize principal access history, while legacy email and name references remain compatible.",
+          "Documented owner provenance, raw endorsement, sensitivity-label IDs and tag IDs are preserved without storing business data.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.5.1",
     date: "2026-08-30",

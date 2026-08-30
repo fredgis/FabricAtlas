@@ -152,6 +152,33 @@ export function normalizeSensitivity(value: unknown): string | undefined {
   return normalized || undefined;
 }
 
+function sensitivityChange(
+  before: Item,
+  after: Item,
+): { before?: string; after?: string } | undefined {
+  const oldId = normalizeSensitivity(before.sensitivityLabelId);
+  const newId = normalizeSensitivity(after.sensitivityLabelId);
+  if (oldId && newId) {
+    return normalizedText(oldId) === normalizedText(newId)
+      ? undefined
+      : { before: oldId, after: newId };
+  }
+
+  const oldName = normalizeSensitivity(before.sensitivity);
+  const newName = normalizeSensitivity(after.sensitivity);
+  if (oldName && newName) {
+    return normalizedText(oldName) === normalizedText(newName)
+      ? undefined
+      : { before: oldName, after: newName };
+  }
+
+  const oldValue = oldName ?? oldId;
+  const newValue = newName ?? newId;
+  return normalizedText(oldValue) === normalizedText(newValue)
+    ? undefined
+    : { before: oldValue, after: newValue };
+}
+
 export function normalizeTags(tags: readonly string[] | undefined): string[] {
   return [
     ...new Set(
@@ -227,9 +254,18 @@ function itemValue(item: Item): Record<string, unknown> {
     description: cleanText(item.description),
     ownerName: cleanText(item.ownerName),
     ownerEmail: normalizedText(item.ownerEmail),
+    configuredBy: normalizedText(item.configuredBy),
+    modifiedBy: normalizedText(item.modifiedBy),
     health: item.health,
     endorsement: item.endorsement,
+    endorsementRaw: normalizedText(item.endorsementRaw),
+    endorsementBy: normalizedText(item.endorsementBy),
     tags: normalizeTags(item.tags),
+    tagIds: normalizeTags(item.tagIds),
+    ownerMetadataAvailable: item.ownerMetadataAvailable,
+    sensitivityMetadataAvailable: item.sensitivityMetadataAvailable,
+    endorsementMetadataAvailable: item.endorsementMetadataAvailable,
+    tagMetadataAvailable: item.tagMetadataAvailable,
     lastRefresh: cleanText(item.lastRefresh),
     createdAt: cleanText(item.createdAt),
     updatedAt: cleanText(item.updatedAt),
@@ -307,10 +343,93 @@ function schemaChild(
   };
 }
 
-function grantKey(grant: Grant): string {
+function principalForReference(
+  catalog: SnapshotCatalog,
+  reference: string,
+): SnapshotCatalog["principals"][number] | undefined {
+  const normalizedReference = normalizedText(reference);
+  const idMatches = catalog.principals.filter(
+    (principal) =>
+      normalizedText(principal.principalId) === normalizedReference,
+  );
+  if (idMatches.length === 1) return idMatches[0];
+  const emailMatches = catalog.principals.filter(
+    (principal) =>
+      normalizedText(principal.email) === normalizedReference,
+  );
+  if (emailMatches.length === 1) return emailMatches[0];
+  const nameMatches = catalog.principals.filter(
+    (principal) =>
+      normalizedText(principal.displayName) === normalizedReference,
+  );
+  return nameMatches.length === 1 ? nameMatches[0] : undefined;
+}
+
+function principalsByEmail(
+  catalog: SnapshotCatalog,
+): Map<string, SnapshotCatalog["principals"]> {
+  const result = new Map<string, SnapshotCatalog["principals"]>();
+  for (const principal of catalog.principals) {
+    const email = normalizedText(principal.email);
+    if (!email) continue;
+    const matches = result.get(email) ?? [];
+    matches.push(principal);
+    result.set(email, matches);
+  }
+  return result;
+}
+
+function principalComparisonKeys(
+  previous: SnapshotCatalog,
+  current: SnapshotCatalog,
+): {
+  previous: Map<string, string>;
+  current: Map<string, string>;
+} {
+  const previousKeys = new Map(
+    previous.principals.map((principal) => [
+      normalizedText(principal.principalId),
+      normalizedText(principal.principalId),
+    ]),
+  );
+  const currentKeys = new Map(
+    current.principals.map((principal) => [
+      normalizedText(principal.principalId),
+      normalizedText(principal.principalId),
+    ]),
+  );
+  const previousEmails = principalsByEmail(previous);
+  const currentEmails = principalsByEmail(current);
+
+  for (const [email, previousMatches] of previousEmails) {
+    const currentMatches = currentEmails.get(email) ?? [];
+    if (previousMatches.length !== 1 || currentMatches.length !== 1) continue;
+    const comparisonKey = `email:${email}`;
+    previousKeys.set(
+      normalizedText(previousMatches[0].principalId),
+      comparisonKey,
+    );
+    currentKeys.set(
+      normalizedText(currentMatches[0].principalId),
+      comparisonKey,
+    );
+  }
+  return { previous: previousKeys, current: currentKeys };
+}
+
+function grantKey(
+  catalog: SnapshotCatalog,
+  grant: Grant,
+  comparisonKeys: ReadonlyMap<string, string>,
+): string {
+  const principal = principalForReference(catalog, grant.principalRef);
+  const principalKey = principal
+    ? comparisonKeys.get(normalizedText(principal.principalId)) ??
+      normalizedText(principal.principalId)
+    : normalizedText(grant.principalRef);
   return [
     cleanText(grant.itemFabricId),
-    normalizedText(grant.principalRef),
+    principalKey,
     grant.source,
   ].join("\u0000");
 }
@@ -407,15 +526,14 @@ export function compareSnapshots(
   for (const [key, item] of currentItems) {
     const before = previousItems.get(key);
     if (!before) continue;
-    const oldSensitivity = normalizeSensitivity(before.sensitivity);
-    const newSensitivity = normalizeSensitivity(item.sensitivity);
-    if (oldSensitivity !== newSensitivity) {
+    const sensitivity = sensitivityChange(before, item);
+    if (sensitivity) {
       changes.push(
         makeChange(current, "sensitivity-changed", "sensitivity", key, {
           label: item.displayName,
           itemFabricId: item.fabricId,
-          before: oldSensitivity,
-          after: newSensitivity,
+          before: sensitivity.before,
+          after: sensitivity.after,
           changedFields: ["sensitivity"],
         }),
       );
@@ -462,8 +580,16 @@ export function compareSnapshots(
     }),
   );
 
-  const previousGrants = mapBy(previous.catalog.grants, grantKey);
-  const currentGrants = mapBy(current.catalog.grants, grantKey);
+  const comparisonKeys = principalComparisonKeys(
+    previous.catalog,
+    current.catalog,
+  );
+  const previousGrants = mapBy(previous.catalog.grants, (grant) =>
+    grantKey(previous.catalog, grant, comparisonKeys.previous),
+  );
+  const currentGrants = mapBy(current.catalog.grants, (grant) =>
+    grantKey(current.catalog, grant, comparisonKeys.current),
+  );
   changes.push(
     ...compareMap(previousGrants, currentGrants, {
       added: (key, grant) =>
@@ -571,8 +697,10 @@ export function summarizeSnapshot(snapshot: HistoricalSnapshot): SnapshotSummary
   const failing = snapshot.catalog.items.filter(
     (item) => item.health === "failing",
   ).length;
-  const labels = snapshot.catalog.items.filter((item) =>
-    normalizeSensitivity(item.sensitivity),
+  const labels = snapshot.catalog.items.filter(
+    (item) =>
+      normalizeSensitivity(item.sensitivity) ||
+      normalizedText(item.sensitivityLabelId),
   ).length;
   const principals = snapshot.catalog.principals.length;
   const externalPrincipals = snapshot.catalog.principals.filter(

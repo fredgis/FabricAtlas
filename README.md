@@ -53,6 +53,8 @@ Fabric Atlas collects that metadata without copying business data.
 | Header synchronization | Reuses the same progress model for later refreshes without leaving the current page |
 | Immutable snapshots | Writes catalog rows first and publishes the workspace manifest only after every write succeeds |
 | Last-known-good fallback | Ignores incomplete snapshots and loads the newest valid workspace state |
+| Versioned sync contract | Records required, optional and metadata-capability status for every synchronized snapshot |
+| Bounded UDF execution | Applies one deadline, bounded retries and payload limits below Fabric's public endpoint ceilings |
 | Deployment gate | Requires one synchronization for each deployed build before users enter the catalog |
 | Trusted synchronizer | Restricts snapshot publication to the configured synchronization account |
 | Snapshot history | Loads previous validated snapshots for comparisons and governance trends |
@@ -67,7 +69,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Findings | Actionable access, metadata, operations and lineage checks based on synchronized evidence |
 | Change Center | Compares any two validated snapshots across items, schema, access, sensitivity, lineage and jobs |
 | Governance history | Tracks items, labels, external principals, failures, lineage and schema inventory over time |
-| Metadata coverage | Shows descriptions, owners, sensitivity, endorsement and object-inventory completeness |
+| Metadata coverage | Separates collected gaps from metadata that Fabric did not expose, using explicit `N/A` states |
 | Sensitivity posture | Groups protected and unlabeled items and surfaces confidential assets |
 | Saved governance views | Persists personal filters such as metadata gaps, external access or failed operations |
 
@@ -80,7 +82,7 @@ Fabric Atlas collects that metadata without copying business data.
 |---|---|
 | Workspace catalog | Groups Fabric items by type with search, health, ownership, labels, tags and detail drawers |
 | Asset Catalog | Lists tables, views, columns and measures under their parent Fabric item |
-| Deep metadata | Shows data types, descriptions, visibility, sources, row counts and measure expressions when available |
+| Deep metadata | Shows data types, descriptions, visibility, sources, row counts, measure expressions and collection provenance when available |
 | Item context | Keeps properties, lineage, access, configuration and job history beside the selected item |
 | Collapsed groups | Starts inventory lists grouped and collapsed for faster scanning |
 
@@ -106,6 +108,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Functionality | What it provides |
 |---|---|
 | Additive effective access | Combines workspace and item grants so a direct share never reduces inherited access |
+| Stable principal identity | Uses Fabric principal IDs and safely correlates legacy name or email references across snapshots |
 | Access Review matrix | Reviews every reachable principal and item pair with permission, source and evidence |
 | Principal review | Groups all reachable items under collapsible principal sections |
 | Review decisions | Persists Reviewed, Accepted or Needs action status with an optional personal note |
@@ -147,7 +150,7 @@ Fabric Atlas collects that metadata without copying business data.
 |---|---|
 | Fabric brokered authentication | Runs inside the Fabric portal with the signed-in Entra identity |
 | Bound token selection | Matches the Power BI token account and tenant to the current Fabric user |
-| Metadata-only storage | Stores governance metadata and notes, never workspace business data |
+| Metadata-only storage | Allowlists governance metadata and excludes rows, datasource details, connections and Power Query or source expressions |
 | User-scoped preferences | Protects saved views and access-review decisions with Rayfin row policies |
 | Fabric deployment | Builds, migrates the schema and deploys the app through `npx rayfin up` |
 | Open-source project | Includes MIT licensing, contribution guidance, security reporting and release history |
@@ -248,9 +251,10 @@ flowchart LR
 
 The browser cannot call Fabric management APIs directly. A published User Data
 Function performs the metadata scan server-side with the signed-in user's
-delegated token. The app validates the result, stores a workspace-scoped
-snapshot through Rayfin, and keeps the previous valid snapshot if a refresh
-fails.
+delegated token. Its versioned response reports required, optional and
+capability status. The app validates and size-bounds that result, stores a
+workspace-scoped snapshot through Rayfin, and keeps the previous valid snapshot
+if a refresh fails.
 
 See [Architecture](docs/architecture.md) for the full data flow.
 
@@ -337,6 +341,10 @@ Fabric Atlas stores workspace metadata and team notes. It does not persist
 workspace business data. Tokens and deployment values stay outside Git in
 `rayfin/.env`.
 
+The synchronization boundary excludes scanner rows, datasource and connection
+details, and Power Query or source expressions. Measure DAX is retained only as
+explicit Semantic Model metadata.
+
 The project has been reviewed against OWASP Top 10:2025 and ASVS 5.0. Security
 hardening is part of the release process.
 
@@ -365,7 +373,8 @@ Pull requests are welcome. Read
 
 <sub>Atlas always indexes top-level items from the Fabric Items API. Deeper
 inventory, lineage and item-level access depend on what the Fabric and Power BI
-APIs expose for each type and on the required tenant settings.</sub>
+APIs expose for each type and on the required tenant settings. `N/A` means a
+metadata capability was not collected; it is not treated as a missing value.</sub>
 
 | <sub>Fabric element</sub> | <sub>Catalog and configuration</sub> | <sub>Internal inventory</sub> | <sub>Lineage</sub> | <sub>Access</sub> | <sub>Recent jobs</sub> | <sub>Known boundary</sub> |
 |---|---|---|---|---|---|---|
@@ -374,13 +383,13 @@ APIs expose for each type and on the required tenant settings.</sub>
 | <sub>Warehouse</sub> | <sub>Description, collation, created and updated dates</sub> | <sub>Tables, views and columns from the scanner; downstream-model subset fallback</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Complete inventory can require SQL catalog connectivity</sub> |
 | <sub>SQL Database</sub> | <sub>Database name, collation and backup retention</sub> | <sub>Tables, views and columns from the scanner; downstream-model subset fallback</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Complete inventory can require SQL catalog connectivity</sub> |
 | <sub>SQL endpoint</sub> | <sub>Item identity and scanner metadata</sub> | <sub>No dedicated internal-object scan</sub> | <sub>Storage-to-endpoint-to-model relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Used primarily as a lineage bridge</sub> |
-| <sub>Semantic Model</sub> | <sub>Description, storage mode and provider</sub> | <sub>Tables, columns, measures, descriptions, hidden flags and expressions</sub> | <sub>Scanner relations to sources and reports</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Requires admin scanner schema and expression options</sub> |
-| <sub>Report</sub> | <sub>Report type, bound Semantic Model and page inventory</sub> | <sub>Pages and order</sub> | <sub>Model binding plus scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Visuals and field bindings are not exposed by this flow</sub> |
+| <sub>Semantic Model</sub> | <sub>Description, storage mode, provider and documented `configuredBy` owner</sub> | <sub>Tables, columns, measures, descriptions, hidden flags and measure DAX</sub> | <sub>Scanner relations to sources and reports</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Requires scanner schema and expression options; source and Power Query expressions are discarded</sub> |
+| <sub>Report</sub> | <sub>Report type, bound Semantic Model, documented `createdBy` owner and page inventory</sub> | <sub>Pages and order</sub> | <sub>Model binding plus scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Visuals and field bindings are not exposed by this flow</sub> |
 | <sub>Dashboard</sub> | <sub>Item and scanner metadata</sub> | <sub>No deep object inventory</sub> | <sub>Scanner relations when returned</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Tile and visual bindings are not expanded</sub> |
-| <sub>Notebook</sub> | <sub>Item description, configured-by and modified metadata</sub> | <sub>Source code and cells are not read</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>Up to 3 returned instances</sub> | <sub>Business content remains outside Atlas</sub> |
-| <sub>Data Pipeline</sub> | <sub>Item description, configured-by and modified metadata</sub> | <sub>Activities and expressions are not expanded</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>Up to 3 returned instances</sub> | <sub>Pipeline definitions are not copied</sub> |
-| <sub>Dataflow</sub> | <sub>Item and scanner metadata</sub> | <sub>Entities and Power Query definitions are not expanded</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Query content is not copied</sub> |
-| <sub>Datamart</sub> | <sub>Item and scanner metadata</sub> | <sub>No deep object inventory</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Coverage follows scanner availability</sub> |
+| <sub>Notebook</sub> | <sub>Item description and modified metadata when returned</sub> | <sub>Source code and cells are not read</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>Up to 3 returned instances</sub> | <sub>No owner is inferred without a documented owner field</sub> |
+| <sub>Data Pipeline</sub> | <sub>Item description and modified metadata when returned</sub> | <sub>Activities and expressions are not expanded</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>Up to 3 returned instances</sub> | <sub>No owner is inferred and pipeline definitions are not copied</sub> |
+| <sub>Dataflow</sub> | <sub>Item metadata and documented `configuredBy` owner</sub> | <sub>Entities and Power Query definitions are not expanded</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Query content is not copied</sub> |
+| <sub>Datamart</sub> | <sub>Item metadata and documented `configuredBy` owner</sub> | <sub>No deep object inventory</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Coverage follows scanner availability</sub> |
 | <sub>Eventhouse</sub> | <sub>Item and scanner metadata</sub> | <sub>No KQL object inventory</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Hosted database objects are not expanded</sub> |
 | <sub>KQL Database</sub> | <sub>Item and scanner metadata</sub> | <sub>Tables, functions and policies are not expanded</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>KQL catalog connectivity is not used</sub> |
 | <sub>Eventstream</sub> | <sub>Item and scanner metadata</sub> | <sub>Internal stream topology is not expanded</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Event payloads are never read</sub> |
@@ -391,8 +400,8 @@ APIs expose for each type and on the required tenant settings.</sub>
 
 <sub>Across these elements, Atlas also records configuration facts, up to three
 recent job instances per supported item, scanner-reported relationships,
-workspace principals and explicit item users. It stores metadata only, never
-workspace business data.</sub>
+workspace principals, explicit item users, raw endorsement, sensitivity-label
+IDs and tag IDs. It stores metadata only, never workspace business data.</sub>
 
 <div align="center">
 

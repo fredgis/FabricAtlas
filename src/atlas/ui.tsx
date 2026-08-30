@@ -159,15 +159,29 @@ export function SectionLabel({ children }: { children: ReactNode }) {
 }
 
 const ENDORSE_STYLE: Record<string, string> = {
-  certified: "bg-[#0ea5b71f] text-[#0e8a99]",
-  promoted: "bg-[#7c5cff1f] text-[#6d54e0]",
+  certified:
+    "border-endorsement-certified/30 bg-endorsement-certified-background text-endorsement-certified",
+  promoted:
+    "border-endorsement-promoted/30 bg-endorsement-promoted-background text-endorsement-promoted",
+  unknown: "border-border bg-muted text-muted-foreground",
 };
 
 export function EndorsementChip({ endorsement }: { endorsement: string }) {
-  if (endorsement === "none" || !endorsement) return null;
+  const normalizedEndorsement = endorsement.trim().toLowerCase();
+  if (normalizedEndorsement === "none" || !normalizedEndorsement) return null;
+  const label =
+    normalizedEndorsement === "certified"
+      ? "Certified"
+      : normalizedEndorsement === "promoted"
+        ? "Promoted"
+        : endorsement;
   return (
-    <Chip className={ENDORSE_STYLE[endorsement] ?? ""}>
-      {endorsement === "certified" ? "✔ Certified" : "Promoted"}
+    <Chip
+      className={
+        ENDORSE_STYLE[normalizedEndorsement] ?? ENDORSE_STYLE.unknown
+      }
+    >
+      {normalizedEndorsement === "certified" ? `✔ ${label}` : label}
     </Chip>
   );
 }

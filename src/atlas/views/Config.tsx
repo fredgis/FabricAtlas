@@ -259,7 +259,11 @@ export function ConfigView({
                     </div>
                     <div className="flex flex-wrap items-center gap-s">
                       <HealthChip health={selected.health} />
-                      <EndorsementChip endorsement={selected.endorsement} />
+                      <EndorsementChip
+                        endorsement={
+                          selected.endorsementRaw ?? selected.endorsement
+                        }
+                      />
                     </div>
                   </div>
 

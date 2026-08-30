@@ -4,6 +4,28 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-08-30
+
+### Added
+
+- Versioned synchronization contract with required and optional section status plus metadata capability evidence.
+- Persisted ownership, configuration, modification, endorsement, sensitivity-label and tag provenance.
+- Explicit `N/A` states when Fabric did not collect a metadata family, rather than reporting a false zero or gap.
+
+### Changed
+
+- The User Data Function now runs inside a shared 92-second deadline, retries throttled and transient requests within that budget, and rejects payloads above 25 MiB.
+- Client response reading is streamed and bounded before JSON parsing; empty workspaces remain valid when every required section completes.
+- Principal identities use Fabric IDs when supplied and correlate legacy name or email references without creating false access-history churn.
+- Ownership is derived only from documented type-specific fields: `configuredBy` for Semantic Models, Dataflows and Datamarts, and `createdBy` for Reports.
+- Optional job, item-detail, Lakehouse-table and report-page failures no longer invalidate otherwise authoritative metadata.
+
+### Security
+
+- Snapshot reads and creates are constrained to the configured synchronization account through server-side filters and Rayfin create policies.
+- Scanner output is allowlisted to governance metadata. Business rows, datasource details, connection data and Power Query or source expressions are not serialized or persisted.
+- UDF dependencies are pinned and production builds now run the complete TypeScript project check.
+
 ## [1.5.1] - 2026-08-30
 
 ### Changed
@@ -148,6 +170,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
+[1.6.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.6.0
 [1.5.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.5.1
 [1.5.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.5.0
 [1.4.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.4.0

@@ -125,7 +125,7 @@ function toSectionKey(value: string) {
 
 export function CatalogView({ focus }: { focus?: AtlasFocusRequest } = {}) {
   const { data } = useAtlas();
-  const { items, config, grants, edges, jobs } = data;
+  const { items, config, grants, edges, jobs, principals } = data;
 
   const groups = useMemo(() => {
     const grouped = new Map<ItemType, Item[]>();
@@ -538,7 +538,9 @@ export function CatalogView({ focus }: { focus?: AtlasFocusRequest } = {}) {
                               Owner
                             </div>
                             <div className="text-200 text-muted-foreground">
-                              Unassigned
+                              {item.ownerMetadataAvailable === false
+                                ? "Not collected"
+                                : "Unassigned"}
                             </div>
                           </div>
                         )}
@@ -566,7 +568,9 @@ export function CatalogView({ focus }: { focus?: AtlasFocusRequest } = {}) {
                       <span className="text-200 text-muted-foreground">
                         Refreshed {relativeTime(item.lastRefresh)}
                       </span>
-                      <EndorsementChip endorsement={item.endorsement} />
+                      <EndorsementChip
+                        endorsement={item.endorsementRaw ?? item.endorsement}
+                      />
                     </div>
                   </button>
                 );
@@ -609,10 +613,14 @@ export function CatalogView({ focus }: { focus?: AtlasFocusRequest } = {}) {
                     </h2>
                     <div className="mt-s flex flex-wrap items-center gap-s">
                       <HealthBadge health={detail.health} />
-                      <EndorsementChip endorsement={detail.endorsement} />
-                      {detail.sensitivity && (
+                      <EndorsementChip
+                        endorsement={
+                          detail.endorsementRaw ?? detail.endorsement
+                        }
+                      />
+                      {(detail.sensitivity || detail.sensitivityLabelId) && (
                         <span className="rounded-md border border-destructive/30 bg-destructive/10 px-s py-xxs text-200 font-semibold text-destructive">
-                          {detail.sensitivity}
+                          {detail.sensitivity ?? "Labeled"}
                         </span>
                       )}
                     </div>
@@ -656,8 +664,18 @@ export function CatalogView({ focus }: { focus?: AtlasFocusRequest } = {}) {
                     value={
                       detail.ownerName
                         ? `${detail.ownerName}${detail.ownerEmail ? ` · ${detail.ownerEmail}` : ""}`
-                        : "Unassigned"
+                        : detail.ownerMetadataAvailable === false
+                          ? "Not collected"
+                          : "Unassigned"
                     }
+                  />
+                  <DrawerRow
+                    label="Configured by"
+                    value={detail.configuredBy}
+                  />
+                  <DrawerRow
+                    label="Modified by"
+                    value={detail.modifiedBy}
                   />
                   <DrawerRow
                     label="Fabric ID"
@@ -674,17 +692,37 @@ export function CatalogView({ focus }: { focus?: AtlasFocusRequest } = {}) {
                   <DrawerRow
                     label="Endorsement"
                     value={
-                      <span className="capitalize">{detail.endorsement}</span>
+                      <span className="capitalize">
+                        {detail.endorsementRaw ?? detail.endorsement}
+                        {detail.endorsementBy
+                          ? ` · ${detail.endorsementBy}`
+                          : ""}
+                      </span>
                     }
                   />
                   <DrawerRow
                     label="Sensitivity"
-                    value={detail.sensitivity ?? "—"}
+                    value={
+                      detail.sensitivity ??
+                      (detail.sensitivityLabelId
+                        ? "Label applied"
+                        : detail.sensitivityMetadataAvailable === false
+                          ? "Not collected"
+                          : "Unlabeled")
+                    }
                   />
                   <DrawerRow label="Size" value={detail.size} />
                   <DrawerRow
                     label="Tags"
-                    value={detail.tags.length ? detail.tags.join(", ") : "—"}
+                    value={
+                      detail.tags.length
+                        ? detail.tags.join(", ")
+                        : detail.tagIds?.length
+                          ? `${detail.tagIds.length} tag ID${detail.tagIds.length === 1 ? "" : "s"} collected`
+                          : detail.tagMetadataAvailable === false
+                            ? "Not collected"
+                            : "None"
+                    }
                   />
                   <DrawerRow
                     label="Last refresh"
@@ -755,21 +793,26 @@ export function CatalogView({ focus }: { focus?: AtlasFocusRequest } = {}) {
                   >
                     <div className="divide-y divide-border/60">
                       {dGrants.map((grant, index) => {
-                        const principal = data.principals.find(
-                          (entry) => entry.displayName === grant.principalRef,
+                        const principal = principals.find(
+                          (entry) =>
+                            entry.principalId === grant.principalRef ||
+                            entry.email === grant.principalRef ||
+                            entry.displayName === grant.principalRef,
                         );
+                        const principalName =
+                          principal?.displayName ?? grant.principalRef;
                         return (
                           <div
                             key={index}
                             className="flex items-center gap-s px-l py-m text-300"
                           >
                             <PrincipalAvatar
-                              name={grant.principalRef}
+                              name={principalName}
                               kind={principal?.kind ?? "user"}
                               size={28}
                             />
                             <span className="min-w-0 flex-1 truncate font-medium">
-                              {grant.principalRef}
+                              {principalName}
                             </span>
                             <span className="text-200 text-muted-foreground">
                               {grant.roleName ?? grant.accessLevel}

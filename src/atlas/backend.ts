@@ -68,6 +68,7 @@ const ENTITY_FIELDS: Record<string, readonly string[]> = {
     "snapshotId",
     "writerEmail",
     "deploymentId",
+    "syncSectionsJson",
     "fabricId",
     "displayName",
     "capacity",
@@ -92,10 +93,20 @@ const ENTITY_FIELDS: Record<string, readonly string[]> = {
     "description",
     "ownerName",
     "ownerEmail",
+    "configuredBy",
+    "modifiedBy",
     "health",
     "endorsement",
+    "endorsementRaw",
+    "endorsementBy",
     "sensitivity",
+    "sensitivityLabelId",
     "tags",
+    "tagIds",
+    "ownerMetadataAvailable",
+    "sensitivityMetadataAvailable",
+    "endorsementMetadataAvailable",
+    "tagMetadataAvailable",
     "lastRefresh",
     "itemCreatedAt",
     "itemUpdatedAt",
@@ -318,10 +329,20 @@ async function persistSync(
       description: i.description,
       ownerName: i.ownerName,
       ownerEmail: i.ownerEmail,
+      configuredBy: i.configuredBy,
+      modifiedBy: i.modifiedBy,
       health: i.health,
       endorsement: i.endorsement,
+      endorsementRaw: i.endorsementRaw,
+      endorsementBy: i.endorsementBy,
       sensitivity: i.sensitivity,
+      sensitivityLabelId: i.sensitivityLabelId,
       tags: i.tags?.length ? i.tags.join(", ") : undefined,
+      tagIds: i.tagIds?.length ? i.tagIds.join(",") : undefined,
+      ownerMetadataAvailable: i.ownerMetadataAvailable,
+      sensitivityMetadataAvailable: i.sensitivityMetadataAvailable,
+      endorsementMetadataAvailable: i.endorsementMetadataAvailable,
+      tagMetadataAvailable: i.tagMetadataAvailable,
       lastRefresh: i.lastRefresh ? new Date(i.lastRefresh) : undefined,
       itemCreatedAt: i.createdAt ? new Date(i.createdAt) : undefined,
       itemUpdatedAt: i.updatedAt ? new Date(i.updatedAt) : undefined,
@@ -389,7 +410,12 @@ async function persistSync(
   for (const [itemId, tables] of Object.entries(atlas.schema ?? {})) {
     for (const t of tables) {
       const serialized = JSON.stringify({
-        rows: t.rows,
+        rows:
+          typeof t.rows === "number" &&
+          Number.isFinite(t.rows) &&
+          t.rows >= 0
+            ? t.rows
+            : undefined,
         objectType: t.objectType,
         source: t.source,
         description: t.description,
@@ -429,6 +455,9 @@ async function persistSync(
     snapshotId,
     writerEmail,
     deploymentId: DEPLOYMENT_ID,
+    syncSectionsJson: atlas.workspace.syncSections
+      ? JSON.stringify(atlas.workspace.syncSections)
+      : undefined,
     fabricId: atlas.workspace.fabricId,
     displayName: atlas.workspace.displayName,
     capacity: atlas.workspace.capacity,
@@ -537,9 +566,6 @@ function validateManifest(
     if (marker[field] == null || Number(marker[field]) !== counts[field]) {
       throw new Error(`snapshot manifest mismatch for ${label}`);
     }
-  }
-  if (counts.itemCount === 0) {
-    throw new Error("snapshot manifest contains no workspace items");
   }
 }
 
@@ -661,6 +687,41 @@ function trustedMarkers(rows: Row[], wid: string): Row[] {
     );
 }
 
+function parseSyncSections(
+  value: unknown,
+): WorkspaceInfo["syncSections"] {
+  const serialized = realText(value);
+  if (!serialized) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(serialized);
+  } catch {
+    throw new Error("snapshot contains malformed sync section status");
+  }
+  if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+    throw new Error("snapshot contains malformed sync section status");
+  }
+  const sections: NonNullable<WorkspaceInfo["syncSections"]> = {};
+  for (const [name, raw] of Object.entries(
+    parsed as Record<string, unknown>,
+  )) {
+    if (!raw || Array.isArray(raw) || typeof raw !== "object") {
+      throw new Error("snapshot contains malformed sync section status");
+    }
+    const status = (raw as { status?: unknown }).status;
+    if (
+      status !== "complete" &&
+      status !== "unsupported" &&
+      status !== "failed"
+    ) {
+      throw new Error("snapshot contains malformed sync section status");
+    }
+    const code = realText((raw as { code?: unknown }).code);
+    sections[name] = { status, code };
+  }
+  return sections;
+}
+
 async function readSnapshotRows(
   read: ReadEntity,
   wid: string,
@@ -670,6 +731,7 @@ async function readSnapshotRows(
   const filter = {
     workspace_id: { eq: wid },
     snapshotId: { eq: snapshotId },
+    writerEmail: { eq: ATLAS_CONFIG.syncAdminEmail },
   };
   const [
     allItemRows,
@@ -732,15 +794,42 @@ function catalogFromRows(
       description: realText(row.description),
       ownerName: realText(row.ownerName),
       ownerEmail: realText(row.ownerEmail),
+      configuredBy: realText(row.configuredBy),
+      modifiedBy: realText(row.modifiedBy),
       health: (row.health as Item["health"]) ?? "unknown",
       endorsement: (row.endorsement as Item["endorsement"]) ?? "none",
+      endorsementRaw: realText(row.endorsementRaw),
+      endorsementBy: realText(row.endorsementBy),
       sensitivity: realText(row.sensitivity),
+      sensitivityLabelId: realText(row.sensitivityLabelId),
       tags: row.tags
         ? String(row.tags)
             .split(",")
             .map((tag) => tag.trim())
             .filter(Boolean)
         : [],
+      tagIds: row.tagIds
+        ? String(row.tagIds)
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean)
+        : [],
+      ownerMetadataAvailable:
+        typeof row.ownerMetadataAvailable === "boolean"
+          ? row.ownerMetadataAvailable
+          : undefined,
+      sensitivityMetadataAvailable:
+        typeof row.sensitivityMetadataAvailable === "boolean"
+          ? row.sensitivityMetadataAvailable
+          : undefined,
+      endorsementMetadataAvailable:
+        typeof row.endorsementMetadataAvailable === "boolean"
+          ? row.endorsementMetadataAvailable
+          : undefined,
+      tagMetadataAvailable:
+        typeof row.tagMetadataAvailable === "boolean"
+          ? row.tagMetadataAvailable
+          : undefined,
       lastRefresh: validDateIso(row.lastRefresh),
       createdAt: validDateIso(row.itemCreatedAt),
       updatedAt: validDateIso(row.itemUpdatedAt),
@@ -804,6 +893,7 @@ function catalogFromRows(
     deploymentId: textOrFallback(marker.deploymentId, "") || undefined,
     snapshotId,
     syncedAt,
+    syncSections: parseSyncSections(marker.syncSectionsJson),
   };
 
   return {
@@ -864,7 +954,10 @@ export async function loadFromDb(isPreview: boolean): Promise<AtlasData | null> 
     const read = readerFor(data);
     const [allCommentRows, workspaceRows] = await Promise.all([
       read("Comment", { workspace_id: { eq: wid } }),
-      read("Workspace", { fabricId: { eq: wid } }),
+      read("Workspace", {
+        fabricId: { eq: wid },
+        writerEmail: { eq: ATLAS_CONFIG.syncAdminEmail },
+      }),
     ]);
     const comments = commentsFromRows(allCommentRows, wid);
 
@@ -923,7 +1016,10 @@ export async function loadHistoryFromDb(
   const data = await dataApi();
   const wid = workspaceId();
   const read = readerFor(data);
-  const workspaceRows = await read("Workspace", { fabricId: { eq: wid } });
+  const workspaceRows = await read("Workspace", {
+    fabricId: { eq: wid },
+    writerEmail: { eq: ATLAS_CONFIG.syncAdminEmail },
+  });
   const currentTime = Date.parse(current.syncedAt);
   const snapshots: HistoricalSnapshot[] = [current];
 

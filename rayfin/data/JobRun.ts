@@ -1,4 +1,5 @@
 import { entity, authenticated, uuid, text, set, int, date } from '@microsoft/rayfin-core';
+import { SYNC_WRITER_EMAIL } from './sync-policy.js';
 
 export type JobStatus = 'completed' | 'failed' | 'running' | 'cancelled';
 
@@ -9,7 +10,10 @@ export type JobStatus = 'completed' | 'failed' | 'running' | 'cancelled';
 @entity()
 @authenticated('read')
 @authenticated('create', {
-  policy: (claims, item) => claims.email.eq(item.writerEmail),
+  policy: (claims, item) =>
+    claims.email
+      .eq(item.writerEmail)
+      .and(claims.email.eq(SYNC_WRITER_EMAIL)),
 })
 export class JobRun {
   @uuid() id!: string;

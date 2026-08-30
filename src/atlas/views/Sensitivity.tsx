@@ -76,13 +76,40 @@ const UNLABELED: Label = {
   borderClassName: "border-lineage-neutral/30",
 };
 
-function labelFor(sensitivity?: string): Label {
-  return (
-    LABELS.find(
-      (label) =>
-        label.name.toLowerCase() === (sensitivity ?? "").toLowerCase(),
-    ) ?? UNLABELED
-  );
+const LABELED: Label = {
+  name: "Labeled",
+  rank: 2,
+  icon: ShieldCheck,
+  blurb: "Label ID collected · display name unavailable",
+  iconClassName: "bg-primary/10 text-brand-foreground",
+  badgeClassName: "border-primary/25 bg-primary/10 text-brand-foreground",
+  borderClassName: "border-primary/25",
+};
+
+const NOT_COLLECTED: Label = {
+  name: "Not collected",
+  rank: -1,
+  icon: EyeOff,
+  blurb: "The metadata source did not expose label status",
+  iconClassName: "bg-muted text-muted-foreground",
+  badgeClassName: "border-border bg-muted text-muted-foreground",
+  borderClassName: "border-border",
+};
+
+function labelFor(item: Item, legacyAvailable: boolean): Label {
+  const available =
+    item.sensitivityMetadataAvailable ?? legacyAvailable;
+  if (!available) return NOT_COLLECTED;
+  const sensitivity = item.sensitivity?.trim();
+  if (sensitivity) {
+    return (
+      LABELS.find(
+        (label) =>
+          label.name.toLowerCase() === sensitivity.toLowerCase(),
+      ) ?? LABELED
+    );
+  }
+  return item.sensitivityLabelId ? LABELED : UNLABELED;
 }
 
 export function SensitivityView({
@@ -92,27 +119,36 @@ export function SensitivityView({
 } = {}) {
   const { data } = useAtlas();
   const { items } = data;
+  const explicitAvailability = items.some(
+    (item) => item.sensitivityMetadataAvailable !== undefined,
+  );
+  const legacyAvailable =
+    !explicitAvailability &&
+    items.some((item) => item.sensitivity || item.sensitivityLabelId);
 
   const byLabel = useMemo(() => {
     const grouped = new Map<string, Item[]>();
     for (const item of items) {
-      const label = labelFor(item.sensitivity).name;
+      const label = labelFor(item, legacyAvailable).name;
       const labelItems = grouped.get(label) ?? [];
       labelItems.push(item);
       grouped.set(label, labelItems);
     }
     return grouped;
-  }, [items]);
+  }, [items, legacyAvailable]);
 
-  const order = [...LABELS, UNLABELED];
+  const order = [...LABELS, LABELED, UNLABELED, NOT_COLLECTED];
   const confidential = items.filter(
-    (item) => labelFor(item.sensitivity).rank >= 3,
+    (item) => labelFor(item, legacyAvailable).rank >= 3,
+  );
+  const availableItems = items.filter(
+    (item) => labelFor(item, legacyAvailable) !== NOT_COLLECTED,
   );
   const unlabeledCount = byLabel.get(UNLABELED.name)?.length ?? 0;
-  const labeledCount = items.length - unlabeledCount;
-  const coverage = items.length
-    ? Math.round((labeledCount / items.length) * 100)
-    : 0;
+  const labeledCount = availableItems.length - unlabeledCount;
+  const coverage = availableItems.length
+    ? Math.round((labeledCount / availableItems.length) * 100)
+    : null;
   const [expandedLabels, setExpandedLabels] = useState<Set<string>>(
     new Set(),
   );
@@ -120,8 +156,11 @@ export function SensitivityView({
   const summary = [
     {
       label: "Label coverage",
-      value: `${coverage}%`,
-      detail: `${labeledCount} of ${items.length} items`,
+      value: coverage == null ? "N/A" : `${coverage}%`,
+      detail:
+        coverage == null
+          ? "Label metadata was not collected"
+          : `${labeledCount} of ${availableItems.length} eligible items`,
       icon: ShieldCheck,
       className:
         coverage === 100
@@ -213,7 +252,7 @@ export function SensitivityView({
           </span>
         </div>
 
-        <div className="grid grid-cols-1 gap-m sm:grid-cols-2 xl:grid-cols-5">
+        <div         className="grid grid-cols-1 gap-m sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
           {order.map((label) => {
             const count = byLabel.get(label.name)?.length ?? 0;
             const share = items.length
@@ -291,7 +330,7 @@ export function SensitivityView({
 
             <div className="grid gap-s p-m md:grid-cols-2">
               {confidential.map((item) => {
-                const label = labelFor(item.sensitivity);
+                const label = labelFor(item, legacyAvailable);
                 return (
                   <article
                     key={item.fabricId}
@@ -437,7 +476,10 @@ export function SensitivityView({
                           </div>
                           <div className="hidden min-w-0 text-right sm:block">
                             <div className="text-200 font-medium">
-                              {item.ownerName ?? "No owner assigned"}
+                              {item.ownerName ??
+                                (item.ownerMetadataAvailable === false
+                                  ? "Owner not collected"
+                                  : "No owner assigned")}
                             </div>
                             <div className="text-100 uppercase tracking-wide text-muted-foreground">
                               Owner

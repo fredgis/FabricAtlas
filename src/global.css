@@ -21,6 +21,10 @@
   --color-status-healthy: #0e700e;
   --color-status-warning: #817400;
   --color-status-failing: #bc2f32;
+  --color-endorsement-certified: #0c695a;
+  --color-endorsement-certified-background: #e3f7ef;
+  --color-endorsement-promoted: #742774;
+  --color-endorsement-promoted-background: #f7eff8;
 }
 
 @theme {
@@ -198,6 +202,10 @@
     --color-status-healthy: #54b054;
     --color-status-warning: #fde300;
     --color-status-failing: #ff6577;
+    --color-endorsement-certified: #9ee0cb;
+    --color-endorsement-certified-background: #263834;
+    --color-endorsement-promoted: #d8b9f2;
+    --color-endorsement-promoted-background: #382d3d;
   }
 }
 

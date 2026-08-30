@@ -53,6 +53,18 @@ the published `sync_all` Fabric User Data Function. That server-side function re
 Power BI metadata APIs with the user's delegated token. The app maps the response, writes it through
 the Rayfin Data API, and records a `SyncRun`.
 
+Contract version 2 separates required sections from optional enrichment and
+records metadata capabilities for ownership, sensitivity, endorsement and
+tags. Required-section failure rejects the refresh. Optional endpoint failures
+remain visible as evidence but do not invalidate otherwise authoritative
+metadata. Valid empty workspaces are accepted.
+
+The UDF shares one 92-second monotonic deadline across API calls, incremental
+response reads, retries and sleeps. It retries bounded `429` and transient
+`5xx` responses, caps upstream and final payloads at 25 MiB, and returns
+structured safe errors. The browser independently streams and caps the response
+at 26 MiB before parsing.
+
 Each refresh writes a new immutable snapshot. Content rows are written first and
 the `Workspace` manifest is written last. A failed or incomplete refresh never
 becomes active. On startup, hydration validates manifest counts and falls back
@@ -60,7 +72,9 @@ to the previous complete snapshot when necessary.
 
 Snapshot creation is bound to the configured synchronization administrator.
 Rayfin create policies compare the authenticated email with each row's
-`writerEmail`, and hydration ignores manifests from any other writer.
+`writerEmail` and with the deployment's configured synchronizer. Database reads
+also filter that writer before pagination, and hydration ignores any manifest
+that fails the same trust boundary.
 
 The workspace manifest stores the deployed build ID. A new build shows the
 guided sync screen until the authorized synchronizer publishes its snapshot.
@@ -79,6 +93,8 @@ the active catalog. Invalid historical snapshots are skipped.
 `src/atlas/history.ts` compares validated snapshots without depending on row
 order. It detects changes to items, schema objects, access grants, sensitivity,
 lineage and jobs, then derives the trend series used by Governance Center.
+Fabric principal IDs are authoritative. Unique normalized email correlation
+keeps legacy snapshots comparable when older access rows used a name or email.
 
 ## Personal governance state
 
@@ -99,9 +115,18 @@ Asset Catalog and lineage inspector.
   labelled downstream model subset when complete SQL catalog access is not
   available.
 - Semantic Models include tables, columns, measures, descriptions, hidden
-  flags and measure expressions.
+  flags and measure expressions. Dataset expressions are requested only because
+  the scanner requires that option for measure DAX.
 - Reports include pages. Fabric APIs do not expose complete visual field
   bindings through this flow.
+
+Scanner payloads cross an explicit metadata allowlist. Atlas never serializes
+table rows, datasource or connection details, dataset/table Mashup expressions,
+Power Query definitions, notebook source or pipeline definitions. Ownership is
+reported only where Microsoft documents a type-specific field:
+`configuredBy` for Semantic Models, Dataflows and Datamarts, and `createdBy` for
+Reports. Unknown collection state remains `N/A` instead of becoming a false
+missing-owner or unlabeled finding.
 
 In preview / standalone mode there is no token, so Sync just refreshes the sample dataset. The data
 layer is one abstraction (`src/atlas/store.tsx`) so the UI code is identical in both modes.

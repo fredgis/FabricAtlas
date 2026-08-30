@@ -111,6 +111,34 @@ describe("AtlasProvider synchronization", () => {
     expect(screen.getByTestId("stage")).toHaveTextContent("Workspace is ready");
   });
 
+  it("accepts a synchronized workspace with no Fabric items", async () => {
+    const empty = structuredClone(SAMPLE_DATA);
+    empty.workspace.snapshotId =
+      "56565656-5656-4656-8656-565656565656";
+    empty.workspace.syncedAt = "2026-08-30T08:00:00.000Z";
+    empty.items = [];
+    empty.edges = [];
+    empty.schema = {};
+    backend.runFabricSync.mockResolvedValue(empty);
+
+    render(
+      <AtlasProvider isPreview={false} currentUser={currentUser}>
+        <Harness />
+      </AtlasProvider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("hydrating")).toHaveTextContent("false"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Sync" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("has-data")).toHaveTextContent("true"),
+    );
+    expect(screen.getByTestId("item-count")).toHaveTextContent("0");
+    expect(screen.getByTestId("requires-sync")).toHaveTextContent("false");
+  });
+
   it("does not let late hydration overwrite a completed sync", async () => {
     let resolveHydration: (value: typeof SAMPLE_DATA) => void = () => undefined;
     backend.loadFromDb.mockReturnValue(

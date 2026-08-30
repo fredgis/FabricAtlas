@@ -84,6 +84,13 @@ export interface WorkspaceInfo {
   deploymentId?: string;
   snapshotId?: string;
   syncedAt?: string;
+  syncSections?: Record<
+    string,
+    {
+      status: "complete" | "unsupported" | "failed";
+      code?: string;
+    }
+  >;
 }
 
 export interface Item {
@@ -93,10 +100,20 @@ export interface Item {
   description?: string;
   ownerName?: string;
   ownerEmail?: string;
+  configuredBy?: string;
+  modifiedBy?: string;
   health: Health;
   endorsement: Endorsement;
+  endorsementRaw?: string;
+  endorsementBy?: string;
   sensitivity?: string;
+  sensitivityLabelId?: string;
   tags: string[];
+  tagIds?: string[];
+  ownerMetadataAvailable?: boolean;
+  sensitivityMetadataAvailable?: boolean;
+  endorsementMetadataAvailable?: boolean;
+  tagMetadataAvailable?: boolean;
   lastRefresh?: string; // ISO
   createdAt?: string;
   updatedAt?: string;

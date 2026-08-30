@@ -24,15 +24,26 @@ The manifest for a complete synchronized snapshot.
 
 `snapshotId`, `writerEmail?`, `deploymentId?`, `fabricId`, `displayName`, `capacity?`, `region?`, `itemCount?`,
 `edgeCount?`, `principalCount?`, `grantCount?`, `jobCount?`, `configCount?`,
-`schemaEntryCount?`, `syncedAt?`
+`schemaEntryCount?`, `syncSectionsJson?`, `syncedAt?`
+
+`syncSectionsJson` persists the versioned UDF section and metadata-capability
+status used by Governance Center. It contains collection state, not business
+data.
 
 ## FabricItem
 
 One row per Fabric item.
 
 `workspace_id`, `snapshotId`, `writerEmail?`, `fabricId`, `displayName`, `itemType`,
-`description?`, `ownerName?`, `ownerEmail?`, `health`, `endorsement`,
-`sensitivity?`, `tags?`, `lastRefresh?`, `itemCreatedAt?`, `itemUpdatedAt?`
+`description?`, `ownerName?`, `ownerEmail?`, `configuredBy?`, `modifiedBy?`,
+`health`, `endorsement`, `endorsementRaw?`, `endorsementBy?`, `sensitivity?`,
+`sensitivityLabelId?`, `tags?`, `tagIds?`, `ownerMetadataAvailable?`,
+`sensitivityMetadataAvailable?`, `endorsementMetadataAvailable?`,
+`tagMetadataAvailable?`, `lastRefresh?`, `itemCreatedAt?`, `itemUpdatedAt?`
+
+The availability flags distinguish an observed empty value from metadata that
+was not collected. Label and tag IDs remain IDs unless a separate trusted
+directory resolves their display names.
 
 ## LineageEdge
 

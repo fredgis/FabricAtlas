@@ -1,4 +1,5 @@
 import { entity, authenticated, uuid, text, set } from '@microsoft/rayfin-core';
+import { SYNC_WRITER_EMAIL } from './sync-policy.js';
 
 export type AccessLevel = 'owner' | 'edit' | 'view' | 'none';
 export type AccessSource =
@@ -16,7 +17,10 @@ export type AccessSource =
 @entity()
 @authenticated('read')
 @authenticated('create', {
-  policy: (claims, item) => claims.email.eq(item.writerEmail),
+  policy: (claims, item) =>
+    claims.email
+      .eq(item.writerEmail)
+      .and(claims.email.eq(SYNC_WRITER_EMAIL)),
 })
 export class AccessGrant {
   @uuid() id!: string;

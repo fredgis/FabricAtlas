@@ -266,6 +266,123 @@ describe("snapshot history", () => {
     });
   });
 
+  it("does not report access churn when principal references migrate to IDs", () => {
+    const previous = snapshot(
+      "old",
+      "2026-08-28T10:00:00.000Z",
+      data({
+        items: [item("model")],
+        principals: [
+          {
+            principalId: "analyst@example.com",
+            displayName: "Analyst",
+            email: "analyst@example.com",
+            kind: "user",
+            workspaceRole: "Viewer",
+          },
+        ],
+        grants: [
+          {
+            itemFabricId: "model",
+            principalRef: "analyst@example.com",
+            accessLevel: "view",
+            source: "directShare",
+          },
+        ],
+      }),
+    );
+    const current = snapshot(
+      "new",
+      "2026-08-29T10:00:00.000Z",
+      data({
+        items: [item("model")],
+        principals: [
+          {
+            principalId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            displayName: "Analyst",
+            email: "analyst@example.com",
+            kind: "user",
+            workspaceRole: "Viewer",
+          },
+        ],
+        grants: [
+          {
+            itemFabricId: "model",
+            principalRef: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            accessLevel: "view",
+            source: "directShare",
+          },
+        ],
+      }),
+    );
+
+    expect(
+      compareSnapshots(previous, current).filter(
+        (change) => change.domain === "access",
+      ),
+    ).toEqual([]);
+  });
+
+  it("reports a sensitivity ID change only in the sensitivity domain", () => {
+    const previous = snapshot(
+      "old",
+      "2026-08-28T10:00:00.000Z",
+      data({
+        items: [
+          item("model", {
+            sensitivity: "Confidential",
+            sensitivityLabelId: "label-old",
+            sensitivityMetadataAvailable: true,
+          }),
+        ],
+      }),
+    );
+    const current = snapshot(
+      "new",
+      "2026-08-29T10:00:00.000Z",
+      data({
+        items: [
+          item("model", {
+            sensitivity: "Confidential",
+            sensitivityLabelId: "label-new",
+            sensitivityMetadataAvailable: true,
+          }),
+        ],
+      }),
+    );
+
+    expect(compareSnapshots(previous, current).map((change) => change.type)).toEqual([
+      "sensitivity-changed",
+    ]);
+
+    const resolvedName = snapshot(
+      "resolved",
+      "2026-08-30T10:00:00.000Z",
+      data({
+        items: [
+          item("model", {
+            sensitivity: "Confidential",
+            sensitivityLabelId: "label-new",
+            sensitivityMetadataAvailable: true,
+          }),
+        ],
+      }),
+    );
+    const idOnly = snapshot(
+      "id-only",
+      "2026-08-29T10:00:00.000Z",
+      data({
+        items: [
+          item("model", {
+            sensitivityLabelId: "label-new",
+            sensitivityMetadataAvailable: true,
+          }),
+        ],
+      }),
+    );
+    expect(compareSnapshots(idOnly, resolvedName)).toEqual([]);
+  });
+
   it("ignores ordering-only changes, normalizes tags, and gives stable ordering and IDs", () => {
     const first = snapshot(
       "old",

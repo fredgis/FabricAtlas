@@ -1,4 +1,10 @@
+import contextlib
+import contextvars
+import datetime
+import email.utils
 import json
+import math
+import numbers
 import time
 import uuid
 import urllib.request
@@ -12,6 +18,62 @@ udf = fn.UserDataFunctions()
 FABRIC = "https://api.fabric.microsoft.com/v1"
 PBI = "https://api.powerbi.com/v1.0/myorg"
 ADMIN = PBI + "/admin"
+EXECUTION_BUDGET_SECONDS = 92
+REQUEST_TIMEOUT_SECONDS = 20
+MAX_REQUEST_ATTEMPTS = 4
+MAX_BACKOFF_SECONDS = 8
+MAX_RESPONSE_BYTES = 25 * 1024 * 1024
+MAX_UPSTREAM_RESPONSE_BYTES = 25 * 1024 * 1024
+RESPONSE_READ_CHUNK_BYTES = 64 * 1024
+
+
+class DeadlineExceeded(RuntimeError):
+    pass
+
+
+class ResponseSizeExceeded(RuntimeError):
+    pass
+
+
+class ScannerError(RuntimeError):
+    pass
+
+
+class _ExecutionDeadline:
+    def __init__(self, seconds=EXECUTION_BUDGET_SECONDS, clock=None):
+        self.clock = clock or time.monotonic
+        self.expires_at = self.clock() + seconds
+
+    def remaining(self):
+        return self.expires_at - self.clock()
+
+    def request_timeout(self, bounded_timeout=REQUEST_TIMEOUT_SECONDS):
+        remaining = self.remaining()
+        if remaining <= 0:
+            raise DeadlineExceeded("execution deadline exhausted")
+        return min(max(0.001, bounded_timeout), remaining)
+
+    def sleep(self, seconds, sleeper=None):
+        if seconds <= 0:
+            return
+        if seconds >= self.remaining():
+            raise DeadlineExceeded("execution deadline exhausted")
+        (sleeper or time.sleep)(seconds)
+
+
+_ACTIVE_DEADLINE = contextvars.ContextVar(
+    "atlas_sync_deadline",
+    default=None,
+)
+
+
+@contextlib.contextmanager
+def _deadline_scope(deadline):
+    token = _ACTIVE_DEADLINE.set(deadline)
+    try:
+        yield deadline
+    finally:
+        _ACTIVE_DEADLINE.reset(token)
 
 
 def _workspace_id(value):
@@ -28,15 +90,120 @@ def _fabric_url(url):
     return url
 
 
-def _req(token, url, method="GET", body=None):
+def _retry_after_seconds(headers, wall_clock=None):
+    value = headers.get("Retry-After") if headers else None
+    if value is None:
+        return None
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        try:
+            retry_at = email.utils.parsedate_to_datetime(str(value))
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=datetime.timezone.utc)
+        now = (
+            wall_clock()
+            if wall_clock
+            else datetime.datetime.now(datetime.timezone.utc)
+        )
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=datetime.timezone.utc)
+        return max(0.0, (retry_at - now).total_seconds())
+
+
+def _set_response_timeout(response, timeout):
+    candidates = [
+        getattr(getattr(getattr(response, "fp", None), "raw", None), "_sock", None),
+        getattr(getattr(response, "fp", None), "_sock", None),
+        getattr(getattr(response, "raw", None), "_sock", None),
+    ]
+    for candidate in candidates:
+        if candidate is not None and hasattr(candidate, "settimeout"):
+            candidate.settimeout(timeout)
+            return
+
+
+def _read_response_bytes(response, deadline, attempt_expires_at):
+    payload = bytearray()
+    while True:
+        remaining = min(
+            deadline.remaining(),
+            attempt_expires_at - deadline.clock(),
+        )
+        if remaining <= 0:
+            raise DeadlineExceeded("request deadline exhausted")
+        _set_response_timeout(response, max(0.001, remaining))
+        chunk = response.read(
+            min(
+                RESPONSE_READ_CHUNK_BYTES,
+                MAX_UPSTREAM_RESPONSE_BYTES + 1 - len(payload),
+            )
+        )
+        if not chunk:
+            break
+        payload.extend(chunk)
+        if len(payload) > MAX_UPSTREAM_RESPONSE_BYTES:
+            raise ResponseSizeExceeded(
+                "upstream response exceeded the safe size limit"
+            )
+        if (
+            deadline.remaining() <= 0
+            or deadline.clock() >= attempt_expires_at
+        ):
+            raise DeadlineExceeded("request deadline exhausted")
+    return bytes(payload)
+
+
+def _req(
+    token,
+    url,
+    method="GET",
+    body=None,
+    deadline=None,
+    per_request_timeout=REQUEST_TIMEOUT_SECONDS,
+    max_attempts=MAX_REQUEST_ATTEMPTS,
+    sleeper=None,
+    wall_clock=None,
+):
     data = json.dumps(body).encode("utf-8") if body is not None else None
     req = urllib.request.Request(url, data=data, method=method)
     req.add_header("Authorization", "Bearer " + token)
     if data is not None:
         req.add_header("Content-Type", "application/json")
-    with urllib.request.urlopen(req, timeout=110) as r:
-        txt = r.read().decode("utf-8")
-        return json.loads(txt) if txt else {}
+    active_deadline = (
+        deadline
+        or _ACTIVE_DEADLINE.get()
+        or _ExecutionDeadline()
+    )
+    for attempt in range(max_attempts):
+        timeout = active_deadline.request_timeout(per_request_timeout)
+        attempt_expires_at = active_deadline.clock() + timeout
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                payload = _read_response_bytes(
+                    response,
+                    active_deadline,
+                    attempt_expires_at,
+                )
+                text = payload.decode("utf-8")
+                return json.loads(text) if text else {}
+        except urllib.error.HTTPError as error:
+            retryable = error.code == 429 or 500 <= error.code <= 599
+            if not retryable or attempt + 1 >= max_attempts:
+                raise
+            retry_after = _retry_after_seconds(
+                error.headers,
+                wall_clock=wall_clock,
+            )
+            delay = (
+                retry_after
+                if retry_after is not None
+                else min(MAX_BACKOFF_SECONDS, 0.5 * (2 ** attempt))
+            )
+            active_deadline.sleep(delay, sleeper=sleeper)
+    raise RuntimeError("request attempts exhausted")
 
 
 def _get(token, url):
@@ -104,27 +271,31 @@ def get_workspace(fabricToken: str, workspaceId: str) -> dict:
 def _scan_workspace(token, ws):
     start = _req(
         token,
-        ADMIN + "/workspaces/getInfo?lineage=True&datasourceDetails=True&getArtifactUsers=True&datasetSchema=True&datasetExpressions=True",
+        ADMIN
+        + "/workspaces/getInfo"
+        + "?lineage=True&getArtifactUsers=True"
+        + "&datasetSchema=True&datasetExpressions=True",
         method="POST",
         body={"workspaces": [ws]},
     )
     scan_id = start.get("id")
     if not scan_id:
-        return None
-    succeeded = False
+        raise ScannerError("scanner did not return an operation id")
     for _ in range(30):
         st = _get(token, ADMIN + f"/workspaces/scanStatus/{scan_id}")
         if st.get("status") == "Succeeded":
-            succeeded = True
             break
         if st.get("status") == "Failed":
-            return None
-        time.sleep(2)
-    if not succeeded:
-        return None
+            raise ScannerError("scanner operation failed")
+        deadline = _ACTIVE_DEADLINE.get() or _ExecutionDeadline()
+        deadline.sleep(2)
+    else:
+        raise ScannerError("scanner operation did not complete")
     res = _get(token, ADMIN + f"/workspaces/scanResult/{scan_id}")
     wss = res.get("workspaces") or []
-    return wss[0] if wss else None
+    if not isinstance(wss, list) or not wss:
+        raise ScannerError("scanner result omitted the workspace")
+    return wss[0]
 
 
 # scanner artifact array key -> Atlas item type
@@ -163,6 +334,388 @@ REL_LABEL = {
 }
 
 
+def _normalized_id(value):
+    text = _strict_text(value)
+    if not text:
+        return None
+    try:
+        return str(uuid.UUID(text))
+    except ValueError:
+        return text
+
+
+def _artifact_id(value):
+    if not isinstance(value, dict):
+        return None
+    return _normalized_id(value.get("id")) or _normalized_id(
+        value.get("objectId")
+    )
+
+
+def _normalize_timestamp(value):
+    if not isinstance(value, str) or not value.strip():
+        return value
+    text = value.strip()
+    try:
+        parsed = datetime.datetime.fromisoformat(
+            text[:-1] + "+00:00" if text.endswith("Z") else text
+        )
+    except ValueError:
+        return value
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+    parsed = parsed.astimezone(datetime.timezone.utc)
+    return parsed.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def _safe_row_count(value):
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        return None
+    numeric = float(value)
+    if not math.isfinite(numeric) or numeric < 0:
+        return None
+    return value
+
+
+def _safe_text(value):
+    if isinstance(value, str):
+        stripped = value.strip()
+        return stripped or None
+    if isinstance(value, dict):
+        for key in (
+            "displayName",
+            "emailAddress",
+            "email",
+            "identifier",
+            "graphId",
+            "id",
+        ):
+            text = _safe_text(value.get(key))
+            if text:
+                return text
+    return None
+
+
+def _strict_text(value):
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _sanitize_workspace(value):
+    if not isinstance(value, dict):
+        raise ValueError("workspace response was not an object")
+    allowed = (
+        "id",
+        "displayName",
+        "description",
+        "type",
+        "capacityId",
+        "capacityRegion",
+    )
+    return {
+        key: value[key]
+        for key in allowed
+        if isinstance(value.get(key), str) and value.get(key).strip()
+    }
+
+
+def _sanitize_item(value):
+    if not isinstance(value, dict):
+        return None
+    item_id = _artifact_id(value)
+    item_type = _strict_text(value.get("type"))
+    if not item_id or not item_type:
+        return None
+    item = {"id": item_id, "type": item_type}
+    for key in ("displayName", "description", "workspaceId", "folderId"):
+        text = _strict_text(value.get(key))
+        if text:
+            item[key] = text
+    return item
+
+
+def _sanitize_role_assignment(value):
+    if not isinstance(value, dict):
+        return None
+    role = _strict_text(value.get("role"))
+    principal = value.get("principal")
+    if not role or not isinstance(principal, dict):
+        return None
+    safe_principal = {}
+    for key in ("id", "displayName", "type"):
+        text = (
+            _normalized_id(principal.get(key))
+            if key == "id"
+            else _strict_text(principal.get(key))
+        )
+        if text:
+            safe_principal[key] = text
+    details = principal.get("userDetails")
+    if isinstance(details, dict):
+        user_principal_name = _strict_text(
+            details.get("userPrincipalName")
+        )
+        if user_principal_name:
+            safe_principal["userDetails"] = {
+                "userPrincipalName": user_principal_name,
+            }
+    if not safe_principal.get("id"):
+        fallback = (
+            safe_principal.get("userDetails", {}).get("userPrincipalName")
+            or safe_principal.get("displayName")
+        )
+        if fallback:
+            safe_principal["id"] = fallback
+    if not safe_principal.get("id"):
+        return None
+    return {"role": role, "principal": safe_principal}
+
+
+def _sanitize_job(value, item):
+    if not isinstance(value, dict):
+        return None
+    job_type = _strict_text(value.get("jobType") or value.get("invokeType"))
+    status = _strict_text(value.get("status"))
+    if not job_type or not status:
+        return None
+    job = {
+        "itemId": item["id"],
+        "itemDisplayName": item.get("displayName"),
+        "itemType": item.get("type"),
+        "jobType": job_type,
+        "status": status,
+    }
+    for key in ("id", "invokeType"):
+        text = _strict_text(value.get(key))
+        if text:
+            job[key] = text
+    for key in (
+        "startTimeUtc",
+        "endTimeUtc",
+        "createdTimeUtc",
+        "lastUpdatedTimeUtc",
+    ):
+        timestamp = _strict_text(value.get(key))
+        if timestamp:
+            job[key] = _normalize_timestamp(timestamp)
+    return {key: value for key, value in job.items() if value is not None}
+
+
+def _metadata_for_item(artifact, scanner_matched):
+    """Map scanner metadata to the documented itemMetadata DTO shape.
+
+    The DTO contains scannerMatched plus configuredBy, modifiedBy,
+    modifiedDateTime, endorsement {value, certifiedBy}, sensitivity
+    {labelId, displayName}, and tags [{id, displayName}] when supplied.
+    """
+    metadata = {"scannerMatched": scanner_matched}
+    if not scanner_matched:
+        return metadata
+    configured_by = _safe_text(artifact.get("configuredBy"))
+    modified_by = _safe_text(artifact.get("modifiedBy"))
+    modified = _safe_text(
+        artifact.get("modifiedDateTime")
+        or artifact.get("lastUpdatedDate")
+        or artifact.get("lastUpdatedTime")
+    )
+    if configured_by:
+        metadata["configuredBy"] = configured_by
+    if modified_by:
+        metadata["modifiedBy"] = modified_by
+    if modified:
+        metadata["modifiedDateTime"] = _normalize_timestamp(modified)
+
+    artifact_type = artifact.get("_type")
+    owner_available = artifact_type in (
+        "SemanticModel",
+        "Dataflow",
+        "Datamart",
+    ) or (
+        artifact_type == "Report"
+        and ("createdBy" in artifact or "createdById" in artifact)
+    )
+    metadata["ownerAvailable"] = owner_available
+    owner_name = None
+    owner_id = None
+    owner_source = None
+    if artifact_type in ("SemanticModel", "Dataflow", "Datamart"):
+        owner_name = _safe_text(artifact.get("configuredBy"))
+        owner_id = _safe_text(artifact.get("configuredById"))
+        owner_source = "workspaceInfo.configuredBy"
+    elif artifact_type == "Report":
+        owner_name = _safe_text(artifact.get("createdBy"))
+        owner_id = _safe_text(artifact.get("createdById"))
+        owner_source = "workspaceInfo.createdBy"
+    if owner_name or owner_id:
+        owner = {"source": owner_source}
+        if owner_id:
+            owner["principalId"] = owner_id
+        if owner_name:
+            owner["displayName"] = owner_name
+            if "@" in owner_name:
+                owner["email"] = owner_name
+        metadata["owner"] = owner
+
+    endorsement = artifact.get("endorsement")
+    if not isinstance(endorsement, dict):
+        endorsement = artifact.get("endorsementDetails")
+    if isinstance(endorsement, dict):
+        value = _safe_text(
+            endorsement.get("value") or endorsement.get("endorsement")
+        )
+        certified_by = _safe_text(endorsement.get("certifiedBy"))
+        if value or certified_by:
+            metadata["endorsement"] = {}
+            if value:
+                metadata["endorsement"]["value"] = value
+            if certified_by:
+                metadata["endorsement"]["certifiedBy"] = certified_by
+
+    sensitivity = artifact.get("sensitivity")
+    if not isinstance(sensitivity, dict):
+        sensitivity = artifact.get("sensitivityLabel")
+    if isinstance(sensitivity, dict):
+        label_id = _safe_text(
+            sensitivity.get("labelId") or sensitivity.get("id")
+        )
+        display_name = _safe_text(
+            sensitivity.get("displayName") or sensitivity.get("name")
+        )
+        if label_id or display_name:
+            metadata["sensitivity"] = {}
+            if label_id:
+                metadata["sensitivity"]["labelId"] = label_id
+            if display_name:
+                metadata["sensitivity"]["displayName"] = display_name
+
+    tags = []
+    for tag in artifact.get("tags") or []:
+        if isinstance(tag, str):
+            tag_id = _safe_text(tag)
+            display_name = None
+        elif isinstance(tag, dict):
+            tag_id = _safe_text(tag.get("id") or tag.get("tagId"))
+            display_name = _safe_text(
+                tag.get("displayName") or tag.get("name")
+            )
+        else:
+            continue
+        if tag_id:
+            entry = {"id": tag_id}
+            if display_name:
+                entry["displayName"] = display_name
+            tags.append(entry)
+    if tags:
+        metadata["tags"] = tags
+    return metadata
+
+
+def _safe_error_code(error, optional=False):
+    if isinstance(error, DeadlineExceeded):
+        return "deadline-exhausted"
+    if isinstance(error, urllib.error.HTTPError):
+        if optional and error.code in (400, 404):
+            return "endpoint-unsupported"
+        if error.code in (401, 403):
+            return "authorization-failed"
+        if error.code == 429:
+            return "rate-limited"
+        if 500 <= error.code <= 599:
+            return "transient-upstream"
+        return "upstream-http-error"
+    if isinstance(error, (ValueError, json.JSONDecodeError)):
+        return "invalid-response"
+    if isinstance(error, ScannerError):
+        return "scanner-failed"
+    return "upstream-failure"
+
+
+def _set_section(out, name, status, code=None):
+    section = {"status": status}
+    if code:
+        section["code"] = code
+    out["sections"][name] = section
+
+
+def _record_failure(out, section, error, optional=False):
+    code = _safe_error_code(error, optional=optional)
+    status = (
+        "unsupported"
+        if optional and code == "endpoint-unsupported"
+        else "failed"
+    )
+    _set_section(out, section, status, code)
+    out["errors"].append(f"{section}: {code}")
+    return code
+
+
+def _new_optional_tracker():
+    return {"success": 0, "unsupported": 0, "failed": 0, "codes": []}
+
+
+def _track_optional(tracker, result, code=None):
+    tracker[result] += 1
+    if code and code not in tracker["codes"]:
+        tracker["codes"].append(code)
+
+
+def _finish_optional_section(out, name, tracker):
+    if tracker["failed"]:
+        _set_section(
+            out,
+            name,
+            "failed",
+            tracker["codes"][0] if tracker["codes"] else "upstream-failure",
+        )
+    elif tracker["success"]:
+        _set_section(
+            out,
+            name,
+            "complete",
+            "partial-unsupported" if tracker["unsupported"] else None,
+        )
+    elif tracker["unsupported"]:
+        _set_section(
+            out,
+            name,
+            "unsupported",
+            tracker["codes"][0]
+            if tracker["codes"]
+            else "endpoint-unsupported",
+        )
+    else:
+        _set_section(out, name, "unsupported", "not-applicable")
+
+
+def _set_metadata_capabilities(out):
+    scanner = out["sections"].get(
+        "scanner",
+        {"status": "failed", "code": "scanner-failed"},
+    )
+    if scanner["status"] == "complete":
+        endorsement = {"status": "complete"}
+        sensitivity = {"status": "complete", "code": "label-ids"}
+        tags = {"status": "complete", "code": "tag-ids"}
+        ownership = {"status": "complete", "code": "type-specific"}
+    else:
+        unavailable = {
+            "status": "failed",
+            "code": scanner.get("code") or "scanner-failed",
+        }
+        endorsement = dict(unavailable)
+        sensitivity = dict(unavailable)
+        tags = dict(unavailable)
+        ownership = dict(unavailable)
+    out["capabilities"] = {
+        "endorsement": endorsement,
+        "sensitivity": sensitivity,
+        "tags": tags,
+        "ownership": ownership,
+    }
+
+
 def _access_right(user):
     for k, v in user.items():
         if k.endswith("UserAccessRight") or k.endswith("AccessRight"):
@@ -171,14 +724,11 @@ def _access_right(user):
 
 
 def _lh_tables(token, ws, lid):
-    try:
-        rows = _get_all_data(
-            token,
-            f"/workspaces/{ws}/lakehouses/{lid}/tables?maxResults=100",
-        )
-        return _table_records(rows)
-    except Exception:
-        return []
+    rows = _get_all_data(
+        token,
+        f"/workspaces/{ws}/lakehouses/{lid}/tables?maxResults=100",
+    )
+    return _table_records(rows)
 
 
 def _table_records(value):
@@ -211,27 +761,36 @@ DETAIL_PATHS = {
 }
 
 
-def _enrich_artifact(token, ws, artifact, errors):
+def _enrich_artifact(token, ws, artifact, trackers, errors):
     artifact_type = artifact.get("_type")
     artifact_id = artifact.get("id")
     detail_path = DETAIL_PATHS.get(artifact_type)
     if detail_path and artifact_id:
+        artifact["_detailAttempted"] = True
         try:
             artifact["_detail"] = _get(
                 token,
                 f"{FABRIC}/workspaces/{ws}/{detail_path}/{artifact_id}",
             )
+            _track_optional(trackers["itemDetails"], "success")
         except urllib.error.HTTPError as error:
-            artifact["_detailError"] = (
-                f"Fabric REST returned HTTP {error.code} for item properties"
-            )
-            if error.code not in (400, 404):
-                errors.append(
-                    f"{artifact_type}Detail: failed for item {artifact_id}"
+            code = _safe_error_code(error, optional=True)
+            if code == "endpoint-unsupported":
+                artifact["_detailError"] = "Item properties are unsupported"
+                _track_optional(
+                    trackers["itemDetails"],
+                    "unsupported",
+                    code,
                 )
-        except Exception:
+            else:
+                artifact["_detailError"] = "Item properties unavailable"
+                _track_optional(trackers["itemDetails"], "failed", code)
+                errors.append(f"itemDetails: {code}")
+        except Exception as error:
+            code = _safe_error_code(error, optional=True)
             artifact["_detailError"] = "Fabric REST item properties unavailable"
-            errors.append(f"{artifact_type}Detail: failed for item {artifact_id}")
+            _track_optional(trackers["itemDetails"], "failed", code)
+            errors.append(f"itemDetails: {code}")
 
     if artifact_type == "Lakehouse" and artifact_id:
         try:
@@ -239,29 +798,47 @@ def _enrich_artifact(token, ws, artifact, errors):
                 token,
                 f"/workspaces/{ws}/lakehouses/{artifact_id}/tables?maxResults=100",
             )
+            _track_optional(trackers["lakehouseTables"], "success")
         except urllib.error.HTTPError as error:
             artifact["_lakehouseTables"] = []
-            artifact["_lakehouseTablesError"] = (
-                f"Lakehouse Tables REST returned HTTP {error.code}"
-            )
-            # 400/404 are observed for lakehouse variants where the preview
-            # endpoint cannot enumerate tables. Other failures are privilege or
-            # service failures and make the snapshot non-authoritative.
-            if error.code not in (400, 404):
-                errors.append(
-                    f"LakehouseTables: failed for item {artifact_id}"
+            code = _safe_error_code(error, optional=True)
+            if code == "endpoint-unsupported":
+                artifact["_lakehouseTablesError"] = (
+                    "Lakehouse table enumeration is unsupported"
                 )
-        except Exception:
+                _track_optional(
+                    trackers["lakehouseTables"],
+                    "unsupported",
+                    code,
+                )
+            else:
+                artifact["_lakehouseTablesError"] = (
+                    "Lakehouse table enumeration unavailable"
+                )
+                _track_optional(
+                    trackers["lakehouseTables"],
+                    "failed",
+                    code,
+                )
+                errors.append(f"lakehouseTables: {code}")
+        except Exception as error:
+            code = _safe_error_code(error, optional=True)
             artifact["_lakehouseTables"] = []
             artifact["_lakehouseTablesError"] = (
                 "Lakehouse Tables REST enumeration failed"
             )
-            errors.append(f"LakehouseTables: failed for item {artifact_id}")
+            _track_optional(trackers["lakehouseTables"], "failed", code)
+            errors.append(f"lakehouseTables: {code}")
 
     if artifact_type == "Report" and artifact_id:
         if artifact.get("reportType") == "PaginatedReport":
             artifact["_reportPagesError"] = (
                 "Page inventory is not supported for paginated reports"
+            )
+            _track_optional(
+                trackers["reportPages"],
+                "unsupported",
+                "report-type-unsupported",
             )
         else:
             try:
@@ -273,19 +850,35 @@ def _enrich_artifact(token, ws, artifact, errors):
                 if not isinstance(values, list):
                     raise ValueError("Power BI pages response was not a list")
                 artifact["_reportPages"] = values
+                _track_optional(trackers["reportPages"], "success")
             except urllib.error.HTTPError as error:
-                artifact["_reportPagesError"] = (
-                    f"Power BI Reports REST returned HTTP {error.code}"
-                )
-                if error.code not in (400, 404):
-                    errors.append(
-                        f"ReportPages: failed for item {artifact_id}"
+                code = _safe_error_code(error, optional=True)
+                if code == "endpoint-unsupported":
+                    artifact["_reportPagesError"] = (
+                        "Report page inventory is unsupported"
                     )
-            except Exception:
+                    _track_optional(
+                        trackers["reportPages"],
+                        "unsupported",
+                        code,
+                    )
+                else:
+                    artifact["_reportPagesError"] = (
+                        "Power BI report page enumeration unavailable"
+                    )
+                    _track_optional(
+                        trackers["reportPages"],
+                        "failed",
+                        code,
+                    )
+                    errors.append(f"reportPages: {code}")
+            except Exception as error:
+                code = _safe_error_code(error, optional=True)
                 artifact["_reportPagesError"] = (
                     "Power BI report page enumeration failed"
                 )
-                errors.append(f"ReportPages: failed for item {artifact_id}")
+                _track_optional(trackers["reportPages"], "failed", code)
+                errors.append(f"reportPages: {code}")
 
 
 def _merge_schema_tables(*groups):
@@ -294,7 +887,7 @@ def _merge_schema_tables(*groups):
     order = []
     for tables in groups:
         for table in tables or []:
-            name = str(table.get("name") or "").strip()
+            name = _strict_text(table.get("name"))
             if not name:
                 continue
             key = name.casefold()
@@ -311,15 +904,20 @@ def _merge_schema_tables(*groups):
             if key not in merged:
                 merged[key] = {
                     "name": name,
-                    "objectType": table.get("objectType"),
-                    "source": table.get("source"),
-                    "description": table.get("description"),
-                    "isHidden": table.get("isHidden"),
+                    "objectType": _strict_text(table.get("objectType")),
+                    "source": _strict_text(table.get("source")),
+                    "description": _strict_text(table.get("description")),
+                    "isHidden": (
+                        table.get("isHidden")
+                        if isinstance(table.get("isHidden"), bool)
+                        else None
+                    ),
                     "columns": [],
                     "measures": [],
                 }
-                if table.get("rows") is not None:
-                    merged[key]["rows"] = table.get("rows")
+                safe_rows = _safe_row_count(table.get("rows"))
+                if safe_rows is not None:
+                    merged[key]["rows"] = safe_rows
                 order.append(key)
             target = merged[key]
             if not target.get("objectType") and table.get("objectType"):
@@ -338,34 +936,47 @@ def _merge_schema_tables(*groups):
             if target.get("isHidden") is None and table.get("isHidden") is not None:
                 target["isHidden"] = table.get("isHidden")
             column_names = {
-                str(column.get("name") or "").casefold()
+                (_strict_text(column.get("name")) or "").casefold()
                 for column in target["columns"]
             }
             for column in table.get("columns") or []:
-                column_name = str(column.get("name") or "").strip()
+                column_name = _strict_text(column.get("name"))
                 if column_name and column_name.casefold() not in column_names:
                     target["columns"].append({
                         "name": column_name,
-                        "dataType": column.get("dataType")
-                        or column.get("type")
-                        or "column",
-                        "description": column.get("description"),
-                        "isHidden": column.get("isHidden"),
+                        "dataType": _strict_text(
+                            column.get("dataType") or column.get("type")
+                        ) or "column",
+                        "description": _strict_text(
+                            column.get("description")
+                        ),
+                        "isHidden": (
+                            column.get("isHidden")
+                            if isinstance(column.get("isHidden"), bool)
+                            else None
+                        ),
                     })
                     column_names.add(column_name.casefold())
             measure_names = {
-                str(measure.get("name") or "").casefold()
+                (_strict_text(measure.get("name")) or "").casefold()
                 for measure in target["measures"]
             }
             for measure in table.get("measures") or []:
-                measure_name = str(measure.get("name") or "").strip()
+                measure_name = _strict_text(measure.get("name"))
                 if measure_name and measure_name.casefold() not in measure_names:
                     target["measures"].append({
                         "name": measure_name,
-                        "expression": measure.get("expression")
-                        or measure.get("expr"),
-                        "description": measure.get("description"),
-                        "isHidden": measure.get("isHidden"),
+                        "expression": _strict_text(
+                            measure.get("expression")
+                        ),
+                        "description": _strict_text(
+                            measure.get("description")
+                        ),
+                        "isHidden": (
+                            measure.get("isHidden")
+                            if isinstance(measure.get("isHidden"), bool)
+                            else None
+                        ),
                     })
                     measure_names.add(measure_name.casefold())
     result = []
@@ -398,41 +1009,54 @@ def _metadata_endpoint_ids(value):
     for root in roots:
         endpoint = root.get("sqlEndpointProperties")
         if isinstance(endpoint, dict) and endpoint.get("id"):
-            ids.add(str(endpoint["id"]))
+            endpoint_id = _normalized_id(endpoint["id"])
+            if endpoint_id:
+                ids.add(endpoint_id)
         for key in ("sqlEndpointId", "sqlAnalyticsEndpointId"):
             if root.get(key):
-                ids.add(str(root[key]))
+                endpoint_id = _normalized_id(root[key])
+                if endpoint_id:
+                    ids.add(endpoint_id)
         dw_properties = root.get("DwProperties")
         if isinstance(dw_properties, str):
             try:
-                roots.append(json.loads(dw_properties))
+                parsed_properties = json.loads(dw_properties)
+                if isinstance(parsed_properties, dict):
+                    roots.append(parsed_properties)
             except (TypeError, ValueError):
                 pass
     return ids
 
 
 def _storage_endpoint_ids(token, ws, storage, arts):
-    storage_id = storage.get("id")
+    storage_id = _artifact_id(storage)
     ids = set()
     for artifact in arts:
         if artifact.get("_type") != "SQLEndpoint":
             continue
         if any(
-            relation.get("dependentOnArtifactId") == storage_id
+            _normalized_id(relation.get("dependentOnArtifactId"))
+            == storage_id
             for relation in artifact.get("relations") or []
+            if isinstance(relation, dict)
         ):
-            ids.add(str(artifact.get("id")))
+            endpoint_id = _artifact_id(artifact)
+            if endpoint_id:
+                ids.add(endpoint_id)
     ids.update(_metadata_endpoint_ids(storage))
     ids.update(_metadata_endpoint_ids(storage.get("_detail")))
     if storage.get("_type") == "Lakehouse":
-        if not storage.get("_detail"):
+        if (
+            not storage.get("_detail")
+            and not storage.get("_detailAttempted")
+        ):
             try:
                 detail = _get(
                     token,
                     f"{FABRIC}/workspaces/{ws}/lakehouses/{storage_id}",
                 )
                 ids.update(_metadata_endpoint_ids(detail))
-            except Exception:
+            except (TypeError, ValueError):
                 pass
     return ids
 
@@ -441,18 +1065,24 @@ def _downstream_semantic_models(arts, start_ids):
     downstream = {}
     artifact_type = {}
     for artifact in arts:
-        artifact_id = artifact.get("id")
+        artifact_id = _artifact_id(artifact)
         if artifact_id:
-            artifact_type[str(artifact_id)] = artifact.get("_type")
+            artifact_type[artifact_id] = artifact.get("_type")
         for relation in artifact.get("relations") or []:
-            dependency = relation.get("dependentOnArtifactId")
+            if not isinstance(relation, dict):
+                continue
+            dependency = _normalized_id(
+                relation.get("dependentOnArtifactId")
+            )
             if dependency and artifact_id:
-                downstream.setdefault(str(dependency), set()).add(
-                    str(artifact_id)
-                )
+                downstream.setdefault(dependency, set()).add(artifact_id)
 
     models = set()
-    pending = [str(value) for value in start_ids if value]
+    pending = [
+        normalized
+        for value in start_ids
+        if (normalized := _normalized_id(value))
+    ]
     visited = set()
     while pending:
         current = pending.pop()
@@ -476,7 +1106,7 @@ def _derive_storage_schemas(token, ws, arts, schema):
             "SQLDatabase",
         ):
             continue
-        storage_id = storage.get("id")
+        storage_id = _artifact_id(storage)
         endpoint_ids = _storage_endpoint_ids(token, ws, storage, arts)
         model_ids = _downstream_semantic_models(
             arts,
@@ -502,13 +1132,12 @@ def _derive_storage_schemas(token, ws, arts, schema):
 
 
 def _qualified_object_name(value):
-    name = str(value.get("name") or "").strip()
-    schema_name = str(
+    name = _strict_text(value.get("name")) or ""
+    schema_name = _strict_text(
         value.get("schema")
         or value.get("schemaName")
         or value.get("schema_name")
-        or ""
-    ).strip()
+    ) or ""
     if schema_name and name and not name.casefold().startswith(
         schema_name.casefold() + "."
     ):
@@ -524,44 +1153,69 @@ def _schema_objects(values, object_type, source, include_measures=False):
             continue
         columns = []
         for column in value.get("columns") or []:
-            column_name = str(column.get("name") or "").strip()
+            if not isinstance(column, dict):
+                continue
+            column_name = _strict_text(column.get("name"))
             if not column_name:
                 continue
             columns.append({
                 "name": column_name,
-                "dataType": column.get("dataType")
-                or column.get("type")
-                or "column",
-                "description": column.get("description"),
-                "isHidden": column.get("isHidden"),
+                "dataType": _strict_text(
+                    column.get("dataType") or column.get("type")
+                ) or "column",
+                "description": _strict_text(column.get("description")),
+                "isHidden": (
+                    column.get("isHidden")
+                    if isinstance(column.get("isHidden"), bool)
+                    else None
+                ),
             })
         measures = []
         if include_measures:
             for measure in value.get("measures") or []:
-                measure_name = str(measure.get("name") or "").strip()
+                if not isinstance(measure, dict):
+                    continue
+                measure_name = _strict_text(measure.get("name"))
                 if not measure_name:
                     continue
                 measures.append({
                     "name": measure_name,
-                    "expression": measure.get("expression"),
-                    "description": measure.get("description"),
-                    "isHidden": measure.get("isHidden"),
+                    "expression": _strict_text(
+                        measure.get("expression")
+                    ),
+                    "description": _strict_text(
+                        measure.get("description")
+                    ),
+                    "isHidden": (
+                        measure.get("isHidden")
+                        if isinstance(measure.get("isHidden"), bool)
+                        else None
+                    ),
                 })
-        row_count = value.get("rows")
-        if row_count is None:
-            row_count = value.get("rowCount")
-        tables.append({
+        row_source = (
+            value.get("rowCount")
+            if "rowCount" in value
+            else value.get("rows")
+        )
+        row_count = _safe_row_count(row_source)
+        table = {
             "name": name,
-            "rows": row_count,
-            "objectType": value.get("objectType")
-            or value.get("type")
-            or object_type,
+            "objectType": _strict_text(
+                value.get("objectType") or value.get("type")
+            ) or object_type,
             "source": source,
-            "description": value.get("description"),
-            "isHidden": value.get("isHidden"),
+            "description": _strict_text(value.get("description")),
+            "isHidden": (
+                value.get("isHidden")
+                if isinstance(value.get("isHidden"), bool)
+                else None
+            ),
             "columns": columns,
             "measures": measures,
-        })
+        }
+        if row_count is not None:
+            table["rows"] = row_count
+        tables.append(table)
     return _merge_schema_tables(tables)
 
 
@@ -569,12 +1223,29 @@ def _item_config(token, ws, a, typ, item_schema=None):
     rows = []
 
     def add(section, label, value):
-        if label is not None and str(label).strip() and value is not None and value != "":
-            rows.append({"itemId": a.get("id"), "section": section, "label": label, "value": str(value)})
+        if (
+            isinstance(label, (str, int, float))
+            and str(label).strip()
+            and isinstance(value, (str, int, float, bool))
+            and value != ""
+        ):
+            rows.append({
+                "itemId": a.get("id"),
+                "section": str(section),
+                "label": str(label),
+                "value": str(value),
+            })
 
     add("General", "Description", a.get("description"))
-    add("General", "Configured by", a.get("configuredBy") or a.get("createdBy") or a.get("modifiedBy"))
-    add("General", "Modified", a.get("modifiedDateTime") or a.get("lastUpdatedDate"))
+    add("General", "Configured by", _safe_text(a.get("configuredBy")))
+    add("General", "Modified by", _safe_text(a.get("modifiedBy")))
+    add(
+        "General",
+        "Modified",
+        _normalize_timestamp(
+            a.get("modifiedDateTime") or a.get("lastUpdatedDate")
+        ),
+    )
     detail = a.get("_detail") or {}
     properties = detail.get("properties") or {}
     add("General", "REST metadata", a.get("_detailError"))
@@ -621,15 +1292,22 @@ def _item_config(token, ws, a, typ, item_schema=None):
             "Provisioning status",
             sql_endpoint.get("provisioningStatus"),
         )
-        try:
-            dw = json.loads(ep.get("DwProperties") or "{}")
-            add(
-                "SQL endpoint",
-                "Metadata available",
-                "Yes" if dw.get("tdsEndpoint") else None,
-            )
-        except Exception:
-            pass
+        raw_dw = ep.get("DwProperties")
+        if isinstance(raw_dw, dict):
+            dw = raw_dw
+        elif isinstance(raw_dw, str):
+            try:
+                parsed_dw = json.loads(raw_dw or "{}")
+            except (TypeError, ValueError):
+                parsed_dw = {}
+            dw = parsed_dw if isinstance(parsed_dw, dict) else {}
+        else:
+            dw = {}
+        add(
+            "SQL endpoint",
+            "Metadata available",
+            "Yes" if dw.get("tdsEndpoint") else None,
+        )
         direct = a.get("_lakehouseTables") or []
         if direct:
             add("Inventory", "Lakehouse Tables REST", f"{len(direct)} objects")
@@ -642,8 +1320,16 @@ def _item_config(token, ws, a, typ, item_schema=None):
             )
     elif typ == "Warehouse":
         add("Warehouse", "Collation", properties.get("collationType"))
-        add("Warehouse", "Created", properties.get("createdDate"))
-        add("Warehouse", "Updated", properties.get("lastUpdatedTime"))
+        add(
+            "Warehouse",
+            "Created",
+            _normalize_timestamp(properties.get("createdDate")),
+        )
+        add(
+            "Warehouse",
+            "Updated",
+            _normalize_timestamp(properties.get("lastUpdatedTime")),
+        )
     elif typ == "SQLDatabase":
         add("SQL database", "Database name", properties.get("databaseName"))
         add("SQL database", "Collation", properties.get("collation"))
@@ -753,13 +1439,91 @@ def _item_schema(token, ws, a, typ):
     return []
 
 
+def _official_lineage(artifacts, workspace_item_ids):
+    edges = []
+    seen = set()
+
+    def add(source, target, relation):
+        source_id = _normalized_id(source)
+        target_id = _normalized_id(target)
+        edge = (source_id, target_id, relation)
+        if (
+            source_id in workspace_item_ids
+            and target_id in workspace_item_ids
+            and edge not in seen
+        ):
+            seen.add(edge)
+            edges.append({
+                "source": source_id,
+                "target": target_id,
+                "relation": relation,
+            })
+
+    for artifact in artifacts:
+        artifact_id = _artifact_id(artifact)
+        for relation in artifact.get("relations") or []:
+            if not isinstance(relation, dict):
+                continue
+            dependency = relation.get("dependentOnArtifactId")
+            relation_type = relation.get("relationType")
+            add(
+                dependency,
+                artifact_id,
+                REL_LABEL.get(
+                    relation_type,
+                    _safe_text(relation_type) or "depends",
+                ),
+            )
+        if artifact.get("_type") == "Report":
+            add(artifact.get("datasetId"), artifact_id, "report")
+        if artifact.get("_type") == "SemanticModel":
+            for upstream in artifact.get("upstreamDataflows") or []:
+                if not isinstance(upstream, dict):
+                    continue
+                add(
+                    upstream.get("targetDataflowId")
+                    or upstream.get("dataflowId")
+                    or upstream.get("objectId")
+                    or upstream.get("id"),
+                    artifact_id,
+                    "dataflow",
+                )
+        if artifact.get("_type") == "Dashboard":
+            for tile in artifact.get("tiles") or []:
+                if not isinstance(tile, dict):
+                    continue
+                add(tile.get("reportId"), artifact_id, "dashboard report")
+                add(tile.get("datasetId"), artifact_id, "dashboard dataset")
+    return edges
+
+
+def _guard_response_size(value, max_bytes=MAX_RESPONSE_BYTES):
+    try:
+        size = len(
+            json.dumps(
+                value,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+        )
+    except (TypeError, ValueError) as error:
+        raise ResponseSizeExceeded(
+            "sync response could not be safely serialized"
+        ) from error
+    if size > max_bytes:
+        raise ResponseSizeExceeded(
+            "sync response exceeded the safe size limit"
+        )
+    return value
+
+
 @udf.function()
 def sync_all(fabricToken: str, workspaceId: str) -> dict:
-    """One-shot sync for Fabric Atlas. Uses the Fabric item APIs for the catalog
-    and the admin scanner for the two hard things: real lineage between items and
-    per-item access (who can see each item, not just the workspace)."""
+    """Return the v2 metadata-only Fabric Atlas synchronization envelope."""
     ws = _workspace_id(workspaceId)
     out = {
+        "schemaVersion": 2,
         "workspace": None,
         "items": [],
         "roleAssignments": [],
@@ -768,78 +1532,149 @@ def sync_all(fabricToken: str, workspaceId: str) -> dict:
         "config": [],
         "schema": {},
         "jobs": [],
+        "itemMetadata": {},
+        "capabilities": {},
+        "sections": {
+            name: {"status": "failed", "code": "not-run"}
+            for name in (
+                "workspace",
+                "items",
+                "roleAssignments",
+                "scanner",
+                "schema",
+                "lineage",
+                "access",
+                "config",
+            )
+        },
         "errors": [],
     }
+    deadline = _ExecutionDeadline()
+    trackers = {
+        "itemDetails": _new_optional_tracker(),
+        "lakehouseTables": _new_optional_tracker(),
+        "reportPages": _new_optional_tracker(),
+        "jobs": _new_optional_tracker(),
+    }
 
-    try:
-        out["workspace"] = _get(fabricToken, f"{FABRIC}/workspaces/{ws}")
-    except Exception as e:
-        out["errors"].append("workspace: " + str(e))
-
-    try:
-        out["items"] = _get_all(fabricToken, f"/workspaces/{ws}/items")
-    except Exception as e:
-        out["errors"].append("items: " + str(e))
-
-    try:
-        out["roleAssignments"] = _get_all(fabricToken, f"/workspaces/{ws}/roleAssignments")
-    except Exception as e:
-        out["errors"].append("roleAssignments: " + str(e))
-
-    # Admin scanner: per-item access + lineage + config.
-    scan = None
-    try:
-        scan = _scan_workspace(fabricToken, ws)
-        if scan is None:
-            out["errors"].append("scan: no result (needs Tenant.Read.All + admin API tenant settings)")
-    except Exception as e:
-        out["errors"].append("scan: " + str(e))
-
-    if scan:
-        scanner_arts = []
-        for key, typ in ART_KEYS.items():
-            for a in scan.get(key, []) or []:
-                a["_type"] = typ
-                scanner_arts.append(a)
-        scanned_ids = {
-            str(a.get("id")) for a in scanner_arts if a.get("id")
-        }
-        expected_scan_ids = {
-            str(item.get("id"))
-            for item in out["items"]
-            if item.get("id")
-            and item.get("type") in ("SemanticModel", "Report")
-        }
-        missing_scan_ids = expected_scan_ids - scanned_ids
-        if missing_scan_ids:
-            out["errors"].append(
-                f"scan: incomplete artifact result ({len(missing_scan_ids)} missing)"
+    with _deadline_scope(deadline):
+        try:
+            out["workspace"] = _sanitize_workspace(
+                _get(fabricToken, f"{FABRIC}/workspaces/{ws}")
             )
-        missing_model_schema = [
-            a.get("id")
-            for a in scanner_arts
-            if a.get("_type") == "SemanticModel"
-            and not isinstance(a.get("tables"), list)
-        ]
-        if missing_model_schema:
-            out["errors"].append(
-                f"scan: semantic model schema unavailable ({len(missing_model_schema)} models)"
-            )
+            _set_section(out, "workspace", "complete")
+        except Exception as error:
+            _record_failure(out, "workspace", error)
 
-        artifacts_by_id = {}
-        for artifact in scanner_arts:
-            artifact_id = artifact.get("id")
-            if artifact_id:
-                artifacts_by_id[str(artifact_id)] = artifact
+        try:
+            raw_items = _get_all(
+                fabricToken,
+                f"/workspaces/{ws}/items",
+            )
+            items = [_sanitize_item(item) for item in raw_items]
+            if any(item is None for item in items):
+                raise ValueError("workspace items contained invalid metadata")
+            out["items"] = items
+            _set_section(out, "items", "complete")
+        except Exception as error:
+            _record_failure(out, "items", error)
+
+        try:
+            raw_assignments = _get_all(
+                fabricToken,
+                f"/workspaces/{ws}/roleAssignments",
+            )
+            assignments = [
+                _sanitize_role_assignment(value)
+                for value in raw_assignments
+            ]
+            if any(value is None for value in assignments):
+                raise ValueError(
+                    "role assignments contained invalid metadata"
+                )
+            out["roleAssignments"] = assignments
+            _set_section(out, "roleAssignments", "complete")
+        except Exception as error:
+            _record_failure(out, "roleAssignments", error)
+
+        scan = None
+        scanner_artifacts = []
+        try:
+            scan = _scan_workspace(fabricToken, ws)
+            if not isinstance(scan, dict):
+                raise ScannerError("scanner result was not an object")
+            artifacts_by_id = {}
+            for key, artifact_type in ART_KEYS.items():
+                values = scan.get(key, [])
+                if values is None:
+                    values = []
+                if not isinstance(values, list):
+                    raise ScannerError(
+                        "scanner artifact collection was invalid"
+                    )
+                for value in values:
+                    if not isinstance(value, dict):
+                        raise ScannerError(
+                            "scanner artifact record was invalid"
+                        )
+                    artifact = dict(value)
+                    artifact_id = _artifact_id(artifact)
+                    if not artifact_id:
+                        continue
+                    artifact["id"] = artifact_id
+                    artifact["_type"] = artifact_type
+                    existing = artifacts_by_id.get(artifact_id)
+                    if existing:
+                        for field, field_value in artifact.items():
+                            existing.setdefault(field, field_value)
+                    else:
+                        artifacts_by_id[artifact_id] = artifact
+            scanner_artifacts = list(artifacts_by_id.values())
+            scanned_ids = set(artifacts_by_id)
+            expected_scan_ids = {
+                item["id"]
+                for item in out["items"]
+                if item.get("type") in ("SemanticModel", "Report")
+            }
+            if expected_scan_ids - scanned_ids:
+                raise ScannerError(
+                    "scanner result omitted expected artifacts"
+                )
+            missing_model_schema = [
+                artifact["id"]
+                for artifact in scanner_artifacts
+                if artifact.get("_type") == "SemanticModel"
+                and not isinstance(artifact.get("tables"), list)
+            ]
+            if missing_model_schema:
+                _set_section(
+                    out,
+                    "schema",
+                    "failed",
+                    "scanner-schema-unavailable",
+                )
+                out["errors"].append(
+                    "schema: scanner-schema-unavailable"
+                )
+            _set_section(out, "scanner", "complete")
+        except Exception as error:
+            _record_failure(out, "scanner", error)
+        _set_metadata_capabilities(out)
+
+        workspace_item_ids = {item["id"] for item in out["items"]}
+        scanner_by_id = {
+            artifact["id"]: artifact
+            for artifact in scanner_artifacts
+            if artifact.get("id")
+        }
+        artifacts_by_id = dict(scanner_by_id)
         for item in out["items"]:
-            item_id = item.get("id")
-            if not item_id:
-                continue
+            item_id = item["id"]
             item_type = ITEM_TYPE_ALIASES.get(
                 item.get("type"),
                 item.get("type"),
             )
-            artifact = artifacts_by_id.get(str(item_id))
+            artifact = artifacts_by_id.get(item_id)
             if artifact:
                 artifact.setdefault("_type", item_type)
                 artifact.setdefault("displayName", item.get("displayName"))
@@ -847,78 +1682,217 @@ def sync_all(fabricToken: str, workspaceId: str) -> dict:
             else:
                 artifact = dict(item)
                 artifact["_type"] = item_type
-                artifacts_by_id[str(item_id)] = artifact
-        arts = list(artifacts_by_id.values())
-        ids = {a.get("id") for a in arts}
+                artifacts_by_id[item_id] = artifact
+            out["itemMetadata"][item_id] = _metadata_for_item(
+                artifact,
+                item_id in scanner_by_id,
+            )
+        artifacts = list(artifacts_by_id.values())
 
-        for a in arts:
-            aid = a.get("id")
-            typ = a["_type"]
-            _enrich_artifact(fabricToken, ws, a, out["errors"])
-            for u in a.get("users", []) or []:
-                out["access"].append({
-                    "itemId": aid,
-                    "principalName": u.get("displayName") or u.get("emailAddress") or u.get("identifier"),
-                    "principalEmail": u.get("emailAddress"),
-                    "principalType": u.get("principalType"),
-                    "accessRight": _access_right(u),
-                })
-            for r in a.get("relations", []) or []:
-                dep = r.get("dependentOnArtifactId")
-                if dep and dep in ids:
-                    out["lineage"].append({
-                        "source": dep,
-                        "target": aid,
-                        "relation": REL_LABEL.get(r.get("relationType"), r.get("relationType") or "depends"),
-                    })
-            if typ == "Report" and a.get("datasetId"):
-                out["lineage"].append({"source": a["datasetId"], "target": aid, "relation": "report"})
-            try:
-                sch = _item_schema(fabricToken, ws, a, typ)
-                if sch:
-                    out["schema"][aid] = sch
-            except Exception:
-                out["errors"].append(f"schema: failed for item {aid}")
-
-        # Schema-enabled lakehouses have no reliable /tables REST result.
-        # Follow real metadata IDs across Lakehouse -> SQL endpoint -> semantic
-        # model and reuse only scanner-provided table/column metadata.
-        _derive_storage_schemas(fabricToken, ws, arts, out["schema"])
-
-        for a in arts:
-            aid = a.get("id")
-            try:
-                out["config"].extend(
-                    _item_config(
+        if out["sections"].get("scanner", {}).get("status") == "complete":
+            access_failed = False
+            for artifact in artifacts:
+                artifact_id = _artifact_id(artifact)
+                if artifact_id not in workspace_item_ids:
+                    continue
+                try:
+                    _enrich_artifact(
                         fabricToken,
                         ws,
-                        a,
-                        a["_type"],
-                        out["schema"].get(aid, []),
+                        artifact,
+                        trackers,
+                        out["errors"],
                     )
+                    users = artifact.get("users") or []
+                    if not isinstance(users, list):
+                        raise ValueError(
+                            "scanner users collection was invalid"
+                        )
+                    for user in users:
+                        if not isinstance(user, dict):
+                            raise ValueError(
+                                "scanner user record was invalid"
+                            )
+                        principal_type = _safe_text(
+                            user.get("principalType")
+                        )
+                        user_type = _safe_text(user.get("userType"))
+                        tenant_wide = (
+                            str(principal_type or "").casefold()
+                            in ("none", "entiretenant")
+                        )
+                        principal_id = (
+                            "entire-tenant"
+                            if tenant_wide
+                            else (
+                                _normalized_id(user.get("graphId"))
+                                or _safe_text(user.get("identifier"))
+                                or _safe_text(user.get("emailAddress"))
+                            )
+                        )
+                        principal_name = (
+                            _safe_text(user.get("displayName"))
+                            or _safe_text(user.get("emailAddress"))
+                            or principal_id
+                        )
+                        if not principal_id or not principal_name:
+                            raise ValueError(
+                                "scanner user identity was incomplete"
+                            )
+                        access = {
+                            "itemId": artifact_id,
+                            "principalId": principal_id,
+                            "principalName": principal_name,
+                            "principalType": principal_type,
+                            "userType": user_type,
+                            "tenantWide": tenant_wide,
+                            "accessRight": _safe_text(
+                                _access_right(user)
+                            ),
+                        }
+                        email = _safe_text(user.get("emailAddress"))
+                        if email:
+                            access["principalEmail"] = email
+                        out["access"].append({
+                            key: value
+                            for key, value in access.items()
+                            if value is not None
+                        })
+                except Exception as error:
+                    access_failed = True
+                    code = _safe_error_code(error)
+                    out["errors"].append(f"access: {code}")
+            if access_failed:
+                _set_section(out, "access", "failed", "invalid-response")
+            else:
+                _set_section(out, "access", "complete")
+            out["lineage"] = _official_lineage(
+                artifacts,
+                workspace_item_ids,
+            )
+            _set_section(out, "lineage", "complete")
+
+            schema_state = out["sections"].get("schema", {})
+            schema_failed = (
+                schema_state.get("status") == "failed"
+                and schema_state.get("code") != "not-run"
+            )
+            all_schema = {}
+            for artifact in artifacts:
+                artifact_id = _artifact_id(artifact)
+                try:
+                    item_schema = _item_schema(
+                        fabricToken,
+                        ws,
+                        artifact,
+                        artifact["_type"],
+                    )
+                    if item_schema:
+                        all_schema[artifact_id] = item_schema
+                except Exception as error:
+                    schema_failed = True
+                    out["errors"].append(
+                        f"schema: {_safe_error_code(error)}"
+                    )
+            try:
+                _derive_storage_schemas(
+                    fabricToken,
+                    ws,
+                    artifacts,
+                    all_schema,
                 )
-            except Exception:
-                out["errors"].append(f"config: failed for item {aid}")
+            except Exception as error:
+                schema_failed = True
+                out["errors"].append(
+                    f"schema: {_safe_error_code(error)}"
+                )
+            out["schema"] = {
+                item_id: tables
+                for item_id, tables in all_schema.items()
+                if item_id in workspace_item_ids
+            }
+            if schema_failed:
+                _set_section(
+                    out,
+                    "schema",
+                    "failed",
+                    out["sections"]
+                    .get("schema", {})
+                    .get("code", "upstream-failure"),
+                )
+            else:
+                _set_section(out, "schema", "complete")
 
-    # Recent job instances per item. Unsupported item types return 400/404;
-    # other failures mark the result incomplete so old job history is retained.
-    for it in out["items"]:
-        iid = it.get("id")
-        if not iid:
-            continue
-        try:
-            jobs = _get_all(fabricToken, f"/workspaces/{ws}/items/{iid}/jobs/instances")
-            for j in jobs[:3]:
-                j["itemId"] = iid
-                j["itemDisplayName"] = it.get("displayName")
-                j["itemType"] = it.get("type")
-                out["jobs"].append(j)
-        except urllib.error.HTTPError as e:
-            if e.code not in (400, 404):
-                out["errors"].append(f"jobs: failed for item {iid}")
-        except Exception:
-            out["errors"].append(f"jobs: failed for item {iid}")
+            config_failed = False
+            for artifact in artifacts:
+                artifact_id = _artifact_id(artifact)
+                if artifact_id not in workspace_item_ids:
+                    continue
+                try:
+                    out["config"].extend(
+                        _item_config(
+                            fabricToken,
+                            ws,
+                            artifact,
+                            artifact["_type"],
+                            out["schema"].get(artifact_id, []),
+                        )
+                    )
+                except Exception as error:
+                    config_failed = True
+                    out["errors"].append(
+                        f"config: {_safe_error_code(error)}"
+                    )
+            _set_section(
+                out,
+                "config",
+                "failed" if config_failed else "complete",
+                "upstream-failure" if config_failed else None,
+            )
+        else:
+            scanner_code = out["sections"].get("scanner", {}).get(
+                "code",
+                "scanner-failed",
+            )
+            for name in ("access", "lineage", "schema", "config"):
+                _set_section(out, name, "failed", scanner_code)
+                out["errors"].append(f"{name}: {scanner_code}")
 
-    import datetime
-    out["syncedAt"] = datetime.datetime.utcnow().isoformat() + "Z"
-    return out
+        for item in out["items"]:
+            try:
+                jobs = _get_all(
+                    fabricToken,
+                    f"/workspaces/{ws}/items/{item['id']}/jobs/instances",
+                )
+                _track_optional(trackers["jobs"], "success")
+                for value in jobs[:3]:
+                    job = _sanitize_job(value, item)
+                    if job is None:
+                        raise ValueError("job record was invalid")
+                    out["jobs"].append(job)
+            except urllib.error.HTTPError as error:
+                code = _safe_error_code(error, optional=True)
+                if code == "endpoint-unsupported":
+                    _track_optional(
+                        trackers["jobs"],
+                        "unsupported",
+                        code,
+                    )
+                else:
+                    _track_optional(trackers["jobs"], "failed", code)
+                    out["errors"].append(f"jobs: {code}")
+            except Exception as error:
+                code = _safe_error_code(error, optional=True)
+                _track_optional(trackers["jobs"], "failed", code)
+                out["errors"].append(f"jobs: {code}")
+                if isinstance(error, DeadlineExceeded):
+                    break
+
+    for name, tracker in trackers.items():
+        _finish_optional_section(out, name, tracker)
+    out["syncedAt"] = (
+        datetime.datetime.now(datetime.timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
+    return _guard_response_size(out)

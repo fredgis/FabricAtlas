@@ -832,13 +832,21 @@ function DetailPanel({
             <div className="flex justify-between gap-m">
               <dt className="text-muted-foreground">Owner</dt>
               <dd className="text-right font-medium">
-                {row.item.ownerName ?? "Not recorded"}
+                {row.item.ownerName ??
+                  (row.item.ownerMetadataAvailable === false
+                    ? "Not collected"
+                    : "Not recorded")}
               </dd>
             </div>
             <div className="flex justify-between gap-m">
               <dt className="text-muted-foreground">Sensitivity</dt>
               <dd className="text-right font-medium">
-                {row.item.sensitivity ?? "Not labeled"}
+                {row.item.sensitivity ??
+                  (row.item.sensitivityLabelId
+                    ? "Label applied"
+                    : row.item.sensitivityMetadataAvailable === false
+                      ? "Not collected"
+                      : "Not labeled")}
               </dd>
             </div>
           </dl>

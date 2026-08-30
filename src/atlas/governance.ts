@@ -150,6 +150,30 @@ function meaningful(value: string | undefined): boolean {
   return normalize(value).length > 0;
 }
 
+function itemHasSensitivity(item: Item): boolean {
+  return meaningful(item.sensitivity) || meaningful(item.sensitivityLabelId);
+}
+
+function eligibleItems(
+  items: Item[],
+  availability: keyof Pick<
+    Item,
+    | "ownerMetadataAvailable"
+    | "sensitivityMetadataAvailable"
+    | "endorsementMetadataAvailable"
+    | "tagMetadataAvailable"
+  >,
+  hasLegacyEvidence: (item: Item) => boolean,
+): Item[] {
+  const hasExplicitStatus = items.some(
+    (item) => item[availability] !== undefined,
+  );
+  if (hasExplicitStatus) {
+    return items.filter((item) => item[availability] === true);
+  }
+  return items.some(hasLegacyEvidence) ? items : [];
+}
+
 function stablePart(value: string): string {
   return encodeURIComponent(normalize(value) || "(blank)");
 }
@@ -556,11 +580,19 @@ export function buildGovernanceFindings(data: AtlasData): GovernanceFinding[] {
     });
   }
 
-  const ownerMetadataCollected = data.items.some(
-    (item) => meaningful(item.ownerName) || meaningful(item.ownerEmail),
+  const ownerEligibleItems = new Set(
+    eligibleItems(
+      data.items,
+      "ownerMetadataAvailable",
+      (item) => meaningful(item.ownerName) || meaningful(item.ownerEmail),
+    ).map((item) => item.fabricId),
   );
-  const sensitivityMetadataCollected = data.items.some((item) =>
-    meaningful(item.sensitivity),
+  const sensitivityEligibleItems = new Set(
+    eligibleItems(
+      data.items,
+      "sensitivityMetadataAvailable",
+      itemHasSensitivity,
+    ).map((item) => item.fabricId),
   );
 
   for (const item of data.items) {
@@ -582,7 +614,7 @@ export function buildGovernanceFindings(data: AtlasData): GovernanceFinding[] {
     }
 
     if (
-      ownerMetadataCollected &&
+      ownerEligibleItems.has(item.fabricId) &&
       !meaningful(item.ownerName) &&
       !meaningful(item.ownerEmail)
     ) {
@@ -600,7 +632,10 @@ export function buildGovernanceFindings(data: AtlasData): GovernanceFinding[] {
       });
     }
 
-    if (sensitivityMetadataCollected && !meaningful(item.sensitivity)) {
+    if (
+      sensitivityEligibleItems.has(item.fabricId) &&
+      !itemHasSensitivity(item)
+    ) {
       findings.push({
         id: findingId("missing-sensitivity", item.fabricId),
         severity: "low",
@@ -707,6 +742,22 @@ export function getCoverageDiagnostics(
   const tables = data.items.flatMap((item) => schema[item.fabricId] ?? []);
   const columns = tables.flatMap((table) => table.columns);
   const measures = tables.flatMap((table) => table.measures);
+  const ownerEligible = eligibleItems(
+    data.items,
+    "ownerMetadataAvailable",
+    (item) => meaningful(item.ownerName) || meaningful(item.ownerEmail),
+  );
+  const sensitivityEligible = eligibleItems(
+    data.items,
+    "sensitivityMetadataAvailable",
+    itemHasSensitivity,
+  );
+  const endorsementEligible = eligibleItems(
+    data.items,
+    "endorsementMetadataAvailable",
+    (item) =>
+      item.endorsement !== "none" || meaningful(item.endorsementRaw),
+  );
   const technicalObjects = [
     ...tables.map((table) =>
       typeof table.rows === "number" ||
@@ -727,22 +778,27 @@ export function getCoverageDiagnostics(
     coverageMetric(
       "owners",
       "Item owners",
-      data.items.filter(
+      ownerEligible.filter(
         (item) => meaningful(item.ownerName) || meaningful(item.ownerEmail),
       ).length,
-      data.items.length,
+      ownerEligible.length,
     ),
     coverageMetric(
       "sensitivity",
       "Sensitivity labels",
-      data.items.filter((item) => meaningful(item.sensitivity)).length,
-      data.items.length,
+      sensitivityEligible.filter(itemHasSensitivity).length,
+      sensitivityEligible.length,
     ),
     coverageMetric(
       "endorsement",
       "Endorsement adoption",
-      data.items.filter((item) => item.endorsement !== "none").length,
-      data.items.length,
+      endorsementEligible.filter(
+        (item) =>
+          item.endorsement !== "none" ||
+          (meaningful(item.endorsementRaw) &&
+            normalize(item.endorsementRaw) !== "none"),
+      ).length,
+      endorsementEligible.length,
     ),
     coverageMetric(
       "schema-inventory",

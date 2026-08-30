@@ -1467,10 +1467,14 @@ export function MapView() {
                 </div>
                 <div className="mt-[12px] flex flex-wrap items-center gap-[7px]">
                   <HealthChip health={selected.health} />
-                  <EndorsementChip endorsement={selected.endorsement} />
-                  {selected.sensitivity && (
+                  <EndorsementChip
+                    endorsement={
+                      selected.endorsementRaw ?? selected.endorsement
+                    }
+                  />
+                  {(selected.sensitivity || selected.sensitivityLabelId) && (
                     <span className="rounded-md bg-destructive/10 px-[8px] py-[2px] text-[10px] font-semibold text-destructive">
-                      {selected.sensitivity}
+                      {selected.sensitivity ?? "Labeled"}
                     </span>
                   )}
                 </div>
@@ -1497,7 +1501,11 @@ export function MapView() {
                             <span className="max-w-[190px] truncate">{selected.ownerName}</span>
                           </span>
                         ) : (
-                          <span className="text-muted-foreground">Unassigned</span>
+                          <span className="text-muted-foreground">
+                            {selected.ownerMetadataAvailable === false
+                              ? "Not collected"
+                              : "Unassigned"}
+                          </span>
                         )}
                       </div>
                       <div className="mt-[8px] flex items-center justify-between text-[12px]">

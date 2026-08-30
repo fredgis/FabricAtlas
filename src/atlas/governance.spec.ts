@@ -439,4 +439,42 @@ describe("coverage diagnostics", () => {
     });
     expect(coverage["column-descriptions"].percentage).toBeNull();
   });
+
+  it("excludes items whose governance metadata was not collected", () => {
+    const coverage = getCoverageDiagnostics(
+      atlas({
+        items: [
+          item("scanner-item", {
+            sensitivityMetadataAvailable: true,
+            endorsementMetadataAvailable: true,
+            ownerMetadataAvailable: false,
+            sensitivityLabelId: "label-id",
+            endorsement: "certified",
+          }),
+          item("fabric-only-item", {
+            sensitivityMetadataAvailable: false,
+            endorsementMetadataAvailable: false,
+            ownerMetadataAvailable: false,
+          }),
+        ],
+      }),
+    ).byId;
+
+    expect(coverage.sensitivity).toMatchObject({
+      numerator: 1,
+      denominator: 1,
+      percentage: 100,
+    });
+    expect(coverage.endorsement).toMatchObject({
+      numerator: 1,
+      denominator: 1,
+      percentage: 100,
+    });
+    expect(coverage.owners).toMatchObject({
+      numerator: 0,
+      denominator: 0,
+      percentage: null,
+      state: "not-applicable",
+    });
+  });
 });

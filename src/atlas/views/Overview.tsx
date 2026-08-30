@@ -17,6 +17,10 @@ import {
   Waypoints,
 } from "lucide-react";
 import { useAtlas } from "../store";
+import {
+  buildAccessReviewRows,
+  getCoverageDiagnostics,
+} from "../governance";
 import { Card, SectionLabel, TypeGlyph } from "../ui";
 import {
   typeMeta,
@@ -102,17 +106,22 @@ export function OverviewView({
   const confidential = items.filter((item) =>
     confidentialLabels.has((item.sensitivity ?? "").toLowerCase()),
   );
-  const endorsed = items.filter((item) => item.endorsement !== "none");
-  const labeled = items.filter((item) => item.sensitivity);
-  const owned = items.filter((item) => item.ownerName);
-  const external = principals.filter((principal) => principal.external);
-  const workspacePrincipals = new Set(
-    grants
-      .filter((grant) => !grant.itemFabricId)
-      .map((grant) => grant.principalRef),
+  const coverageDiagnostics = useMemo(
+    () => getCoverageDiagnostics(data),
+    [data],
   );
-  const itemOnly = principals.filter(
-    (principal) => !workspacePrincipals.has(principal.displayName),
+  const endorsementCoverage = coverageDiagnostics.byId.endorsement;
+  const sensitivityCoverage = coverageDiagnostics.byId.sensitivity;
+  const ownerCoverage = coverageDiagnostics.byId.owners;
+  const external = principals.filter((principal) => principal.external);
+  const accessRows = useMemo(() => buildAccessReviewRows(data), [data]);
+  const itemOnly = new Set(
+    accessRows
+      .filter(
+        (row) =>
+          row.origin === "item" && row.effectiveAccess !== "none",
+      )
+      .map((row) => row.principalKey),
   );
   const attentionCount = health.stale + health.failing;
   const percentage = (count: number) =>
@@ -161,20 +170,35 @@ export function OverviewView({
   const coverage = [
     {
       label: "Endorsement",
-      detail: `${endorsed.length} of ${items.length} items`,
-      value: percentage(endorsed.length),
+      detail: endorsementCoverage.denominator
+        ? `${endorsementCoverage.numerator} of ${endorsementCoverage.denominator} eligible items`
+        : "Metadata not collected",
+      value:
+        endorsementCoverage.percentage == null
+          ? null
+          : Math.round(endorsementCoverage.percentage),
       tone: "bg-lineage-downstream",
     },
     {
       label: "Sensitivity labels",
-      detail: `${labeled.length} of ${items.length} items`,
-      value: percentage(labeled.length),
+      detail: sensitivityCoverage.denominator
+        ? `${sensitivityCoverage.numerator} of ${sensitivityCoverage.denominator} eligible items`
+        : "Metadata not collected",
+      value:
+        sensitivityCoverage.percentage == null
+          ? null
+          : Math.round(sensitivityCoverage.percentage),
       tone: "bg-lineage-upstream",
     },
     {
       label: "Owner assignment",
-      detail: `${owned.length} of ${items.length} items`,
-      value: percentage(owned.length),
+      detail: ownerCoverage.denominator
+        ? `${ownerCoverage.numerator} of ${ownerCoverage.denominator} eligible items`
+        : "Metadata not collected",
+      value:
+        ownerCoverage.percentage == null
+          ? null
+          : Math.round(ownerCoverage.percentage),
       tone: "bg-primary",
     },
   ];
@@ -205,19 +229,21 @@ export function OverviewView({
     {
       label: "Confidential items",
       value: confidential.length,
-      detail: `${labeled.length} items labeled`,
+      detail: sensitivityCoverage.denominator
+        ? `${sensitivityCoverage.numerator} items labeled`
+        : "Label metadata unavailable",
       tab: "governance" as Tab,
       icon: LockKeyhole,
       tone: "text-lineage-upstream",
     },
     {
       label: "Item-only access",
-      value: itemOnly.length,
+      value: itemOnly.size,
       detail: `${grants.length} grants indexed`,
       tab: "access" as Tab,
       icon: ShieldCheck,
       tone:
-        itemOnly.length > 0
+        itemOnly.size > 0
           ? "text-status-warning"
           : "text-status-healthy",
     },
@@ -451,20 +477,20 @@ export function OverviewView({
                         </div>
                       </div>
                       <div className="font-numeric text-500 font-bold tabular-nums">
-                        {metric.value}%
+                        {metric.value == null ? "N/A" : `${metric.value}%`}
                       </div>
                     </div>
                     <div
                       className="h-s overflow-hidden rounded-full bg-muted"
-                      role="progressbar"
+                      role={metric.value == null ? undefined : "progressbar"}
                       aria-label={`${metric.label} coverage`}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-valuenow={metric.value}
+                      aria-valuemin={metric.value == null ? undefined : 0}
+                      aria-valuemax={metric.value == null ? undefined : 100}
+                      aria-valuenow={metric.value ?? undefined}
                     >
                       <div
                         className={`h-full rounded-full ${metric.tone}`}
-                        style={{ width: `${metric.value}%` }}
+                        style={{ width: `${metric.value ?? 0}%` }}
                       />
                     </div>
                   </div>

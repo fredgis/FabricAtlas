@@ -638,6 +638,7 @@ export function GovernanceCenterView({
             <CoverageSection
               diagnostics={coverage}
               historyLoading={historyLoading}
+              syncSections={data.workspace.syncSections}
             />
           )}
         </motion.div>
@@ -1133,12 +1134,55 @@ function HistorySection({
 function CoverageSection({
   diagnostics,
   historyLoading,
+  syncSections,
 }: {
   diagnostics: ReturnType<typeof getCoverageDiagnostics>;
   historyLoading: boolean;
+  syncSections?: NonNullable<
+    ReturnType<typeof useAtlas>["data"]["workspace"]["syncSections"]
+  >;
 }) {
+  const sectionEntries = Object.entries(syncSections ?? {}).sort(
+    ([left], [right]) => left.localeCompare(right),
+  );
   return (
     <div className="flex flex-col gap-l">
+      {sectionEntries.length > 0 && (
+        <Card className="overflow-hidden">
+          <div className="border-b border-border bg-secondary/55 px-l py-m">
+            <h2 className="text-400 font-semibold">Collection status</h2>
+            <p className="text-200 text-muted-foreground">
+              Authoritative status returned by the latest UDF contract.
+            </p>
+          </div>
+          <div className="grid gap-s p-s sm:grid-cols-2 xl:grid-cols-4">
+            {sectionEntries.map(([name, section]) => (
+              <div
+                key={name}
+                className="flex items-center justify-between gap-m rounded-lg border border-border bg-card px-m py-s"
+              >
+                <span className="truncate text-200 font-semibold capitalize">
+                  {name.replaceAll(/([a-z])([A-Z])/g, "$1 $2")}
+                </span>
+                <span
+                  className={cn(
+                    "rounded-full border px-s py-xxs text-100 font-semibold uppercase tracking-wide",
+                    section.status === "complete"
+                      ? "border-status-healthy/30 bg-status-healthy/10 text-status-healthy"
+                      : section.status === "failed"
+                        ? "border-status-failing/30 bg-status-failing/10 text-status-failing"
+                        : "border-border bg-muted text-muted-foreground",
+                  )}
+                  title={section.code}
+                >
+                  {section.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       <div className="grid gap-m sm:grid-cols-2 xl:grid-cols-3">
         {diagnostics.metrics.map((metric) => {
           const value =
