@@ -154,39 +154,6 @@ Fabric Atlas collects that metadata without copying business data.
 
 </details>
 
-## Scan coverage matrix
-
-Atlas always indexes top-level items from the Fabric Items API. Deeper
-inventory, lineage and item-level access depend on what the Fabric and Power BI
-APIs expose for each type and on the required tenant settings.
-
-| Fabric element | Catalog and configuration | Internal inventory | Lineage | Access | Recent jobs | Known boundary |
-|---|---|---|---|---|---|---|
-| Workspace | Name, ID, capacity and region | Not applicable | Not applicable | Workspace role assignments | Not applicable | One workspace per `v1.x` deployment |
-| Lakehouse | Description, OneLake paths, default schema and SQL endpoint status | Tables and columns from Lakehouse REST, scanner metadata or a downstream-model subset | Scanner relations and SQL endpoint path | Workspace roles and item users | When supported | Schema-enabled variants may require the downstream Semantic Model path |
-| Warehouse | Description, collation, created and updated dates | Tables, views and columns from the scanner; downstream-model subset fallback | Scanner relations | Workspace roles and item users | When supported | Complete inventory can require SQL catalog connectivity |
-| SQL Database | Database name, collation and backup retention | Tables, views and columns from the scanner; downstream-model subset fallback | Scanner relations | Workspace roles and item users | When supported | Complete inventory can require SQL catalog connectivity |
-| SQL endpoint | Item identity and scanner metadata | No dedicated internal-object scan | Storage-to-endpoint-to-model relations | Workspace roles and item users | When supported | Used primarily as a lineage bridge |
-| Semantic Model | Description, storage mode and provider | Tables, columns, measures, descriptions, hidden flags and expressions | Scanner relations to sources and reports | Workspace roles and item users | When supported | Requires admin scanner schema and expression options |
-| Report | Report type, bound Semantic Model and page inventory | Pages and order | Model binding plus scanner relations | Workspace roles and item users | When supported | Visuals and field bindings are not exposed by this flow |
-| Dashboard | Item and scanner metadata | No deep object inventory | Scanner relations when returned | Workspace roles and item users | When supported | Tile and visual bindings are not expanded |
-| Notebook | Item description, configured-by and modified metadata | Source code and cells are not read | Scanner relations | Workspace roles and item users | Up to 3 returned instances | Business content remains outside Atlas |
-| Data Pipeline | Item description, configured-by and modified metadata | Activities and expressions are not expanded | Scanner relations | Workspace roles and item users | Up to 3 returned instances | Pipeline definitions are not copied |
-| Dataflow | Item and scanner metadata | Entities and Power Query definitions are not expanded | Scanner relations | Workspace roles and item users | When supported | Query content is not copied |
-| Datamart | Item and scanner metadata | No deep object inventory | Scanner relations | Workspace roles and item users | When supported | Coverage follows scanner availability |
-| Eventhouse | Item and scanner metadata | No KQL object inventory | Scanner relations | Workspace roles and item users | When supported | Hosted database objects are not expanded |
-| KQL Database | Item and scanner metadata | Tables, functions and policies are not expanded | Scanner relations | Workspace roles and item users | When supported | KQL catalog connectivity is not used |
-| Eventstream | Item and scanner metadata | Internal stream topology is not expanded | Scanner relations | Workspace roles and item users | When supported | Event payloads are never read |
-| Mirrored Database | Item and scanner metadata | Mirrored tables are not expanded | Scanner relations | Workspace roles and item users | When supported | Source data and replication contents are not read |
-| User Data Function | Item and scanner metadata | Function source and endpoints are not expanded | Scanner relations | Workspace roles and item users | When supported | Function code is not copied |
-| Fabric App / AppBackend | Item identity from the Fabric Items API | No internal service inventory | Only when a Fabric API exposes a relation | Workspace roles | When supported | Not currently an admin-scanner artifact type |
-| Other or new Fabric item type | ID, name, type and description when returned | Top-level item only | Only when the APIs expose a relation | Workspace roles; item users when exposed | The jobs endpoint is attempted | Unknown types stay visible with a neutral item glyph |
-
-Across these elements, Atlas also records configuration facts, up to three
-recent job instances per supported item, scanner-reported relationships,
-workspace principals and explicit item users. It stores metadata only, never
-workspace business data.
-
 ## Product screenshots
 
 ### Workspace overview
@@ -393,6 +360,39 @@ Pull requests are welcome. Read
 - [Data model](docs/data-model.md)
 - [Security policy](.github/SECURITY.md)
 - [Code of conduct](.github/CODE_OF_CONDUCT.md)
+
+## Scan coverage matrix
+
+<sub>Atlas always indexes top-level items from the Fabric Items API. Deeper
+inventory, lineage and item-level access depend on what the Fabric and Power BI
+APIs expose for each type and on the required tenant settings.</sub>
+
+| <sub>Fabric element</sub> | <sub>Catalog and configuration</sub> | <sub>Internal inventory</sub> | <sub>Lineage</sub> | <sub>Access</sub> | <sub>Recent jobs</sub> | <sub>Known boundary</sub> |
+|---|---|---|---|---|---|---|
+| <sub>Workspace</sub> | <sub>Name, ID, capacity and region</sub> | <sub>Not applicable</sub> | <sub>Not applicable</sub> | <sub>Workspace role assignments</sub> | <sub>Not applicable</sub> | <sub>One workspace per `v1.x` deployment</sub> |
+| <sub>Lakehouse</sub> | <sub>Description, OneLake paths, default schema and SQL endpoint status</sub> | <sub>Tables and columns from Lakehouse REST, scanner metadata or a downstream-model subset</sub> | <sub>Scanner relations and SQL endpoint path</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Schema-enabled variants may require the downstream Semantic Model path</sub> |
+| <sub>Warehouse</sub> | <sub>Description, collation, created and updated dates</sub> | <sub>Tables, views and columns from the scanner; downstream-model subset fallback</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Complete inventory can require SQL catalog connectivity</sub> |
+| <sub>SQL Database</sub> | <sub>Database name, collation and backup retention</sub> | <sub>Tables, views and columns from the scanner; downstream-model subset fallback</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Complete inventory can require SQL catalog connectivity</sub> |
+| <sub>SQL endpoint</sub> | <sub>Item identity and scanner metadata</sub> | <sub>No dedicated internal-object scan</sub> | <sub>Storage-to-endpoint-to-model relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Used primarily as a lineage bridge</sub> |
+| <sub>Semantic Model</sub> | <sub>Description, storage mode and provider</sub> | <sub>Tables, columns, measures, descriptions, hidden flags and expressions</sub> | <sub>Scanner relations to sources and reports</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Requires admin scanner schema and expression options</sub> |
+| <sub>Report</sub> | <sub>Report type, bound Semantic Model and page inventory</sub> | <sub>Pages and order</sub> | <sub>Model binding plus scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Visuals and field bindings are not exposed by this flow</sub> |
+| <sub>Dashboard</sub> | <sub>Item and scanner metadata</sub> | <sub>No deep object inventory</sub> | <sub>Scanner relations when returned</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Tile and visual bindings are not expanded</sub> |
+| <sub>Notebook</sub> | <sub>Item description, configured-by and modified metadata</sub> | <sub>Source code and cells are not read</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>Up to 3 returned instances</sub> | <sub>Business content remains outside Atlas</sub> |
+| <sub>Data Pipeline</sub> | <sub>Item description, configured-by and modified metadata</sub> | <sub>Activities and expressions are not expanded</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>Up to 3 returned instances</sub> | <sub>Pipeline definitions are not copied</sub> |
+| <sub>Dataflow</sub> | <sub>Item and scanner metadata</sub> | <sub>Entities and Power Query definitions are not expanded</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Query content is not copied</sub> |
+| <sub>Datamart</sub> | <sub>Item and scanner metadata</sub> | <sub>No deep object inventory</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Coverage follows scanner availability</sub> |
+| <sub>Eventhouse</sub> | <sub>Item and scanner metadata</sub> | <sub>No KQL object inventory</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Hosted database objects are not expanded</sub> |
+| <sub>KQL Database</sub> | <sub>Item and scanner metadata</sub> | <sub>Tables, functions and policies are not expanded</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>KQL catalog connectivity is not used</sub> |
+| <sub>Eventstream</sub> | <sub>Item and scanner metadata</sub> | <sub>Internal stream topology is not expanded</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Event payloads are never read</sub> |
+| <sub>Mirrored Database</sub> | <sub>Item and scanner metadata</sub> | <sub>Mirrored tables are not expanded</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Source data and replication contents are not read</sub> |
+| <sub>User Data Function</sub> | <sub>Item and scanner metadata</sub> | <sub>Function source and endpoints are not expanded</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Function code is not copied</sub> |
+| <sub>Fabric App / AppBackend</sub> | <sub>Item identity from the Fabric Items API</sub> | <sub>No internal service inventory</sub> | <sub>Only when a Fabric API exposes a relation</sub> | <sub>Workspace roles</sub> | <sub>When supported</sub> | <sub>Not currently an admin-scanner artifact type</sub> |
+| <sub>Other or new Fabric item type</sub> | <sub>ID, name, type and description when returned</sub> | <sub>Top-level item only</sub> | <sub>Only when the APIs expose a relation</sub> | <sub>Workspace roles; item users when exposed</sub> | <sub>The jobs endpoint is attempted</sub> | <sub>Unknown types stay visible with a neutral item glyph</sub> |
+
+<sub>Across these elements, Atlas also records configuration facts, up to three
+recent job instances per supported item, scanner-reported relationships,
+workspace principals and explicit item users. It stores metadata only, never
+workspace business data.</sub>
 
 <div align="center">
 
