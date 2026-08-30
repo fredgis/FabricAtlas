@@ -193,7 +193,7 @@ Fabric Atlas collects that metadata without copying business data.
 The overview brings health, freshness, governance signals and inventory reach
 together in a Fabric-native operational landing page.
 
-![Fabric Atlas workspace overview](docs/screenshots/overview-fabric-menu.png)
+![Fabric Atlas workspace overview](docs/screenshots/overview-fabric-menu-v191.png)
 
 ### Guided deployment sync
 
@@ -202,7 +202,7 @@ controlled metadata refresh. Progress, target workspace and the live progress
 donut stay visible throughout the scan; compatible patch releases reuse the
 validated catalog.
 
-![Guided Fabric Atlas deployment sync](docs/screenshots/deployment-sync.png)
+![Guided Fabric Atlas deployment sync](docs/screenshots/deployment-sync-v191.png)
 
 ### Interactive lineage
 
@@ -210,7 +210,7 @@ The map follows Fabric assets from orchestration to consumption. Selecting an
 item highlights its verified path while the inspector keeps schema, access,
 runs and impact actions beside the graph.
 
-![Fabric Atlas item lineage](docs/screenshots/interactive-lineage-v2.png)
+![Fabric Atlas item lineage](docs/screenshots/interactive-lineage-v191.png)
 
 ### Object lineage
 
@@ -218,28 +218,28 @@ Object mode expands a synchronized table into its columns and connected Fabric
 items. The inspector keeps ownership, impact and related metadata visible while
 objects are selected or rearranged.
 
-![Fabric Atlas object lineage](docs/screenshots/lineage-objects.png)
+![Fabric Atlas object lineage](docs/screenshots/lineage-objects-v191.png)
 
 ### Asset Catalog
 
 Tables, views, columns and measures are grouped by Fabric item. Selecting an
 asset exposes its source, model context and additive effective access.
 
-![Fabric Atlas Asset Catalog](docs/screenshots/asset-catalog.png)
+![Fabric Atlas Asset Catalog](docs/screenshots/asset-catalog-v191.png)
 
 ### Governance Center
 
 Governance Radar, findings, snapshot changes, history, coverage and posture are
 grouped into one governance workspace with saved views and evidence links.
 
-![Fabric Atlas Governance Center](docs/screenshots/governance-center.png)
+![Fabric Atlas Governance Center](docs/screenshots/governance-center-v191.png)
 
 ### Access Review
 
 The review matrix combines inherited and direct permissions, then supports
 focused filtering, personal decisions and CSV export.
 
-![Fabric Atlas Access Review](docs/screenshots/access-review.png)
+![Fabric Atlas Access Review](docs/screenshots/access-review-v191.png)
 
 ### Impact reports
 
