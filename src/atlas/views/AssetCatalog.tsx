@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Boxes,
@@ -20,7 +20,7 @@ import {
   selectAccessByItem,
 } from "../governance";
 import type { SchemaObjectRef } from "../lineage";
-import type { AtlasFocusRequest } from "../navigation";
+import type { AtlasFocusRequest, AtlasNavigation } from "../navigation";
 import { useAtlas } from "../store";
 import { PrincipalAvatar, SectionLabel, TypeGlyph, cn } from "../ui";
 import {
@@ -162,8 +162,10 @@ function safeGroupId(value: string) {
 
 export function AssetCatalogView({
   focus,
+  onStateChange,
 }: {
   focus?: AtlasFocusRequest;
+  onStateChange?: (navigation: AtlasNavigation) => void;
 } = {}) {
   const { data } = useAtlas();
   const { items, config, principals } = data;
@@ -265,10 +267,12 @@ export function AssetCatalogView({
       (!focus?.tableName || asset.table === focus.tableName) &&
       (!focus?.objectKind || asset.kind === focus.objectKind),
   );
-  const [query, setQuery] = useState(
-    initialFocusedAsset ? "" : focus?.query ?? "",
+  const [query, setQuery] = useState(focus?.query ?? "");
+  const [kind, setKind] = useState<AssetKind | "all">(
+    typeof focus?.filters?.kind === "string"
+      ? (focus.filters.kind as AssetKind)
+      : "all",
   );
-  const [kind, setKind] = useState<AssetKind | "all">("all");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     () =>
       new Set(
@@ -302,7 +306,27 @@ export function AssetCatalogView({
 
   const [selId, setSelId] = useState(initialFocusedAsset?.id ?? "");
   const [impactOpen, setImpactOpen] = useState(false);
-  const selectedAsset = assets.find((asset) => asset.id === selId);
+  const requestedAsset = assets.find((asset) => asset.id === selId);
+  const selectedAsset =
+    requestedAsset &&
+    filtered.some((asset) => asset.id === requestedAsset.id)
+      ? requestedAsset
+      : undefined;
+
+  useEffect(() => {
+    onStateChange?.({
+      tab: "assets",
+      focus: {
+        requestId: "assets-view-state",
+        itemId: selectedAsset?.itemFabricId,
+        tableName: selectedAsset?.table,
+        objectName: selectedAsset?.name,
+        objectKind: selectedAsset?.kind,
+        query: query.trim() || undefined,
+        filters: kind === "all" ? undefined : { kind },
+      },
+    });
+  }, [kind, onStateChange, query, selectedAsset]);
 
   const accessRows = useMemo(() => buildAccessReviewRows(data), [data]);
   const access = useMemo(() => {
@@ -480,7 +504,7 @@ export function AssetCatalogView({
                     new Set(groups.map(([itemId]) => itemId)),
                   )
                 }
-                disabled={groups.length === 0}
+                disabled={groups.length === 0 || Boolean(query.trim())}
                 className="inline-flex items-center gap-xs rounded-md px-s py-xs text-200 font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
               >
                 <ChevronDown className="icon-size-100" />
@@ -489,7 +513,9 @@ export function AssetCatalogView({
               <button
                 type="button"
                 onClick={() => setExpandedGroups(new Set())}
-                disabled={expandedGroups.size === 0}
+                disabled={
+                  expandedGroups.size === 0 || Boolean(query.trim())
+                }
                 className="inline-flex items-center gap-xs rounded-md px-s py-xs text-200 font-semibold text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
               >
                 <ChevronRight className="icon-size-100" />
@@ -524,7 +550,8 @@ export function AssetCatalogView({
             <div className="space-y-s">
               {groups.map(([itemId, groupAssets]) => {
                 const item = itemById.get(itemId);
-                const open = expandedGroups.has(itemId);
+                const open =
+                  Boolean(query.trim()) || expandedGroups.has(itemId);
                 const controlsId = safeGroupId(itemId);
                 return (
                   <article
@@ -535,6 +562,7 @@ export function AssetCatalogView({
                       type="button"
                       aria-expanded={open}
                       aria-controls={controlsId}
+                      disabled={Boolean(query.trim())}
                       onClick={() =>
                         setExpandedGroups((previous) => {
                           const next = new Set(previous);
@@ -543,7 +571,7 @@ export function AssetCatalogView({
                           return next;
                         })
                       }
-                      className="flex w-full items-center gap-m px-l py-m text-left transition-colors hover:bg-accent"
+                      className="flex w-full items-center gap-m px-l py-m text-left transition-colors hover:bg-accent disabled:cursor-default disabled:opacity-100"
                     >
                       <span className="flex size-xxl shrink-0 items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground">
                         {open ? (

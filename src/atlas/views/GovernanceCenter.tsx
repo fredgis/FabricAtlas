@@ -13,8 +13,9 @@ import {
   ShieldAlert,
   ShieldCheck,
 } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
-import { useMemo, useState } from "react";
+import * as Tabs from "@radix-ui/react-tabs";
+import { motion } from "framer-motion";
+import { useEffect, useMemo, useState } from "react";
 import { SavedViewsMenu } from "../components/SavedViewsMenu";
 import { TrendChart } from "../components/TrendChart";
 import {
@@ -201,9 +202,11 @@ function navigationForFinding(finding: GovernanceFinding): AtlasNavigation {
 export function GovernanceCenterView({
   focus,
   onNavigate,
+  onStateChange,
 }: {
   focus?: AtlasFocusRequest;
   onNavigate: (navigation: AtlasNavigation) => void;
+  onStateChange?: (navigation: AtlasNavigation) => void;
 }) {
   const {
     data,
@@ -252,10 +255,18 @@ export function GovernanceCenterView({
   );
   const [currentSnapshotId, setCurrentSnapshotId] = useState<
     string | undefined
-  >();
+  >(
+    typeof focus?.filters?.currentSnapshotId === "string"
+      ? focus.filters.currentSnapshotId
+      : undefined,
+  );
   const [previousSnapshotId, setPreviousSnapshotId] = useState<
     string | undefined
-  >();
+  >(
+    typeof focus?.filters?.previousSnapshotId === "string"
+      ? focus.filters.previousSnapshotId
+      : undefined,
+  );
 
   const availableSnapshotIds = new Set(
     history.snapshots.map((snapshot) => snapshot.snapshotId),
@@ -374,14 +385,46 @@ export function GovernanceCenterView({
     },
   ];
 
-  const currentFilters: SavedViewFilters =
-    section === "findings"
-      ? { section, search: findingSearch, severity, category }
-      : section === "changes"
-        ? { section, changeSearch, domain: changeDomain }
-        : section === "history"
-          ? { section, metric: historyMetric }
-          : { section };
+  const currentFilters = useMemo<SavedViewFilters>(
+    () => {
+      const filters: SavedViewFilters = { section };
+      if (section === "findings") {
+        filters.search = findingSearch;
+        filters.severity = severity;
+        filters.category = category;
+      } else if (section === "changes") {
+        filters.changeSearch = changeSearch;
+        filters.domain = changeDomain;
+        filters.currentSnapshotId = effectiveCurrentSnapshotId;
+        filters.previousSnapshotId = effectivePreviousSnapshotId;
+      } else if (section === "history") {
+        filters.metric = historyMetric;
+      }
+      return filters;
+    },
+    [
+      category,
+      changeDomain,
+      changeSearch,
+      findingSearch,
+      historyMetric,
+      effectiveCurrentSnapshotId,
+      effectivePreviousSnapshotId,
+      section,
+      severity,
+    ],
+  );
+
+  useEffect(() => {
+    onStateChange?.({
+      tab: "governance",
+      focus: {
+        requestId: "governance-view-state",
+        governanceSection: section,
+        filters: currentFilters,
+      },
+    });
+  }, [currentFilters, onStateChange, section]);
 
   const applySavedView = (view: SavedView) => {
     const filters = view.filters;
@@ -409,12 +452,27 @@ export function GovernanceCenterView({
         ? (filters.domain as AtlasChangeDomain)
         : "all",
     );
+    setCurrentSnapshotId(
+      typeof filters.currentSnapshotId === "string"
+        ? filters.currentSnapshotId
+        : undefined,
+    );
+    setPreviousSnapshotId(
+      typeof filters.previousSnapshotId === "string"
+        ? filters.previousSnapshotId
+        : undefined,
+    );
     if (typeof filters.metric === "string") {
       setHistoryMetric(filters.metric as HistoryMetric);
     }
   };
 
   return (
+    <Tabs.Root
+      value={section}
+      onValueChange={(value) => setSection(value as GovernanceSection)}
+      asChild
+    >
     <div className="atlas-content-frame flex flex-col gap-l p-l sm:p-xxl">
       <Card className="overflow-hidden border-border shadow-fabric-4">
         <div className="atlas-fabric-hero relative overflow-hidden p-l sm:p-xl">
@@ -501,47 +559,45 @@ export function GovernanceCenterView({
           </div>
         </div>
 
-        <div
-          role="tablist"
+        <Tabs.List
           aria-label="Governance Center sections"
           className="grid gap-s border-t border-border bg-secondary/55 p-s sm:grid-cols-2 xl:grid-cols-4"
         >
           {tabs.map(({ id, label, detail, count, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={section === id}
-              onClick={() => setSection(id)}
-              className={cn(
-                "flex items-center gap-m rounded-xl border px-m py-s text-left transition-colors",
-                section === id
-                  ? "border-primary/45 bg-primary/10 text-foreground"
-                  : "border-transparent text-muted-foreground hover:border-border hover:bg-card hover:text-foreground",
-              )}
-            >
-              <span
+            <Tabs.Trigger key={id} value={id} asChild>
+              <button
+                type="button"
+                onClick={() => setSection(id)}
                 className={cn(
-                  "flex icon-size-600 shrink-0 items-center justify-center rounded-xl",
+                  "flex items-center gap-m rounded-xl border px-m py-s text-left transition-colors",
                   section === id
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground",
+                    ? "border-primary/45 bg-primary/10 text-foreground"
+                    : "border-transparent text-muted-foreground hover:border-border hover:bg-card hover:text-foreground",
                 )}
               >
-                <Icon className="icon-size-200" aria-hidden="true" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center justify-between gap-s">
-                  <span className="text-300 font-semibold">{label}</span>
-                  <span className="rounded-full bg-card px-s py-xxs font-numeric text-100">
-                    {count}
-                  </span>
+                <span
+                  className={cn(
+                    "flex icon-size-600 shrink-0 items-center justify-center rounded-xl",
+                    section === id
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  <Icon className="icon-size-200" aria-hidden="true" />
                 </span>
-                <span className="mt-xxs block truncate text-200">{detail}</span>
-              </span>
-            </button>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center justify-between gap-s">
+                    <span className="text-300 font-semibold">{label}</span>
+                    <span className="rounded-full bg-card px-s py-xxs font-numeric text-100">
+                      {count}
+                    </span>
+                  </span>
+                  <span className="mt-xxs block truncate text-200">{detail}</span>
+                </span>
+              </button>
+            </Tabs.Trigger>
           ))}
-        </div>
+        </Tabs.List>
       </Card>
 
       {historyError && (
@@ -553,97 +609,111 @@ export function GovernanceCenterView({
         </div>
       )}
 
-      <AnimatePresence mode="wait">
+      <Tabs.Content value="findings" asChild>
         <motion.div
-          key={section}
-          role="tabpanel"
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.16 }}
         >
-          {section === "findings" && (
-            <FindingsSection
-              findings={filteredFindings}
-              total={findings.length}
-              search={findingSearch}
-              severity={severity}
-              category={category}
-              onSearch={setFindingSearch}
-              onSeverity={setSeverity}
-              onCategory={setCategory}
-              onNavigate={(finding) =>
-                onNavigate(navigationForFinding(finding))
+          <FindingsSection
+            findings={filteredFindings}
+            total={findings.length}
+            search={findingSearch}
+            severity={severity}
+            category={category}
+            onSearch={setFindingSearch}
+            onSeverity={setSeverity}
+            onCategory={setCategory}
+            onNavigate={(finding) =>
+              onNavigate(navigationForFinding(finding))
+            }
+            onPreset={(preset) => {
+              if (preset === "external") {
+                setFindingSearch("external access");
+                setCategory("access");
+                setSeverity("all");
+              } else if (preset === "metadata") {
+                setFindingSearch("");
+                setCategory("metadata");
+                setSeverity("all");
+              } else if (preset === "failures") {
+                setFindingSearch("failed");
+                setCategory("operations");
+                setSeverity("all");
+              } else {
+                setFindingSearch("");
+                setCategory("all");
+                setSeverity("all");
               }
-              onPreset={(preset) => {
-                if (preset === "external") {
-                  setFindingSearch("external access");
-                  setCategory("access");
-                  setSeverity("all");
-                } else if (preset === "metadata") {
-                  setFindingSearch("");
-                  setCategory("metadata");
-                  setSeverity("all");
-                } else if (preset === "failures") {
-                  setFindingSearch("failed");
-                  setCategory("operations");
-                  setSeverity("all");
-                } else {
-                  setFindingSearch("");
-                  setCategory("all");
-                  setSeverity("all");
-                }
-              }}
-            />
-          )}
-          {section === "changes" && (
-            <ChangesSection
-              changes={filteredChanges}
-              total={snapshotChanges.length}
-              snapshots={history.summaries}
-              currentSnapshotId={effectiveCurrentSnapshotId}
-              previousSnapshotId={effectivePreviousSnapshotId}
-              search={changeSearch}
-              domain={changeDomain}
-              loading={historyLoading}
-              onCurrentSnapshot={setCurrentSnapshotId}
-              onPreviousSnapshot={setPreviousSnapshotId}
-              onSearch={setChangeSearch}
-              onDomain={setChangeDomain}
-              onNavigate={(change) => {
-                if (change.itemFabricId) {
-                  onNavigate({
-                    tab:
-                      change.domain === "schema" ? "assets" : "catalog",
-                    focus: focusRequest({
-                      itemId: change.itemFabricId,
-                      objectName: change.objectName,
-                      tableName: change.tableName,
-                      objectKind: change.objectType,
-                    }),
-                  });
-                }
-              }}
-            />
-          )}
-          {section === "history" && (
-            <HistorySection
-              summaries={history.trend}
-              metric={historyMetric}
-              loading={historyLoading}
-              onMetric={setHistoryMetric}
-            />
-          )}
-          {section === "coverage" && (
-            <CoverageSection
-              diagnostics={coverage}
-              historyLoading={historyLoading}
-              syncSections={data.workspace.syncSections}
-            />
-          )}
+            }}
+          />
         </motion.div>
-      </AnimatePresence>
+      </Tabs.Content>
+      <Tabs.Content value="changes" asChild>
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.16 }}
+        >
+          <ChangesSection
+            changes={filteredChanges}
+            total={snapshotChanges.length}
+            snapshots={history.summaries}
+            currentSnapshotId={effectiveCurrentSnapshotId}
+            previousSnapshotId={effectivePreviousSnapshotId}
+            search={changeSearch}
+            domain={changeDomain}
+            loading={historyLoading}
+            onCurrentSnapshot={setCurrentSnapshotId}
+            onPreviousSnapshot={setPreviousSnapshotId}
+            onSearch={setChangeSearch}
+            onDomain={setChangeDomain}
+            onNavigate={(change) => {
+              if (change.itemFabricId) {
+                onNavigate({
+                  tab:
+                    change.domain === "schema" ? "assets" : "catalog",
+                  focus: focusRequest({
+                    itemId: change.itemFabricId,
+                    objectName: change.objectName,
+                    tableName: change.tableName,
+                    objectKind: change.objectType,
+                  }),
+                });
+              }
+            }}
+          />
+        </motion.div>
+      </Tabs.Content>
+      <Tabs.Content value="history" asChild>
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.16 }}
+        >
+          <HistorySection
+            summaries={history.trend}
+            metric={historyMetric}
+            loading={historyLoading}
+            onMetric={setHistoryMetric}
+          />
+        </motion.div>
+      </Tabs.Content>
+      <Tabs.Content value="coverage" asChild>
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.16 }}
+        >
+          <CoverageSection
+            diagnostics={coverage}
+            historyLoading={historyLoading}
+            syncSections={data.workspace.syncSections}
+          />
+        </motion.div>
+      </Tabs.Content>
     </div>
+    </Tabs.Root>
   );
 }
 

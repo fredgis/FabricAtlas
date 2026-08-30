@@ -208,7 +208,14 @@ export function OverviewView({
       label: "Needs attention",
       value: attentionCount,
       detail: `${health.failing} failing · ${health.stale} stale`,
-      tab: "jobs" as Tab,
+      target: {
+        tab: "governance",
+        focus: {
+          requestId: crypto.randomUUID(),
+          governanceSection: "findings",
+          filters: { section: "findings", category: "operations" },
+        },
+      } as AtlasNavigation,
       icon: AlertTriangle,
       tone:
         attentionCount > 0
@@ -219,7 +226,13 @@ export function OverviewView({
       label: "External access",
       value: external.length,
       detail: `${principals.length} people and groups`,
-      tab: "access" as Tab,
+      target: {
+        tab: "access",
+        focus: {
+          requestId: crypto.randomUUID(),
+          filters: { risk: "external" },
+        },
+      } as AtlasNavigation,
       icon: Users,
       tone:
         external.length > 0
@@ -232,7 +245,13 @@ export function OverviewView({
       detail: sensitivityCoverage.denominator
         ? `${sensitivityCoverage.numerator} items labeled`
         : "Label metadata unavailable",
-      tab: "governance" as Tab,
+      target: {
+        tab: "governance",
+        focus: {
+          requestId: crypto.randomUUID(),
+          governanceSection: "coverage",
+        },
+      } as AtlasNavigation,
       icon: LockKeyhole,
       tone: "text-lineage-upstream",
     },
@@ -240,7 +259,13 @@ export function OverviewView({
       label: "Item-only access",
       value: itemOnly.size,
       detail: `${grants.length} grants indexed`,
-      tab: "access" as Tab,
+      target: {
+        tab: "access",
+        focus: {
+          requestId: crypto.randomUUID(),
+          filters: { origin: "item" },
+        },
+      } as AtlasNavigation,
       icon: ShieldCheck,
       tone:
         itemOnly.size > 0
@@ -250,7 +275,10 @@ export function OverviewView({
   ];
 
   return (
-    <main className="flex flex-col gap-xxl p-l sm:p-xxl">
+    <section
+      aria-labelledby="overview-title"
+      className="flex flex-col gap-xxl p-l sm:p-xxl"
+    >
       <Card className="atlas-overview-hero relative isolate overflow-hidden border-border shadow-fabric-4">
         <div className="grid lg:grid-cols-5">
           <div className="flex flex-col justify-between gap-xxxl p-xl sm:p-xxl lg:col-span-3 lg:p-xxxl">
@@ -267,7 +295,10 @@ export function OverviewView({
                 </div>
               </div>
 
-              <h1 className="atlas-overview-title mt-xl text-balance font-heading text-hero-800 font-bold leading-hero-800 sm:text-hero-900 sm:leading-hero-900">
+              <h1
+                id="overview-title"
+                className="atlas-overview-title mt-xl text-balance font-heading text-hero-800 font-bold leading-hero-800 sm:text-hero-900 sm:leading-hero-900"
+              >
                 {data.workspace.displayName || "Fabric workspace"}
               </h1>
               <p className="atlas-overview-copy mt-m text-400 leading-500 text-muted-foreground">
@@ -399,7 +430,7 @@ export function OverviewView({
                 <button
                   type="button"
                   key={signal.label}
-                  onClick={() => onOpen(signal.tab)}
+                  onClick={() => onOpen(signal.target)}
                   aria-label={`${signal.label}: ${signal.value}. ${signal.detail}`}
                   className="group flex items-center gap-m border-b border-border p-l text-left transition-colors hover:bg-accent sm:odd:border-r xl:border-b-0 xl:border-r xl:last:border-r-0"
                 >
@@ -632,7 +663,15 @@ export function OverviewView({
                     <button
                       type="button"
                       key={type}
-                      onClick={() => onOpen("catalog")}
+                      onClick={() =>
+                        onOpen({
+                          tab: "catalog",
+                          focus: {
+                            requestId: crypto.randomUUID(),
+                            filters: { type },
+                          },
+                        })
+                      }
                       aria-label={`View ${count} ${typeMeta(type).label} items in catalog`}
                       className="group flex items-center gap-m rounded-xl p-s text-left transition-colors hover:bg-accent"
                     >
@@ -681,6 +720,6 @@ export function OverviewView({
           </div>
         </Card>
       </section>
-    </main>
+    </section>
   );
 }

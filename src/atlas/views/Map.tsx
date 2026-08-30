@@ -23,6 +23,7 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
+import * as Tabs from "@radix-ui/react-tabs";
 import { ImpactReportDialog } from "../components/ImpactReportDialog";
 import {
   buildAccessReviewRows,
@@ -137,6 +138,13 @@ function searchParam(name: string): string {
 
 function initialMode(): Mode {
   return searchParam("lineage") === "objects" ? "objects" : "items";
+}
+
+function initialInspectorTab(): InspectorTab {
+  const requested = searchParam("inspector") as InspectorTab;
+  return ["summary", "schema", "access", "runs"].includes(requested)
+    ? requested
+    : "summary";
 }
 
 function initialSelected(items: Item[], edges: Edge[]): string {
@@ -319,30 +327,29 @@ function objectGraph(
 
 function InspectorTabButton({
   active,
+  value,
   icon: Icon,
   label,
-  onClick,
 }: {
   active: boolean;
+  value: InspectorTab;
   icon: typeof GitBranch;
   label: string;
-  onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
-      className={cn(
-        "relative flex h-[42px] flex-1 items-center justify-center gap-[6px] text-[11px] font-semibold text-muted-foreground transition-colors hover:text-foreground",
-        active &&
-          "text-foreground after:absolute after:inset-x-[8px] after:bottom-0 after:h-[2px] after:rounded-full after:bg-lineage-downstream",
-      )}
-    >
-      <Icon size={13} />
-      {label}
-    </button>
+    <Tabs.Trigger value={value} asChild>
+      <button
+        type="button"
+        className={cn(
+          "relative flex h-[42px] flex-1 items-center justify-center gap-[6px] text-[11px] font-semibold text-muted-foreground transition-colors hover:text-foreground",
+          active &&
+            "text-foreground after:absolute after:inset-x-[8px] after:bottom-0 after:h-[2px] after:rounded-full after:bg-lineage-downstream",
+        )}
+      >
+        <Icon size={13} />
+        {label}
+      </button>
+    </Tabs.Trigger>
   );
 }
 
@@ -370,7 +377,7 @@ export function MapView() {
     (searchParam("health") as Health | "all") || "all",
   );
   const [tableName, setTableName] = useState(searchParam("table"));
-  const [tab, setTab] = useState<InspectorTab>("summary");
+  const [tab, setTab] = useState<InspectorTab>(initialInspectorTab);
   const [openTables, setOpenTables] = useState<Set<string>>(new Set());
   const [drag, setDrag] = useState<Record<string, Point>>({});
   const [dragId, setDragId] = useState<string | null>(null);
@@ -590,8 +597,10 @@ export function MapView() {
     else url.searchParams.delete("impact");
     if (mode === "objects" && objects.table) url.searchParams.set("table", objects.table);
     else url.searchParams.delete("table");
+    if (tab !== "summary") url.searchParams.set("inspector", tab);
+    else url.searchParams.delete("inspector");
     window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
-  }, [activeId, healthFilter, impactMode, mode, objects.table, query, typeFilter]);
+  }, [activeId, healthFilter, impactMode, mode, objects.table, query, tab, typeFilter]);
 
   const nodeDown = (event: RPE<HTMLButtonElement>, id: string) => {
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -1086,7 +1095,13 @@ export function MapView() {
                             strokeOpacity={
                               edge.broken ? 0.9 : active ? 0.96 : activeId ? 0.18 : 0.5
                             }
-                            strokeDasharray={edge.broken ? "6 5" : undefined}
+                            strokeDasharray={
+                              edge.broken
+                                ? "6 5"
+                                : isUp
+                                  ? "2 5"
+                                  : undefined
+                            }
                             markerEnd={`url(#atlas-${
                               edge.broken
                                 ? "broken"
@@ -1101,6 +1116,45 @@ export function MapView() {
                       );
                     })}
                   </svg>
+                  {activeId && (
+                    <section
+                      aria-live="polite"
+                      aria-label="Selected lineage relationships"
+                      className="sr-only"
+                    >
+                      <h2>
+                        Lineage relationships for{" "}
+                        {itemById.get(activeId)?.displayName ?? activeId}
+                      </h2>
+                      <ul>
+                        {visibleEdges
+                          .filter((edge) => {
+                            const key = lineageEdgeKey(edge);
+                            return (
+                              impact.upstream.edgeKeys.has(key) ||
+                              impact.downstream.edgeKeys.has(key)
+                            );
+                          })
+                          .map((edge) => {
+                            const key = lineageEdgeKey(edge);
+                            const direction = impact.upstream.edgeKeys.has(key)
+                              ? "Upstream"
+                              : "Downstream";
+                            return (
+                              <li key={key}>
+                                {direction}:{" "}
+                                {itemById.get(edge.source)?.displayName ??
+                                  edge.source}{" "}
+                                to{" "}
+                                {itemById.get(edge.target)?.displayName ??
+                                  edge.target}
+                                , {edge.relation}
+                              </li>
+                            );
+                          })}
+                      </ul>
+                    </section>
+                  )}
                   {visibleItems.map((item) => {
                     const point = posOf(item.fabricId);
                     const primaryNode = item.fabricId === activeId;
@@ -1259,7 +1313,11 @@ export function MapView() {
                               active ? 0.96 : activeObjectId ? 0.16 : 0.55
                             }
                             strokeDasharray={
-                              !active && edge.structural ? "4 5" : undefined
+                              isUp
+                                ? "2 5"
+                                : !active && edge.structural
+                                  ? "4 5"
+                                  : undefined
                             }
                             markerEnd={`url(#atlas-object-${
                               isUp
@@ -1273,6 +1331,51 @@ export function MapView() {
                       );
                     })}
                   </svg>
+                  {activeObjectId && (
+                    <section
+                      aria-live="polite"
+                      aria-label="Selected object lineage relationships"
+                      className="sr-only"
+                    >
+                      <h2>
+                        Object lineage relationships for{" "}
+                        {objects.nodes.find(
+                          (node) => node.id === activeObjectId,
+                        )?.label ?? activeObjectId}
+                      </h2>
+                      <ul>
+                        {objects.edges
+                          .filter((edge) => {
+                            const key = objectEdgeKey(edge);
+                            return (
+                              objectImpact.upstream.edgeKeys.has(key) ||
+                              objectImpact.downstream.edgeKeys.has(key)
+                            );
+                          })
+                          .map((edge) => {
+                            const key = objectEdgeKey(edge);
+                            const direction =
+                              objectImpact.upstream.edgeKeys.has(key)
+                                ? "Upstream"
+                                : "Downstream";
+                            const source =
+                              objects.nodes.find(
+                                (node) => node.id === edge.source,
+                              )?.label ?? edge.source;
+                            const target =
+                              objects.nodes.find(
+                                (node) => node.id === edge.target,
+                              )?.label ?? edge.target;
+                            return (
+                              <li key={key}>
+                                {direction}: {source} to {target},{" "}
+                                {edge.relation}
+                              </li>
+                            );
+                          })}
+                      </ul>
+                    </section>
+                  )}
                   {objects.nodes.map((node) => {
                     const point = objectPosOf(node);
                     const primaryNode = node.id === activeObjectId;
@@ -1397,7 +1500,7 @@ export function MapView() {
 
           <div className="sticky bottom-[14px] left-[14px] z-20 ml-[14px] flex w-fit flex-wrap items-center gap-[12px] rounded-lg border border-border bg-card px-[11px] py-[8px] text-[10px] text-muted-foreground shadow-fabric-4">
             <span className="flex items-center gap-[5px] text-lineage-upstream">
-              <span className="h-[2px] w-[18px] bg-lineage-upstream" /> upstream
+              <span className="w-[18px] border-t-2 border-dashed border-lineage-upstream" /> upstream
             </span>
             <span className="flex items-center gap-[5px] text-lineage-downstream">
               <span className="h-[2px] w-[18px] bg-lineage-downstream" /> downstream
@@ -1444,6 +1547,11 @@ export function MapView() {
           </div>
         </div>
 
+        <Tabs.Root
+          value={tab}
+          onValueChange={(value) => setTab(value as InspectorTab)}
+          asChild
+        >
         <aside className="flex min-h-0 flex-col border-t border-border bg-card xl:border-l xl:border-t-0">
           {selected && (
             <>
@@ -1479,13 +1587,17 @@ export function MapView() {
                   )}
                 </div>
               </div>
-              <div className="flex border-b border-border px-[6px]" role="tablist">
-                <InspectorTabButton active={tab === "summary"} icon={GitBranch} label="Summary" onClick={() => setTab("summary")} />
-                <InspectorTabButton active={tab === "schema"} icon={Table2} label="Schema" onClick={() => setTab("schema")} />
-                <InspectorTabButton active={tab === "access"} icon={Users} label="Access" onClick={() => setTab("access")} />
-                <InspectorTabButton active={tab === "runs"} icon={Activity} label="Runs" onClick={() => setTab("runs")} />
-              </div>
+              <Tabs.List
+                className="flex border-b border-border px-[6px]"
+                aria-label="Selected item details"
+              >
+                <InspectorTabButton active={tab === "summary"} value="summary" icon={GitBranch} label="Summary" />
+                <InspectorTabButton active={tab === "schema"} value="schema" icon={Table2} label="Schema" />
+                <InspectorTabButton active={tab === "access"} value="access" icon={Users} label="Access" />
+                <InspectorTabButton active={tab === "runs"} value="runs" icon={Activity} label="Runs" />
+              </Tabs.List>
 
+              <Tabs.Content value={tab} asChild>
               <div className="min-h-[300px] flex-1 overflow-auto p-[16px]">
                 {tab === "summary" && (
                   <div className="flex flex-col gap-[14px]">
@@ -1697,6 +1809,7 @@ export function MapView() {
                   </div>
                 )}
               </div>
+              </Tabs.Content>
 
               <div className="flex gap-[8px] border-t border-border p-[12px]">
                 <a
@@ -1728,6 +1841,7 @@ export function MapView() {
             </>
           )}
         </aside>
+        </Tabs.Root>
       </div>
       {reportItemId && (
         <ImpactReportDialog

@@ -14,9 +14,11 @@ import { relativeTime, type Comment, type Item } from "../model";
 export function CommentsView({
   embedded = false,
   focus,
+  onTargetChange,
 }: {
   embedded?: boolean;
   focus?: AtlasFocusRequest;
+  onTargetChange?: (itemId: string) => void;
 } = {}) {
   const { data, addComment, currentUser } = useAtlas();
   const { comments, items } = data;
@@ -40,6 +42,10 @@ export function CommentsView({
   );
 
   const selectedTarget = target ? itemById.get(target) : undefined;
+
+  useEffect(() => {
+    onTargetChange?.(target);
+  }, [onTargetChange, target]);
 
   useEffect(() => {
     if (focus?.commentId) {

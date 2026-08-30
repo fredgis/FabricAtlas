@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Ban,
@@ -11,7 +11,7 @@ import {
   Search,
   XCircle,
 } from "lucide-react";
-import type { AtlasFocusRequest } from "../navigation";
+import type { AtlasFocusRequest, AtlasNavigation } from "../navigation";
 import { SavedViewsMenu } from "../components/SavedViewsMenu";
 import { searchJobId } from "../search";
 import { useAtlas } from "../store";
@@ -74,7 +74,13 @@ function dateGroup(value: string): string {
   }).format(date);
 }
 
-export function JobsView({ focus }: { focus?: AtlasFocusRequest } = {}) {
+export function JobsView({
+  focus,
+  onStateChange,
+}: {
+  focus?: AtlasFocusRequest;
+  onStateChange?: (navigation: AtlasNavigation) => void;
+} = {}) {
   const {
     data,
     savedViews,
@@ -98,6 +104,25 @@ export function JobsView({ focus }: { focus?: AtlasFocusRequest } = {}) {
       ? (focus.filters.status as JobStatus)
       : "all",
   );
+
+  useEffect(() => {
+    onStateChange?.({
+      tab: "jobs",
+      focus: {
+        requestId: "jobs-view-state",
+        itemId: focusedItemId || undefined,
+        jobId: focusedJobId || undefined,
+        query: query.trim() || undefined,
+        filters: { search: query, status: statusFilter },
+      },
+    });
+  }, [
+    focusedItemId,
+    focusedJobId,
+    onStateChange,
+    query,
+    statusFilter,
+  ]);
 
   const itemById = useMemo(
     () => new Map<string, Item>(items.map((item) => [item.fabricId, item])),
@@ -290,6 +315,31 @@ export function JobsView({ focus }: { focus?: AtlasFocusRequest } = {}) {
               }}
               onDelete={removeSavedView}
             />
+            {focusedItemId && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFocusedItemId("");
+                  setFocusedJobId("");
+                }}
+                className="inline-flex h-9 items-center gap-s rounded-full border border-primary/30 bg-primary/10 px-m text-200 font-semibold text-brand-foreground"
+                aria-label="Clear focused item"
+              >
+                {itemById.get(focusedItemId)?.displayName ?? "Focused item"}
+                <XCircle className="icon-size-100" aria-hidden="true" />
+              </button>
+            )}
+            {focusedJobId && (
+              <button
+                type="button"
+                onClick={() => setFocusedJobId("")}
+                className="inline-flex h-9 items-center gap-s rounded-full border border-lineage-downstream/30 bg-lineage-downstream/10 px-m text-200 font-semibold text-lineage-downstream"
+                aria-label="Clear focused job"
+              >
+                Focused run
+                <XCircle className="icon-size-100" aria-hidden="true" />
+              </button>
+            )}
             {(query || statusFilter !== "all" || focusedItemId || focusedJobId) && (
               <button
                 type="button"

@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -73,6 +73,7 @@ export function AtlasBootView() {
 }
 
 export function FirstSyncView() {
+  const reduceMotion = useReducedMotion();
   const { isDark, toggleTheme } = useThemeContext();
   const {
     data,
@@ -99,9 +100,17 @@ export function FirstSyncView() {
       <motion.div
         aria-hidden="true"
         className="atlas-sync-orb pointer-events-none fixed rounded-full bg-primary/20 blur-3xl"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: [0.2, 0.55, 0.28], scale: [0.9, 1.08, 0.95] }}
-        transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
+        initial={reduceMotion ? false : { opacity: 0 }}
+        animate={
+          reduceMotion
+            ? { opacity: 0.28, scale: 1 }
+            : { opacity: [0.2, 0.55, 0.28], scale: [0.9, 1.08, 0.95] }
+        }
+        transition={
+          reduceMotion
+            ? { duration: 0 }
+            : { duration: 9, repeat: Infinity, ease: "easeInOut" }
+        }
       />
 
       <button
@@ -119,9 +128,9 @@ export function FirstSyncView() {
 
       <main className="atlas-sync-frame relative z-10 mx-auto flex min-h-screen flex-col justify-center py-xxl">
         <motion.div
-          initial={{ opacity: 0, y: 18, scale: 0.985 }}
+          initial={reduceMotion ? false : { opacity: 0, y: 18, scale: 0.985 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.55, ease: "easeOut" }}
+          transition={{ duration: reduceMotion ? 0 : 0.55, ease: "easeOut" }}
           className="overflow-hidden rounded-2xl border border-border bg-card shadow-fabric-16"
         >
           <header className="flex flex-wrap items-center justify-between gap-m border-b border-border/70 px-xl py-l sm:px-xxl">
@@ -146,9 +155,13 @@ export function FirstSyncView() {
 
           <div className="grid lg:grid-cols-[1.08fr_0.92fr]">
             <motion.section
-              initial={{ opacity: 0, x: -24 }}
+              initial={reduceMotion ? false : { opacity: 0, x: -24 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.12, duration: 0.55, ease: "easeOut" }}
+              transition={{
+                delay: reduceMotion ? 0 : 0.12,
+                duration: reduceMotion ? 0 : 0.55,
+                ease: "easeOut",
+              }}
               className="flex flex-col border-b border-border p-xl sm:p-xxxl lg:border-b-0 lg:border-r"
             >
               <div className="atlas-sync-copy">
@@ -187,9 +200,12 @@ export function FirstSyncView() {
                 {CAPABILITIES.map(({ icon: Icon, title, detail }, index) => (
                   <motion.div
                     key={title}
-                    initial={{ opacity: 0, y: 12 }}
+                    initial={reduceMotion ? false : { opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.22 + index * 0.07, duration: 0.4 }}
+                    transition={{
+                      delay: reduceMotion ? 0 : 0.22 + index * 0.07,
+                      duration: reduceMotion ? 0 : 0.4,
+                    }}
                     className="group flex items-start gap-m rounded-lg border border-border bg-secondary p-m transition-colors hover:border-primary/35 hover:bg-accent"
                   >
                     <span className="flex icon-size-600 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-transform group-hover:-translate-y-xxs">
@@ -207,9 +223,13 @@ export function FirstSyncView() {
             </motion.section>
 
             <motion.section
-              initial={{ opacity: 0, x: 24 }}
+              initial={reduceMotion ? false : { opacity: 0, x: 24 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.18, duration: 0.55, ease: "easeOut" }}
+              transition={{
+                delay: reduceMotion ? 0 : 0.18,
+                duration: reduceMotion ? 0 : 0.55,
+                ease: "easeOut",
+              }}
               className="flex flex-col gap-l bg-secondary/65 p-xl sm:p-xxl"
             >
               <div className="relative overflow-hidden rounded-xl border border-border bg-secondary p-l">
@@ -353,7 +373,12 @@ export function FirstSyncView() {
                   </div>
                 </div>
 
-                <div className="mt-l flex items-center justify-between gap-m text-200">
+                <div
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                  className="mt-l flex items-center justify-between gap-m text-200"
+                >
                   <span className="font-semibold">
                     {syncing
                       ? syncStage
@@ -419,7 +444,10 @@ export function FirstSyncView() {
               )}
 
               {syncError && (
-                <div className="rounded-xl border border-destructive/35 bg-destructive/10 p-m text-200 leading-300 text-destructive">
+                <div
+                  role="alert"
+                  className="rounded-xl border border-destructive/35 bg-destructive/10 p-m text-200 leading-300 text-destructive"
+                >
                   <div className="flex items-center gap-s font-semibold">
                     <AlertTriangle className="icon-size-200" />
                     Sync failed

@@ -8,8 +8,9 @@ import {
   GitBranch,
   X,
 } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
-import { useMemo, useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import { motion } from "framer-motion";
+import { useMemo, useRef, useState } from "react";
 import {
   buildItemImpactReport,
   buildSchemaObjectImpactReport,
@@ -94,7 +95,39 @@ export function ImpactReportDialog({
   open: boolean;
   onClose: () => void;
 }) {
+  const returnFocusRef = useRef<HTMLElement>(null);
+  return (
+    <Dialog.Root
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) onClose();
+      }}
+    >
+      {open && (
+        <ImpactReportContent
+          data={data}
+          itemId={itemId}
+          object={object}
+          returnFocusRef={returnFocusRef}
+        />
+      )}
+    </Dialog.Root>
+  );
+}
+
+function ImpactReportContent({
+  data,
+  itemId,
+  object,
+  returnFocusRef,
+}: {
+  data: AtlasData;
+  itemId: string;
+  object?: SchemaObjectRef;
+  returnFocusRef: React.RefObject<HTMLElement | null>;
+}) {
   const [copied, setCopied] = useState(false);
+  const closeRef = useRef<HTMLButtonElement>(null);
   const report = useMemo(
     () =>
       object
@@ -135,28 +168,37 @@ export function ImpactReportDialog({
   };
 
   return (
-    <AnimatePresence>
-      {open && (
+    <Dialog.Portal>
+      <Dialog.Overlay asChild>
         <motion.div
-          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/55 p-m backdrop-blur-sm sm:p-xl"
+          className="fixed inset-0 z-[110] bg-black/55 backdrop-blur-sm"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onMouseDown={(event) => {
-            if (event.currentTarget === event.target) onClose();
+        />
+      </Dialog.Overlay>
+      <div className="pointer-events-none fixed inset-0 z-[111] flex items-center justify-center p-m sm:p-xl">
+        <Dialog.Content
+          asChild
+          onOpenAutoFocus={(event) => {
+            returnFocusRef.current =
+              document.activeElement instanceof HTMLElement
+                ? document.activeElement
+                : null;
+            event.preventDefault();
+            closeRef.current?.focus();
+          }}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            returnFocusRef.current?.focus();
+            returnFocusRef.current = null;
           }}
         >
           <motion.section
-            role="dialog"
-            aria-modal="true"
             aria-labelledby="impact-report-title"
-            className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-fabric-16"
+            aria-describedby="impact-report-description"
+            className="pointer-events-auto flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-fabric-16"
             initial={{ opacity: 0, y: 14, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.98 }}
-            onKeyDown={(event) => {
-              if (event.key === "Escape") onClose();
-            }}
           >
             <header className="atlas-fabric-hero flex flex-col gap-m border-b border-border p-l sm:flex-row sm:items-center">
               <span className="atlas-brand-mark flex icon-size-700 shrink-0 items-center justify-center rounded-xl text-primary-foreground">
@@ -166,15 +208,20 @@ export function ImpactReportDialog({
                 <div className="text-200 font-semibold uppercase tracking-[0.12em] text-brand-foreground">
                   Impact report
                 </div>
-                <h2
-                  id="impact-report-title"
-                  className="mt-xs truncate font-heading text-500 font-bold leading-500"
+                <Dialog.Title asChild>
+                  <h2
+                    id="impact-report-title"
+                    className="mt-xs truncate font-heading text-500 font-bold leading-500"
+                  >
+                    {subject}
+                  </h2>
+                </Dialog.Title>
+                <Dialog.Description
+                  id="impact-report-description"
+                  className="mt-xs text-200 text-muted-foreground"
                 >
-                  {subject}
-                </h2>
-                <p className="mt-xs text-200 text-muted-foreground">
                   Verified workspace dependencies and affected items.
-                </p>
+                </Dialog.Description>
               </div>
               <div className="flex items-center gap-s">
                 <button
@@ -193,14 +240,16 @@ export function ImpactReportDialog({
                   <Download className="icon-size-100" aria-hidden="true" />
                   Export
                 </button>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  aria-label="Close impact report"
-                  className="rounded-lg p-s text-muted-foreground hover:bg-accent hover:text-foreground"
-                >
-                  <X className="icon-size-200" />
-                </button>
+                <Dialog.Close asChild>
+                  <button
+                    ref={closeRef}
+                    type="button"
+                    aria-label="Close impact report"
+                    className="rounded-lg p-s text-muted-foreground hover:bg-accent hover:text-foreground"
+                  >
+                    <X className="icon-size-200" />
+                  </button>
+                </Dialog.Close>
               </div>
             </header>
 
@@ -325,9 +374,9 @@ export function ImpactReportDialog({
               </Card>
             </div>
           </motion.section>
-        </motion.div>
-      )}
-    </AnimatePresence>
+        </Dialog.Content>
+      </div>
+    </Dialog.Portal>
   );
 }
 

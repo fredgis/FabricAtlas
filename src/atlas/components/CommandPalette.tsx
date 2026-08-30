@@ -12,17 +12,18 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
+import * as Dialog from "@radix-ui/react-dialog";
+import { motion } from "framer-motion";
 import {
   useMemo,
   useRef,
   useState,
   type ComponentType,
 } from "react";
-import type { AtlasData } from "../model";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
-  buildSearchIndex,
   searchIndex,
+  type SearchIndexEntry,
   type SearchResult,
   type SearchTargetKind,
 } from "../search";
@@ -56,56 +57,87 @@ const KIND_LABEL: Record<SearchTargetKind, string> = {
 };
 
 export function CommandPalette({
-  data,
+  index,
   open,
   onClose,
   onSelect,
 }: {
-  data: AtlasData;
+  index: SearchIndexEntry[];
   open: boolean;
   onClose: () => void;
   onSelect: (result: SearchResult) => void;
 }) {
-  const index = useMemo(() => buildSearchIndex(data), [data]);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const returnFocusRef = useRef<HTMLElement>(null);
+  const debouncedQuery = useDebouncedValue(query);
+  const searchPending = query !== debouncedQuery;
   const results = useMemo(
-    () => searchIndex(index, query, { limit: 14 }),
-    [index, query],
+    () =>
+      searchPending
+        ? []
+        : searchIndex(index, debouncedQuery, { limit: 14 }),
+    [debouncedQuery, index, searchPending],
   );
 
-  const choose = (result: SearchResult) => {
-    onSelect(result);
+  const resolvedActiveIndex = Math.min(
+    activeIndex,
+    Math.max(results.length - 1, 0),
+  );
+
+  const close = () => {
+    setQuery("");
+    setActiveIndex(0);
     onClose();
   };
 
+  const choose = (result: SearchResult) => {
+    onSelect(result);
+    close();
+  };
+
   return (
-    <AnimatePresence>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) close();
+      }}
+    >
       {open && (
-        <motion.div
-          className="fixed inset-0 z-[100] flex items-start justify-center bg-black/55 p-m pt-[8vh] backdrop-blur-sm sm:p-xl sm:pt-[12vh]"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onMouseDown={(event) => {
-            if (event.currentTarget === event.target) onClose();
-          }}
-        >
+        <Dialog.Portal>
+          <Dialog.Overlay asChild>
+            <motion.div
+              className="fixed inset-0 z-[100] bg-black/55 backdrop-blur-sm"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+            />
+          </Dialog.Overlay>
+          <div className="pointer-events-none fixed inset-0 z-[101] flex items-start justify-center p-m pt-[8vh] sm:p-xl sm:pt-[12vh]">
+            <Dialog.Content
+              asChild
+              aria-describedby={undefined}
+              onOpenAutoFocus={(event) => {
+                returnFocusRef.current =
+                  document.activeElement instanceof HTMLElement
+                    ? document.activeElement
+                    : null;
+                event.preventDefault();
+                inputRef.current?.focus();
+              }}
+              onCloseAutoFocus={(event) => {
+                event.preventDefault();
+                returnFocusRef.current?.focus();
+                returnFocusRef.current = null;
+              }}
+            >
           <motion.section
-            role="dialog"
-            aria-modal="true"
-            aria-label="Search Fabric Atlas"
-            className="flex max-h-[78vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-fabric-16"
+            className="pointer-events-auto flex max-h-[78vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-fabric-16"
             initial={{ opacity: 0, y: -12, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.98 }}
             transition={{ duration: 0.16 }}
             onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                onClose();
-              } else if (event.key === "ArrowDown") {
+              if (event.key === "ArrowDown") {
                 event.preventDefault();
                 setActiveIndex((value) =>
                   Math.min(value + 1, Math.max(results.length - 1, 0)),
@@ -113,12 +145,19 @@ export function CommandPalette({
               } else if (event.key === "ArrowUp") {
                 event.preventDefault();
                 setActiveIndex((value) => Math.max(value - 1, 0));
-              } else if (event.key === "Enter" && results[activeIndex]) {
+              } else if (
+                !searchPending &&
+                event.key === "Enter" &&
+                results[resolvedActiveIndex]
+              ) {
                 event.preventDefault();
-                choose(results[activeIndex]);
+                choose(results[resolvedActiveIndex]);
               }
             }}
           >
+            <Dialog.Title className="sr-only">
+              Search Fabric Atlas
+            </Dialog.Title>
             <div className="flex items-center gap-m border-b border-border px-l py-m">
               <Search
                 className="icon-size-300 shrink-0 text-brand-foreground"
@@ -129,14 +168,13 @@ export function CommandPalette({
               </label>
               <input
                 ref={inputRef}
-                autoFocus
                 id="atlas-global-search"
                 role="combobox"
-                aria-expanded={results.length > 0}
+                aria-expanded={Boolean(debouncedQuery.trim() && results.length)}
                 aria-controls="atlas-global-search-results"
                 aria-activedescendant={
-                  results[activeIndex]
-                    ? `atlas-search-result-${activeIndex}`
+                  results[resolvedActiveIndex]
+                    ? `atlas-search-result-${resolvedActiveIndex}`
                     : undefined
                 }
                 value={query}
@@ -160,6 +198,15 @@ export function CommandPalette({
               <kbd className="hidden rounded-md border border-border bg-muted px-s py-xs font-mono text-100 text-muted-foreground sm:inline">
                 Esc
               </kbd>
+              <Dialog.Close asChild>
+                <button
+                  type="button"
+                  aria-label="Close search"
+                  className="rounded-lg p-s text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  <X className="icon-size-200" />
+                </button>
+              </Dialog.Close>
             </div>
 
             <div
@@ -168,7 +215,7 @@ export function CommandPalette({
               aria-label="Search results"
               className="min-h-0 flex-1 overflow-y-auto p-s"
             >
-              {!query.trim() ? (
+              {!debouncedQuery.trim() ? (
                 <div className="flex min-h-64 flex-col items-center justify-center px-xl py-xxxl text-center">
                   <span className="flex icon-size-700 items-center justify-center rounded-xl bg-primary/10 text-brand-foreground">
                     <Search className="icon-size-400" aria-hidden="true" />
@@ -180,6 +227,13 @@ export function CommandPalette({
                     Find Fabric items, schema objects, access principals, jobs,
                     configuration and team notes from one place.
                   </p>
+                </div>
+              ) : searchPending ? (
+                <div
+                  role="status"
+                  className="flex min-h-48 items-center justify-center px-xl py-xxxl text-300 text-muted-foreground"
+                >
+                  Searching workspace metadata…
                 </div>
               ) : results.length === 0 ? (
                 <div className="flex min-h-48 flex-col items-center justify-center px-xl py-xxxl text-center">
@@ -197,7 +251,7 @@ export function CommandPalette({
               ) : (
                 results.map((result, indexValue) => {
                   const Icon = KIND_ICON[result.kind];
-                  const active = activeIndex === indexValue;
+                  const active = resolvedActiveIndex === indexValue;
                   return (
                     <button
                       id={`atlas-search-result-${indexValue}`}
@@ -265,8 +319,10 @@ export function CommandPalette({
               </span>
             </div>
           </motion.section>
-        </motion.div>
+            </Dialog.Content>
+          </div>
+        </Dialog.Portal>
       )}
-    </AnimatePresence>
+    </Dialog.Root>
   );
 }

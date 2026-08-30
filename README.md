@@ -55,6 +55,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Last-known-good fallback | Ignores incomplete snapshots and loads the newest valid workspace state |
 | Versioned sync contract | Records required, optional and metadata-capability status for every synchronized snapshot |
 | Bounded UDF execution | Applies one deadline, bounded retries and payload limits below Fabric's public endpoint ceilings |
+| Accessible sync feedback | Announces stages and errors, while reduced-motion preferences disable repeating motion |
 | Deployment gate | Requires one synchronization for each deployed build before users enter the catalog |
 | Trusted synchronizer | Restricts snapshot publication to the configured synchronization account |
 | Snapshot history | Loads previous validated snapshots for comparisons and governance trends |
@@ -68,6 +69,7 @@ Fabric Atlas collects that metadata without copying business data.
 |---|---|
 | Findings | Actionable access, metadata, operations and lineage checks based on synchronized evidence |
 | Change Center | Compares any two validated snapshots across items, schema, access, sensitivity, lineage and jobs |
+| Shareable comparisons | Preserves both selected snapshots, section and filters in the URL |
 | Governance history | Tracks items, labels, external principals, failures, lineage and schema inventory over time |
 | Metadata coverage | Separates collected gaps from metadata that Fabric did not expose, using explicit `N/A` states |
 | Sensitivity posture | Groups protected and unlabeled items and surfaces confidential assets |
@@ -96,6 +98,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Item lineage | Places Fabric items in lifecycle stages from orchestration to consumption |
 | Object mode | Expands synchronized tables, columns and measures without claiming unsupported field bindings |
 | Impact tracing | Highlights upstream and downstream paths without moving the selected node |
+| Accessible relationships | Exposes item and object edges as text and distinguishes upstream paths with a dashed pattern |
 | Multi-selection | Moves several selected item or object nodes together |
 | Layout controls | Provides zoom, fit, reset, filters, minimap and persistent deep links |
 | Impact reports | Exports verified dependency evidence as Markdown for an item or schema object |
@@ -136,10 +139,13 @@ Fabric Atlas collects that metadata without copying business data.
 | Functionality | What it provides |
 |---|---|
 | Global `Ctrl+K` search | Searches items, tables, views, columns, measures, principals, jobs, configuration and notes |
+| Debounced workspace index | Reuses one index per snapshot and never activates results from an earlier query |
 | Targeted navigation | Opens the matching drawer, asset, review, job or Workspace Hub section |
+| Shareable view state | Keeps active sections, filters, searches, selected assets and focused runs in namespaced URL parameters |
 | Personal saved views | Stores user-scoped filter presets in the Fabric-backed Rayfin database |
 | Light and dark themes | Uses a Fabric-aligned light mode by default with an optional persistent dark mode |
 | Responsive navigation | Keeps grouped Explore, Govern, Operate and System sections usable on smaller screens |
+| Keyboard-first controls | Adds managed dialogs, focus restoration, skip navigation and Arrow/Home/End tab navigation |
 
 </details>
 

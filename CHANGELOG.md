@@ -4,6 +4,36 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-08-30
+
+### Added
+
+- Shareable, namespaced URL state for Catalog, Asset Catalog, Governance Center, Access Review, Jobs, Workspace Hub and Map inspector tabs.
+- Accessible textual relationship summaries and non-color direction patterns for item and object lineage.
+- Visible context chips for focused job routes.
+
+### Changed
+
+- Command search builds its workspace index once per snapshot and debounces queries without exposing stale results.
+- Access Review and Asset Catalog automatically open matching groups during active searches, then restore the previous collapsed state.
+- Overview governance signals and item-type rows open their destination with actionable filters already applied.
+- First-sync motion respects reduced-motion preferences and synchronization stages use live status announcements.
+
+### Accessibility
+
+- Command search, impact reports and mobile navigation now use managed modal focus, Escape handling, background inerting and focus restoration.
+- Governance Center, Map inspector and Workspace Hub tabs support Arrow keys, Home and End with linked tab panels.
+- The application shell adds a skip control, route-aware document titles, focus transfer and one main landmark per route.
+- Mobile navigation closes safely when the layout crosses into the desktop breakpoint.
+
+### Fixed
+
+- Active navigation no longer creates duplicate browser-history entries.
+- Catalog item routes keep focus inside the open detail drawer.
+- Access Review URLs now track the visible review row and clear stale row focus when the detail closes.
+- Asset filter kind and selected object kind are serialized independently.
+- Change Center URLs preserve both compared snapshot IDs.
+
 ## [1.6.1] - 2026-08-30
 
 ### Added
@@ -187,6 +217,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
+[1.7.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.7.0
 [1.6.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.6.1
 [1.6.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.6.0
 [1.5.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.5.1

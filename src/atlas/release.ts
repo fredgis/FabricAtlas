@@ -15,7 +15,7 @@ export const REPOSITORY_URL =
   "https://github.com/fredgis/FabricAtlas";
 
 export const APP_VERSION =
-  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.6.1";
+  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.7.0";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -27,6 +27,29 @@ export const BUILD_DATE =
 export const DEPLOYMENT_ID = `${APP_VERSION}:${BUILD_COMMIT}:${BUILD_DATE}`;
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "1.7.0",
+    date: "2026-08-30",
+    title: "Shareable and accessible workspace navigation",
+    sections: [
+      {
+        title: "Navigation & productivity",
+        items: [
+          "Catalog, governance, access, jobs and workspace context now remain in shareable URLs.",
+          "Overview signals open pre-filtered evidence, while active searches reveal matching grouped content.",
+          "Global search is indexed once per snapshot and debounced without allowing stale selection.",
+        ],
+      },
+      {
+        title: "Accessible experience",
+        items: [
+          "Dialogs and mobile navigation manage focus, Escape dismissal, background inerting and restoration.",
+          "Governance, lineage and workspace tabs support full keyboard navigation with linked panels.",
+          "Skip navigation, route titles, live sync status, reduced motion and textual lineage evidence improve assistive access.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.6.1",
     date: "2026-08-30",

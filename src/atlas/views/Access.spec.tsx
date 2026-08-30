@@ -84,6 +84,32 @@ describe("AccessView", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("expands matching principal groups only while searching", () => {
+    renderAccess();
+    fireEvent.click(screen.getByRole("button", { name: "Principals" }));
+    expect(
+      screen.queryByLabelText(
+        /Review System Administrator access to AlpineRent Daily Load/,
+      ),
+    ).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Search access reviews"), {
+      target: { value: "AlpineRent Daily Load" },
+    });
+    expect(
+      screen.getAllByLabelText(
+        /Review .+ access to AlpineRent Daily Load/,
+      ).length,
+    ).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(
+      screen.queryByLabelText(
+        /Review System Administrator access to AlpineRent Daily Load/,
+      ),
+    ).not.toBeInTheDocument();
+  });
+
   it("opens and closes row detail from the matrix", () => {
     renderAccess();
 
@@ -99,6 +125,44 @@ describe("AccessView", () => {
     expect(
       screen.queryByRole("heading", { name: "Review detail" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("serializes the visible review row and clears it on dismissal", async () => {
+    const onStateChange = vi.fn();
+    render(
+      <AtlasProvider isPreview>
+        <AccessView onStateChange={onStateChange} />
+      </AtlasProvider>,
+    );
+    fireEvent.click(
+      screen.getAllByLabelText(
+        "Review System Administrator access to AlpineRent Executive Dashboard",
+      )[0],
+    );
+
+    await waitFor(() =>
+      expect(onStateChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          tab: "access",
+          focus: expect.objectContaining({
+            itemId: expect.any(String),
+            principalId: expect.any(String),
+          }),
+        }),
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Close review detail" }));
+    await waitFor(() =>
+      expect(onStateChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          focus: expect.objectContaining({
+            itemId: undefined,
+            principalId: undefined,
+          }),
+        }),
+      ),
+    );
   });
 
   it("keeps preview review decisions locally after save", async () => {

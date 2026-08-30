@@ -5,8 +5,14 @@
 // </copyright>
 //-----------------------------------------------------------------------
 
-import { beforeEach, describe, it, expect } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, it, expect, vi } from "vitest";
+import {
+    act,
+    fireEvent,
+    render,
+    screen,
+    waitFor,
+} from "@testing-library/react";
 import App from "@/App";
 import { AtlasProvider } from "@/atlas/store";
 import { ThemeContext } from "@/hooks/theme.context";
@@ -49,5 +55,163 @@ describe("App", () => {
         expect(
             screen.getByRole("dialog", { name: "Search Fabric Atlas" }),
         ).toBeInTheDocument();
+    });
+
+    it("manages mobile navigation as a focus-restoring dialog", async () => {
+        renderApp();
+        const trigger = screen.getByRole("button", { name: "Open navigation" });
+        fireEvent.click(trigger);
+
+        expect(
+            screen.getByRole("dialog", { name: "Primary navigation" }),
+        ).toBeInTheDocument();
+        expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+        fireEvent.keyDown(document, { key: "Escape" });
+        expect(
+            screen.queryByRole("dialog", { name: "Primary navigation" }),
+        ).not.toBeInTheDocument();
+        await waitFor(() => expect(trigger).toHaveFocus());
+    });
+
+    it("canonicalizes legacy routes and keeps one main landmark", async () => {
+        window.history.replaceState(null, "", "/#comments");
+        renderApp();
+
+        expect(
+            await screen.findByRole("tab", { name: /Team notes/ }),
+        ).toHaveAttribute("aria-selected", "true");
+        expect(screen.getAllByRole("main")).toHaveLength(1);
+        expect(document.title).toBe("Workspace Hub | Fabric Atlas");
+    });
+
+    it("opens Overview signals with shareable filters", async () => {
+        renderApp();
+        fireEvent.click(
+            screen.getByRole("button", { name: /External access:/ }),
+        );
+
+        expect(
+            await screen.findByRole("heading", { name: /Access review/i }),
+        ).toBeInTheDocument();
+        expect(new URL(window.location.href).searchParams.get("access.risk")).toBe(
+            "external",
+        );
+        expect(window.location.hash).toBe("#access");
+    });
+
+    it("restores and updates routed job filters", () => {
+        window.history.replaceState(
+            null,
+            "",
+            "/?jobs.status=failed#jobs",
+        );
+        renderApp();
+
+        expect(screen.getByLabelText("Filter jobs by status")).toHaveValue(
+            "failed",
+        );
+        fireEvent.change(screen.getByLabelText("Search job history"), {
+            target: { value: "refresh" },
+        });
+        expect(new URL(window.location.href).searchParams.get("jobs.q")).toBe(
+            "refresh",
+        );
+    });
+
+    it("focuses main content without changing the routed hash", () => {
+        window.history.replaceState(null, "", "/#jobs");
+        renderApp();
+        fireEvent.click(
+            screen.getByRole("button", { name: "Skip to main content" }),
+        );
+
+        expect(window.location.hash).toBe("#jobs");
+        expect(screen.getByRole("main")).toHaveFocus();
+    });
+
+    it("does not add duplicate history entries for the active route", () => {
+        const pushState = vi.spyOn(window.history, "pushState");
+        renderApp();
+        fireEvent.click(screen.getByRole("button", { name: "Overview" }));
+
+        expect(pushState).not.toHaveBeenCalled();
+        pushState.mockRestore();
+    });
+
+    it("lets the Catalog drawer keep modal focus", async () => {
+        const itemId = "10000000-0000-4000-8000-000000000001";
+        window.history.replaceState(
+            null,
+            "",
+            `/?catalog.item=${itemId}#catalog`,
+        );
+        renderApp();
+
+        const dialog = await screen.findByRole("dialog", {
+            name: /details/,
+        });
+        await waitFor(() => expect(dialog).toHaveFocus());
+        expect(screen.getByRole("main")).not.toHaveFocus();
+    });
+
+    it("opens a searched Catalog item without stealing modal focus", async () => {
+        renderApp();
+        fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+        fireEvent.change(
+            screen.getByRole("combobox", {
+                name: "Search workspace metadata",
+            }),
+            { target: { value: "alpinerent_lakehouse" } },
+        );
+        fireEvent.click(
+            (await screen.findAllByRole("option", {
+                name: /alpinerent_lakehouse/,
+            }))[0],
+        );
+
+        const dialog = await screen.findByRole("dialog", {
+            name: /alpinerent_lakehouse details/,
+        });
+        await waitFor(() => expect(dialog).toHaveFocus());
+        expect(window.location.hash).toBe("#catalog");
+        expect(
+            new URL(window.location.href).searchParams.get("catalog.item"),
+        ).toBeTruthy();
+    });
+
+    it("closes mobile navigation when the desktop breakpoint activates", async () => {
+        let matches = false;
+        let listener: (() => void) | undefined;
+        const originalMatchMedia = window.matchMedia;
+        window.matchMedia = vi.fn().mockImplementation(() => ({
+            get matches() {
+                return matches;
+            },
+            media: "(min-width: 1024px)",
+            onchange: null,
+            addEventListener: (_type: string, callback: () => void) => {
+                listener = callback;
+            },
+            removeEventListener: vi.fn(),
+            addListener: vi.fn(),
+            removeListener: vi.fn(),
+            dispatchEvent: vi.fn(),
+        }));
+        renderApp();
+        fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+        expect(
+            screen.getByRole("dialog", { name: "Primary navigation" }),
+        ).toBeInTheDocument();
+
+        matches = true;
+        await act(async () => listener?.());
+        await waitFor(() =>
+            expect(
+                screen.queryByRole("dialog", { name: "Primary navigation" }),
+            ).not.toBeInTheDocument(),
+        );
+        await waitFor(() => expect(screen.getByRole("main")).toHaveFocus());
+        window.matchMedia = originalMatchMedia;
     });
 });

@@ -266,7 +266,6 @@ body,
 }
 
 .atlas-flow {
-  stroke-dasharray: 3 7;
   animation: atlas-flow 0.9s linear infinite;
 }
 

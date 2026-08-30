@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { SAMPLE_DATA } from "../model";
 import { ImpactReportDialog } from "./ImpactReportDialog";
@@ -75,5 +76,38 @@ describe("ImpactReportDialog", () => {
       expect.stringContaining("# Fabric Atlas impact report"),
     );
     prompt.mockRestore();
+  });
+
+  it("restores focus after Escape closes the report", async () => {
+    const model = SAMPLE_DATA.items.find(
+      (item) => item.itemType === "SemanticModel",
+    )!;
+    function Harness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>
+            Open impact
+          </button>
+          <ImpactReportDialog
+            data={SAMPLE_DATA}
+            itemId={model.fabricId}
+            open={open}
+            onClose={() => setOpen(false)}
+          />
+        </>
+      );
+    }
+
+    render(<Harness />);
+    const trigger = screen.getByRole("button", { name: "Open impact" });
+    trigger.focus();
+    fireEvent.click(trigger);
+    expect(
+      screen.getByRole("button", { name: "Close impact report" }),
+    ).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 });

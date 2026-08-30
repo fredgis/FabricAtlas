@@ -1,4 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { SAMPLE_DATA } from "../model";
 import { AtlasProvider } from "../store";
@@ -17,6 +23,47 @@ describe("MapView selection", () => {
       SAMPLE_DATA.items.length,
     );
     expect(container.querySelectorAll("svg text")).toHaveLength(0);
+  });
+
+  it("supports keyboard navigation in the item inspector", async () => {
+    window.history.replaceState(null, "", "/#map");
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+
+    const summary = screen.getByRole("tab", { name: "Summary" });
+    await act(async () => {
+      summary.focus();
+      fireEvent.keyDown(summary, { key: "ArrowRight" });
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Schema" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      ),
+    );
+    expect(screen.getByText(/Deep lineage/)).toBeInTheDocument();
+  });
+
+  it("exposes selected lineage without relying on color alone", () => {
+    window.history.replaceState(null, "", "/#map");
+    const { container } = render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+
+    expect(
+      screen.getByRole("region", {
+        name: "Selected lineage relationships",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      container.querySelectorAll('path[stroke-dasharray="2 5"]').length,
+    ).toBeGreaterThan(0);
   });
 
   it("keeps node coordinates stable when selection changes", () => {
@@ -107,6 +154,11 @@ describe("MapView selection", () => {
 
     expect(table).toHaveAttribute("aria-pressed", "true");
     expect(container.querySelectorAll(".atlas-flow").length).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("region", {
+        name: "Selected object lineage relationships",
+      }),
+    ).toBeInTheDocument();
   });
 
   it("moves a multi-selection together and fully resets positions", () => {

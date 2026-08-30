@@ -111,6 +111,19 @@ Governance Center groups findings, snapshot changes, trends and metadata
 coverage. Access Review uses the same additive effective-access engine as the
 Asset Catalog and lineage inspector.
 
+## Navigation state
+
+`src/atlas/routing.ts` parses and serializes Atlas-owned URL parameters while
+preserving unrelated Fabric host parameters. Catalog, Asset Catalog,
+Governance Center, Access Review, Jobs and Workspace Hub use namespaced keys;
+Map retains its established lineage query keys. Browser back/forward therefore
+restores the active section, filters, selected evidence and Change Center
+snapshot pair.
+
+Live filter changes use `replaceState`, while destination changes use
+`pushState`. Re-selecting the exact current route is a no-op so browser history
+does not accumulate duplicate entries.
+
 ## Object inventory
 
 - Lakehouse tables come from the paginated Fabric Tables API when available.
@@ -157,6 +170,12 @@ Design tokens in `src/global.css` map the Atlas semantic palette to Fabric UX
 and Fluent 2 neutrals, brand actions, status colors, spacing, radii and
 elevation. Atlas keeps a restrained purple-to-teal spectrum for product
 identity and lineage while standard interactions use the Fabric brand color.
+
+Radix dialog and tab primitives provide modal focus containment, restoration
+and keyboard navigation without changing the Fabric-aligned visual layer.
+Global search builds one metadata index per loaded snapshot and applies a short
+debounce before ranking results. Item and object lineage retain their visual
+graph while also exposing selected relationships as assistive text.
 
 ## Preview vs deployed
 

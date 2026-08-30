@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AtlasProvider } from "../store";
 import { GovernanceCenterView } from "./GovernanceCenter";
@@ -24,6 +30,25 @@ describe("GovernanceCenterView", () => {
     expect(screen.getByRole("tab", { name: /Changes/ })).toBeVisible();
     expect(screen.getByRole("tab", { name: /History/ })).toBeVisible();
     expect(screen.getByRole("tab", { name: /Coverage/ })).toBeVisible();
+  });
+
+  it("supports arrow-key tab navigation", async () => {
+    renderView();
+    const findings = screen.getByRole("tab", { name: /Findings/ });
+    await act(async () => {
+      findings.focus();
+      fireEvent.keyDown(findings, { key: "ArrowRight" });
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: /Changes/ })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      ),
+    );
+    expect(
+      screen.getByRole("heading", { name: "A second snapshot is required" }),
+    ).toBeInTheDocument();
   });
 
   it("opens evidence from an actionable finding", () => {

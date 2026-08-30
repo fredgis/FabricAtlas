@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -19,9 +19,11 @@ type ItemFilter = "all" | "configured" | "empty";
 export function ConfigView({
   embedded = false,
   focus,
+  onSelectedItemChange,
 }: {
   embedded?: boolean;
   focus?: AtlasFocusRequest;
+  onSelectedItemChange?: (itemId: string) => void;
 } = {}) {
   const { data } = useAtlas();
   const { items, config } = data;
@@ -41,6 +43,10 @@ export function ConfigView({
   const [selectedId, setSelectedId] = useState<string>(
     focus?.itemId ?? firstWithConfig?.fabricId ?? "",
   );
+
+  useEffect(() => {
+    if (selectedId) onSelectedItemChange?.(selectedId);
+  }, [onSelectedItemChange, selectedId]);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
   const [itemSearch, setItemSearch] = useState("");
   const [itemFilter, setItemFilter] = useState<ItemFilter>("all");
@@ -240,7 +246,10 @@ export function ConfigView({
           </Card>
         </aside>
 
-        <main className="min-w-0 lg:col-span-2">
+        <section
+          aria-label="Selected item configuration"
+          className="min-w-0 lg:col-span-2"
+        >
           <Card className="overflow-hidden">
             {selected ? (
               <>
@@ -385,7 +394,7 @@ export function ConfigView({
               </div>
             )}
           </Card>
-        </main>
+        </section>
       </div>
     </div>
   );

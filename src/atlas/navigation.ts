@@ -8,7 +8,6 @@ export type Tab =
   | "assets"
   | "governance"
   | "access"
-  | "sensitivity"
   | "jobs"
   | "workspace"
   | "about";

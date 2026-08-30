@@ -13,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
-import type { AtlasFocusRequest } from "../navigation";
+import type { AtlasFocusRequest, AtlasNavigation } from "../navigation";
 import { useAtlas } from "../store";
 import {
   Avatar,
@@ -123,7 +123,13 @@ function toSectionKey(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 }
 
-export function CatalogView({ focus }: { focus?: AtlasFocusRequest } = {}) {
+export function CatalogView({
+  focus,
+  onStateChange,
+}: {
+  focus?: AtlasFocusRequest;
+  onStateChange?: (navigation: AtlasNavigation) => void;
+} = {}) {
   const { data } = useAtlas();
   const { items, config, grants, edges, jobs, principals } = data;
 
@@ -138,7 +144,12 @@ export function CatalogView({ focus }: { focus?: AtlasFocusRequest } = {}) {
   }, [items]);
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [selType, setSelType] = useState<ItemType | null>(null);
+  const [selType, setSelType] = useState<ItemType | null>(
+    typeof focus?.filters?.type === "string" &&
+      focus.filters.type !== "all"
+      ? (focus.filters.type as ItemType)
+      : null,
+  );
   const [query, setQuery] = useState(focus?.query ?? "");
 
   const toggle = (type: string) =>
@@ -165,6 +176,18 @@ export function CatalogView({ focus }: { focus?: AtlasFocusRequest } = {}) {
   const [detailId, setDetailId] = useState<string | null>(
     focus?.itemId ?? null,
   );
+
+  useEffect(() => {
+    onStateChange?.({
+      tab: "catalog",
+      focus: {
+        requestId: "catalog-view-state",
+        itemId: detailId ?? undefined,
+        query: query.trim() || undefined,
+        filters: selType ? { type: selType } : undefined,
+      },
+    });
+  }, [detailId, onStateChange, query, selType]);
   const drawerRef = useRef<HTMLElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
   const detail = items.find((item) => item.fabricId === detailId);
@@ -453,7 +476,7 @@ export function CatalogView({ focus }: { focus?: AtlasFocusRequest } = {}) {
           </div>
         </aside>
 
-        <main>
+        <section aria-label="Catalog items">
           <div className="mb-m flex items-center justify-between gap-m">
             <div>
               <h2 className="text-400 font-semibold">Governed items</h2>
@@ -577,7 +600,7 @@ export function CatalogView({ focus }: { focus?: AtlasFocusRequest } = {}) {
               })}
             </div>
           )}
-        </main>
+        </section>
       </div>
 
       <AnimatePresence>

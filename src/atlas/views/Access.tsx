@@ -31,6 +31,7 @@ import {
   type AccessReviewRow,
 } from "../governance";
 import type { AccessLevel, AccessSource, Grant } from "../model";
+import type { AtlasNavigation } from "../navigation";
 import type { SavedViewFilters } from "../saved-views";
 import { useAtlas } from "../store";
 import { Card, PrincipalAvatar, SectionLabel, TypeGlyph, cn } from "../ui";
@@ -436,12 +437,14 @@ function PrincipalGroups({
   rows,
   selectedId,
   expanded,
+  searching,
   onToggle,
   onSelect,
 }: {
   rows: AccessReviewRow[];
   selectedId: string | null;
   expanded: Set<string>;
+  searching: boolean;
   onToggle: (key: string) => void;
   onSelect: (row: AccessReviewRow) => void;
 }) {
@@ -478,8 +481,9 @@ function PrincipalGroups({
               type="button"
               aria-expanded={isExpanded}
               aria-controls={regionId}
+              disabled={searching}
               onClick={() => onToggle(principalKey)}
-              className="flex w-full items-center gap-m px-l py-m text-left transition-colors hover:bg-accent/60"
+              className="flex w-full items-center gap-m px-l py-m text-left transition-colors hover:bg-accent/60 disabled:cursor-default disabled:opacity-100"
             >
               {isExpanded ? (
                 <ChevronDown
@@ -938,12 +942,14 @@ export interface AccessViewProps {
   initialItemId?: string;
   initialPrincipalId?: string;
   initialFilters?: SavedViewFilters;
+  onStateChange?: (navigation: AtlasNavigation) => void;
 }
 
 export function AccessView({
   initialItemId,
   initialPrincipalId,
   initialFilters,
+  onStateChange,
 }: AccessViewProps = {}) {
   const {
     data,
@@ -1053,6 +1059,13 @@ export function AccessView({
       ),
     [accessLevel, normalizedSearch, origin, risk, rows],
   );
+  const effectiveExpandedPrincipals = useMemo(
+    () =>
+      normalizedSearch
+        ? new Set(filteredRows.map((row) => row.principalKey))
+        : expandedPrincipals,
+    [expandedPrincipals, filteredRows, normalizedSearch],
+  );
 
   const focusedId =
     selectedId === undefined &&
@@ -1068,6 +1081,33 @@ export function AccessView({
       ? requestedSelectedId
       : null;
   const selectedRow = rows.find((row) => row.id === visibleSelectedId);
+  useEffect(() => {
+    onStateChange?.({
+      tab: "access",
+      focus: {
+        requestId: "access-view-state",
+        itemId: selectedRow?.itemId,
+        principalId:
+          selectedRow?.principalId ?? selectedRow?.principalRef,
+        query: search.trim() || undefined,
+        filters: {
+          mode,
+          search,
+          accessLevel,
+          origin,
+          risk,
+        },
+      },
+    });
+  }, [
+    accessLevel,
+    mode,
+    onStateChange,
+    origin,
+    risk,
+    search,
+    selectedRow,
+  ]);
   const activeFilters =
     search !== "" ||
     accessLevel !== "all" ||
@@ -1468,7 +1508,8 @@ export function AccessView({
             <PrincipalGroups
               rows={filteredRows}
               selectedId={visibleSelectedId}
-              expanded={expandedPrincipals}
+              expanded={effectiveExpandedPrincipals}
+              searching={Boolean(normalizedSearch)}
               onToggle={togglePrincipal}
               onSelect={(row) => setSelectedId(row.id)}
             />
