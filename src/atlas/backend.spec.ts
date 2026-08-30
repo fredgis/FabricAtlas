@@ -141,6 +141,60 @@ describe("Rayfin snapshot persistence", () => {
     expect(Math.max(...contentOrders)).toBeLessThan(markerOrder);
   });
 
+  it("writes snapshot rows with bounded concurrency", async () => {
+    const atlas = structuredClone(SAMPLE_DATA);
+    atlas.items = Array.from({ length: 20 }, (_, index) => ({
+      ...atlas.items[0],
+      fabricId: `item-${index}`,
+      displayName: `Item ${index}`,
+    }));
+    mocks.mapSyncToAtlas.mockReturnValue(atlas);
+    let active = 0;
+    let maximumActive = 0;
+    mocks.data.FabricItem.create.mockImplementation(async (row) => {
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      active -= 1;
+      return row;
+    });
+
+    await runFabricSync(false, identity);
+
+    expect(maximumActive).toBeGreaterThan(1);
+    expect(maximumActive).toBeLessThanOrEqual(8);
+    expect(mocks.data.FabricItem.create).toHaveBeenCalledTimes(20);
+  });
+
+  it("drains a failed batch before stopping snapshot publication", async () => {
+    const atlas = structuredClone(SAMPLE_DATA);
+    atlas.items = Array.from({ length: 12 }, (_, index) => ({
+      ...atlas.items[0],
+      fabricId: `item-${index}`,
+      displayName: `Item ${index}`,
+    }));
+    mocks.mapSyncToAtlas.mockReturnValue(atlas);
+    let settled = 0;
+    mocks.data.FabricItem.create.mockImplementation(async (row) => {
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      settled += 1;
+      if ((row as Record<string, unknown>).fabricId === "item-3") {
+        throw new Error("batch failed");
+      }
+      return row;
+    });
+
+    await expect(runFabricSync(false, identity)).rejects.toThrow(
+      "batch failed",
+    );
+
+    expect(mocks.data.FabricItem.create).toHaveBeenCalledTimes(8);
+    expect(settled).toBe(8);
+    expect(mocks.data.Principal.create).not.toHaveBeenCalled();
+    expect(mocks.data.SyncRun.create).not.toHaveBeenCalled();
+    expect(mocks.data.Workspace.create).not.toHaveBeenCalled();
+  });
+
   it("persists Fabric item metadata provenance and sync section status", async () => {
     const atlas = structuredClone(SAMPLE_DATA);
     atlas.items[0].createdAt = "2026-08-20T08:00:00.000Z";

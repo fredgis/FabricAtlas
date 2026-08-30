@@ -180,6 +180,41 @@ describe("validateRawSync", () => {
     expect(atlas.edges).toEqual([]);
   });
 
+  it("keeps official lineage IDs and direction intact", () => {
+    const raw = completeSync();
+    raw.items = [
+      { id: "flow-a", type: "Dataflow", displayName: "Flow A" },
+      { id: "flow-b", type: "Dataflow", displayName: "Flow B" },
+      { id: "model-a", type: "SemanticModel", displayName: "Model A" },
+      { id: "model-b", type: "SemanticModel", displayName: "Model B" },
+      { id: "mart-a", type: "Datamart", displayName: "Mart A" },
+      { id: "mart-b", type: "Datamart", displayName: "Mart B" },
+    ];
+    raw.itemMetadata = Object.fromEntries(
+      raw.items.map((item) => [String(item.id), { scannerMatched: true }]),
+    );
+    raw.lineage = [
+      { source: "flow-a", target: "flow-b", relation: "dataflow" },
+      { source: "flow-a", target: "mart-a", relation: "dataflow" },
+      { source: "mart-a", target: "flow-a", relation: "datamart" },
+      {
+        source: "model-a",
+        target: "model-b",
+        relation: "semantic model",
+      },
+      { source: "mart-a", target: "mart-b", relation: "datamart" },
+    ];
+
+    const atlas = mapSyncToAtlas(raw, {
+      fabricId: workspaceId,
+      displayName: "Atlas",
+      capacity: "",
+      region: "",
+    });
+
+    expect(atlas.edges).toEqual(raw.lineage);
+  });
+
   it("rejects non-numeric schema rows at the client boundary", () => {
     const raw = completeSync();
     raw.schema = {

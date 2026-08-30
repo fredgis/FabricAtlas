@@ -269,4 +269,53 @@ describe("normalizeLineageEdges", () => {
       { source: "model", target: "report", relation: "binds", broken: undefined },
     ]);
   });
+
+  it("preserves and deduplicates official same-stage chains", () => {
+    const items = [
+      item("flow-a", "Dataflow"),
+      item("flow-b", "Dataflow"),
+      item("mart", "Datamart"),
+      item("model-a", "SemanticModel"),
+      item("model-b", "SemanticModel"),
+    ];
+
+    expect(
+      normalizeLineageEdges(items, [
+        { source: "flow-a", target: "flow-b", relation: "dataflow" },
+        { source: "flow-a", target: "flow-b", relation: "dataflow" },
+        { source: "flow-a", target: "mart", relation: "dataflow" },
+        { source: "mart", target: "flow-b", relation: "datamart" },
+        {
+          source: "model-a",
+          target: "model-b",
+          relation: "semantic model",
+        },
+      ]),
+    ).toEqual([
+      {
+        source: "flow-a",
+        target: "flow-b",
+        relation: "dataflow",
+        broken: undefined,
+      },
+      {
+        source: "flow-a",
+        target: "mart",
+        relation: "dataflow",
+        broken: undefined,
+      },
+      {
+        source: "mart",
+        target: "flow-b",
+        relation: "datamart",
+        broken: undefined,
+      },
+      {
+        source: "model-a",
+        target: "model-b",
+        relation: "semantic model",
+        broken: undefined,
+      },
+    ]);
+  });
 });

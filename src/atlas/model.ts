@@ -14,6 +14,7 @@ export type ItemType =
   | "Notebook"
   | "DataPipeline"
   | "Dataflow"
+  | "Datamart"
   | "SemanticModel"
   | "Report"
   | "Dashboard"
@@ -51,6 +52,7 @@ export const ITEM_TYPES: Record<ItemType, TypeMeta> = {
   Notebook: { label: "Notebook", code: "NB", color: "#ef7a45", icon: "NotebookText" },
   DataPipeline: { label: "Data pipeline", code: "PL", color: "#7c5cff", icon: "Workflow" },
   Dataflow: { label: "Dataflow Gen2", code: "DF", color: "#d158c4", icon: "Shuffle" },
+  Datamart: { label: "Datamart", code: "DM", color: "#0f6cbd", icon: "Database" },
   SemanticModel: { label: "Semantic model", code: "SM", color: "#d9a520", icon: "Boxes" },
   Report: { label: "Report", code: "RP", color: "#eab308", icon: "BarChart3" },
   Dashboard: { label: "Dashboard", code: "DB", color: "#f59e0b", icon: "LayoutDashboard" },

@@ -16,6 +16,11 @@ database snapshot active. Optional enrichment failures remain visible in the
 contract without invalidating complete required metadata. Scanner access is
 therefore required for a synchronized result to become authoritative.
 
+Lineage uses documented immutable identifiers for Report bindings, Dashboard
+tiles and upstream Dataflow, Datamart and Semantic Model dependencies. A
+dependency is accepted only when its scanner `groupId` is absent or matches the
+current workspace. Display names are never used to invent an edge.
+
 `sync_all` uses one 92-second monotonic deadline, including response reads,
 bounded retries and `Retry-After` sleeps. It caps upstream and final payloads at
 25 MiB, below the 100-second and 30 MB public endpoint limits.

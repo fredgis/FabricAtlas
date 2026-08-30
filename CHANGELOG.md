@@ -4,6 +4,23 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-08-30
+
+### Added
+
+- Official ID-based lineage for upstream Dataflows, Datamarts and Semantic Models, including same-type dependency chains.
+- Workspace-boundary validation for scanner lineage references.
+
+### Changed
+
+- Snapshot rows are written in bounded batches of eight requests while entity groups, the sync audit and the workspace manifest remain ordered.
+
+### Fixed
+
+- Datamarts are now a first-class catalog type with the correct lineage stage.
+- Authoritative scanner relationships preserve their source-to-consumer direction even when valid dependencies cross the visual stage order.
+- Malformed lineage collections or workspace identifiers fail closed instead of publishing partial authoritative lineage.
+
 ## [1.6.0] - 2026-08-30
 
 ### Added
@@ -170,6 +187,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
+[1.6.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.6.1
 [1.6.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.6.0
 [1.5.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.5.1
 [1.5.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.5.0

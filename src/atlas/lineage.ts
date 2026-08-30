@@ -83,6 +83,7 @@ const ITEM_STAGE: Partial<Record<ItemType, number>> = {
   AppBackend: 5,
   Lakehouse: 2,
   Warehouse: 2,
+  Datamart: 2,
   Eventhouse: 2,
   MirroredDatabase: 2,
   SQLDatabase: 2,
@@ -92,6 +93,15 @@ const ITEM_STAGE: Partial<Record<ItemType, number>> = {
   Report: 5,
   Dashboard: 5,
 };
+
+const AUTHORITATIVE_DIRECTION_RELATIONS = new Set([
+  "dataflow",
+  "datamart",
+  "semantic model",
+  "report",
+  "dashboard report",
+  "dashboard dataset",
+]);
 
 export function lineageEdgeKey(edge: Edge): string {
   return `${edge.source}\u0000${edge.target}\u0000${edge.relation}`;
@@ -337,9 +347,16 @@ export function normalizeLineageEdges(items: Item[], edges: Edge[]): Edge[] {
     let target = itemById.get(edge.target);
     if (!source || !target || source.fabricId === target.fabricId) continue;
 
-    const reverseByStage = itemStage(source.itemType) > itemStage(target.itemType);
+    const authoritativeDirection = AUTHORITATIVE_DIRECTION_RELATIONS.has(
+      edge.relation.trim().toLowerCase(),
+    );
+    const reverseByStage =
+      !authoritativeDirection &&
+      itemStage(source.itemType) > itemStage(target.itemType);
     const reversePipeline =
-      source.itemType === "Notebook" && target.itemType === "DataPipeline";
+      !authoritativeDirection &&
+      source.itemType === "Notebook" &&
+      target.itemType === "DataPipeline";
     if (reverseByStage || reversePipeline) {
       [source, target] = [target, source];
     }

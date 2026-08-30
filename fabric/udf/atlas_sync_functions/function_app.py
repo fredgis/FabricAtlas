@@ -1439,9 +1439,21 @@ def _item_schema(token, ws, a, typ):
     return []
 
 
-def _official_lineage(artifacts, workspace_item_ids):
+def _lineage_collection(artifact, name):
+    if name not in artifact or artifact[name] is None:
+        return []
+    values = artifact[name]
+    if not isinstance(values, list):
+        raise ValueError(f"scanner {name} collection was invalid")
+    if not all(isinstance(value, dict) for value in values):
+        raise ValueError(f"scanner {name} record was invalid")
+    return values
+
+
+def _official_lineage(artifacts, workspace_item_ids, workspace_id):
     edges = []
     seen = set()
+    normalized_workspace_id = _normalized_id(workspace_id)
 
     def add(source, target, relation):
         source_id = _normalized_id(source)
@@ -1450,6 +1462,7 @@ def _official_lineage(artifacts, workspace_item_ids):
         if (
             source_id in workspace_item_ids
             and target_id in workspace_item_ids
+            and source_id != target_id
             and edge not in seen
         ):
             seen.add(edge)
@@ -1459,11 +1472,25 @@ def _official_lineage(artifacts, workspace_item_ids):
                 "relation": relation,
             })
 
+    def is_local(value, field):
+        if field not in value or value[field] is None:
+            return True
+        group_id = value[field]
+        if not isinstance(group_id, str) or not group_id.strip():
+            raise ValueError(
+                f"scanner {field} workspace identifier was invalid"
+            )
+        return _normalized_id(group_id) == normalized_workspace_id
+
+    def add_upstreams(artifact, name, id_field, relation):
+        artifact_id = _artifact_id(artifact)
+        for upstream in _lineage_collection(artifact, name):
+            if is_local(upstream, "groupId"):
+                add(upstream.get(id_field), artifact_id, relation)
+
     for artifact in artifacts:
         artifact_id = _artifact_id(artifact)
-        for relation in artifact.get("relations") or []:
-            if not isinstance(relation, dict):
-                continue
+        for relation in _lineage_collection(artifact, "relations"):
             dependency = relation.get("dependentOnArtifactId")
             relation_type = relation.get("relationType")
             add(
@@ -1475,23 +1502,34 @@ def _official_lineage(artifacts, workspace_item_ids):
                 ),
             )
         if artifact.get("_type") == "Report":
-            add(artifact.get("datasetId"), artifact_id, "report")
+            if is_local(artifact, "datasetWorkspaceId"):
+                add(artifact.get("datasetId"), artifact_id, "report")
+        if artifact.get("_type") in (
+            "Dataflow",
+            "Datamart",
+            "SemanticModel",
+        ):
+            add_upstreams(
+                artifact,
+                "upstreamDataflows",
+                "targetDataflowId",
+                "dataflow",
+            )
+            add_upstreams(
+                artifact,
+                "upstreamDatamarts",
+                "targetDatamartId",
+                "datamart",
+            )
         if artifact.get("_type") == "SemanticModel":
-            for upstream in artifact.get("upstreamDataflows") or []:
-                if not isinstance(upstream, dict):
-                    continue
-                add(
-                    upstream.get("targetDataflowId")
-                    or upstream.get("dataflowId")
-                    or upstream.get("objectId")
-                    or upstream.get("id"),
-                    artifact_id,
-                    "dataflow",
-                )
+            add_upstreams(
+                artifact,
+                "upstreamDatasets",
+                "targetDatasetId",
+                "semantic model",
+            )
         if artifact.get("_type") == "Dashboard":
-            for tile in artifact.get("tiles") or []:
-                if not isinstance(tile, dict):
-                    continue
+            for tile in _lineage_collection(artifact, "tiles"):
                 add(tile.get("reportId"), artifact_id, "dashboard report")
                 add(tile.get("datasetId"), artifact_id, "dashboard dataset")
     return edges
@@ -1766,11 +1804,16 @@ def sync_all(fabricToken: str, workspaceId: str) -> dict:
                 _set_section(out, "access", "failed", "invalid-response")
             else:
                 _set_section(out, "access", "complete")
-            out["lineage"] = _official_lineage(
-                artifacts,
-                workspace_item_ids,
-            )
-            _set_section(out, "lineage", "complete")
+            try:
+                out["lineage"] = _official_lineage(
+                    artifacts,
+                    workspace_item_ids,
+                    ws,
+                )
+                _set_section(out, "lineage", "complete")
+            except Exception as error:
+                out["lineage"] = []
+                _record_failure(out, "lineage", error)
 
             schema_state = out["sections"].get("schema", {})
             schema_failed = (

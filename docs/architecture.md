@@ -70,6 +70,11 @@ the `Workspace` manifest is written last. A failed or incomplete refresh never
 becomes active. On startup, hydration validates manifest counts and falls back
 to the previous complete snapshot when necessary.
 
+Content rows are created in bounded batches of eight requests. Entity groups
+remain sequential, each in-flight batch settles before an error is propagated,
+and neither the `SyncRun` audit nor the `Workspace` visibility manifest starts
+after a failed batch.
+
 Snapshot creation is bound to the configured synchronization administrator.
 Rayfin create policies compare the authenticated email with each row's
 `writerEmail` and with the deployment's configured synchronizer. Database reads
@@ -117,6 +122,10 @@ Asset Catalog and lineage inspector.
 - Semantic Models include tables, columns, measures, descriptions, hidden
   flags and measure expressions. Dataset expressions are requested only because
   the scanner requires that option for measure DAX.
+- Dataflows, Datamarts and Semantic Models include documented upstream
+  Dataflow, Datamart and Semantic Model relationships by immutable ID. Scanner
+  workspace IDs prevent cross-workspace edges from entering the single-workspace
+  graph.
 - Reports include pages. Fabric APIs do not expose complete visual field
   bindings through this flow.
 

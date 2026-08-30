@@ -15,7 +15,7 @@ export const REPOSITORY_URL =
   "https://github.com/fredgis/FabricAtlas";
 
 export const APP_VERSION =
-  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.6.0";
+  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.6.1";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -27,6 +27,28 @@ export const BUILD_DATE =
 export const DEPLOYMENT_ID = `${APP_VERSION}:${BUILD_COMMIT}:${BUILD_DATE}`;
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "1.6.1",
+    date: "2026-08-30",
+    title: "Authoritative lineage and faster snapshots",
+    sections: [
+      {
+        title: "Lineage",
+        items: [
+          "Documented Dataflow, Datamart and Semantic Model dependencies are mapped by immutable Fabric IDs.",
+          "Authoritative scanner edges preserve source-to-consumer direction across visual stages.",
+          "Malformed or cross-workspace lineage references fail closed.",
+        ],
+      },
+      {
+        title: "Synchronization",
+        items: [
+          "Snapshot rows are written in bounded batches of eight requests.",
+          "Every in-flight batch is drained before failure, while the sync audit and workspace manifest remain strictly last.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.6.0",
     date: "2026-08-30",

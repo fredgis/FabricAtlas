@@ -46,6 +46,7 @@ import type {
 export type SyncProgressReporter = (progress: number, stage: string) => void;
 
 type Row = Record<string, unknown>;
+const SNAPSHOT_WRITE_BATCH_SIZE = 8;
 interface EntityQuery {
   where: (filter: Row) => EntityQuery;
   first: (count: number) => EntityQuery;
@@ -307,13 +308,28 @@ async function persistSync(
   const data = await dataApi();
 
   const insertAll = async (entity: string, rows: Row[]) => {
-    for (const row of rows) {
-      await data[entity].create({
-        workspace_id: wid,
-        snapshotId,
-        writerEmail,
-        ...row,
-      });
+    for (
+      let offset = 0;
+      offset < rows.length;
+      offset += SNAPSHOT_WRITE_BATCH_SIZE
+    ) {
+      const results = await Promise.allSettled(
+        rows
+          .slice(offset, offset + SNAPSHOT_WRITE_BATCH_SIZE)
+          .map((row) =>
+            data[entity].create({
+              workspace_id: wid,
+              snapshotId,
+              writerEmail,
+              ...row,
+            }),
+          ),
+      );
+      const failure = results.find(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
+      );
+      if (failure) throw failure.reason;
     }
   };
 

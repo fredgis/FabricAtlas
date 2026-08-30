@@ -810,7 +810,44 @@ class MetadataBoundaryTests(unittest.TestCase):
 class LineageTests(unittest.TestCase):
     def test_uses_only_official_id_based_lineage_and_deduplicates(self):
         artifacts = [
-            {"id": "flow", "_type": "Dataflow", "displayName": "Shared"},
+            {"id": "flow-source", "_type": "Dataflow", "displayName": "Shared"},
+            {
+                "id": "flow",
+                "_type": "Dataflow",
+                "displayName": "Shared",
+                "upstreamDataflows": [
+                    {
+                        "targetDataflowId": "flow-source",
+                        "groupId": "workspace",
+                    },
+                    {
+                        "targetDataflowId": "outside",
+                        "groupId": "other-workspace",
+                    },
+                ],
+                "upstreamDatamarts": [
+                    {
+                        "targetDatamartId": "mart-source",
+                        "groupId": "workspace",
+                    },
+                ],
+            },
+            {"id": "mart-source", "_type": "Datamart"},
+            {
+                "id": "mart",
+                "_type": "Datamart",
+                "upstreamDatamarts": [
+                    {
+                        "targetDatamartId": "mart-source",
+                        "groupId": "workspace",
+                    },
+                    {
+                        "targetDatamartId": "mart",
+                        "groupId": "workspace",
+                    },
+                ],
+            },
+            {"id": "model-source", "_type": "SemanticModel"},
             {
                 "id": "model",
                 "_type": "SemanticModel",
@@ -818,6 +855,15 @@ class LineageTests(unittest.TestCase):
                 "upstreamDataflows": [
                     {"targetDataflowId": "flow"},
                     {"targetDataflowId": "flow"},
+                ],
+                "upstreamDatamarts": [
+                    {"targetDatamartId": "mart"},
+                ],
+                "upstreamDatasets": [
+                    {
+                        "targetDatasetId": "model-source",
+                        "groupId": "workspace",
+                    },
                 ],
             },
             {
@@ -843,11 +889,53 @@ class LineageTests(unittest.TestCase):
 
         lineage = function_app._official_lineage(
             artifacts,
-            {"flow", "model", "report", "dashboard"},
+            {
+                "flow-source",
+                "flow",
+                "mart-source",
+                "mart",
+                "model-source",
+                "model",
+                "report",
+                "dashboard",
+            },
+            "workspace",
         )
 
         self.assertIn(
+            {
+                "source": "flow-source",
+                "target": "flow",
+                "relation": "dataflow",
+            },
+            lineage,
+        )
+        self.assertIn(
+            {
+                "source": "mart-source",
+                "target": "flow",
+                "relation": "datamart",
+            },
+            lineage,
+        )
+        self.assertIn(
             {"source": "flow", "target": "model", "relation": "dataflow"},
+            lineage,
+        )
+        self.assertIn(
+            {"source": "mart-source", "target": "mart", "relation": "datamart"},
+            lineage,
+        )
+        self.assertIn(
+            {"source": "mart", "target": "model", "relation": "datamart"},
+            lineage,
+        )
+        self.assertIn(
+            {
+                "source": "model-source",
+                "target": "model",
+                "relation": "semantic model",
+            },
             lineage,
         )
         self.assertIn(
@@ -878,6 +966,60 @@ class LineageTests(unittest.TestCase):
             1,
         )
         self.assertFalse(any(edge["source"] == "outside" for edge in lineage))
+        self.assertFalse(any(edge["source"] == edge["target"] for edge in lineage))
+
+    def test_rejects_malformed_scanner_lineage_collections(self):
+        cases = (
+            ("relations", {}),
+            ("upstreamDataflows", "invalid"),
+            ("upstreamDatamarts", [None]),
+            ("upstreamDatasets", [1]),
+            ("tiles", {"datasetId": "model"}),
+        )
+        for name, value in cases:
+            artifact_type = (
+                "Dashboard"
+                if name == "tiles"
+                else "SemanticModel"
+            )
+            with self.subTest(name=name):
+                with self.assertRaises(ValueError):
+                    function_app._official_lineage(
+                        [
+                        {
+                            "id": "item",
+                            "_type": artifact_type,
+                            name: value,
+                        }
+                        ],
+                        {"item"},
+                        "workspace",
+                    )
+
+    def test_rejects_malformed_lineage_workspace_identifiers(self):
+        for group_id in ([], {}, False, 0, ""):
+            with self.subTest(group_id=group_id):
+                with self.assertRaises(ValueError):
+                    function_app._official_lineage(
+                        [
+                        {
+                            "id": "source",
+                            "_type": "Dataflow",
+                        },
+                        {
+                            "id": "target",
+                            "_type": "SemanticModel",
+                            "upstreamDataflows": [
+                                {
+                                    "targetDataflowId": "source",
+                                    "groupId": group_id,
+                                }
+                            ],
+                        },
+                        ],
+                        {"source", "target"},
+                        "workspace",
+                    )
 
 
 class SyncOrchestrationTests(unittest.TestCase):
@@ -1075,6 +1217,32 @@ class SyncOrchestrationTests(unittest.TestCase):
                 "reportPages",
             },
         )
+
+    def test_sync_all_marks_malformed_lineage_as_failed(self):
+        result = self._run_sync(
+            [
+                {
+                    "id": "model",
+                    "type": "SemanticModel",
+                    "displayName": "Model",
+                }
+            ],
+            {
+                "datasets": [
+                    {
+                        "id": "model",
+                        "upstreamDatasets": {},
+                    }
+                ]
+            },
+        )
+
+        self.assertEqual(result["lineage"], [])
+        self.assertEqual(
+            result["sections"]["lineage"],
+            {"status": "failed", "code": "invalid-response"},
+        )
+        self.assertIn("lineage: invalid-response", result["errors"])
         serialized = json.dumps(result)
         self.assertNotIn("business row", serialized)
         self.assertNotIn("datasourceDetails", serialized)
