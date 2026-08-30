@@ -85,6 +85,12 @@ Fabric brokered auth only works embedded in the portal.
 > `rayfin login` must target the tenant that owns the workspace:
 > `npx rayfin login --tenant <tenant-id> --select`.
 
+The deployed app uses a shared authenticated catalog read scope. Every user
+admitted to the Fabric app can read the complete synchronized governance graph
+and team notes for the configured workspace. Restrict the Fabric app audience
+accordingly. Personal saved views, review decisions and Radar acknowledgements
+remain user-scoped.
+
 ## 5. Live Sync setup (app registration + UDF)
 
 The **Sync** button reads the live workspace. A deployed Rayfin app can't call the Fabric REST APIs
@@ -145,6 +151,10 @@ clamped between 2 and 50. When rotating the synchronizer, list former writer
 emails in `RAYFIN_PUBLIC_ATLAS_PREVIOUS_SYNC_WRITERS` until their retained
 history has been migrated or pruned.
 
+Only this configured account can run the first synchronization or publish later
+snapshots. Other authenticated users see the account on the guided sync screen
+so they know who to contact.
+
 Sensitivity downgrade alerts are tenant-specific. Optionally map Purview label
 IDs or normalized aliases to numeric ranks in
 `RAYFIN_PUBLIC_ATLAS_SENSITIVITY_RANKS`; higher numbers mean stronger
@@ -197,5 +207,10 @@ created, then re-add the new hosting origin to the app registration.
 | `npm run lint` | ESLint |
 | `npm run test` | Vitest |
 | `npx rayfin up` | Deploy app + apply schema to Fabric |
+
+Team notes are shared and append-only in v1.x. Atlas stores the uniquely
+resolved synchronized principal display name when available and otherwise uses
+the authenticated session email. That stored author label survives reload, but
+notes cannot currently be edited or deleted.
 
 See [architecture.md](architecture.md) for how it all fits together.

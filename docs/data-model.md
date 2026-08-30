@@ -8,13 +8,16 @@ row carries a `snapshotId`. A `Workspace` manifest is written last and makes the
 snapshot visible only after every row succeeds. Hydration ignores incomplete
 snapshots and falls back to the previous valid one.
 
-Synchronized entities allow reads to authenticated users. Creates require the
+Synchronized entities allow reads to every authenticated user admitted to the
+deployed app. There is no per-user read policy on the shared catalog, so that
+audience can read the complete workspace metadata graph. Creates require the
 authenticated email to match the row's `writerEmail`, and hydration only trusts
 the writer configured for the deployment. They do not expose update or delete
 actions to ordinary users. The configured synchronizer alone can delete stale
-snapshot rows for retention; update remains disabled. Comments allow
-authenticated reads and policy-checked creates whose
-`authorEmail` matches the authenticated claim.
+snapshot rows for retention; update remains disabled.
+
+Comments also allow shared authenticated reads. Creates require both
+`authorEmail == claims.email` and `authorId == claims.sub`.
 
 `SavedView` and `AccessReview` records are user-scoped. Their read, create,
 update and delete policies require the authenticated subject claim to match
@@ -103,6 +106,11 @@ A team note on the workspace or an item.
 `body`, `createdAt`
 
 Comments are not tied to a catalog snapshot, so they survive every refresh.
+They are append-only in v1.x because `Comment` exposes create and read but no
+update or delete action. `authorName` stores the uniquely resolved synchronized
+principal display name when available, with the authenticated session label as
+a fallback. `authorEmail` is the authoritative authenticated identity and the
+UI shows it whenever it differs from `authorName`.
 
 ## SyncRun
 

@@ -8,7 +8,10 @@ import { entity, authenticated, uuid, text, date } from '@microsoft/rayfin-core'
 @entity()
 @authenticated('read')
 @authenticated('create', {
-  policy: (claims, item) => claims.email.eq(item.authorEmail),
+  policy: (claims, item) =>
+    claims.email
+      .eq(item.authorEmail)
+      .and(claims.sub.eq(item.authorId)),
 })
 export class Comment {
   @uuid() id!: string;

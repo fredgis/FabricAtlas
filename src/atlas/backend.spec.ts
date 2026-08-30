@@ -3,6 +3,7 @@ import { SAMPLE_DATA } from "./model";
 import {
   loadFromDb,
   loadHistoryFromDb,
+  persistComment,
   runFabricSync,
   snapshotSummaryFromManifest,
 } from "./backend";
@@ -147,6 +148,47 @@ describe("Rayfin snapshot persistence", () => {
     expect(
       Object.values(mocks.data).some((api) => api.delete.mock.calls.length),
     ).toBe(false);
+  });
+
+  it("persists and reloads the authenticated comment display name", async () => {
+    const comment = {
+      id: "33333333-3333-4333-8333-333333333333",
+      authorId: identity.id,
+      authorName: "Fred Gisbert",
+      authorEmail: identity.email,
+      body: "Document the refresh owner.",
+      createdAt: "2026-08-30T15:00:00.000Z",
+    };
+
+    await persistComment(false, comment);
+    expect(mocks.data.Comment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        authorId: identity.id,
+        authorName: "Fred Gisbert",
+        authorEmail: identity.email,
+      }),
+    );
+
+    mocks.data.Comment.findMany.mockResolvedValue([
+      {
+        ...comment,
+        workspace_id: workspaceId,
+      },
+    ]);
+    mocks.data.Workspace.findMany.mockResolvedValue([
+      summaryMarker(
+        "44444444-4444-4444-8444-444444444444",
+        "2026-08-30T15:00:00.000Z",
+      ),
+    ]);
+
+    const hydrated = await loadFromDb(false);
+    expect(hydrated?.comments).toEqual([
+      expect.objectContaining({
+        authorName: "Fred Gisbert",
+        authorEmail: identity.email,
+      }),
+    ]);
   });
 
   it("rejects snapshot publication from a different authenticated user", async () => {

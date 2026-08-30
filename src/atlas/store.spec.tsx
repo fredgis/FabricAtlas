@@ -45,6 +45,9 @@ function Harness() {
       <button type="button" onClick={() => void atlas.sync()}>
         Sync
       </button>
+      <button type="button" onClick={() => void atlas.addComment("New note")}>
+        Add comment
+      </button>
       <button
         type="button"
         onClick={() => void atlas.loadHistorySnapshot("older-snapshot")}
@@ -100,6 +103,9 @@ function Harness() {
       <span data-testid="has-data">{String(atlas.hasData)}</span>
       <span data-testid="syncing">{String(atlas.syncing)}</span>
       <span data-testid="item-count">{atlas.data.items.length}</span>
+      <span data-testid="comment-author">
+        {atlas.data.comments.at(-1)?.authorName ?? ""}
+      </span>
       <span data-testid="workspace-name">{atlas.data.workspace.displayName}</span>
       <span data-testid="requires-sync">
         {String(atlas.requiresDeploymentSync)}
@@ -184,6 +190,39 @@ describe("AtlasProvider synchronization", () => {
     expect(screen.getByTestId("requires-sync")).toHaveTextContent("false");
     expect(screen.getByTestId("progress")).toHaveTextContent("100");
     expect(screen.getByTestId("stage")).toHaveTextContent("Workspace is ready");
+  });
+
+  it("uses the unique synchronized principal display name for comments", async () => {
+    const principal = SAMPLE_DATA.principals.find(
+      (candidate) => candidate.kind === "user" && candidate.email,
+    )!;
+    render(
+      <AtlasProvider
+        isPreview
+        currentUser={{
+          id: principal.principalId,
+          name: principal.email!,
+          email: principal.email,
+        }}
+      >
+        <Harness />
+      </AtlasProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add comment" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("comment-author")).toHaveTextContent(
+        principal.displayName,
+      ),
+    );
+    expect(backend.persistComment).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        authorId: principal.principalId,
+        authorName: principal.displayName,
+        authorEmail: principal.email,
+      }),
+    );
   });
 
   it("refreshes current data and history before background reconciliation", async () => {

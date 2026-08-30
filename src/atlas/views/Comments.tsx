@@ -236,6 +236,15 @@ export function CommentsView({
                                 <h3 className="truncate text-300 leading-300 font-semibold">
                                   {comment.authorName}
                                 </h3>
+                                {comment.authorEmail &&
+                                  comment.authorEmail.trim().toLocaleLowerCase() !==
+                                    comment.authorName
+                                      .trim()
+                                      .toLocaleLowerCase() && (
+                                    <div className="truncate text-200 leading-200 text-muted-foreground">
+                                      Authenticated as {comment.authorEmail}
+                                    </div>
+                                  )}
                                 <div className="mt-xs flex flex-wrap items-center gap-s text-200 leading-200 text-muted-foreground">
                                   <span className="inline-flex items-center gap-xs rounded-full bg-muted px-s py-xs font-semibold">
                                     <MessageSquare

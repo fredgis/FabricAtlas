@@ -4,6 +4,25 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.2] - 2026-08-30
+
+### Fixed
+
+- Team notes now resolve a unique synchronized Fabric principal display name and preserve it through persistence and reload instead of reverting to the author's email address.
+- Notes show the policy-bound authenticated email beside any distinct display label so readers can verify the author.
+- The first-sync gate names the configured synchronization account when another user cannot start the refresh.
+
+### Security
+
+- Comment creation now binds both `authorEmail` to `claims.email` and `authorId` to `claims.sub`.
+- Documentation explicitly states that every authenticated app user can read the complete synchronized governance graph and shared team notes.
+
+### Documentation
+
+- Documented the append-only note model and the user-scoped boundaries for saved views, access reviews and Radar acknowledgements.
+- Documented the current bundle/code-splitting tradeoff without treating it as a correctness failure.
+- Confirmed that `npm run typecheck` runs strict `tsc -b --force` with `noEmit`; TypeScript `noCheck` is not enabled.
+
 ## [1.9.1] - 2026-08-30
 
 ### Added

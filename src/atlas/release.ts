@@ -15,7 +15,7 @@ export const REPOSITORY_URL =
   "https://github.com/fredgis/FabricAtlas";
 
 export const APP_VERSION =
-  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.9.1";
+  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.9.2";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -51,6 +51,30 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "1.9.2",
+    date: "2026-08-30",
+    title: "Audit closure and access transparency",
+    sections: [
+      {
+        title: "Collaboration correctness",
+        items: [
+          "Team notes resolve a unique synchronized Fabric principal display name and preserve it through persistence and reload.",
+          "A distinct note display label is shown together with the policy-bound authenticated email.",
+          "Comment creation binds both the authenticated email and subject to the stored author identity.",
+          "The guided sync gate tells blocked users which configured synchronizer account to contact.",
+        ],
+      },
+      {
+        title: "Documented boundaries",
+        items: [
+          "README, architecture, data-model, installation, security and UDF documentation now state that the synchronized catalog is shared with the complete authenticated app audience.",
+          "The append-only note model and user-scoped personal governance records are documented explicitly.",
+          "Build documentation records the current bundle tradeoff and confirms that strict TypeScript checking runs without noCheck.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.9.1",
     date: "2026-08-30",

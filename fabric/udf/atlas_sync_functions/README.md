@@ -121,6 +121,10 @@ app's hosting origin registered as a SPA redirect URI.
   are restricted to `https://api.fabric.microsoft.com`.
 - The caller's delegated token still determines which Fabric workspaces can be
   read.
+- After metadata is persisted, Rayfin controls application access. Fabric Atlas
+  v1.x gives the complete authenticated app audience shared read access to the
+  synchronized governance graph and team notes; personal review state remains
+  user-scoped.
 - Scanner output is allowlisted. Table rows, datasource and connection details,
   dataset/table Mashup expressions, Power Query definitions and source code are
   never emitted. `datasetExpressions=True` is used only to retain measure DAX.

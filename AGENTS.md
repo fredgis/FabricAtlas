@@ -25,6 +25,12 @@ jobs, configuration and team notes. It never stores workspace business data.
 - Use the existing spacing, typography, color and radius tokens.
 - Keep source comments in English.
 - Preserve the first-sync gate and staged synchronization progress.
+- Keep the configured synchronizer contact visible when another user is blocked
+  by the first-sync gate.
+- Treat synchronized catalog reads and team notes as shared with the complete
+  authenticated app audience; keep personal review state user-scoped.
+- Keep team notes append-only unless a reviewed update/delete policy and UX are
+  introduced together.
 - Keep grouped lists collapsed by default unless the user is actively searching.
 - Normalize lineage from source to consumer and keep node positions stable when
   selection changes.

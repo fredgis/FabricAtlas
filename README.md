@@ -149,7 +149,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Job filters | Searches run history, isolates failures and saves recurring operational views |
 | Active filter chips | Removes search, status, focused item or focused run constraints independently |
 | Workspace Hub | Keeps synchronized configuration and shared team notes in one grouped interface |
-| Item notes | Attaches persistent context to the workspace or a specific Fabric item |
+| Item notes | Adds append-only team context to the workspace or a specific Fabric item |
 | Sync audit | Records who synchronized the workspace, when it ran and how much metadata was indexed |
 
 </details>
@@ -357,6 +357,16 @@ npm run lint
 npm run build
 ```
 
+`npm run typecheck` runs `tsc -b --force` with strict checking and `noEmit`.
+The project does not enable TypeScript's `noCheck` option.
+
+The current production build intentionally ships one main application chunk of
+about 0.9 MB minified, or about 0.25 MB gzip. Vite also reports that the dynamic
+Rayfin client import in `backend.ts` cannot form a separate chunk because
+personal-state modules import the same client statically. This is accepted for
+the current accelerator scale and should be revisited if the application or
+startup cost grows materially.
+
 | Path | Purpose |
 |---|---|
 | `src/atlas/views/` | Application pages |
@@ -370,6 +380,31 @@ npm run build
 | `rayfin/data/` | Persisted entity model |
 | `fabric/udf/atlas_sync_functions/` | Server-side Fabric metadata scan |
 
+## Access and collaboration scope
+
+Fabric Atlas v1.x is scoped to one configured workspace and uses a shared
+governance catalog. Every authenticated user who can open the deployed app can
+read the complete synchronized metadata graph, including items, object
+inventory, lineage, principals, access grants, jobs, configuration, snapshot
+history and team notes. Catalog reads are not filtered per user. Control this
+audience through the Fabric app and workspace access settings.
+
+Saved views, access-review decisions and Governance Radar acknowledgements are
+different: Rayfin policies bind those records to the authenticated subject, so
+each user sees only their own personal state.
+
+Team notes are append-only in v1.x. Creation is bound to the authenticated
+email and subject. Atlas resolves a unique synchronized Fabric principal by
+email and stores that display name separately; when no unique principal exists,
+the authenticated session label remains the fallback. The stored label remains
+stable after reload. When the label differs from the policy-bound email, the
+note displays both so readers can verify the author. Notes cannot currently be
+edited or deleted.
+
+Only the configured synchronization administrator can publish or prune
+snapshots. When another user reaches the first-sync gate, Atlas displays the
+configured account to contact.
+
 ## Security
 
 Fabric Atlas stores workspace metadata and team notes. It does not persist
@@ -382,6 +417,9 @@ explicit Semantic Model metadata.
 
 The project has been reviewed against OWASP Top 10:2025 and ASVS 5.0. Security
 hardening is part of the release process.
+
+The shared authenticated read scope and append-only note behavior are described
+above so deployments can set the app audience deliberately.
 
 Report vulnerabilities through
 [GitHub private vulnerability reporting](https://github.com/fredgis/FabricAtlas/security/advisories/new).

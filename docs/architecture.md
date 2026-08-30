@@ -47,6 +47,28 @@ See [data-model.md](data-model.md) for fields.
 | `AccessReview` | User-scoped access-review decisions and notes |
 | `FindingAck` | User-scoped Governance Radar acknowledgements and mutes |
 
+## Authorization and collaboration scope
+
+The synchronized catalog entities use `@authenticated('read')` without a
+row-level reader policy. In the single-workspace v1.x architecture, every
+authenticated user who can open the deployed app can therefore read the whole
+governance graph: items, object inventory, lineage, principals, grants, jobs,
+configuration, history and shared comments. Deployment owners must treat the
+Fabric app audience as the catalog read boundary.
+
+Writes remain narrower. Snapshot creation and retention are restricted to the
+configured synchronizer. `SavedView`, `AccessReview` and `FindingAck` bind all
+operations to `claims.sub == user_id`. Comment creation requires both the
+authenticated email and subject to match `authorEmail` and `authorId`.
+Atlas resolves `authorName` from one unique synchronized principal email when
+possible, then falls back to the authenticated session label. `authorEmail`
+remains the authoritative identity and is displayed beside a distinct label so
+readers can verify the author.
+
+Comments are append-only in v1.x: authenticated app users can read them and
+their authenticated author can create them, but the entity exposes no update
+or delete action.
+
 ## Sync
 
 The Sync button calls `runFabricSync` (`src/atlas/backend.ts`). When deployed, the browser invokes
@@ -91,11 +113,13 @@ Rayfin create policies compare the authenticated email with each row's
 also filter that writer before pagination, and hydration ignores any manifest
 that fails the same trust boundary.
 
-The workspace manifest stores the deployed build ID. The first deployment or a
-new major/minor snapshot contract shows the guided sync screen until the
-authorized synchronizer publishes its snapshot. Compatible patch releases reuse
-the validated snapshot history. After synchronization, current data and history
-switch to the new snapshot together before background reconciliation.
+The workspace manifest stores the deployed build ID and explicit snapshot
+contract marker. The first deployment, a new major/minor contract or an
+intentional marker revision shows the guided sync screen until the authorized
+synchronizer publishes its snapshot. Compatible patch releases reuse the
+validated snapshot history. A blocked user sees the configured synchronizer
+account to contact. After synchronization, current data and history switch to
+the new snapshot together before background reconciliation.
 
 The MSAL account used for Sync must match the current Rayfin user and tenant.
 Tokens use session storage so switching Fabric users cannot silently reuse the
@@ -209,7 +233,9 @@ layer is one abstraction (`src/atlas/store.tsx`) so the UI code is identical in 
 Posting a comment calls `addComment`, which optimistically updates the UI and persists a `Comment`
 row through `client.data.Comment.create`. Because comments are stored in the Fabric SQL database,
 they persist and are shared across the whole team. Configuration and comments are presented together
-in Workspace Hub so technical facts and human context stay adjacent.
+in Workspace Hub so technical facts and human context stay adjacent. The
+display name resolved for a new note is preserved on reload; notes remain
+append-only in v1.x.
 
 ## Theming
 
@@ -237,6 +263,18 @@ Dense Access, Asset Catalog and Jobs blocks use Chromium
 `content-visibility:auto` containment. Access has one responsive selectable
 list, and Jobs has one semantic definition-list timeline that changes layout
 without duplicating content.
+
+## Build transparency
+
+The v1.9 production build emits one main application chunk of about 0.9 MB
+minified, or about 0.25 MB gzip. Vite reports the `backend.ts` Rayfin client
+dynamic import as ineffective because saved views, access reviews,
+acknowledgements and auth also import that client statically. This does not
+change runtime correctness; it means that import is not a code-splitting
+boundary. The tradeoff is accepted for the current accelerator size.
+
+Type checking is a blocking build step. `npm run typecheck` executes
+`tsc -b --force` with `strict` and `noEmit`; `noCheck` is not enabled.
 
 ## Preview vs deployed
 

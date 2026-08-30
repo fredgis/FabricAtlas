@@ -97,6 +97,27 @@ function clone(d: AtlasData): AtlasData {
   return JSON.parse(JSON.stringify(d));
 }
 
+function commentAuthorName(
+  data: AtlasData,
+  user: CurrentUser,
+): string {
+  const email = user.email?.trim().toLocaleLowerCase();
+  const matches = email
+    ? data.principals.filter(
+        (principal) =>
+          principal.email?.trim().toLocaleLowerCase() === email,
+      )
+    : [];
+  const resolved =
+    matches.length === 1 ? matches[0].displayName.trim() : "";
+  return (
+    resolved ||
+    user.name.trim() ||
+    user.email?.trim() ||
+    "Authenticated user"
+  ).slice(0, 160);
+}
+
 function historyAfterSync(
   previous: AtlasHistory,
   currentData: AtlasData,
@@ -483,7 +504,7 @@ export function AtlasProvider({
         id: `c-${Date.now()}`,
         itemFabricId,
         authorId: currentUser.id,
-        authorName: currentUser.name,
+        authorName: commentAuthorName(dataRef.current, currentUser),
         authorEmail: currentUser.email,
         body: text,
         createdAt: new Date().toISOString(),

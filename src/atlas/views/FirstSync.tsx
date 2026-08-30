@@ -17,6 +17,7 @@ import { useThemeContext } from "@/hooks/theme.context";
 import { ATLAS_CONFIG } from "../config";
 import { REPOSITORY_URL } from "../release";
 import { useAtlas } from "../store";
+import { syncContactMessage } from "../sync-contact";
 import { cn } from "../ui";
 
 const CAPABILITIES = [
@@ -444,6 +445,9 @@ export function FirstSyncView() {
                     <AlertTriangle className="icon-size-200" />
                     Synchronization requires the configured publisher account
                   </div>
+                  <p className="mt-xs">
+                    {syncContactMessage(ATLAS_CONFIG.syncAdminEmail)}
+                  </p>
                 </div>
               )}
 
