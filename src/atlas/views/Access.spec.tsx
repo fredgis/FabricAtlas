@@ -120,6 +120,21 @@ describe("AccessView", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("opens a departure pack from a resolved principal group", () => {
+    renderAccess();
+    fireEvent.click(screen.getByRole("button", { name: "Principals" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Departure pack" })[0]);
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText(/Urgent orphan risks/)).toBeInTheDocument();
+    expect(
+      screen.getByText("Ownership metadata coverage"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Close departure pack" }),
+    ).toBeInTheDocument();
+  });
+
   it("opens and closes row detail from the matrix", () => {
     renderAccess();
 

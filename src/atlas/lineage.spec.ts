@@ -9,6 +9,7 @@ import {
   lineageEdgeKey,
   normalizeLineageEdges,
 } from "./lineage";
+import { buildSchemaDependencies } from "./schema-lineage";
 import type { AtlasData, Edge, Item } from "./model";
 
 const edges: Edge[] = [
@@ -153,7 +154,10 @@ describe("impact reports", () => {
           {
             name: "Sales",
             columns: [{ name: "Amount", dataType: "double" }],
-            measures: [{ name: "Revenue", expr: "SUM(Sales[Amount])" }],
+            measures: [
+              { name: "Revenue", expr: "SUM(Sales[Amount])" },
+              { name: "Margin", expr: "[Revenue] / 2" },
+            ],
           },
         ],
         "same-name-report": [
@@ -184,6 +188,87 @@ describe("impact reports", () => {
       "same-name-report",
     );
     expect(report.detail).toMatch(/does not infer schema-object lineage/i);
+  });
+
+  it("restricts object-level item context to DAX-reached items", () => {
+    const value: Pick<AtlasData, "items" | "edges" | "schema"> = {
+      items: [
+        item("lake", "Lakehouse"),
+        item("model", "SemanticModel"),
+        item("report", "Report"),
+      ],
+      edges: [
+        { source: "lake", target: "model", relation: "Direct Lake" },
+        { source: "model", target: "report", relation: "binds" },
+      ],
+      schema: {
+        lake: [
+          {
+            name: "Sales",
+            columns: [{ name: "Amount", dataType: "double" }],
+            measures: [],
+          },
+        ],
+        model: [
+          {
+            name: "Sales",
+            columns: [{ name: "Amount", dataType: "double" }],
+            measures: [
+              { name: "Revenue", expr: "SUM(Sales[Amount])" },
+              { name: "Margin", expr: "[Revenue] / 2" },
+            ],
+          },
+        ],
+      },
+    };
+    const dependencies = buildSchemaDependencies(value);
+    expect(dependencies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          from: expect.objectContaining({ name: "Margin" }),
+          to: expect.objectContaining({ name: "Revenue" }),
+          confidence: "verified",
+        }),
+      ]),
+    );
+    const report = getSchemaObjectImpactReport(
+      value,
+      {
+        itemId: "model",
+        kind: "measure",
+        tableName: "Sales",
+        name: "Revenue",
+      },
+      { dependencies },
+    );
+
+    expect(report.granularity).toBe("object");
+    expect(report.upstream.map((entry) => entry.id)).toEqual(["lake"]);
+    expect(report.downstream).toEqual([]);
+    expect(report.relevantEdges).toEqual([
+      { source: "lake", target: "model", relation: "Direct Lake" },
+    ]);
+
+    const sourceReport = getSchemaObjectImpactReport(
+      value,
+      {
+        itemId: "lake",
+        kind: "column",
+        tableName: "Sales",
+        name: "Amount",
+      },
+      { dependencies },
+    );
+    expect(
+      sourceReport.objectImpact?.downstream.map((entry) => [
+        entry.object.name,
+        entry.confidence,
+      ]),
+    ).toEqual([
+      ["Revenue", "inferred"],
+      ["Margin", "inferred"],
+    ]);
+    expect(sourceReport.verifiedObjectDependencies).toBe(false);
   });
 });
 

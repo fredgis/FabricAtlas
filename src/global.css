@@ -150,6 +150,7 @@
   --icon-size-500: 28px;
   --icon-size-600: 32px;
   --icon-size-700: 48px;
+  --icon-size-800: 96px;
 }
 
 @utility icon-size-* {
@@ -357,6 +358,11 @@ body,
 
 .atlas-narrow-panel {
     max-width: 420px;
+}
+
+.atlas-search-empty-copy {
+    width: 100%;
+    max-width: 36rem;
 }
 
 .atlas-content-frame {

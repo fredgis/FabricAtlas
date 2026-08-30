@@ -806,6 +806,7 @@ export function snapshotSummaryFromManifest(
     snapshotId,
     syncedAt,
     label: syncedAt.slice(0, 10),
+    deploymentId: realText(marker.deploymentId),
     items: summary.items,
     itemCount: summary.items,
     healthy: summary.healthy,

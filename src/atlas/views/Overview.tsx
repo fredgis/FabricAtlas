@@ -30,6 +30,9 @@ import {
   type ItemType,
   type JobStatus,
 } from "../model";
+import { snapshotCatalogFromData } from "../history";
+import { scorePosture } from "../posture";
+import { workspaceDetailLabel } from "../workspace-display";
 
 const JOB_TONE: Record<JobStatus, string> = {
   completed: "bg-status-healthy",
@@ -43,7 +46,7 @@ export function OverviewView({
 }: {
   onOpen: (target: Tab | AtlasNavigation) => void;
 }) {
-  const { data, lastSyncedAt } = useAtlas();
+  const { data, history, lastSyncedAt } = useAtlas();
   const { items, principals, jobs, syncRuns, grants, edges } = data;
 
   const health = useMemo(() => {
@@ -84,6 +87,33 @@ export function OverviewView({
       )[0],
     [syncRuns],
   );
+  const historyCurrent = history.current;
+  const historyAligned =
+    !data.workspace.snapshotId ||
+    historyCurrent?.snapshotId === data.workspace.snapshotId;
+  const currentCatalog =
+    historyCurrent && historyAligned
+      ? historyCurrent.catalog
+      : undefined;
+  const posture = useMemo(
+    () =>
+      scorePosture(
+        currentCatalog ?? snapshotCatalogFromData(data),
+      ),
+    [currentCatalog, data],
+  );
+  const previousSnapshotId = historyAligned
+    ? history.summaries[1]?.snapshotId
+    : history.summaries[0]?.snapshotId;
+  const previousCatalog = history.snapshots.find(
+    (snapshot) => snapshot.snapshotId === previousSnapshotId,
+  )?.catalog;
+  const previousPosture = useMemo(() => {
+    return previousCatalog ? scorePosture(previousCatalog) : undefined;
+  }, [previousCatalog]);
+  const postureAtTarget = posture.pillars.filter(
+    (pillar) => pillar.score != null && pillar.score >= pillar.target,
+  ).length;
 
   const assetCount = useMemo(
     () =>
@@ -132,10 +162,9 @@ export function OverviewView({
   const syncFreshness = lastSyncedAt
     ? relativeTime(lastSyncedAt)
     : "Not synced yet";
-  const workspaceDetails = [
-    data.workspace.capacity,
-    data.workspace.region,
-  ].filter(Boolean);
+  const workspaceDetails = [workspaceDetailLabel(data.workspace)].filter(
+    Boolean,
+  );
 
   const pulse = health.failing
     ? {
@@ -409,6 +438,76 @@ export function OverviewView({
           </aside>
         </div>
       </Card>
+
+      <section aria-labelledby="posture-targets-title">
+        <div className="mb-m flex items-end justify-between gap-l">
+          <div>
+            <SectionLabel>Posture targets</SectionLabel>
+            <h2
+              id="posture-targets-title"
+              className="mt-xs text-500 font-semibold"
+            >
+              {postureAtTarget} of {posture.pillars.length} pillars at target
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              onOpen({
+                tab: "governance",
+                focus: {
+                  requestId: crypto.randomUUID(),
+                  governanceSection: "posture",
+                },
+              })
+            }
+            className="text-200 font-semibold text-primary hover:underline"
+          >
+            Open posture
+          </button>
+        </div>
+        <Card className="grid gap-s p-m sm:grid-cols-2 xl:grid-cols-6">
+          {posture.pillars.map((pillar) => {
+            const previous = previousPosture?.pillars.find(
+              (candidate) => candidate.pillar === pillar.pillar,
+            )?.score;
+            const delta =
+              pillar.score != null && previous != null
+                ? pillar.score - previous
+                : null;
+            return (
+              <button
+                key={pillar.pillar}
+                type="button"
+                onClick={() =>
+                  onOpen({
+                    tab: "governance",
+                    focus: {
+                      requestId: crypto.randomUUID(),
+                      governanceSection: "posture",
+                      filters: { pillar: pillar.pillar },
+                    },
+                  })
+                }
+                className="rounded-xl border border-border bg-secondary/55 p-m text-left transition-colors hover:border-primary/40 hover:bg-primary/5"
+              >
+                <div className="text-200 font-semibold capitalize">
+                  {pillar.pillar}
+                </div>
+                <div className="mt-xs font-numeric text-400 font-bold">
+                  {pillar.score == null ? "N/A" : `${pillar.score}%`}
+                </div>
+                <div className="mt-xs text-100 text-muted-foreground">
+                  Target {pillar.target}%
+                  {delta == null
+                    ? ""
+                    : ` · ${delta >= 0 ? "+" : ""}${delta} pts`}
+                </div>
+              </button>
+            );
+          })}
+        </Card>
+      </section>
 
       <section aria-labelledby="priority-signals-title">
         <div className="mb-m flex items-end justify-between gap-l">

@@ -58,6 +58,21 @@ describe("CommandPalette", () => {
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
+  it("uses the dedicated readable empty-state width", () => {
+    render(
+      <CommandPalette
+        index={buildSearchIndex(SAMPLE_DATA)}
+        open
+        onClose={() => undefined}
+        onSelect={() => undefined}
+      />,
+    );
+
+    expect(
+      screen.getByText(/Find Fabric items, schema objects/),
+    ).toHaveClass("atlas-search-empty-copy");
+  });
+
   it("moves focus into the dialog and restores it on Escape", async () => {
     function Harness() {
       const [open, setOpen] = useState(false);

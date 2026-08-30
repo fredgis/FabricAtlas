@@ -4,6 +4,43 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-08-30
+
+### Added
+
+- Governance Radar showing only new high/critical findings and risky changes since the latest adjacent snapshot.
+- Personal Radar acknowledgement and mute state through the user-scoped `FindingAck` entity.
+- Six reproducible posture pillars with targets, deltas, historical trends and actionable drill-downs.
+- Departure/removal packs with ownership coverage, sole-owner risk, downstream blast radius, reassignment suggestions and three exports.
+- Dependency-free DAX reference parsing and schema-object lineage for resolved measure-to-column and measure-to-measure dependencies.
+- Explicit confidence labels for verified DAX dependencies and inferred unique source-table hops.
+
+### Changed
+
+- Initial synchronization replaces the topology illustration with an accessible progress donut driven by the real sync percentage.
+- Impact reports switch to object granularity when DAX evidence resolves and keep unrelated item-level consumers out of object results.
+- Asset Catalog shows **Depends on** and **Used by** relationships for synchronized schema objects.
+- Overview includes posture-target attainment and per-pillar deltas.
+- Governance Center adds Radar and Posture experiences while preserving summary-first lazy history.
+- Radar uses a target-and-shield watermark to show exactly which monitored signals have no new high-priority regression.
+
+### Fixed
+
+- UUID-like capacity identifiers are no longer displayed in the sidebar or Overview workspace summary.
+- The global Search empty-state copy uses a stable readable width instead of collapsing into one-word lines.
+- Radar personalization failures no longer hide governance alerts.
+- Failed canonical Radar snapshots expose an explicit retry instead of remaining in an indefinite loading state.
+- Radar actions wait for personal acknowledgement hydration, preventing a stale load from replacing a newer choice.
+- Departure packs display ownership metadata coverage in both the dialog and Markdown evidence.
+- Quoted table arguments and table-qualified measures no longer stop or disappear from DAX parsing.
+- Radar evidence actions consistently open the matching Change Center evidence.
+
+### Security
+
+- Finding acknowledgements are isolated by authenticated subject and use a SHA-256 composite record key.
+- Acknowledge and Mute writes are serialized per finding to prevent out-of-order final state.
+- Unknown sensitivity rank mappings deliberately produce no downgrade alert instead of a false positive.
+
 ## [1.8.0] - 2026-08-30
 
 ### Added
@@ -248,6 +285,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
+[1.9.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.9.0
 [1.8.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.8.0
 [1.7.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.7.0
 [1.6.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.6.1

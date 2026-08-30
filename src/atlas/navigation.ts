@@ -16,7 +16,8 @@ export type GovernanceSection =
   | "findings"
   | "changes"
   | "history"
-  | "coverage";
+  | "coverage"
+  | "posture";
 
 export interface AtlasFocusRequest {
   requestId: string;

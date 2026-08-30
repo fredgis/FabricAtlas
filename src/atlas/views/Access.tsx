@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { SavedViewsMenu } from "../components/SavedViewsMenu";
+import { OffboardingDialog } from "../components/OffboardingDialog";
 import {
   deleteAccessReview,
   loadAccessReviews,
@@ -436,6 +437,7 @@ function PrincipalGroups({
   selectedId,
   expanded,
   searching,
+  onOpenPack,
   onToggle,
   onSelect,
 }: {
@@ -443,6 +445,7 @@ function PrincipalGroups({
   selectedId: string | null;
   expanded: Set<string>;
   searching: boolean;
+  onOpenPack: (row: AccessReviewRow) => void;
   onToggle: (key: string) => void;
   onSelect: (row: AccessReviewRow) => void;
 }) {
@@ -475,14 +478,15 @@ function PrincipalGroups({
         const regionId = `principal-access-group-${index}`;
         return (
           <section key={principalKey} className="atlas-windowed-group">
-            <button
-              type="button"
-              aria-expanded={isExpanded}
-              aria-controls={regionId}
-              disabled={searching}
-              onClick={() => onToggle(principalKey)}
-              className="flex w-full items-center gap-m px-l py-m text-left transition-colors hover:bg-accent/60 disabled:cursor-default disabled:opacity-100"
-            >
+            <div className="flex items-center">
+              <button
+                type="button"
+                aria-expanded={isExpanded}
+                aria-controls={regionId}
+                disabled={searching}
+                onClick={() => onToggle(principalKey)}
+                className="flex min-w-0 flex-1 items-center gap-m px-l py-m text-left transition-colors hover:bg-accent/60 disabled:cursor-default disabled:opacity-100"
+              >
               {isExpanded ? (
                 <ChevronDown
                   className="icon-size-200 shrink-0 text-muted-foreground"
@@ -504,7 +508,18 @@ function PrincipalGroups({
                 </span>
                 <AccessBadge level={strongest} />
               </div>
-            </button>
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpenPack(first)}
+                className="mr-l rounded-lg border border-primary/30 bg-primary/10 px-m py-s text-200 font-semibold text-brand-foreground hover:bg-primary/15"
+              >
+                {first.principal?.kind === "user" ||
+                first.principal?.kind === "guest"
+                  ? "Departure pack"
+                  : "Removal impact"}
+              </button>
+            </div>
 
             {isExpanded && (
               <div
@@ -960,7 +975,10 @@ export function AccessView({
     removeSavedView,
   } = useAtlas();
   const [mode, setMode] = useState<AccessMode>(
-    initialFilters?.mode === "principals" ? "principals" : "matrix",
+    initialFilters?.mode === "principals" ||
+      (initialPrincipalId && !initialItemId)
+      ? "principals"
+      : "matrix",
   );
   const [search, setSearch] = useState(
     typeof initialFilters?.search === "string" ? initialFilters.search : "",
@@ -993,6 +1011,9 @@ export function AccessView({
   const [reviewError, setReviewError] = useState<string>();
   const [reviewOperationId, setReviewOperationId] = useState<string | null>(
     null,
+  );
+  const [offboardingPrincipalId, setOffboardingPrincipalId] = useState(
+    initialPrincipalId && !initialItemId ? initialPrincipalId : "",
   );
 
   useEffect(() => {
@@ -1086,7 +1107,9 @@ export function AccessView({
         requestId: "access-view-state",
         itemId: selectedRow?.itemId,
         principalId:
-          selectedRow?.principalId ?? selectedRow?.principalRef,
+          selectedRow?.principalId ??
+          selectedRow?.principalRef ??
+          (offboardingPrincipalId || undefined),
         query: search.trim() || undefined,
         filters: {
           mode,
@@ -1105,6 +1128,7 @@ export function AccessView({
     risk,
     search,
     selectedRow,
+    offboardingPrincipalId,
   ]);
   const activeFilters =
     search !== "" ||
@@ -1509,6 +1533,11 @@ export function AccessView({
               expanded={effectiveExpandedPrincipals}
               searching={Boolean(normalizedSearch)}
               onToggle={togglePrincipal}
+              onOpenPack={(row) =>
+                setOffboardingPrincipalId(
+                  row.principalId ?? row.principalKey ?? row.principalRef,
+                )
+              }
               onSelect={(row) => setSelectedId(row.id)}
             />
           )}
@@ -1530,6 +1559,12 @@ export function AccessView({
           />
         )}
       </div>
+      <OffboardingDialog
+        data={data}
+        principalId={offboardingPrincipalId}
+        open={Boolean(offboardingPrincipalId)}
+        onClose={() => setOffboardingPrincipalId("")}
+      />
     </div>
   );
 }

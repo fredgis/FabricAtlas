@@ -31,6 +31,8 @@ interface ImportMetaEnv {
   readonly VITE_RAYFIN_ATLAS_SNAPSHOT_RETENTION_COUNT?: string;
   /** Comma-separated former synchronizers trusted during writer rotation. */
   readonly VITE_RAYFIN_ATLAS_PREVIOUS_SYNC_WRITERS?: string;
+  /** Tenant-specific sensitivity label rank map as JSON. */
+  readonly VITE_RAYFIN_ATLAS_SENSITIVITY_RANKS?: string;
   /** Legacy local override for the Atlas Entra application client ID. */
   readonly VITE_ATLAS_SPA_CLIENT_ID?: string;
   /** Legacy local override for the Atlas sync_all UDF invoke URL. */

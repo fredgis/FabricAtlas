@@ -14,6 +14,7 @@ import {
     waitFor,
 } from "@testing-library/react";
 import App from "@/App";
+import { workspaceDetailLabel } from "@/atlas/workspace-display";
 import { AtlasProvider } from "@/atlas/store";
 import { ThemeContext } from "@/hooks/theme.context";
 
@@ -34,6 +35,25 @@ describe("App", () => {
 
     it("renders without throwing", () => {
         expect(() => renderApp()).not.toThrow();
+    });
+
+    it("never exposes UUID-like workspace capacity text", () => {
+        expect(
+            workspaceDetailLabel({
+                fabricId: "workspace",
+                displayName: "Workspace",
+                capacity: "786e0b3d-9718-423d-a4cb-a778cb824a23",
+                region: "West Europe",
+            }),
+        ).toBe("West Europe");
+        expect(
+            workspaceDetailLabel({
+                fabricId: "workspace",
+                displayName: "Workspace",
+                capacity: "F16 · West Europe",
+                region: "West Europe",
+            }),
+        ).toBe("F16 · West Europe");
     });
 
     it("mounts content into the document", () => {

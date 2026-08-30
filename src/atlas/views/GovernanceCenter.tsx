@@ -2,16 +2,22 @@ import {
   Activity,
   ArrowRight,
   CheckCircle2,
+  CheckCheck,
   Clock3,
+  Download,
   FileClock,
   FilterX,
+  Gauge,
   GitCompareArrows,
   History,
   KeyRound,
   Layers3,
+  Radar as RadarIcon,
+  RotateCcw,
   Search,
   ShieldAlert,
   ShieldCheck,
+  VolumeX,
 } from "lucide-react";
 import * as Tabs from "@radix-ui/react-tabs";
 import { motion } from "framer-motion";
@@ -28,6 +34,7 @@ import {
 } from "../governance";
 import {
   compareSnapshots,
+  snapshotCatalogFromData,
   type AtlasChange,
   type AtlasChangeDomain,
   type SnapshotSummary,
@@ -38,6 +45,19 @@ import type {
   GovernanceSection,
 } from "../navigation";
 import type { SavedView, SavedViewFilters } from "../saved-views";
+import {
+  buildRadar,
+  type FindingDelta,
+  type RadarResult,
+  type RiskyChange,
+} from "../radar";
+import type { FindingAcknowledgement } from "../finding-acks";
+import { radarToMarkdown } from "../radar-markdown";
+import {
+  scorePosture,
+  type PosturePillar,
+  type PostureScore,
+} from "../posture";
 import { useAtlas } from "../store";
 import { Card, SectionLabel, cn } from "../ui";
 import { SensitivityView } from "./Sensitivity";
@@ -70,6 +90,27 @@ const SEVERITY_META: Record<
     dot: "bg-lineage-neutral",
   },
 };
+
+interface RadarEntry {
+  id: string;
+  severity: GovernanceSeverity;
+  title: string;
+  detail: string;
+  occurrenceSnapshotId?: string;
+  delta?: FindingDelta;
+  risk?: RiskyChange;
+}
+
+function downloadMarkdown(content: string, filename: string): void {
+  const url = URL.createObjectURL(
+    new Blob([content], { type: "text/markdown;charset=utf-8" }),
+  );
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
 
 const CATEGORY_LABEL: Record<GovernanceCategory, string> = {
   access: "Access",
@@ -214,12 +255,19 @@ export function GovernanceCenterView({
     history,
     historyLoading,
     historyError,
+    historyFailedSnapshotIds,
     savedViews,
     savedViewsLoading,
     savedViewsError,
     addSavedView,
     removeSavedView,
     loadHistorySnapshot,
+    findingAcks,
+    findingAcksLoading,
+    findingAcksError,
+    findingAckPendingIds,
+    saveFindingAcknowledgement,
+    removeFindingAcknowledgement,
   } = useAtlas();
   const initialSection =
     focus?.governanceSection ??
@@ -240,6 +288,9 @@ export function GovernanceCenterView({
       ? (focus.filters.category as GovernanceCategory)
       : "all",
   );
+  const [findingPillar, setFindingPillar] = useState(
+    typeof focus?.filters?.pillar === "string" ? focus.filters.pillar : "",
+  );
   const [changeSearch, setChangeSearch] = useState(
     typeof focus?.filters?.changeSearch === "string"
       ? focus.filters.changeSearch
@@ -254,6 +305,11 @@ export function GovernanceCenterView({
     typeof focus?.filters?.metric === "string"
       ? (focus.filters.metric as HistoryMetric)
       : "items",
+  );
+  const [postureMetric, setPostureMetric] = useState<PosturePillar>(
+    typeof focus?.filters?.pillar === "string"
+      ? (focus.filters.pillar as PosturePillar)
+      : "documentation",
   );
   const [currentSnapshotId, setCurrentSnapshotId] = useState<
     string | undefined
@@ -295,12 +351,154 @@ export function GovernanceCenterView({
       (finding) =>
         (severity === "all" || finding.severity === severity) &&
         (category === "all" || finding.category === category) &&
+        (!findingPillar || finding.category === findingPillar) &&
         (!query ||
           finding.title.toLowerCase().includes(query) ||
           finding.detail.toLowerCase().includes(query) ||
           finding.recommendation.toLowerCase().includes(query)),
     );
-  }, [category, findingSearch, findings, severity]);
+  }, [category, findingPillar, findingSearch, findings, severity]);
+
+  const historyIsCurrent =
+    !data.workspace.snapshotId ||
+    history.current?.snapshotId === data.workspace.snapshotId;
+  const canonicalSnapshotIds = useMemo(
+    () =>
+      historyIsCurrent
+        ? history.summaries
+            .slice(0, 2)
+            .map((summary) => summary.snapshotId)
+        : [],
+    [history.summaries, historyIsCurrent],
+  );
+  useEffect(() => {
+    for (const snapshotId of canonicalSnapshotIds) {
+      if (
+        !history.snapshots.some(
+          (snapshot) => snapshot.snapshotId === snapshotId,
+        )
+      ) {
+        void loadHistorySnapshot(snapshotId);
+      }
+    }
+  }, [canonicalSnapshotIds, history.snapshots, loadHistorySnapshot]);
+
+  useEffect(() => {
+    if (section !== "posture" || !historyIsCurrent) return;
+    void (async () => {
+      for (const summary of history.summaries) {
+        if (
+          !history.snapshots.some(
+            (snapshot) => snapshot.snapshotId === summary.snapshotId,
+          )
+        ) {
+          await loadHistorySnapshot(summary.snapshotId);
+        }
+      }
+    })();
+  }, [
+    history.snapshots,
+    history.summaries,
+    historyIsCurrent,
+    loadHistorySnapshot,
+    section,
+  ]);
+
+  const radar = useMemo(
+    () =>
+      historyIsCurrent
+        ? buildRadar(history, {
+            minSeverity: "high",
+            sensitivityRanks: ATLAS_CONFIG.sensitivityRanks,
+          })
+        : {
+            state: "loading" as const,
+            missingSnapshotIds: data.workspace.snapshotId
+              ? [data.workspace.snapshotId]
+              : [],
+          },
+    [data.workspace.snapshotId, history, historyIsCurrent],
+  );
+  const radarFailedSnapshotIds =
+    radar.state === "loading"
+      ? historyError && !historyLoading
+        ? radar.missingSnapshotIds
+        : radar.missingSnapshotIds.filter((snapshotId) =>
+            historyFailedSnapshotIds.has(snapshotId),
+          )
+      : [];
+  const acknowledgementByFinding = useMemo(
+    () =>
+      new Map(
+        findingAcks.map((acknowledgement) => [
+          acknowledgement.findingId,
+          acknowledgement,
+        ]),
+      ),
+    [findingAcks],
+  );
+  const allRadarEntries = useMemo<RadarEntry[]>(() => {
+    if (radar.state !== "ready") return [];
+    const findingsEntries = radar.deltas
+      .filter((delta) => delta.status === "new")
+      .map((delta) => ({
+        id: delta.finding.id,
+        severity: delta.finding.severity,
+        title: delta.finding.title,
+        detail: delta.finding.detail,
+        occurrenceSnapshotId: delta.sinceSnapshotId,
+        delta,
+      }));
+    const riskEntries = radar.riskyChanges.map((risk) => ({
+      id: risk.id,
+      severity: risk.severity,
+      title: risk.change.label,
+      detail: risk.detail,
+      occurrenceSnapshotId: radar.currentSnapshotId,
+      risk,
+    }));
+    return [...findingsEntries, ...riskEntries];
+  }, [radar]);
+  const radarEntries = useMemo(
+    () =>
+      allRadarEntries.filter((entry) => {
+      const acknowledgement = acknowledgementByFinding.get(entry.id);
+      return !(
+        acknowledgement?.status === "muted" ||
+        (acknowledgement?.status === "acked" &&
+          acknowledgement.occurrenceSnapshotId ===
+            entry.occurrenceSnapshotId)
+      );
+      }),
+    [acknowledgementByFinding, allRadarEntries],
+  );
+  const suppressedRadarAcks = findingAcks.filter((acknowledgement) => {
+    const entry = allRadarEntries.find(
+      (candidate) => candidate.id === acknowledgement.findingId,
+    );
+    return (
+      !!entry &&
+      (acknowledgement.status === "muted" ||
+        (acknowledgement.status === "acked" &&
+          acknowledgement.occurrenceSnapshotId ===
+            entry.occurrenceSnapshotId))
+    );
+  });
+
+  const postureScores = useMemo(
+    () =>
+      new Map(
+        history.snapshots.map((snapshot) => [
+          snapshot.snapshotId,
+          scorePosture(snapshot.catalog),
+        ]),
+      ),
+    [history.snapshots],
+  );
+  const currentPosture = scorePosture(snapshotCatalogFromData(data));
+  const previousPosture = historyIsCurrent
+    ? postureScores.get(history.summaries[1]?.snapshotId ?? "")
+    : undefined;
 
   const selectedCurrent = history.snapshots.find(
     (snapshot) => snapshot.snapshotId === effectiveCurrentSnapshotId,
@@ -413,6 +611,16 @@ export function GovernanceCenterView({
       count: coverage.metrics.filter((metric) => metric.state !== "complete").length,
       icon: Layers3,
     },
+    {
+      id: "posture",
+      label: "Posture",
+      detail: "Targets by governance pillar",
+      count: currentPosture.pillars.filter(
+        (pillar) =>
+          pillar.score != null && pillar.score < pillar.target,
+      ).length,
+      icon: Gauge,
+    },
   ];
 
   const currentFilters = useMemo<SavedViewFilters>(
@@ -422,6 +630,7 @@ export function GovernanceCenterView({
         filters.search = findingSearch;
         filters.severity = severity;
         filters.category = category;
+        filters.pillar = findingPillar;
       } else if (section === "changes") {
         filters.changeSearch = changeSearch;
         filters.domain = changeDomain;
@@ -429,6 +638,8 @@ export function GovernanceCenterView({
         filters.previousSnapshotId = effectivePreviousSnapshotId;
       } else if (section === "history") {
         filters.metric = historyMetric;
+      } else if (section === "posture") {
+        filters.pillar = postureMetric;
       }
       return filters;
     },
@@ -437,7 +648,9 @@ export function GovernanceCenterView({
       changeDomain,
       changeSearch,
       findingSearch,
+      findingPillar,
       historyMetric,
+      postureMetric,
       effectiveCurrentSnapshotId,
       effectivePreviousSnapshotId,
       section,
@@ -474,6 +687,9 @@ export function GovernanceCenterView({
         ? (filters.category as GovernanceCategory)
         : "all",
     );
+    setFindingPillar(
+      typeof filters.pillar === "string" ? filters.pillar : "",
+    );
     setChangeSearch(
       typeof filters.changeSearch === "string" ? filters.changeSearch : "",
     );
@@ -495,6 +711,9 @@ export function GovernanceCenterView({
     if (typeof filters.metric === "string") {
       setHistoryMetric(filters.metric as HistoryMetric);
     }
+    if (typeof filters.pillar === "string") {
+      setPostureMetric(filters.pillar as PosturePillar);
+    }
   };
 
   return (
@@ -504,6 +723,83 @@ export function GovernanceCenterView({
       asChild
     >
     <div className="atlas-content-frame flex flex-col gap-l p-l sm:p-xxl">
+      <RadarPanel
+        radar={radar}
+        entries={radarEntries}
+        suppressed={suppressedRadarAcks}
+        loading={findingAcksLoading}
+        error={findingAcksError}
+        historyLoading={historyLoading}
+        failedSnapshotIds={radarFailedSnapshotIds}
+        pendingIds={findingAckPendingIds}
+        onAcknowledge={(entry) =>
+          saveFindingAcknowledgement({
+            findingId: entry.id,
+            occurrenceSnapshotId: entry.occurrenceSnapshotId,
+            status: "acked",
+          })
+        }
+        onMute={(entry) =>
+          saveFindingAcknowledgement({
+            findingId: entry.id,
+            occurrenceSnapshotId: entry.occurrenceSnapshotId,
+            status: "muted",
+          })
+        }
+        onRestore={(id) => removeFindingAcknowledgement(id)}
+        onRetryHistory={() => {
+          if (radar.state !== "loading") return;
+          for (const snapshotId of radar.missingSnapshotIds) {
+            void loadHistorySnapshot(snapshotId);
+          }
+        }}
+        onOpen={(entry) => {
+          if (entry.delta) {
+            onNavigate(navigationForFinding(entry.delta.finding));
+          } else if (entry.risk) {
+            const change = entry.risk.change;
+            const domain =
+              entry.risk.kind === "lineage-broken"
+                ? "lineage"
+                : entry.risk.kind === "consumed-item-removed"
+                  ? "item"
+                  : entry.risk.kind === "sensitivity-downgraded"
+                    ? "sensitivity"
+                    : "access";
+            onNavigate({
+              tab: "governance",
+              focus: focusRequest({
+                governanceSection: "changes",
+                filters: {
+                  section: "changes",
+                  domain,
+                  changeSearch: change.label,
+                },
+              }),
+            });
+          }
+        }}
+        onDownload={() => {
+          if (radar.state !== "ready") return;
+          const currentSummary = history.summaries[0];
+          const previousSummary = history.summaries[1];
+          if (!currentSummary || !previousSummary) return;
+          downloadMarkdown(
+            radarToMarkdown({
+              workspace: data.workspace.displayName,
+              currentSummary,
+              previousSummary,
+              findings: radarEntries
+                .map((entry) => entry.delta)
+                .filter((delta): delta is FindingDelta => !!delta),
+              riskyChanges: radarEntries
+                .map((entry) => entry.risk)
+                .filter((risk): risk is RiskyChange => !!risk),
+            }),
+            `fabric-atlas-radar-${currentSummary.syncedAt.slice(0, 10)}.md`,
+          );
+        }}
+      />
       <Card className="overflow-hidden border-border shadow-fabric-4">
         <div className="atlas-fabric-hero relative overflow-hidden p-l sm:p-xl">
           <div className="relative flex flex-col gap-l lg:flex-row lg:items-end lg:justify-between">
@@ -591,7 +887,7 @@ export function GovernanceCenterView({
 
         <Tabs.List
           aria-label="Governance Center sections"
-          className="grid gap-s border-t border-border bg-secondary/55 p-s sm:grid-cols-2 xl:grid-cols-4"
+          className="grid gap-s border-t border-border bg-secondary/55 p-s sm:grid-cols-2 xl:grid-cols-5"
         >
           {tabs.map(({ id, label, detail, count, icon: Icon }) => (
             <Tabs.Trigger key={id} value={id} asChild>
@@ -630,7 +926,7 @@ export function GovernanceCenterView({
         </Tabs.List>
       </Card>
 
-      {historyError && (
+      {historyError && radarFailedSnapshotIds.length === 0 && (
         <div
           role="alert"
           className="rounded-xl border border-status-warning/30 bg-status-warning/10 px-l py-m text-300 text-status-warning"
@@ -651,13 +947,16 @@ export function GovernanceCenterView({
             search={findingSearch}
             severity={severity}
             category={category}
+            pillar={findingPillar}
             onSearch={setFindingSearch}
             onSeverity={setSeverity}
             onCategory={setCategory}
+            onClearPillar={() => setFindingPillar("")}
             onNavigate={(finding) =>
               onNavigate(navigationForFinding(finding))
             }
             onPreset={(preset) => {
+              setFindingPillar("");
               if (preset === "external") {
                 setFindingSearch("external access");
                 setCategory("access");
@@ -742,8 +1041,454 @@ export function GovernanceCenterView({
           />
         </motion.div>
       </Tabs.Content>
+      <Tabs.Content value="posture" asChild>
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.16 }}
+        >
+          <PostureSection
+            current={currentPosture}
+            previous={previousPosture}
+            scores={postureScores}
+            summaries={history.trend}
+            selectedPillar={postureMetric}
+            loading={historyLoading}
+            onPillar={setPostureMetric}
+            onNavigate={onNavigate}
+          />
+        </motion.div>
+      </Tabs.Content>
     </div>
     </Tabs.Root>
+  );
+}
+
+export function RadarPanel({
+  radar,
+  entries,
+  suppressed,
+  loading,
+  error,
+  historyLoading,
+  failedSnapshotIds,
+  pendingIds,
+  onAcknowledge,
+  onMute,
+  onRestore,
+  onRetryHistory,
+  onOpen,
+  onDownload,
+}: {
+  radar: RadarResult;
+  entries: RadarEntry[];
+  suppressed: FindingAcknowledgement[];
+  loading: boolean;
+  error?: string;
+  historyLoading: boolean;
+  failedSnapshotIds: string[];
+  pendingIds: Set<string>;
+  onAcknowledge: (entry: RadarEntry) => Promise<void>;
+  onMute: (entry: RadarEntry) => Promise<void>;
+  onRestore: (id: string) => Promise<void>;
+  onRetryHistory: () => void;
+  onOpen: (entry: RadarEntry) => void;
+  onDownload: () => void;
+}) {
+  const ready = radar.state === "ready";
+  return (
+    <Card className="overflow-hidden border-primary/25 shadow-fabric-4">
+      <div className="atlas-fabric-hero flex flex-col gap-l p-l lg:flex-row lg:items-center">
+        <span className="flex icon-size-700 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+          <RadarIcon className="icon-size-400" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <SectionLabel>Governance radar</SectionLabel>
+          <h2 className="mt-xs text-500 font-semibold">
+            What became risky since the last sync
+          </h2>
+          <p className="mt-xs text-200 text-muted-foreground">
+            New high-priority findings and dangerous access, sensitivity,
+            lineage or removal changes only.
+          </p>
+        </div>
+        {ready && (
+          <button
+            type="button"
+            onClick={onDownload}
+            className="inline-flex items-center justify-center gap-s rounded-lg border border-border bg-card px-m py-s text-200 font-semibold hover:bg-accent"
+          >
+            <Download className="icon-size-100" />
+            Export digest
+          </button>
+        )}
+      </div>
+
+      <div className="border-t border-border bg-card">
+        {error && (
+          <div
+            role="alert"
+            className="border-b border-status-warning/25 bg-status-warning/10 px-l py-s text-200 text-status-warning"
+          >
+            Personal acknowledgements are unavailable; Radar remains fully
+            visible. {error}
+          </div>
+        )}
+        {loading && ready && (
+          <div className="border-b border-border bg-secondary/50 px-l py-s text-100 text-muted-foreground">
+            Loading personal acknowledgement state…
+          </div>
+        )}
+        {radar.state === "insufficient-history" ? (
+          <div className="p-l text-200 text-muted-foreground">
+            A second validated snapshot is required for Radar.
+          </div>
+        ) : radar.state === "loading" && failedSnapshotIds.length > 0 ? (
+          <div
+            role="alert"
+            className="flex flex-col gap-m p-l sm:flex-row sm:items-center"
+          >
+            <ShieldAlert className="icon-size-300 shrink-0 text-status-warning" />
+            <div className="min-w-0 flex-1">
+              <div className="text-300 font-semibold">
+                The latest governance comparison is unavailable
+              </div>
+              <p className="mt-xs text-200 text-muted-foreground">
+                Radar will not substitute a non-adjacent snapshot because that
+                could hide or misdate a risky change.
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={historyLoading}
+              onClick={onRetryHistory}
+              className="inline-flex items-center justify-center gap-s rounded-lg border border-border bg-card px-m py-s text-200 font-semibold hover:bg-accent disabled:opacity-50"
+            >
+              <RotateCcw className="icon-size-100" />
+              {historyLoading ? "Retrying…" : "Retry comparison"}
+            </button>
+          </div>
+        ) : radar.state === "loading" ? (
+          <div role="status" className="p-l text-200 text-muted-foreground">
+            Loading the latest governance comparison…
+          </div>
+        ) : radar.state === "baseline" ? (
+          <div className="flex items-center gap-s p-l text-200 text-muted-foreground">
+            <RotateCcw className="icon-size-200 text-primary" />
+            Initial reference for this deployment. The next sync will establish
+            deltas.
+          </div>
+        ) : entries.length === 0 && suppressed.length === 0 ? (
+          <div className="relative overflow-hidden p-l">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute right-l top-1/2 -translate-y-1/2 text-status-healthy opacity-10"
+            >
+              <RadarIcon className="icon-size-800" />
+              <ShieldCheck className="absolute left-1/2 top-1/2 icon-size-400 -translate-x-1/2 -translate-y-1/2" />
+            </div>
+            <div className="relative max-w-3xl">
+              <div className="flex items-center gap-s text-300 font-semibold text-status-healthy">
+                <CheckCircle2 className="icon-size-200" />
+                No new high-priority regression detected
+              </div>
+              <p className="mt-xs text-200 text-muted-foreground">
+                The latest adjacent snapshots meet the Radar goal across the
+                signals it evaluates.
+              </p>
+              <div
+                aria-label="Radar monitored signals"
+                className="mt-m flex flex-wrap gap-s"
+              >
+                {[
+                  "Access",
+                  "Sensitivity",
+                  "Lineage",
+                  "Consumed removals",
+                ].map((signal) => (
+                  <span
+                    key={signal}
+                    className="inline-flex items-center gap-xs rounded-full border border-status-healthy/20 bg-status-healthy/5 px-s py-xs text-100 font-semibold text-status-healthy"
+                  >
+                    <CheckCircle2 className="icon-size-100" />
+                    {signal}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : entries.length === 0 ? (
+          <div className="flex items-center gap-s p-l text-200 text-muted-foreground">
+            <CheckCheck className="icon-size-200 text-primary" />
+            All current high-priority regressions are acknowledged or muted.
+          </div>
+        ) : (
+          <div className="divide-y divide-border">
+            {entries.map((entry) => (
+              <div
+                key={entry.id}
+                className="grid gap-m p-l lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-s">
+                    <span
+                      className={cn(
+                        "rounded-full px-s py-xxs text-100 font-semibold uppercase",
+                        entry.severity === "critical"
+                          ? "bg-status-failing/10 text-status-failing"
+                          : "bg-status-warning/10 text-status-warning",
+                      )}
+                    >
+                      {entry.severity}
+                    </span>
+                    <span className="truncate text-300 font-semibold">
+                      {entry.title}
+                    </span>
+                  </div>
+                  <p className="mt-xs text-200 text-muted-foreground">
+                    {entry.detail}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-s">
+                  <button
+                    type="button"
+                    onClick={() => onOpen(entry)}
+                    className="rounded-lg border border-border px-m py-s text-200 font-semibold hover:bg-accent"
+                  >
+                    Open evidence
+                  </button>
+                  <button
+                    type="button"
+                    disabled={loading || pendingIds.has(entry.id)}
+                    onClick={() =>
+                      void onAcknowledge(entry).catch(() => undefined)
+                    }
+                    className="inline-flex items-center gap-s rounded-lg border border-status-healthy/30 bg-status-healthy/10 px-m py-s text-200 font-semibold text-status-healthy disabled:opacity-50"
+                  >
+                    <CheckCheck className="icon-size-100" />
+                    Acknowledge
+                  </button>
+                  <button
+                    type="button"
+                    disabled={loading || pendingIds.has(entry.id)}
+                    onClick={() =>
+                      void onMute(entry).catch(() => undefined)
+                    }
+                    className="inline-flex items-center gap-s rounded-lg border border-border px-m py-s text-200 font-semibold text-muted-foreground hover:bg-accent disabled:opacity-50"
+                  >
+                    <VolumeX className="icon-size-100" />
+                    Mute
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {suppressed.length > 0 && (
+          <div className="flex flex-wrap items-center gap-s border-t border-border bg-secondary/50 px-l py-s">
+            <span className="text-200 text-muted-foreground">
+              {suppressed.length} hidden radar item
+              {suppressed.length === 1 ? "" : "s"}
+            </span>
+            {suppressed.map((acknowledgement) => (
+              <button
+                key={acknowledgement.id}
+                type="button"
+                disabled={
+                  loading || pendingIds.has(acknowledgement.findingId)
+                }
+                onClick={() =>
+                  void onRestore(acknowledgement.id).catch(
+                    () => undefined,
+                  )
+                }
+                className="rounded-full border border-border bg-card px-s py-xs text-100 font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
+              >
+                Restore {acknowledgement.findingId.slice(0, 18)}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+const POSTURE_LABELS: Record<PosturePillar, string> = {
+  documentation: "Documentation",
+  ownership: "Ownership",
+  sensitivity: "Sensitivity",
+  access: "Access",
+  lineage: "Lineage",
+  operations: "Operations",
+};
+
+function PostureSection({
+  current,
+  previous,
+  scores,
+  summaries,
+  selectedPillar,
+  loading,
+  onPillar,
+  onNavigate,
+}: {
+  current: PostureScore;
+  previous?: PostureScore;
+  scores: Map<string, PostureScore>;
+  summaries: SnapshotSummary[];
+  selectedPillar: PosturePillar;
+  loading: boolean;
+  onPillar: (pillar: PosturePillar) => void;
+  onNavigate: (navigation: AtlasNavigation) => void;
+}) {
+  const atTarget = current.pillars.filter(
+    (pillar) => pillar.score != null && pillar.score >= pillar.target,
+  ).length;
+  const selected = current.pillars.find(
+    (pillar) => pillar.pillar === selectedPillar,
+  )!;
+  const trend = summaries.map((summary) => ({
+    label: snapshotLabel(summary),
+    value:
+      scores
+        .get(summary.snapshotId)
+        ?.pillars.find((pillar) => pillar.pillar === selectedPillar)
+        ?.score ?? null,
+  }));
+
+  return (
+    <div className="flex flex-col gap-l">
+      <Card className="overflow-hidden">
+        <div className="atlas-fabric-hero flex flex-col gap-m border-b border-border p-l sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <SectionLabel>Posture targets</SectionLabel>
+            <h2 className="mt-xs text-500 font-semibold">
+              {atTarget} of {current.pillars.length} pillars at target
+            </h2>
+            <p className="mt-xs text-200 text-muted-foreground">
+              Pillars are evaluated independently; non-applicable evidence is
+              never counted as zero.
+            </p>
+          </div>
+          <label>
+            <span className="sr-only">Posture trend pillar</span>
+            <select
+              value={selectedPillar}
+              onChange={(event) =>
+                onPillar(event.target.value as PosturePillar)
+              }
+              className="h-9 rounded-lg border border-input bg-card px-m text-300"
+            >
+              {current.pillars.map((pillar) => (
+                <option key={pillar.pillar} value={pillar.pillar}>
+                  {POSTURE_LABELS[pillar.pillar]}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="grid gap-s p-l sm:grid-cols-2 xl:grid-cols-3">
+          {current.pillars.map((pillar) => {
+            const before = previous?.pillars.find(
+              (candidate) => candidate.pillar === pillar.pillar,
+            )?.score;
+            const delta =
+              pillar.score != null && before != null
+                ? pillar.score - before
+                : null;
+            return (
+              <button
+                key={pillar.pillar}
+                type="button"
+                onClick={() =>
+                  onNavigate(
+                    pillar.pillar === "documentation" ||
+                      pillar.pillar === "ownership" ||
+                      pillar.pillar === "sensitivity"
+                      ? {
+                          tab: "catalog",
+                          focus: focusRequest({
+                            filters: {
+                              posturePillar: pillar.pillar,
+                            },
+                          }),
+                        }
+                      : {
+                          tab: "governance",
+                          focus: focusRequest({
+                            governanceSection: "findings",
+                            filters: {
+                              section: "findings",
+                              pillar: pillar.pillar,
+                            },
+                          }),
+                        },
+                  )
+                }
+                className="rounded-xl border border-border bg-card p-m text-left transition-colors hover:border-primary/40 hover:bg-primary/5"
+              >
+                <div className="flex items-center justify-between gap-s">
+                  <span className="text-300 font-semibold">
+                    {POSTURE_LABELS[pillar.pillar]}
+                  </span>
+                  <span className="font-numeric text-400 font-bold">
+                    {pillar.score == null ? "N/A" : `${pillar.score}%`}
+                  </span>
+                </div>
+                <div className="mt-m h-s overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={cn(
+                      "h-full rounded-full",
+                      pillar.score == null
+                        ? "bg-lineage-neutral"
+                        : pillar.score >= pillar.target
+                          ? "bg-status-healthy"
+                          : "bg-status-warning",
+                    )}
+                    style={{ width: `${pillar.score ?? 0}%` }}
+                  />
+                </div>
+                <div className="mt-s flex items-center justify-between text-100 text-muted-foreground">
+                  <span>Target {pillar.target}%</span>
+                  <span>
+                    {delta == null
+                      ? "No delta"
+                      : `${delta >= 0 ? "+" : ""}${delta} pts`}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+
+      <Card className="overflow-hidden">
+        <div className="border-b border-border bg-secondary/55 px-l py-m">
+          <h3 className="text-300 font-semibold">
+            {POSTURE_LABELS[selectedPillar]} trend
+          </h3>
+          <p className="text-200 text-muted-foreground">
+            Fixed 0–100 scale · target {selected.target}%
+          </p>
+        </div>
+        {loading ? (
+          <div className="flex min-h-72 items-center justify-center text-200 text-muted-foreground">
+            Evaluating historical catalogs…
+          </div>
+        ) : (
+          <div className="p-m">
+            <TrendChart
+              title={`${POSTURE_LABELS[selectedPillar]} posture history`}
+              data={trend}
+              valueLabel={(value) => `${value}%`}
+              maxValue={100}
+              referenceValue={selected.target}
+            />
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
 
@@ -753,9 +1498,11 @@ function FindingsSection({
   search,
   severity,
   category,
+  pillar,
   onSearch,
   onSeverity,
   onCategory,
+  onClearPillar,
   onNavigate,
   onPreset,
 }: {
@@ -764,13 +1511,16 @@ function FindingsSection({
   search: string;
   severity: GovernanceSeverity | "all";
   category: GovernanceCategory | "all";
+  pillar: string;
   onSearch: (value: string) => void;
   onSeverity: (value: GovernanceSeverity | "all") => void;
   onCategory: (value: GovernanceCategory | "all") => void;
+  onClearPillar: () => void;
   onNavigate: (finding: GovernanceFinding) => void;
   onPreset: (value: "all" | "external" | "metadata" | "failures") => void;
 }) {
-  const activeFilters = search || severity !== "all" || category !== "all";
+  const activeFilters =
+    search || severity !== "all" || category !== "all" || pillar;
   return (
     <div className="flex flex-col gap-l">
       <div className="grid gap-s sm:grid-cols-2 xl:grid-cols-4">
@@ -797,6 +1547,21 @@ function FindingsSection({
       </div>
 
       <Card className="overflow-hidden">
+        {pillar && (
+          <div className="flex items-center justify-between gap-m border-b border-border bg-primary/5 px-l py-s">
+            <span className="text-200 font-semibold text-brand-foreground">
+              Posture pillar:{" "}
+              {POSTURE_LABELS[pillar as PosturePillar] ?? pillar}
+            </span>
+            <button
+              type="button"
+              onClick={onClearPillar}
+              className="rounded-lg px-s py-xs text-200 font-semibold text-primary hover:bg-primary/10"
+            >
+              Clear pillar
+            </button>
+          </div>
+        )}
         <div className="flex flex-col gap-s border-b border-border bg-secondary/55 p-m lg:flex-row lg:items-center">
           <label className="relative min-w-0 flex-1">
             <span className="sr-only">Search governance findings</span>
@@ -1099,7 +1864,9 @@ function ChangesSection({
                   </div>
                 )}
               </div>
-              {change.itemFabricId && (
+              {change.itemFabricId &&
+                change.type !== "item-removed" &&
+                change.type !== "schema-object-removed" && (
                 <button
                   type="button"
                   onClick={() => onNavigate(change)}

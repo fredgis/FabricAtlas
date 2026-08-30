@@ -32,6 +32,26 @@ function emailList(value: string | undefined): string[] {
   ];
 }
 
+function numberMap(value: string | undefined): Record<string, number> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>)
+        .filter(
+          (entry): entry is [string, number] =>
+            typeof entry[1] === "number" && Number.isFinite(entry[1]),
+        )
+        .map(([key, rank]) => [key.trim().toLocaleLowerCase(), rank]),
+    );
+  } catch {
+    return {};
+  }
+}
+
 export const ATLAS_CONFIG = {
   clientId:
     (import.meta.env.VITE_RAYFIN_ATLAS_SPA_CLIENT_ID as string) ||
@@ -55,6 +75,9 @@ export const ATLAS_CONFIG = {
   ),
   previousSyncWriters: emailList(
     import.meta.env.VITE_RAYFIN_ATLAS_PREVIOUS_SYNC_WRITERS,
+  ),
+  sensitivityRanks: numberMap(
+    import.meta.env.VITE_RAYFIN_ATLAS_SENSITIVITY_RANKS,
   ),
   // A Power BI-audience token both invokes the UDF (UserDataFunction.Execute.All)
   // and is forwarded to Fabric REST inside the function.

@@ -18,8 +18,9 @@ import {
   type SchemaObjectImpactReport,
   type SchemaObjectRef,
 } from "../lineage";
+import { buildSchemaDependencies } from "../schema-lineage";
 import type { AtlasData } from "../model";
-import { Card, TypeGlyph } from "../ui";
+import { Card, TypeGlyph, cn } from "../ui";
 
 function safeFileName(value: string): string {
   return (
@@ -36,6 +37,8 @@ function reportMarkdown(
   report: ItemImpactReport | SchemaObjectImpactReport,
   object?: SchemaObjectRef,
 ): string {
+  const schemaReport =
+    object && "granularity" in report ? report : undefined;
   const itemName = report.item?.displayName ?? report.itemId;
   const title = object
     ? `${object.kind}: ${object.name} (${itemName})`
@@ -46,7 +49,7 @@ function reportMarkdown(
     `- Workspace: ${data.workspace.displayName}`,
     `- Subject: ${title}`,
     `- Generated: ${new Date().toISOString()}`,
-    `- Dependency granularity: ${object ? "Item level" : "Item"}`,
+    `- Dependency granularity: ${schemaReport?.granularity ?? "item"}`,
     "",
     "## Upstream",
     ...(report.upstream.length
@@ -72,7 +75,26 @@ function reportMarkdown(
         )
       : ["- None"]),
   ];
-  if (object) {
+  if (schemaReport?.objectImpact) {
+    lines.push(
+      "",
+      "## Object dependencies",
+      ...(schemaReport.objectImpact.upstream.length
+        ? schemaReport.objectImpact.upstream.map(
+            (entry) =>
+              `- ${entry.object.tableName ? `${entry.object.tableName}.` : ""}${entry.object.name} (${entry.confidence}, distance ${entry.distance})`,
+          )
+        : ["- None"]),
+      "",
+      "## Object consumers",
+      ...(schemaReport.objectImpact.downstream.length
+        ? schemaReport.objectImpact.downstream.map(
+            (entry) =>
+              `- ${entry.object.tableName ? `${entry.object.tableName}.` : ""}${entry.object.name} (${entry.confidence}, distance ${entry.distance})`,
+          )
+        : ["- None"]),
+    );
+  } else if (object) {
     lines.push(
       "",
       "> Fabric verifies dependencies at item level. This report does not infer schema-object lineage from matching names.",
@@ -127,13 +149,20 @@ function ImpactReportContent({
 }) {
   const [copied, setCopied] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const report = useMemo(
+  const dependencies = useMemo(
+    () => (object ? buildSchemaDependencies(data) : []),
+    [data, object],
+  );
+  const report = useMemo<ItemImpactReport | SchemaObjectImpactReport>(
     () =>
       object
-        ? buildSchemaObjectImpactReport(data, object)
+        ? buildSchemaObjectImpactReport(data, object, { dependencies })
         : buildItemImpactReport(data, itemId),
-    [data, itemId, object],
+    [data, dependencies, itemId, object],
   );
+  const schemaReport = object
+    ? (report as SchemaObjectImpactReport)
+    : undefined;
   const subject =
     object?.name ?? report.item?.displayName ?? report.itemId ?? "Impact report";
   const markdown = useMemo(
@@ -253,7 +282,7 @@ function ImpactReportContent({
             </header>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-l sm:p-xl">
-              {object && (
+              {schemaReport?.granularity === "item" && (
                 <div className="mb-l flex gap-m rounded-xl border border-status-warning/30 bg-status-warning/10 p-m text-200 text-muted-foreground">
                   <AlertTriangle
                     className="icon-size-200 shrink-0 text-status-warning"
@@ -265,6 +294,43 @@ function ImpactReportContent({
                     the source APIs do not provide.
                   </p>
                 </div>
+              )}
+              {schemaReport?.objectImpact && (
+                <Card className="mb-l overflow-hidden">
+                  <div className="flex flex-wrap items-center justify-between gap-m border-b border-border bg-secondary px-l py-m">
+                    <div>
+                      <h3 className="text-300 font-semibold">
+                        Object dependency evidence
+                      </h3>
+                      <p className="text-200 text-muted-foreground">
+                        DAX references resolved only to synchronized schema
+                        objects.
+                      </p>
+                    </div>
+                    <span
+                      className={cn(
+                        "rounded-full border px-s py-xs text-200 font-semibold",
+                        schemaReport.verifiedObjectDependencies
+                          ? "border-status-healthy/30 bg-status-healthy/10 text-status-healthy"
+                          : "border-status-warning/30 bg-status-warning/10 text-status-warning",
+                      )}
+                    >
+                      {schemaReport.verifiedObjectDependencies
+                        ? "Verified by DAX"
+                        : "Inferred from item lineage"}
+                    </span>
+                  </div>
+                  <div className="grid gap-l p-l lg:grid-cols-2">
+                    <SchemaImpactList
+                      title="Depends on"
+                      entries={schemaReport.objectImpact.upstream}
+                    />
+                    <SchemaImpactList
+                      title="Used by"
+                      entries={schemaReport.objectImpact.downstream}
+                    />
+                  </div>
+                </Card>
               )}
 
               <section
@@ -376,6 +442,50 @@ function ImpactReportContent({
         </Dialog.Content>
       </div>
     </Dialog.Portal>
+  );
+}
+
+function SchemaImpactList({
+  title,
+  entries,
+}: {
+  title: string;
+  entries: NonNullable<
+    SchemaObjectImpactReport["objectImpact"]
+  >["upstream"];
+}) {
+  return (
+    <section>
+      <h4 className="text-300 font-semibold">{title}</h4>
+      {entries.length === 0 ? (
+        <p className="mt-s text-200 text-muted-foreground">None</p>
+      ) : (
+        <div className="mt-s space-y-xs">
+          {entries.map((entry) => (
+            <div
+              key={`${entry.object.itemId}:${entry.object.tableName}:${entry.object.name}`}
+              className="flex items-center justify-between gap-m rounded-lg border border-border bg-secondary/50 px-m py-s"
+            >
+              <span className="min-w-0 truncate text-200 font-semibold">
+                {entry.object.tableName
+                  ? `${entry.object.tableName}.${entry.object.name}`
+                  : entry.object.name}
+              </span>
+              <span
+                className={cn(
+                  "shrink-0 rounded-full px-s py-xxs text-100 font-semibold",
+                  entry.confidence === "verified"
+                    ? "bg-status-healthy/10 text-status-healthy"
+                    : "bg-status-warning/10 text-status-warning",
+                )}
+              >
+                {entry.confidence === "verified" ? "DAX" : "Inferred"}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

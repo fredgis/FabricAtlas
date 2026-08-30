@@ -14,6 +14,11 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { AtlasFocusRequest, AtlasNavigation } from "../navigation";
+import { snapshotCatalogFromData } from "../history";
+import {
+  nonConformingPostureItemIds,
+  type PosturePillar,
+} from "../posture";
 import { useAtlas } from "../store";
 import {
   Avatar,
@@ -151,6 +156,21 @@ export function CatalogView({
       : null,
   );
   const [query, setQuery] = useState(focus?.query ?? "");
+  const [posturePillar, setPosturePillar] = useState(
+    typeof focus?.filters?.posturePillar === "string"
+      ? (focus.filters.posturePillar as PosturePillar)
+      : undefined,
+  );
+  const postureItemIds = useMemo(
+    () =>
+      posturePillar
+        ? nonConformingPostureItemIds(
+            snapshotCatalogFromData(data),
+            posturePillar,
+          )
+        : undefined,
+    [data, posturePillar],
+  );
 
   const toggle = (type: string) =>
     setExpanded((previous) => {
@@ -165,13 +185,14 @@ export function CatalogView({
     return items.filter(
       (item) =>
         (!selType || item.itemType === selType) &&
+        (!postureItemIds || postureItemIds.has(item.fabricId)) &&
         (!normalizedQuery ||
           item.displayName.toLowerCase().includes(normalizedQuery) ||
           item.tags.some((tag) =>
             tag.toLowerCase().includes(normalizedQuery),
           )),
     );
-  }, [items, selType, query]);
+  }, [items, postureItemIds, selType, query]);
 
   const [detailId, setDetailId] = useState<string | null>(
     focus?.itemId ?? null,
@@ -184,10 +205,16 @@ export function CatalogView({
         requestId: "catalog-view-state",
         itemId: detailId ?? undefined,
         query: query.trim() || undefined,
-        filters: selType ? { type: selType } : undefined,
+        filters:
+          selType || posturePillar
+            ? {
+                ...(selType ? { type: selType } : {}),
+                ...(posturePillar ? { posturePillar } : {}),
+              }
+            : undefined,
       },
     });
-  }, [detailId, onStateChange, query, selType]);
+  }, [detailId, onStateChange, posturePillar, query, selType]);
   const drawerRef = useRef<HTMLElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
   const detail = items.find((item) => item.fabricId === detailId);
@@ -211,7 +238,9 @@ export function CatalogView({
     .filter(Boolean) as Item[];
   const dGrants = grants.filter((grant) => grant.itemFabricId === detailId);
   const dJobs = jobs.filter((job) => job.itemFabricId === detailId);
-  const hasActiveFilters = Boolean(selType || query.trim());
+  const hasActiveFilters = Boolean(
+    selType || query.trim() || posturePillar,
+  );
 
   const drawerSections = detail
     ? [
@@ -231,6 +260,7 @@ export function CatalogView({
   const resetFilters = () => {
     setQuery("");
     setSelType(null);
+    setPosturePillar(undefined);
   };
 
   const scrollToSection = (sectionKey: string) => {
@@ -325,6 +355,11 @@ export function CatalogView({
           {query.trim() && (
             <span className="rounded-md border border-border bg-card px-s py-xxs text-200 font-semibold">
               “{query.trim()}”
+            </span>
+          )}
+          {posturePillar && (
+            <span className="rounded-md border border-status-warning/30 bg-status-warning/10 px-s py-xxs text-200 font-semibold text-status-warning">
+              Posture: {posturePillar}
             </span>
           )}
           {hasActiveFilters && (

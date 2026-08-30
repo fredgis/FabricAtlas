@@ -53,6 +53,7 @@ export interface SnapshotSummary extends SnapshotMetrics {
   snapshotId: string;
   syncedAt: string;
   label: string;
+  deploymentId?: string;
 }
 
 export type SnapshotTrendPoint = SnapshotSummary;
@@ -724,6 +725,7 @@ export function summarizeSnapshot(snapshot: HistoricalSnapshot): SnapshotSummary
     snapshotId: snapshot.snapshotId,
     syncedAt: snapshot.syncedAt,
     label: snapshot.syncedAt.slice(0, 10),
+    deploymentId: snapshot.catalog.workspace.deploymentId,
     items,
     itemCount: items,
     healthy,

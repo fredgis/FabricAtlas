@@ -9,6 +9,7 @@ import { Comment } from './Comment.js';
 import { SyncRun } from './SyncRun.js';
 import { SavedView } from './SavedView.js';
 import { AccessReview } from './AccessReview.js';
+import { FindingAck } from './FindingAck.js';
 
 /**
  * Schema type map — enables full type-safety through RayfinClient
@@ -26,6 +27,7 @@ export type AtlasSchema = {
   SyncRun: SyncRun;
   SavedView: SavedView;
   AccessReview: AccessReview;
+  FindingAck: FindingAck;
 };
 
 export const schema = [
@@ -40,4 +42,5 @@ export const schema = [
   SyncRun,
   SavedView,
   AccessReview,
+  FindingAck,
 ];

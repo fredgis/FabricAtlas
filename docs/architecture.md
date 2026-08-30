@@ -29,7 +29,7 @@ Rayfin Data API (Data API Builder)  ──  Fabric SQL database (mssql)
 
 ## Data model
 
-Eleven entities capture the workspace, team context and personal review state.
+Twelve entities capture the workspace, team context and personal review state.
 See [data-model.md](data-model.md) for fields.
 
 | Entity | Holds |
@@ -45,6 +45,7 @@ See [data-model.md](data-model.md) for fields.
 | `SyncRun` | Audit of each Sync |
 | `SavedView` | User-scoped filter and navigation presets |
 | `AccessReview` | User-scoped access-review decisions and notes |
+| `FindingAck` | User-scoped Governance Radar acknowledgements and mutes |
 
 ## Sync
 
@@ -138,6 +139,39 @@ snapshot pair.
 Live filter changes use `replaceState`, while destination changes use
 `pushState`. Re-selecting the exact current route is a no-op so browser history
 does not accumulate duplicate entries.
+
+## Governance intelligence
+
+`src/atlas/radar.ts` compares the exact latest adjacent snapshot pair. Stable
+finding IDs identify new, persisting and resolved findings; risky Change Center
+events add access, sensitivity, lineage and removal signals. A deployment-ID
+boundary creates a clean baseline instead of reporting every existing finding
+as new.
+
+`FindingAck` stores personal acknowledgement or mute state under a
+`claims.sub == user_id` policy. Mutations are serialized per finding, and a
+personalization failure never hides the underlying Radar alerts.
+
+`src/atlas/posture.ts` evaluates documentation, ownership, sensitivity, access,
+lineage and operations. Non-applicable evidence is excluded rather than scored
+as zero. Current and previous loaded catalogs provide Overview deltas; opening
+Posture lazily hydrates older catalogs for a consistent trend.
+
+`src/atlas/offboarding.ts` composes existing metadata, effective access and
+indexed lineage into departure/removal packs. It blocks ownership claims for
+ambiguous principals and recommends only resolved internal user successors.
+
+## DAX object lineage
+
+`src/atlas/dax-refs.ts` strips strings and comments before extracting qualified
+columns and measures. `src/atlas/schema-lineage.ts` emits dependencies only
+when a reference resolves uniquely to a real synchronized schema object.
+
+Verified DAX edges remain inside the semantic model. A cross-item source hop is
+marked inferred and requires both real item lineage and one unique matching
+upstream table/column. Asset Catalog and impact reports display confidence
+explicitly; item-level fallback remains unchanged when no object evidence
+resolves.
 
 ## Object inventory
 

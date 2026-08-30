@@ -17,6 +17,7 @@ import { useThemeContext } from "@/hooks/theme.context";
 import { ATLAS_CONFIG } from "../config";
 import { REPOSITORY_URL } from "../release";
 import { useAtlas } from "../store";
+import { cn } from "../ui";
 
 const CAPABILITIES = [
   {
@@ -92,6 +93,11 @@ export function FirstSyncView() {
     data.workspace.displayName,
     ATLAS_CONFIG.workspaceName,
   );
+  const donutProgress = syncing ? syncProgress : 0;
+  const donutRadius = 76;
+  const donutCircumference = 2 * Math.PI * donutRadius;
+  const donutOffset =
+    donutCircumference * (1 - Math.min(100, donutProgress) / 100);
 
   return (
     <div className="relative min-h-screen overflow-auto bg-background text-foreground">
@@ -236,126 +242,102 @@ export function FirstSyncView() {
                 <div className="flex items-center justify-between gap-m">
                   <div>
                     <div className="text-100 font-bold uppercase tracking-[0.16em] text-lineage-downstream">
-                      Live topology preview
+                      Synchronization progress
                     </div>
                     <div className="mt-xs text-300 font-semibold">
-                      Source to insight
+                      {syncing
+                        ? syncStage
+                        : deploymentRefresh
+                          ? "Ready to refresh the map"
+                          : "Ready to build the first atlas"}
                     </div>
                   </div>
                   <span className="flex items-center gap-xs text-200 text-muted-foreground">
-                    <span className="h-xs w-xs animate-pulse rounded-full bg-lineage-downstream" />
-                    mapping
+                    <span
+                      className={cn(
+                        "h-xs w-xs rounded-full",
+                        syncing
+                          ? "animate-pulse bg-lineage-downstream"
+                          : "bg-lineage-neutral",
+                      )}
+                    />
+                    {syncing ? "live" : "waiting"}
                   </span>
                 </div>
 
-                <svg
-                  viewBox="0 0 520 300"
-                  className="mt-m h-auto w-full"
-                  role="img"
-                  aria-label="Animated preview of Fabric lineage from pipelines to reports"
-                >
-                  <defs>
-                    <linearGradient id="sync-line" x1="0" x2="1">
-                      <stop offset="0" stopColor="var(--color-primary)" />
-                      <stop
-                        offset="1"
-                        stopColor="var(--color-lineage-downstream)"
-                      />
-                    </linearGradient>
-                    <filter id="sync-glow">
-                      <feGaussianBlur stdDeviation="5" result="blur" />
-                      <feMerge>
-                        <feMergeNode in="blur" />
-                        <feMergeNode in="SourceGraphic" />
-                      </feMerge>
-                    </filter>
-                  </defs>
-
-                  <path
-                    d="M82 80 C150 80 146 150 220 150"
-                    className="atlas-flow"
-                    fill="none"
-                    stroke="url(#sync-line)"
-                    strokeWidth="3"
-                    strokeOpacity="0.8"
-                  />
-                  <path
-                    d="M82 220 C150 220 146 150 220 150"
-                    className="atlas-flow"
-                    fill="none"
-                    stroke="url(#sync-line)"
-                    strokeWidth="3"
-                    strokeOpacity="0.8"
-                  />
-                  <path
-                    d="M300 150 C370 150 366 80 438 80"
-                    className="atlas-flow"
-                    fill="none"
-                    stroke="url(#sync-line)"
-                    strokeWidth="3"
-                    strokeOpacity="0.8"
-                  />
-                  <path
-                    d="M300 150 C370 150 366 220 438 220"
-                    className="atlas-flow"
-                    fill="none"
-                    stroke="url(#sync-line)"
-                    strokeWidth="3"
-                    strokeOpacity="0.8"
-                  />
-
-                  {[
-                    [42, 56, "PL", "Pipeline", "var(--color-lineage-upstream)"],
-                    [42, 196, "NB", "Notebook", "var(--color-object-column)"],
-                    [220, 126, "LH", "Lakehouse", "var(--color-object-source)"],
-                    [438, 56, "SM", "Model", "var(--color-object-measure)"],
-                    [438, 196, "RP", "Report", "var(--color-status-warning)"],
-                  ].map(([x, y, code, label, color], index) => (
-                    <g
-                      key={String(code)}
-                      className="atlas-sync-node"
-                      style={{ animationDelay: `${index * 0.28}s` }}
-                      filter={index === 2 ? "url(#sync-glow)" : undefined}
+                <div className="mt-l flex flex-col items-center">
+                  <div
+                    role="progressbar"
+                    aria-label="Workspace synchronization donut"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={donutProgress}
+                    className="relative h-56 w-56"
+                  >
+                    <svg
+                      viewBox="0 0 200 200"
+                      className="h-full w-full -rotate-90"
+                      aria-hidden="true"
                     >
-                      <rect
-                        x={Number(x)}
-                        y={Number(y)}
-                        width="64"
-                        height="48"
-                        rx="12"
-                        fill="var(--color-card)"
-                        stroke="var(--color-border)"
+                      <circle
+                        cx="100"
+                        cy="100"
+                        r={donutRadius}
+                        fill="none"
+                        stroke="var(--color-muted)"
+                        strokeWidth="18"
                       />
-                      <rect
-                        x={Number(x) + 8}
-                        y={Number(y) + 8}
-                        width="32"
-                        height="32"
-                        rx="9"
-                        fill={String(color)}
+                      <circle
+                        cx="100"
+                        cy="100"
+                        r={donutRadius}
+                        fill="none"
+                        stroke="var(--color-primary)"
+                        strokeWidth="18"
+                        strokeLinecap="round"
+                        strokeDasharray={donutCircumference}
+                        strokeDashoffset={donutOffset}
+                        style={{
+                          transition: reduceMotion
+                            ? "none"
+                            : "stroke-dashoffset 500ms ease",
+                        }}
                       />
-                      <text
-                        x={Number(x) + 24}
-                        y={Number(y) + 28}
-                        fill="white"
-                        fontSize="11"
-                        fontWeight="700"
-                        textAnchor="middle"
-                      >
-                        {code}
-                      </text>
-                      <text
-                        x={Number(x) + 32}
-                        y={Number(y) + 65}
-                        fill="var(--color-muted-foreground)"
-                        fontSize="10"
-                        textAnchor="middle"
-                      >
-                        {label}
-                      </text>
-                    </g>
-                  ))}
-                </svg>
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                      <span className="font-numeric text-hero-700 font-bold text-foreground">
+                        {donutProgress}%
+                      </span>
+                      <span className="mt-xs max-w-32 text-200 text-muted-foreground">
+                        {syncing ? syncStage : "Ready"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-l grid w-full grid-cols-5 gap-xs">
+                    {SYNC_STEPS.map((step, index) => {
+                      const threshold = index * 20;
+                      const active = donutProgress >= threshold;
+                      return (
+                        <div key={step} className="text-center">
+                          <span
+                            className={cn(
+                              "mx-auto flex h-7 w-7 items-center justify-center rounded-full border font-numeric text-100 font-semibold",
+                              active
+                                ? "border-primary bg-primary/10 text-brand-foreground"
+                                : "border-border bg-card text-muted-foreground",
+                            )}
+                          >
+                            {index + 1}
+                          </span>
+                          <span className="mt-xs block truncate text-100 text-muted-foreground">
+                            {step}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
 
               <div className="mt-auto rounded-xl border border-border bg-card p-l shadow-fabric-4">

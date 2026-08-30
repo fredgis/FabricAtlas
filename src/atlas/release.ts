@@ -15,7 +15,7 @@ export const REPOSITORY_URL =
   "https://github.com/fredgis/FabricAtlas";
 
 export const APP_VERSION =
-  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.8.0";
+  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.9.0";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -27,6 +27,29 @@ export const BUILD_DATE =
 export const DEPLOYMENT_ID = `${APP_VERSION}:${BUILD_COMMIT}:${BUILD_DATE}`;
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "1.9.0",
+    date: "2026-08-30",
+    title: "Governance intelligence and DAX object lineage",
+    sections: [
+      {
+        title: "Governance intelligence",
+        items: [
+          "Governance Radar isolates new high-priority findings and dangerous changes, with personal acknowledge or mute actions and a monitored-goal watermark when the latest delta is clear.",
+          "Posture targets score documentation, ownership, sensitivity, access, lineage and operations without treating unavailable evidence as zero.",
+          "Departure packs combine ownership, orphan risk, blast radius, reassignment guidance and exportable evidence.",
+        ],
+      },
+      {
+        title: "Object lineage & experience",
+        items: [
+          "DAX references prove measure dependencies to real synchronized columns and measures, with inferred source hops clearly distinguished.",
+          "Asset Catalog and impact reports expose Depends on and Used by evidence at object granularity.",
+          "First sync uses a live progress donut, Search copy remains readable, and UUID-like workspace capacity IDs stay hidden.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.8.0",
     date: "2026-08-30",

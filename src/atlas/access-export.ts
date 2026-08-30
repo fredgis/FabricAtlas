@@ -21,7 +21,7 @@ function flags(row: AccessReviewRow): NonNullable<Grant["flag"]>[] {
   return ["external", ...row.flags];
 }
 
-function csvCell(value: string | number): string {
+export function csvCell(value: string | number): string {
   const text = String(value);
   const neutralized = /^\s*[=+\-@]/.test(text) ? `'${text}` : text;
   return `"${neutralized.replace(/"/g, '""')}"`;

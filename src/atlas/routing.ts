@@ -49,6 +49,7 @@ const GOVERNANCE_SECTIONS = new Set([
   "changes",
   "history",
   "coverage",
+  "posture",
 ]);
 const GOVERNANCE_SEVERITIES = new Set([
   "all",
@@ -106,6 +107,14 @@ const JOB_STATUSES = new Set([
   "cancelled",
 ]);
 const WORKSPACE_SECTIONS = new Set(["configuration", "notes"]);
+const POSTURE_PILLARS = new Set([
+  "documentation",
+  "ownership",
+  "sensitivity",
+  "access",
+  "lineage",
+  "operations",
+]);
 
 function request(
   values: Omit<AtlasFocusRequest, "requestId">,
@@ -192,6 +201,10 @@ export function parseAtlasLocation(
               new Set(Object.keys(ITEM_TYPES)),
             ),
           ],
+          [
+            "posturePillar",
+            allowed(params, "catalog.posture", POSTURE_PILLARS),
+          ],
         ]),
       }),
     };
@@ -257,6 +270,10 @@ export function parseAtlasLocation(
           [
             "metric",
             allowed(params, "governance.metric", HISTORY_METRICS),
+          ],
+          [
+            "pillar",
+            allowed(params, "governance.pillar", POSTURE_PILLARS),
           ],
           ["currentSnapshotId", value(params, "governance.current")],
           ["previousSnapshotId", value(params, "governance.baseline")],
@@ -357,6 +374,7 @@ export function urlForNavigation(
   if (navigation.tab === "catalog") {
     set(params, "catalog.q", focus?.query ?? filterValue(focus, "search"));
     set(params, "catalog.type", filterValue(focus, "type"));
+    set(params, "catalog.posture", filterValue(focus, "posturePillar"));
     set(params, "catalog.item", focus?.itemId);
   } else if (navigation.tab === "assets") {
     set(params, "assets.q", focus?.query);
@@ -377,6 +395,7 @@ export function urlForNavigation(
     set(params, "governance.changeq", filterValue(focus, "changeSearch"));
     set(params, "governance.domain", filterValue(focus, "domain"));
     set(params, "governance.metric", filterValue(focus, "metric"));
+    set(params, "governance.pillar", filterValue(focus, "pillar"));
     set(
       params,
       "governance.current",

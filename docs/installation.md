@@ -132,6 +132,7 @@ RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_EMAIL=<authorized-sync-user>
 RAYFIN_PUBLIC_ATLAS_SNAPSHOT_RETENTION_COUNT=12
 # Optional during synchronizer rotation:
 RAYFIN_PUBLIC_ATLAS_PREVIOUS_SYNC_WRITERS=<former-user@example.com>
+RAYFIN_PUBLIC_ATLAS_SENSITIVITY_RANKS='{"<label-id>":3,"<lower-label-id>":1}'
 ```
 
 Then `npx rayfin up` again so the values are baked into the deployed bundle, and add the new hosting
@@ -143,6 +144,11 @@ it requires another `npx rayfin up`. Snapshot retention defaults to 12 and is
 clamped between 2 and 50. When rotating the synchronizer, list former writer
 emails in `RAYFIN_PUBLIC_ATLAS_PREVIOUS_SYNC_WRITERS` until their retained
 history has been migrated or pruned.
+
+Sensitivity downgrade alerts are tenant-specific. Optionally map Purview label
+IDs or normalized aliases to numeric ranks in
+`RAYFIN_PUBLIC_ATLAS_SENSITIVITY_RANKS`; higher numbers mean stronger
+protection. Unknown labels intentionally produce no downgrade alert.
 
 > **One SPA redirect URI per hosting origin.** MSAL signs in against the app's own origin
 > (`https://<app>.fabricapps.net`), so that exact origin must be listed under the app registration's

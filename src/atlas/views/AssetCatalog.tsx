@@ -21,6 +21,11 @@ import {
 } from "../governance";
 import type { SchemaObjectRef } from "../lineage";
 import type { AtlasFocusRequest, AtlasNavigation } from "../navigation";
+import {
+  buildSchemaDependencies,
+  createSchemaLineageIndex,
+  schemaObjectKey,
+} from "../schema-lineage";
 import { useAtlas } from "../store";
 import { PrincipalAvatar, SectionLabel, TypeGlyph, cn } from "../ui";
 import {
@@ -329,6 +334,14 @@ export function AssetCatalogView({
   }, [kind, onStateChange, query, selectedAsset]);
 
   const accessRows = useMemo(() => buildAccessReviewRows(data), [data]);
+  const schemaDependencies = useMemo(
+    () => buildSchemaDependencies(data),
+    [data],
+  );
+  const schemaLineage = useMemo(
+    () => createSchemaLineageIndex(schemaDependencies),
+    [schemaDependencies],
+  );
   const access = useMemo(() => {
     if (!selectedAsset) return [];
     return selectAccessByItem(accessRows, selectedAsset.itemFabricId).map(
@@ -371,6 +384,17 @@ export function AssetCatalogView({
         tableName: selectedAsset.table,
       } satisfies SchemaObjectRef)
     : undefined;
+  const selectedDependencies = selectedObject
+    ? {
+        upstream:
+          schemaLineage.dependenciesByFrom.get(
+            schemaObjectKey(selectedObject),
+          ) ?? [],
+        downstream:
+          schemaLineage.consumersByTo.get(schemaObjectKey(selectedObject)) ??
+          [],
+      }
+    : { upstream: [], downstream: [] };
   const hasActiveFilters = Boolean(query.trim() || kind !== "all");
 
   const resetFilters = () => {
@@ -732,6 +756,74 @@ export function AssetCatalogView({
                       <code className="mt-xs block whitespace-pre-wrap font-mono text-200 text-foreground">
                         {selectedAsset.expression}
                       </code>
+                    </div>
+                  )}
+
+                  {(selectedDependencies.upstream.length > 0 ||
+                    selectedDependencies.downstream.length > 0) && (
+                    <div className="mt-s grid gap-s sm:grid-cols-2">
+                      {[
+                        {
+                          title: "Depends on",
+                          values: selectedDependencies.upstream.map(
+                            (dependency) => ({
+                              object: dependency.to,
+                              confidence: dependency.confidence,
+                            }),
+                          ),
+                        },
+                        {
+                          title: "Used by",
+                          values: selectedDependencies.downstream.map(
+                            (dependency) => ({
+                              object: dependency.from,
+                              confidence: dependency.confidence,
+                            }),
+                          ),
+                        },
+                      ].map(({ title, values }) => (
+                        <section
+                          key={title}
+                          className="rounded-lg border border-border bg-secondary/55 p-m"
+                        >
+                          <h3 className="text-200 font-semibold">{title}</h3>
+                          <div className="mt-s space-y-xs">
+                            {values.length === 0 ? (
+                              <p className="text-200 text-muted-foreground">
+                                None
+                              </p>
+                            ) : (
+                              values.map(({ object, confidence }) => (
+                                <div
+                                  key={`${schemaObjectKey(object)}:${confidence}`}
+                                  className="flex items-center justify-between gap-s rounded-md bg-card px-s py-xs"
+                                >
+                                  <span className="min-w-0 truncate text-200 font-medium">
+                                    {itemById.get(object.itemId)?.displayName ??
+                                      object.itemId}{" "}
+                                    ·{" "}
+                                    {object.tableName
+                                      ? `${object.tableName}.${object.name}`
+                                      : object.name}
+                                  </span>
+                                  <span
+                                    className={cn(
+                                      "shrink-0 rounded-full px-s py-xxs text-100 font-semibold",
+                                      confidence === "verified"
+                                        ? "bg-status-healthy/10 text-status-healthy"
+                                        : "bg-status-warning/10 text-status-warning",
+                                    )}
+                                  >
+                                    {confidence === "verified"
+                                      ? "DAX"
+                                      : "Inferred"}
+                                  </span>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </section>
+                      ))}
                     </div>
                   )}
 

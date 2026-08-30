@@ -466,7 +466,12 @@ function edgeEvidence(edge: Edge): string {
   return `edge:${lineageEdgeKey(edge)}`;
 }
 
-export function buildGovernanceFindings(data: AtlasData): GovernanceFinding[] {
+export function buildGovernanceFindings(
+  data: Pick<
+    AtlasData,
+    "workspace" | "items" | "principals" | "grants" | "jobs" | "edges"
+  >,
+): GovernanceFinding[] {
   const findings: GovernanceFinding[] = [];
   const accessRows = buildAccessReviewRows(data);
 

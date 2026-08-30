@@ -27,7 +27,7 @@ describe("ImpactReportDialog", () => {
     expect(screen.getByText("Downstream consumers")).toBeInTheDocument();
   });
 
-  it("labels schema-object impact as item-level", () => {
+  it("shows verified DAX object impact when references resolve", () => {
     const model = SAMPLE_DATA.items.find(
       (item) => item.itemType === "SemanticModel",
     );
@@ -47,8 +47,13 @@ describe("ImpactReportDialog", () => {
     );
 
     expect(
-      screen.getByText(/Fabric exposes verified lineage at item level/),
+      screen.getByText("Object dependency evidence"),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText("Inferred from item lineage"),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("DAX").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Inferred").length).toBeGreaterThan(0);
   });
 
   it("falls back to manual copy when clipboard access is unavailable", () => {

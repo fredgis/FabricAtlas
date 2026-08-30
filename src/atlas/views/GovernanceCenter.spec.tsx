@@ -7,7 +7,7 @@ import {
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AtlasProvider } from "../store";
-import { GovernanceCenterView } from "./GovernanceCenter";
+import { GovernanceCenterView, RadarPanel } from "./GovernanceCenter";
 
 function renderView() {
   const onNavigate = vi.fn();
@@ -30,6 +30,12 @@ describe("GovernanceCenterView", () => {
     expect(screen.getByRole("tab", { name: /Changes/ })).toBeVisible();
     expect(screen.getByRole("tab", { name: /History/ })).toBeVisible();
     expect(screen.getByRole("tab", { name: /Coverage/ })).toBeVisible();
+    expect(screen.getByRole("tab", { name: /Posture/ })).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "What became risky since the last sync",
+      }),
+    ).toBeInTheDocument();
   });
 
   it("supports arrow-key tab navigation", async () => {
@@ -85,5 +91,71 @@ describe("GovernanceCenterView", () => {
     await waitFor(() =>
       expect(screen.getByText("Priority findings")).toBeInTheDocument(),
     );
+  });
+
+  it("shows posture targets on a fixed scoring surface", () => {
+    renderView();
+    fireEvent.click(screen.getByRole("tab", { name: /Posture/ }));
+
+    expect(
+      screen.getByRole("heading", { name: /pillars at target/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Fixed 0–100 scale/)).toBeInTheDocument();
+  });
+});
+
+describe("RadarPanel", () => {
+  const readyRadar = {
+    state: "ready" as const,
+    currentSnapshotId: "current",
+    previousSnapshotId: "previous",
+    deltas: [],
+    riskyChanges: [],
+    provenanceComplete: true,
+  };
+  const baseProps = {
+    entries: [],
+    suppressed: [],
+    loading: false,
+    historyLoading: false,
+    failedSnapshotIds: [],
+    pendingIds: new Set<string>(),
+    onAcknowledge: vi.fn(async () => undefined),
+    onMute: vi.fn(async () => undefined),
+    onRestore: vi.fn(async () => undefined),
+    onRetryHistory: vi.fn(),
+    onOpen: vi.fn(),
+    onDownload: vi.fn(),
+  };
+
+  it("shows the monitored goal as a watermark when no risk is new", () => {
+    render(<RadarPanel {...baseProps} radar={readyRadar} />);
+
+    expect(
+      screen.getByText("No new high-priority regression detected"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Radar monitored signals"),
+    ).toHaveTextContent("AccessSensitivityLineageConsumed removals");
+  });
+
+  it("offers a retry instead of leaving a failed comparison loading", () => {
+    const onRetryHistory = vi.fn();
+    render(
+      <RadarPanel
+        {...baseProps}
+        radar={{ state: "loading", missingSnapshotIds: ["previous"] }}
+        failedSnapshotIds={["previous"]}
+        onRetryHistory={onRetryHistory}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Retry comparison" }),
+    );
+    expect(onRetryHistory).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByText("The latest governance comparison is unavailable"),
+    ).toBeInTheDocument();
   });
 });

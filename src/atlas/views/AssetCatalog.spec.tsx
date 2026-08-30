@@ -55,4 +55,26 @@ describe("AssetCatalogView", () => {
       }),
     );
   });
+
+  it("shows resolved DAX dependencies for a selected measure", async () => {
+    render(
+      <AtlasProvider isPreview>
+        <AssetCatalogView />
+      </AtlasProvider>,
+    );
+    fireEvent.change(screen.getByLabelText("Search assets"), {
+      target: { value: "Total Revenue" },
+    });
+    const measureButton = screen.getByText("Total Revenue").closest("button")!;
+    expect(measureButton).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(measureButton);
+    expect(measureButton).toHaveAttribute("aria-pressed", "true");
+
+    expect(
+      await screen.findByLabelText("Total Revenue inspector"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Depends on")).toBeInTheDocument();
+    expect(screen.getAllByText("DAX").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/total_revenue_chf/).length).toBeGreaterThan(0);
+  });
 });

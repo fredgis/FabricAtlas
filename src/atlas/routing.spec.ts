@@ -117,4 +117,32 @@ describe("Atlas routing", () => {
       },
     });
   });
+
+  it("round-trips posture filters", () => {
+    const url = urlForNavigation(
+      { pathname: "/", search: "" },
+      {
+        tab: "governance",
+        focus: {
+          requestId: "ignored",
+          governanceSection: "posture",
+          filters: { section: "posture", pillar: "ownership" },
+        },
+      },
+    );
+
+    expect(url).toContain("governance.section=posture");
+    expect(url).toContain("governance.pillar=ownership");
+    expect(
+      parseAtlasLocation({
+        hash: "#governance",
+        search: url.slice(url.indexOf("?"), url.indexOf("#")),
+      }),
+    ).toMatchObject({
+      focus: {
+        governanceSection: "posture",
+        filters: { pillar: "ownership" },
+      },
+    });
+  });
 });

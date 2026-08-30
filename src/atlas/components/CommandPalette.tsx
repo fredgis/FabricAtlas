@@ -223,7 +223,7 @@ export function CommandPalette({
                   <h2 className="mt-l text-400 font-semibold">
                     Search the whole workspace
                   </h2>
-                  <p className="mt-s max-w-xl text-300 leading-300 text-muted-foreground">
+                  <p className="atlas-search-empty-copy mt-s text-300 leading-300 text-muted-foreground">
                     Find Fabric items, schema objects, access principals, jobs,
                     configuration and team notes from one place.
                   </p>

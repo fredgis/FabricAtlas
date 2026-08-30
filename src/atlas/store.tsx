@@ -31,6 +31,13 @@ import {
   type SavedViewFilters,
   type SavedViewSection,
 } from "./saved-views";
+import {
+  deleteFindingAck,
+  loadFindingAcks,
+  saveFindingAck,
+  type FindingAcknowledgement,
+  type FindingAckStatus,
+} from "./finding-acks";
 
 export interface CurrentUser {
   id: string;
@@ -44,9 +51,14 @@ export interface AtlasContextValue {
   hydrating: boolean;
   historyLoading: boolean;
   historyError?: string;
+  historyFailedSnapshotIds: Set<string>;
   savedViews: SavedView[];
   savedViewsLoading: boolean;
   savedViewsError?: string;
+  findingAcks: FindingAcknowledgement[];
+  findingAcksLoading: boolean;
+  findingAcksError?: string;
+  findingAckPendingIds: Set<string>;
   syncing: boolean;
   syncProgress: number;
   syncStage: string;
@@ -66,6 +78,13 @@ export interface AtlasContextValue {
     filters: SavedViewFilters;
   }) => Promise<void>;
   removeSavedView: (id: string) => Promise<void>;
+  saveFindingAcknowledgement: (input: {
+    findingId: string;
+    occurrenceSnapshotId?: string;
+    status: FindingAckStatus;
+    note?: string;
+  }) => Promise<void>;
+  removeFindingAcknowledgement: (id: string) => Promise<void>;
   loadHistorySnapshot: (snapshotId: string) => Promise<void>;
 }
 
@@ -118,9 +137,18 @@ export function AtlasProvider({
   const [hydrating, setHydrating] = useState(!isPreview);
   const [historyLoading, setHistoryLoading] = useState(!isPreview);
   const [historyError, setHistoryError] = useState<string | undefined>();
+  const [historyFailedSnapshotIds, setHistoryFailedSnapshotIds] = useState(
+    new Set<string>(),
+  );
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
   const [savedViewsLoading, setSavedViewsLoading] = useState(!isPreview);
   const [savedViewsError, setSavedViewsError] = useState<string | undefined>();
+  const [findingAcks, setFindingAcks] = useState<FindingAcknowledgement[]>([]);
+  const [findingAcksLoading, setFindingAcksLoading] = useState(!isPreview);
+  const [findingAcksError, setFindingAcksError] = useState<string | undefined>();
+  const [findingAckPendingIds, setFindingAckPendingIds] = useState(
+    new Set<string>(),
+  );
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState(0);
   const [syncStage, setSyncStage] = useState("Ready to sync");
@@ -143,6 +171,10 @@ export function AtlasProvider({
   const historyRef = useRef(history);
   const historyLoadCount = useRef(0);
   const historyLoads = useRef(new Set<string>());
+  const findingAcksRef = useRef(findingAcks);
+  const findingAckQueues = useRef(new Map<string, Promise<void>>());
+  const findingAckGeneration = useRef(0);
+  const findingAcksLoadingRef = useRef(findingAcksLoading);
 
   useEffect(() => {
     dataRef.current = data;
@@ -151,6 +183,14 @@ export function AtlasProvider({
   useEffect(() => {
     historyRef.current = history;
   }, [history]);
+
+  useEffect(() => {
+    findingAcksRef.current = findingAcks;
+  }, [findingAcks]);
+
+  useEffect(() => {
+    findingAcksLoadingRef.current = findingAcksLoading;
+  }, [findingAcksLoading]);
 
   useEffect(
     () => () => {
@@ -181,6 +221,48 @@ export function AtlasProvider({
       })
       .finally(() => {
         if (alive) setSavedViewsLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [currentUser.id, data.workspace.fabricId, isPreview]);
+
+  useEffect(() => {
+    if (isPreview) return;
+    const generation = findingAckGeneration.current + 1;
+    findingAckGeneration.current = generation;
+    findingAcksLoadingRef.current = true;
+    let alive = true;
+    window.queueMicrotask(() => {
+      if (!alive || findingAckGeneration.current !== generation) return;
+      findingAckQueues.current.clear();
+      setFindingAcks([]);
+      setFindingAcksError(undefined);
+      setFindingAcksLoading(!isPreview);
+      setFindingAckPendingIds(new Set());
+    });
+    void loadFindingAcks(
+      false,
+      data.workspace.fabricId,
+      currentUser.id,
+    )
+      .then((acknowledgements) => {
+        if (alive && findingAckGeneration.current === generation) {
+          setFindingAcks(acknowledgements);
+        }
+      })
+      .catch((error) => {
+        if (alive && findingAckGeneration.current === generation) {
+          setFindingAcksError(
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+      })
+      .finally(() => {
+        if (alive && findingAckGeneration.current === generation) {
+          findingAcksLoadingRef.current = false;
+          setFindingAcksLoading(false);
+        }
       });
     return () => {
       alive = false;
@@ -252,6 +334,7 @@ export function AtlasProvider({
     operationGeneration.current = generation;
     historyLoads.current.clear();
     historyLoadCount.current = 0;
+    setHistoryFailedSnapshotIds(new Set());
     if (progressResetTimer.current != null) {
       window.clearTimeout(progressResetTimer.current);
     }
@@ -425,6 +508,103 @@ export function AtlasProvider({
     [isPreview],
   );
 
+  const saveFindingAcknowledgement = useCallback(
+    async (input: {
+      findingId: string;
+      occurrenceSnapshotId?: string;
+      status: FindingAckStatus;
+      note?: string;
+    }) => {
+      if (findingAcksLoadingRef.current) {
+        const error = new Error(
+          "Personal acknowledgement state is still loading.",
+        );
+        setFindingAcksError(error.message);
+        throw error;
+      }
+      const generation = findingAckGeneration.current;
+      const previous =
+        findingAckQueues.current.get(input.findingId) ??
+        Promise.resolve();
+      const operation = previous
+        .catch(() => undefined)
+        .then(async () => {
+          setFindingAcksError(undefined);
+          const current = findingAcksRef.current.find(
+            (acknowledgement) =>
+              acknowledgement.findingId === input.findingId,
+          );
+          const saved = await saveFindingAck(
+            isPreview,
+            data.workspace.fabricId,
+            currentUser.id,
+            { ...input, current },
+          );
+          if (findingAckGeneration.current !== generation) return;
+          setFindingAcks((existing) => [
+            saved,
+            ...existing.filter(
+              (acknowledgement) =>
+                acknowledgement.findingId !== saved.findingId,
+            ),
+          ]);
+        });
+      findingAckQueues.current.set(input.findingId, operation);
+      setFindingAckPendingIds((pending) => {
+        const next = new Set(pending);
+        next.add(input.findingId);
+        return next;
+      });
+      try {
+        await operation;
+      } catch (error) {
+        if (findingAckGeneration.current !== generation) return;
+        setFindingAcksError(
+          error instanceof Error ? error.message : String(error),
+        );
+        throw error;
+      } finally {
+        if (findingAckQueues.current.get(input.findingId) === operation) {
+          findingAckQueues.current.delete(input.findingId);
+          setFindingAckPendingIds((pending) => {
+            const next = new Set(pending);
+            next.delete(input.findingId);
+            return next;
+          });
+        }
+      }
+    },
+    [currentUser.id, data.workspace.fabricId, isPreview],
+  );
+
+  const removeFindingAcknowledgement = useCallback(
+    async (id: string) => {
+      if (findingAcksLoadingRef.current) {
+        const error = new Error(
+          "Personal acknowledgement state is still loading.",
+        );
+        setFindingAcksError(error.message);
+        throw error;
+      }
+      const generation = findingAckGeneration.current;
+      setFindingAcksError(undefined);
+      try {
+        await deleteFindingAck(isPreview, id);
+        if (findingAckGeneration.current !== generation) return;
+        setFindingAcks((previous) =>
+          previous.filter((acknowledgement) => acknowledgement.id !== id),
+        );
+      } catch (error) {
+        if (findingAckGeneration.current !== generation) return;
+        setFindingAcksError(
+          error instanceof Error ? error.message : String(error),
+        );
+        throw error;
+      }
+    },
+    [isPreview],
+  );
+
   const loadHistorySnapshot = useCallback(
     async (snapshotId: string) => {
       if (
@@ -441,6 +621,12 @@ export function AtlasProvider({
       const generation = operationGeneration.current;
       setHistoryLoading(true);
       setHistoryError(undefined);
+      setHistoryFailedSnapshotIds((previous) => {
+        if (!previous.has(snapshotId)) return previous;
+        const next = new Set(previous);
+        next.delete(snapshotId);
+        return next;
+      });
       try {
         const snapshot = await loadHistoricalSnapshotFromDb(
           isPreview,
@@ -458,6 +644,11 @@ export function AtlasProvider({
         );
       } catch (error) {
         if (generation !== operationGeneration.current) return;
+        setHistoryFailedSnapshotIds((previous) => {
+          const next = new Set(previous);
+          next.add(snapshotId);
+          return next;
+        });
         setHistoryError(
           error instanceof Error ? error.message : String(error),
         );
@@ -481,9 +672,14 @@ export function AtlasProvider({
       hydrating,
       historyLoading,
       historyError,
+      historyFailedSnapshotIds,
       savedViews,
       savedViewsLoading,
       savedViewsError,
+      findingAcks,
+      findingAcksLoading,
+      findingAcksError,
+      findingAckPendingIds,
       syncing,
       syncProgress,
       syncStage,
@@ -499,9 +695,11 @@ export function AtlasProvider({
       addComment,
       addSavedView,
       removeSavedView,
+      saveFindingAcknowledgement,
+      removeFindingAcknowledgement,
       loadHistorySnapshot,
     }),
-    [data, history, hydrating, historyLoading, historyError, savedViews, savedViewsLoading, savedViewsError, syncing, syncProgress, syncStage, lastSyncedAt, isPreview, configured, canSync, hasData, requiresDeploymentSync, syncError, currentUser, sync, addComment, addSavedView, removeSavedView, loadHistorySnapshot],
+    [data, history, hydrating, historyLoading, historyError, historyFailedSnapshotIds, savedViews, savedViewsLoading, savedViewsError, findingAcks, findingAcksLoading, findingAcksError, findingAckPendingIds, syncing, syncProgress, syncStage, lastSyncedAt, isPreview, configured, canSync, hasData, requiresDeploymentSync, syncError, currentUser, sync, addComment, addSavedView, removeSavedView, saveFindingAcknowledgement, removeFindingAcknowledgement, loadHistorySnapshot],
   );
 
   return <AtlasContext.Provider value={value}>{children}</AtlasContext.Provider>;

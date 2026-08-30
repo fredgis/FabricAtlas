@@ -47,8 +47,12 @@ import {
   urlForNavigation,
 } from "./atlas/routing";
 import { Avatar, cn } from "./atlas/ui";
-import { relativeTime, type AtlasData } from "./atlas/model";
+import {
+  relativeTime,
+  type AtlasData,
+} from "./atlas/model";
 import { buildSearchIndex } from "./atlas/search";
+import { workspaceDetailLabel } from "./atlas/workspace-display";
 
 import { OverviewView } from "./atlas/views/Overview";
 import { MapView } from "./atlas/views/Map";
@@ -108,6 +112,8 @@ function SidebarContent({
   mobile?: boolean;
   onNavigate: (tab: Tab) => void;
 }) {
+  const workspaceDetail = workspaceDetailLabel(data.workspace);
+
   return (
     <>
       <div className="flex items-center gap-[11px] px-[14px] pb-[13px] pt-[16px]">
@@ -172,7 +178,9 @@ function SidebarContent({
           <div className="mt-[2px] text-[13px] font-bold text-foreground">
             {data.workspace.displayName}
           </div>
-          <div className="mt-[4px] text-[11px]">{data.workspace.capacity}</div>
+          {workspaceDetail && (
+            <div className="mt-[4px] text-[11px]">{workspaceDetail}</div>
+          )}
           <div className="mt-[6px] flex items-center gap-[6px] text-[11px]">
             <span className="inline-block h-[7px] w-[7px] rounded-full bg-status-healthy" />
             {data.items.length} Fabric items

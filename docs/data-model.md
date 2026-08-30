@@ -20,6 +20,10 @@ authenticated reads and policy-checked creates whose
 update and delete policies require the authenticated subject claim to match
 `user_id`.
 
+`FindingAck` uses the same user scope. Its composite record key is a SHA-256 of
+workspace, user and stable finding ID so different users can acknowledge the
+same governance signal independently.
+
 ## Workspace
 
 The manifest for a complete synchronized snapshot.
@@ -122,6 +126,16 @@ A personal decision for one effective principal and item pair.
 `principalRef`, `status`, `note?`, `reviewedAt`, `updatedAt`
 
 The status is `reviewed`, `accepted` or `needsAction`.
+
+## FindingAck
+
+A personal Governance Radar decision for one stable finding or risky change.
+
+`workspace_id`, `user_id`, `recordKey`, `findingId`, `status`,
+`occurrenceSnapshotId?`, `note?`, `updatedAt`
+
+The status is `acked` for one occurrence or `muted` until the record is
+removed.
 
 ## Snapshot history
 

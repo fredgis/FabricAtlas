@@ -37,6 +37,10 @@ Fabric Atlas collects that metadata without copying business data.
 - Review effective access, direct shares and external principals.
 - Check sensitivity coverage and confidential assets.
 - Compare validated snapshots and review governance findings.
+- Focus on newly introduced risks with Governance Radar and personal acknowledgements.
+- Track six posture pillars against explicit governance targets.
+- Generate departure packs with ownership, blast radius and reassignment evidence.
+- Trace resolved DAX dependencies between measures and synchronized schema objects.
 - Search the whole workspace with `Ctrl+K` and save useful filter views.
 - Export access reviews and verified lineage impact reports.
 - Inspect jobs, configuration and team notes in one workspace hub.
@@ -51,6 +55,7 @@ Fabric Atlas collects that metadata without copying business data.
 |---|---|
 | Guided first synchronization | A dedicated deployment screen with staged progress before the first catalog becomes visible |
 | Header synchronization | Reuses the same progress model for later refreshes without leaving the current page |
+| Progress donut | Replaces the initial topology illustration with an accessible percentage and stage-driven donut |
 | Immutable snapshots | Writes catalog rows first and publishes the workspace manifest only after every write succeeds |
 | Last-known-good fallback | Ignores incomplete snapshots and loads the newest valid workspace state |
 | Trusted snapshot retention | Keeps 2–50 validated snapshots, supports explicit writer rotation and removes stale rows only after a new manifest is published |
@@ -70,11 +75,14 @@ Fabric Atlas collects that metadata without copying business data.
 | Functionality | What it provides |
 |---|---|
 | Findings | Actionable access, metadata, operations and lineage checks based on synchronized evidence |
+| Governance Radar | Shows only new critical/high findings and risky access, sensitivity, lineage or removal changes, with a target watermark when the latest adjacent comparison is clear |
+| Personal Radar state | Acknowledges one occurrence or mutes a stable finding for the signed-in user |
 | Change Center | Compares any two validated snapshots across items, schema, access, sensitivity, lineage and jobs |
 | Shareable comparisons | Preserves both selected snapshots, section and filters in the URL |
 | Governance history | Tracks items, labels, external principals, failures, lineage and schema inventory over time |
 | Lazy Change Center evidence | Keeps the ledger immediate and hydrates older detailed catalogs only for the selected comparison |
 | Metadata coverage | Separates collected gaps from metadata that Fabric did not expose, using explicit `N/A` states |
+| Posture targets | Scores six reproducible pillars, compares targets and tracks historical trends without false zeroes |
 | Sensitivity posture | Groups protected and unlabeled items and surfaces confidential assets |
 | Saved governance views | Persists personal filters such as metadata gaps, external access or failed operations |
 
@@ -88,6 +96,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Workspace catalog | Groups Fabric items by type with search, health, ownership, labels, tags and detail drawers |
 | Asset Catalog | Lists tables, views, columns and measures under their parent Fabric item |
 | Deep metadata | Shows data types, descriptions, visibility, sources, row counts, measure expressions and collection provenance when available |
+| DAX dependency evidence | Resolves measure references only to real synchronized columns or measures and labels inferred source hops |
 | Item context | Keeps properties, lineage, access, configuration and job history beside the selected item |
 | Collapsed groups | Starts inventory lists grouped and collapsed for faster scanning |
 
@@ -106,6 +115,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Multi-selection | Moves several selected item or object nodes together |
 | Layout controls | Provides zoom, fit, reset, filters, minimap and persistent deep links |
 | Impact reports | Exports verified dependency evidence as Markdown for an item or schema object |
+| Object-level impact | Switches to DAX-resolved object granularity when evidence exists and preserves item fallback otherwise |
 
 </details>
 
@@ -122,6 +132,8 @@ Fabric Atlas collects that metadata without copying business data.
 | Review decisions | Persists Reviewed, Accepted or Needs action status with an optional personal note |
 | CSV export | Downloads the currently filtered access evidence |
 | Risk filters | Isolates external, broad, service-principal, admin and unresolved access |
+| Departure packs | Finds sole ownership, urgent orphan risk, downstream blast radius and deterministic reassignment candidates |
+| Offboarding exports | Downloads reassignment CSV, effective-access CSV and a complete Markdown handover pack |
 
 </details>
 
@@ -166,6 +178,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Bound token selection | Matches the Power BI token account and tenant to the current Fabric user |
 | Metadata-only storage | Allowlists governance metadata and excludes rows, datasource details, connections and Power Query or source expressions |
 | User-scoped preferences | Protects saved views and access-review decisions with Rayfin row policies |
+| User-scoped Radar actions | Protects acknowledgements and mutes through the authenticated subject claim |
 | Fabric deployment | Builds, migrates the schema and deploys the app through `npx rayfin up` |
 | Open-source project | Includes MIT licensing, contribution guidance, security reporting and release history |
 
@@ -324,6 +337,7 @@ RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_EMAIL=<authorized-sync-user>
 RAYFIN_PUBLIC_ATLAS_SNAPSHOT_RETENTION_COUNT=12
 # Optional during synchronizer rotation:
 RAYFIN_PUBLIC_ATLAS_PREVIOUS_SYNC_WRITERS=<former-user@example.com>
+RAYFIN_PUBLIC_ATLAS_SENSITIVITY_RANKS='{"<label-id>":3,"<lower-label-id>":1}'
 ```
 
 Run `npx rayfin up` again. The app opens on a guided synchronization screen.
@@ -400,7 +414,7 @@ metadata capability was not collected; it is not treated as a missing value.</su
 | <sub>Warehouse</sub> | <sub>Description, collation, created and updated dates</sub> | <sub>Tables, views and columns from the scanner; downstream-model subset fallback</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Complete inventory can require SQL catalog connectivity</sub> |
 | <sub>SQL Database</sub> | <sub>Database name, collation and backup retention</sub> | <sub>Tables, views and columns from the scanner; downstream-model subset fallback</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Complete inventory can require SQL catalog connectivity</sub> |
 | <sub>SQL endpoint</sub> | <sub>Item identity and scanner metadata</sub> | <sub>No dedicated internal-object scan</sub> | <sub>Storage-to-endpoint-to-model relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Used primarily as a lineage bridge</sub> |
-| <sub>Semantic Model</sub> | <sub>Description, storage mode, provider and documented `configuredBy` owner</sub> | <sub>Tables, columns, measures, descriptions, hidden flags and measure DAX</sub> | <sub>Scanner relations to sources and reports</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Requires scanner schema and expression options; source and Power Query expressions are discarded</sub> |
+| <sub>Semantic Model</sub> | <sub>Description, storage mode, provider and documented `configuredBy` owner</sub> | <sub>Tables, columns, measures, descriptions, hidden flags, measure DAX and resolved object dependencies</sub> | <sub>Scanner item relations plus DAX-verified measure dependencies and explicitly inferred unique source hops</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Requires scanner schema and expression options; unresolved/ambiguous references and source or Power Query expressions are discarded</sub> |
 | <sub>Report</sub> | <sub>Report type, bound Semantic Model, documented `createdBy` owner and page inventory</sub> | <sub>Pages and order</sub> | <sub>Model binding plus scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Visuals and field bindings are not exposed by this flow</sub> |
 | <sub>Dashboard</sub> | <sub>Item and scanner metadata</sub> | <sub>No deep object inventory</sub> | <sub>Scanner relations when returned</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Tile and visual bindings are not expanded</sub> |
 | <sub>Notebook</sub> | <sub>Item description and modified metadata when returned</sub> | <sub>Source code and cells are not read</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>Up to 3 returned instances</sub> | <sub>No owner is inferred without a documented owner field</sub> |

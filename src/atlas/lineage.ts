@@ -5,6 +5,7 @@ import type {
   ItemType,
   ModelTableSchema,
 } from "./model";
+import type { SchemaDependency } from "./schema-lineage";
 
 export type LineageDirection = "upstream" | "downstream";
 
@@ -61,9 +62,20 @@ export interface SchemaObjectRef {
 export interface SchemaObjectImpactReport extends ItemImpactReport {
   object: SchemaObjectRef;
   objectExists: boolean;
-  granularity: "item";
-  verifiedObjectDependencies: false;
+  granularity: "item" | "object";
+  verifiedObjectDependencies: boolean;
+  objectImpact?: {
+    upstream: SchemaObjectImpactEntry[];
+    downstream: SchemaObjectImpactEntry[];
+    relevantDependencies: SchemaDependency[];
+  };
   detail: string;
+}
+
+export interface SchemaObjectImpactEntry {
+  object: SchemaObjectRef;
+  distance: number;
+  confidence: "verified" | "inferred";
 }
 
 export interface StagedLayout {
@@ -348,20 +360,195 @@ function schemaObjectExists(
 export function getSchemaObjectImpactReport(
   data: Pick<AtlasData, "items" | "edges" | "schema">,
   object: SchemaObjectRef,
-  maxDepth?: number,
+  options?:
+    | number
+    | {
+        maxDepth?: number;
+        dependencies?: SchemaDependency[];
+      },
 ): SchemaObjectImpactReport {
+  const maxDepth =
+    typeof options === "number" ? options : options?.maxDepth;
   const itemReport = getItemImpactReport(data, object.itemId, maxDepth);
+  const objectExists = schemaObjectExists(
+    data.schema?.[object.itemId] ?? [],
+    object,
+  );
+  const dependencies =
+    typeof options === "object" ? options.dependencies ?? [] : [];
+  const objectKey = (reference: SchemaObjectRef) =>
+    [
+      reference.itemId,
+      reference.kind,
+      reference.tableName?.trim().toLocaleLowerCase() ?? "",
+      reference.name.trim().toLocaleLowerCase(),
+    ].join("\u0000");
+  const startKey = objectKey(object);
+  const byFrom = new Map<string, SchemaDependency[]>();
+  const byTo = new Map<string, SchemaDependency[]>();
+  for (const dependency of dependencies) {
+    const from = objectKey(dependency.from);
+    const to = objectKey(dependency.to);
+    byFrom.set(from, [...(byFrom.get(from) ?? []), dependency]);
+    byTo.set(to, [...(byTo.get(to) ?? []), dependency]);
+  }
+  const walk = (direction: "upstream" | "downstream") => {
+    const found = new Map<string, SchemaObjectImpactEntry>();
+    const relevant = new Map<string, SchemaDependency>();
+    const visited = new Set([startKey]);
+    const queue: Array<{
+      key: string;
+      distance: number;
+      confidence: "verified" | "inferred";
+    }> = [
+      {
+        key: startKey,
+        distance: 0,
+        confidence: "verified" as const,
+      },
+    ];
+    for (let head = 0; head < queue.length; head += 1) {
+      const current = queue[head];
+      const nextDependencies =
+        direction === "upstream"
+          ? byFrom.get(current.key) ?? []
+          : byTo.get(current.key) ?? [];
+      for (const dependency of nextDependencies) {
+        const nextObject =
+          direction === "upstream" ? dependency.to : dependency.from;
+        const nextKey = objectKey(nextObject);
+        if (nextKey === startKey) continue;
+        const distance = current.distance + 1;
+        const confidence =
+          current.confidence === "inferred" ||
+          dependency.confidence === "inferred"
+            ? "inferred"
+            : "verified";
+        const existing = found.get(nextKey);
+        if (
+          !existing ||
+          distance < existing.distance ||
+          (distance === existing.distance &&
+            confidence === "verified" &&
+            existing.confidence === "inferred")
+        ) {
+          found.set(nextKey, {
+            object: nextObject,
+            distance,
+            confidence,
+          });
+        }
+        relevant.set(
+          [objectKey(dependency.from), objectKey(dependency.to)].join("\u0001"),
+          dependency,
+        );
+        if (!visited.has(nextKey)) {
+          visited.add(nextKey);
+          queue.push({ key: nextKey, distance, confidence });
+        }
+      }
+    }
+    return {
+      entries: [...found.values()].sort(
+        (left, right) =>
+          left.distance - right.distance ||
+          objectKey(left.object).localeCompare(objectKey(right.object)),
+      ),
+      relevant: [...relevant.values()],
+    };
+  };
+  const upstream = walk("upstream");
+  const downstream = walk("downstream");
+  const relevantDependencies = [
+    ...new Map(
+      [...upstream.relevant, ...downstream.relevant].map((dependency) => [
+        [
+          objectKey(dependency.from),
+          objectKey(dependency.to),
+          dependency.confidence,
+        ].join("\u0001"),
+        dependency,
+      ]),
+    ).values(),
+  ];
+  const hasObjectImpact =
+    objectExists &&
+    (upstream.entries.length > 0 ||
+      downstream.entries.length > 0 ||
+      relevantDependencies.length > 0);
+  const objectItems = (
+    entries: SchemaObjectImpactEntry[],
+  ): LineageImpactItem[] => {
+    const byItem = new Map<string, LineageImpactItem>();
+    for (const entry of entries) {
+      if (entry.object.itemId === object.itemId) continue;
+      const existing = byItem.get(entry.object.itemId);
+      if (!existing || entry.distance < existing.distance) {
+        byItem.set(entry.object.itemId, {
+          id: entry.object.itemId,
+          distance: entry.distance,
+          item: data.items.find(
+            (item) => item.fabricId === entry.object.itemId,
+          ),
+        });
+      }
+    }
+    return [...byItem.values()].sort(
+      (left, right) =>
+        left.distance - right.distance ||
+        left.id.localeCompare(right.id),
+    );
+  };
+  const objectUpstreamItems = objectItems(upstream.entries);
+  const objectDownstreamItems = objectItems(downstream.entries);
+  const objectItemIds = new Set([
+    object.itemId,
+    ...objectUpstreamItems.map((entry) => entry.id),
+    ...objectDownstreamItems.map((entry) => entry.id),
+  ]);
+  const objectRelevantEdges = itemReport.relevantEdges.filter(
+    (edge) =>
+      objectItemIds.has(edge.source) && objectItemIds.has(edge.target),
+  );
   return {
     ...itemReport,
+    ...(hasObjectImpact
+      ? {
+          upstream: objectUpstreamItems,
+          downstream: objectDownstreamItems,
+          relevantEdges: objectRelevantEdges,
+          unresolvedEndpointIds: [
+            ...new Set(
+              objectRelevantEdges
+                .flatMap((edge) => [edge.source, edge.target])
+                .filter(
+                  (id) =>
+                    !data.items.some((item) => item.fabricId === id),
+                ),
+            ),
+          ].sort(compareText),
+        }
+      : {}),
     object: { ...object },
-    objectExists: schemaObjectExists(
-      data.schema?.[object.itemId] ?? [],
-      object,
-    ),
-    granularity: "item",
-    verifiedObjectDependencies: false,
+    objectExists,
+    granularity: hasObjectImpact ? "object" : "item",
+    verifiedObjectDependencies:
+      hasObjectImpact &&
+      [...upstream.entries, ...downstream.entries].length > 0 &&
+      [...upstream.entries, ...downstream.entries].every(
+        (entry) => entry.confidence === "verified",
+      ),
+    objectImpact: hasObjectImpact
+      ? {
+          upstream: upstream.entries,
+          downstream: downstream.entries,
+          relevantDependencies,
+        }
+      : undefined,
     detail:
-      "Fabric lineage verifies dependencies at item level only; this report does not infer schema-object lineage from matching names.",
+      hasObjectImpact
+        ? "Object dependencies are resolved from DAX references; inferred source hops require item lineage and a unique schema match."
+        : "Fabric lineage verifies dependencies at item level only; this report does not infer schema-object lineage from matching names.",
   };
 }
 
