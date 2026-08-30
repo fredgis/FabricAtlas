@@ -184,7 +184,11 @@ function App() {
   }
 
   return (
-    <div className="relative flex h-screen overflow-hidden bg-background text-foreground">
+    <div className="atlas-shell-canvas relative flex h-screen overflow-hidden text-foreground">
+      <div
+        className="atlas-brand-spectrum pointer-events-none absolute inset-x-0 top-0 z-[60] h-[3px]"
+        aria-hidden="true"
+      />
       {navOpen && (
         <button
           type="button"
@@ -197,20 +201,20 @@ function App() {
       <aside
         aria-label="Primary navigation"
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-[236px] shrink-0 flex-col border-r border-border bg-secondary/95 shadow-2xl backdrop-blur-xl transition-transform lg:static lg:translate-x-0 lg:shadow-none",
+          "fixed inset-y-0 left-0 z-40 flex w-[224px] shrink-0 flex-col border-r border-border bg-card shadow-fabric-16 transition-transform lg:static lg:translate-x-0 lg:shadow-none",
           navOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
-        <div className="flex items-center gap-[11px] px-[16px] py-[16px]">
+        <div className="flex items-center gap-[11px] px-[14px] pb-[13px] pt-[16px]">
           <span
-            className="flex h-[34px] w-[34px] items-center justify-center rounded-xl bg-gradient-to-br from-lineage-downstream to-primary text-primary-foreground shadow-lg"
+            className="atlas-brand-mark flex h-[34px] w-[34px] items-center justify-center rounded-lg text-primary-foreground"
           >
             <Compass size={19} />
           </span>
           <div className="min-w-0">
-            <div className="text-[16px] font-bold leading-none">Fabric Atlas</div>
+            <div className="text-[15px] font-semibold leading-none">Fabric Atlas</div>
             <div className="mt-[3px] text-[11px] text-muted-foreground">
-              Workspace explorer
+              Workspace governance
             </div>
           </div>
           <button
@@ -226,7 +230,7 @@ function App() {
         <nav className="min-h-0 flex-1 overflow-y-auto px-[10px] pb-[10px]">
           {NAV_GROUPS.map((group, groupIndex) => (
             <div key={group.label} className={cn(groupIndex > 0 && "mt-[12px]")}>
-              <div className="px-[11px] pb-[5px] text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground/70">
+              <div className="px-[10px] pb-[5px] text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                 {group.label}
               </div>
               <div className="flex flex-col gap-[2px]">
@@ -237,10 +241,10 @@ function App() {
                     onClick={() => nav(id)}
                     aria-current={tab === id ? "page" : undefined}
                     className={cn(
-                      "flex items-center gap-[11px] rounded-lg px-[11px] py-[8px] text-left text-[13px] font-semibold transition-colors",
+                      "relative flex items-center gap-[10px] rounded-md px-[10px] py-[7px] text-left text-[13px] font-medium transition-colors",
                       tab === id
-                        ? "bg-primary text-primary-foreground shadow-sm"
-                        : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                        ? "bg-primary/10 text-brand-foreground before:absolute before:bottom-[6px] before:left-0 before:top-[6px] before:w-[3px] before:rounded-full before:bg-primary"
+                        : "text-foreground/75 hover:bg-accent hover:text-foreground",
                     )}
                   >
                     <Icon size={17} />
@@ -253,8 +257,10 @@ function App() {
         </nav>
 
         <div className="mt-auto p-[12px]">
-          <div className="rounded-xl border border-border bg-card p-[12px] text-[12px] text-muted-foreground">
-            <div>Fabric workspace</div>
+          <div className="rounded-lg border border-border bg-secondary p-[11px] text-[12px] text-muted-foreground">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.08em]">
+              Fabric workspace
+            </div>
             <div className="mt-[2px] text-[13px] font-bold text-foreground">
               {data.workspace.displayName}
             </div>
@@ -263,7 +269,10 @@ function App() {
               <span
                 className="inline-block h-[7px] w-[7px] rounded-full bg-status-healthy"
               />
-              {data.items.length} items indexed
+              {data.items.length} Fabric items
+            </div>
+            <div className="mt-[2px] text-[10px] text-muted-foreground">
+              Latest validated snapshot
             </div>
           </div>
         </div>
@@ -271,7 +280,7 @@ function App() {
 
       {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="relative flex h-[56px] shrink-0 items-center justify-between gap-[10px] border-b border-border bg-background/90 px-[12px] backdrop-blur-xl sm:px-[18px] lg:px-[22px]">
+        <header className="relative flex h-[52px] shrink-0 items-center justify-between gap-[10px] border-b border-border bg-card px-[12px] shadow-fabric-2 sm:px-[18px] lg:px-[20px]">
           <div className="flex min-w-0 items-center gap-[8px]">
             <button
               type="button"
@@ -294,7 +303,7 @@ function App() {
             <button
               type="button"
               onClick={() => setCommandOpen(true)}
-              className="hidden h-[34px] items-center gap-s rounded-lg border border-border bg-card px-m text-200 text-muted-foreground hover:bg-accent hover:text-foreground md:flex"
+              className="hidden h-[32px] items-center gap-s rounded-md border border-transparent bg-secondary px-m text-200 text-muted-foreground hover:border-border hover:bg-accent hover:text-foreground md:flex"
             >
               <Search className="icon-size-100" aria-hidden="true" />
               Search workspace
@@ -306,7 +315,7 @@ function App() {
               type="button"
               onClick={() => setCommandOpen(true)}
               aria-label="Search workspace"
-              className="flex h-[34px] w-[34px] items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground md:hidden"
+              className="flex h-[32px] w-[32px] items-center justify-center rounded-md border border-transparent bg-secondary text-muted-foreground hover:border-border hover:bg-accent hover:text-foreground md:hidden"
             >
               <Search className="icon-size-200" />
             </button>
@@ -332,7 +341,7 @@ function App() {
                   ? undefined
                   : "Only the configured Atlas sync administrator can synchronize"
               }
-              className="flex items-center gap-[8px] rounded-lg bg-gradient-to-br from-lineage-downstream to-primary px-[13px] py-[8px] text-[13px] font-bold text-primary-foreground shadow-sm disabled:opacity-70"
+              className="flex h-[32px] items-center gap-[7px] rounded-md bg-primary px-[12px] text-[13px] font-semibold text-primary-foreground shadow-fabric-2 hover:bg-primary-hover disabled:opacity-70"
             >
               <RefreshCw size={15} className={syncing ? "animate-spin" : ""} />
               <span className="hidden sm:inline">
@@ -344,7 +353,7 @@ function App() {
               onClick={toggleTheme}
               title={isDark ? "Switch to light theme" : "Switch to dark theme"}
               aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
-              className="flex items-center justify-center rounded-lg border border-border bg-card p-[8px] text-muted-foreground hover:text-foreground"
+              className="flex h-[32px] w-[32px] items-center justify-center rounded-md border border-transparent bg-transparent text-muted-foreground hover:border-border hover:bg-accent hover:text-foreground"
             >
               {isDark ? <Sun size={16} /> : <Moon size={16} />}
             </button>
@@ -367,7 +376,7 @@ function App() {
           )}
         </header>
 
-        <main className="min-h-0 flex-1 overflow-auto">
+        <main className="min-h-0 flex-1 overflow-auto bg-transparent">
           <AnimatePresence mode="wait">
             <motion.div
               key={`${tab}:${focus?.requestId ?? "default"}`}

@@ -96,7 +96,7 @@ export function CommandPalette({
             role="dialog"
             aria-modal="true"
             aria-label="Search Fabric Atlas"
-            className="flex max-h-[78vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-popover text-popover-foreground shadow-2xl"
+            className="flex max-h-[78vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-fabric-16"
             initial={{ opacity: 0, y: -12, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.98 }}
@@ -170,7 +170,7 @@ export function CommandPalette({
             >
               {!query.trim() ? (
                 <div className="flex min-h-64 flex-col items-center justify-center px-xl py-xxxl text-center">
-                  <span className="flex icon-size-700 items-center justify-center rounded-2xl bg-primary/10 text-brand-foreground">
+                  <span className="flex icon-size-700 items-center justify-center rounded-xl bg-primary/10 text-brand-foreground">
                     <Search className="icon-size-400" aria-hidden="true" />
                   </span>
                   <h2 className="mt-l text-400 font-semibold">

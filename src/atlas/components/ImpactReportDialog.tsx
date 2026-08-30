@@ -150,7 +150,7 @@ export function ImpactReportDialog({
             role="dialog"
             aria-modal="true"
             aria-labelledby="impact-report-title"
-            className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
+            className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-fabric-16"
             initial={{ opacity: 0, y: 14, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.98 }}
@@ -158,8 +158,8 @@ export function ImpactReportDialog({
               if (event.key === "Escape") onClose();
             }}
           >
-            <header className="flex flex-col gap-m border-b border-border bg-gradient-to-r from-primary/12 via-card to-lineage-downstream/10 p-l sm:flex-row sm:items-center">
-              <span className="flex icon-size-700 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
+            <header className="atlas-fabric-hero flex flex-col gap-m border-b border-border p-l sm:flex-row sm:items-center">
+              <span className="atlas-brand-mark flex icon-size-700 shrink-0 items-center justify-center rounded-xl text-primary-foreground">
                 <GitBranch className="icon-size-400" aria-hidden="true" />
               </span>
               <div className="min-w-0 flex-1">

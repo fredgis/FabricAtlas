@@ -255,7 +255,7 @@ export function CatalogView({ focus }: { focus?: AtlasFocusRequest } = {}) {
 
   return (
     <div className="atlas-content-frame p-xxl">
-      <header className="mb-l overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+      <header className="mb-l overflow-hidden rounded-xl border border-border bg-card shadow-fabric-2">
         <div className="flex flex-col gap-l px-xl py-l lg:flex-row lg:items-center">
           <div className="min-w-0 flex-1">
             <SectionLabel>Workspace inventory</SectionLabel>
@@ -318,7 +318,7 @@ export function CatalogView({ focus }: { focus?: AtlasFocusRequest } = {}) {
       </header>
 
       <div className="grid items-start gap-l lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] xl:grid-cols-[minmax(0,1fr)_minmax(0,3fr)]">
-        <aside className="flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm lg:sticky lg:top-l lg:max-h-screen">
+        <aside className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-fabric-2 lg:sticky lg:top-l lg:max-h-screen">
           <div className="sticky top-0 z-10 border-b border-border bg-card p-m">
             <label
               htmlFor="catalog-search"
@@ -473,7 +473,7 @@ export function CatalogView({ focus }: { focus?: AtlasFocusRequest } = {}) {
           </div>
 
           {visible.length === 0 ? (
-            <div className="flex min-h-64 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card px-xl py-xxxl text-center">
+            <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card px-xl py-xxxl text-center">
               <Search className="icon-size-500 text-muted-foreground" />
               <h2 className="mt-m text-400 font-semibold">No matching items</h2>
               <p className="mt-xs text-300 text-muted-foreground">
@@ -482,7 +482,7 @@ export function CatalogView({ focus }: { focus?: AtlasFocusRequest } = {}) {
               <button
                 type="button"
                 onClick={resetFilters}
-                className="mt-l rounded-lg bg-primary px-l py-s text-300 font-semibold text-primary-foreground hover:bg-primary/90"
+                className="mt-l rounded-lg bg-primary px-l py-s text-300 font-semibold text-primary-foreground hover:bg-primary-hover"
               >
                 Clear filters
               </button>
@@ -499,7 +499,7 @@ export function CatalogView({ focus }: { focus?: AtlasFocusRequest } = {}) {
                     aria-label={`Open details for ${item.displayName}`}
                     onClick={() => setDetailId(item.fabricId)}
                     className={cn(
-                      "group flex min-h-52 flex-col overflow-hidden rounded-2xl border bg-card text-left text-card-foreground shadow-sm transition-[border-color,box-shadow,transform,background-color] hover:-translate-y-xxs hover:border-primary/50 hover:shadow-lg",
+                      "group flex min-h-52 flex-col overflow-hidden rounded-xl border bg-card text-left text-card-foreground shadow-fabric-2 transition-[border-color,box-shadow,transform,background-color] hover:-translate-y-xxs hover:border-primary/50 hover:shadow-fabric-8",
                       selected
                         ? "border-primary bg-primary/5 ring-2 ring-primary/20"
                         : "border-border",
@@ -593,7 +593,7 @@ export function CatalogView({ focus }: { focus?: AtlasFocusRequest } = {}) {
               aria-modal="true"
               aria-label={`${detail.displayName} details`}
               tabIndex={-1}
-              className="fixed right-0 top-0 z-50 flex h-screen w-full flex-col overflow-hidden border-l border-border bg-card shadow-2xl sm:w-3/4 lg:w-1/2 xl:w-2/5"
+              className="fixed right-0 top-0 z-50 flex h-screen w-full flex-col overflow-hidden border-l border-border bg-card shadow-fabric-16 sm:w-3/4 lg:w-1/2 xl:w-2/5"
               initial={{ x: "100%" }}
               animate={{ x: 0 }}
               exit={{ x: "100%" }}

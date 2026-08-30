@@ -356,7 +356,7 @@ export function AssetCatalogView({
 
   return (
     <div className="atlas-content-frame flex h-full flex-col gap-l p-xxl">
-      <header className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+      <header className="overflow-hidden rounded-xl border border-border bg-card shadow-fabric-2">
         <div className="flex flex-col gap-l px-xl py-l lg:flex-row lg:items-center">
           <div className="min-w-0 flex-1">
             <SectionLabel>Schema inventory</SectionLabel>
@@ -432,7 +432,7 @@ export function AssetCatalogView({
                 className={cn(
                   "inline-flex h-9 items-center gap-s rounded-lg border px-m text-[length:var(--text-200)] font-semibold transition-colors",
                   kind === key
-                    ? "border-primary bg-primary text-primary-foreground"
+                    ? "border-primary/35 bg-primary/10 text-brand-foreground"
                     : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground",
                 )}
               >
@@ -440,7 +440,7 @@ export function AssetCatalogView({
                 <span
                   className={cn(
                     "rounded-md px-xs py-xxs font-numeric text-100",
-                    kind === key ? "bg-primary-foreground/15" : "bg-muted",
+                    kind === key ? "bg-card text-brand-foreground" : "bg-muted",
                   )}
                 >
                   {count}
@@ -463,7 +463,7 @@ export function AssetCatalogView({
       </header>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-l xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-fabric-2">
           <div className="flex flex-wrap items-center gap-s border-b border-border bg-card px-l py-m">
             <div>
               <h2 className="text-300 font-semibold">Items and assets</h2>
@@ -513,7 +513,7 @@ export function AssetCatalogView({
                   <button
                     type="button"
                     onClick={resetFilters}
-                    className="mt-l rounded-lg bg-primary px-l py-s text-300 font-semibold text-primary-foreground hover:bg-primary/90"
+                    className="mt-l rounded-lg bg-primary px-l py-s text-300 font-semibold text-primary-foreground hover:bg-primary-hover"
                   >
                     Clear filters
                   </button>
@@ -627,7 +627,7 @@ export function AssetCatalogView({
               className="min-h-0"
               aria-label={`${selectedAsset.name} inspector`}
             >
-              <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+              <div className="overflow-hidden rounded-xl border border-border bg-card shadow-fabric-2">
                 <div className="border-b border-border bg-secondary px-l py-l">
                   <div className="flex items-start gap-m">
                     <KindGlyph kind={selectedAsset.kind} />
@@ -817,7 +817,7 @@ export function AssetCatalogView({
               key="empty"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="flex min-h-64 items-center justify-center rounded-2xl border border-dashed border-border bg-card px-xl py-xxxl"
+              className="flex min-h-64 items-center justify-center rounded-xl border border-dashed border-border bg-card px-xl py-xxxl"
             >
               <div className="text-center">
                 <Boxes className="icon-size-600 mx-auto text-muted-foreground" />

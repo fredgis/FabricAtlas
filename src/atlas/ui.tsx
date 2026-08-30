@@ -84,7 +84,7 @@ export function TypeGlyph({ type, size = 32 }: { type: ItemType; size?: number }
   return (
     <span
       title={meta.label}
-      className="inline-flex shrink-0 items-center justify-center rounded-lg font-bold text-white shadow-sm ring-1 ring-white/10"
+      className="inline-flex shrink-0 items-center justify-center rounded-lg font-bold text-white shadow-fabric-2 ring-1 ring-white/10"
       style={{
         width: size,
         height: size,
@@ -118,7 +118,7 @@ export function Chip({
   return (
     <span
       className={cn(
-        "inline-flex min-h-[24px] items-center gap-[6px] rounded-lg border border-transparent px-[8px] py-[2px] text-[11px] font-semibold",
+        "inline-flex min-h-[24px] items-center gap-[6px] rounded-md border border-transparent px-[8px] py-[2px] text-[11px] font-semibold",
         className,
       )}
       style={style}
@@ -140,7 +140,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-border bg-card text-card-foreground shadow-sm",
+        "rounded-xl border border-border bg-card text-card-foreground shadow-fabric-2",
         className,
       )}
       style={style}

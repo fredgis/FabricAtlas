@@ -96,7 +96,7 @@ export function SavedViewsMenu({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 z-50 mt-s w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-2xl"
+          className="absolute right-0 z-50 mt-s w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-fabric-8"
         >
           <div className="flex items-center justify-between gap-m border-b border-border px-m py-s">
             <div>

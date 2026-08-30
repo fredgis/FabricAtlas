@@ -4,6 +4,17 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-08-30
+
+### Changed
+
+- Light mode is now the default so Fabric Atlas fits naturally inside the Fabric portal.
+- Semantic colors align with Fabric UX and Fluent 2 neutral, brand, status and focus tokens.
+- The application shell uses a lighter Fabric-style sidebar, subtle selected navigation rail and compact command header.
+- Cards, dialogs, filters, inspectors and first-sync surfaces use Fluent spacing, radii and elevation.
+- Atlas keeps its product identity through a restrained purple-to-teal spectrum on the logo and lineage.
+- Dark mode remains available with corrected text and status contrast.
+
 ## [1.5.0] - 2026-08-29
 
 ### Added
@@ -137,6 +148,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
+[1.5.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.5.1
 [1.5.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.5.0
 [1.4.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.4.0
 [1.3.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v1.3.1

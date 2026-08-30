@@ -60,7 +60,7 @@ export function AtlasBootView() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
       <div className="flex flex-col items-center gap-m">
-        <span className="flex icon-size-700 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg">
+        <span className="atlas-brand-mark flex icon-size-700 items-center justify-center rounded-xl text-primary-foreground">
           <Compass className="icon-size-400" />
         </span>
         <div className="text-300 font-semibold">Loading Fabric Atlas</div>
@@ -108,7 +108,7 @@ export function FirstSyncView() {
         type="button"
         onClick={toggleTheme}
         aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
-        className="fixed right-l top-l z-20 flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card/85 text-muted-foreground shadow-lg backdrop-blur hover:text-foreground"
+        className="fixed right-l top-l z-20 flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground shadow-fabric-4 hover:bg-accent hover:text-foreground"
       >
         {isDark ? (
           <Sun className="icon-size-200" />
@@ -122,11 +122,11 @@ export function FirstSyncView() {
           initial={{ opacity: 0, y: 18, scale: 0.985 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.55, ease: "easeOut" }}
-          className="overflow-hidden rounded-4xl border border-border bg-card/92 shadow-2xl backdrop-blur-xl"
+          className="overflow-hidden rounded-2xl border border-border bg-card shadow-fabric-16"
         >
           <header className="flex flex-wrap items-center justify-between gap-m border-b border-border/70 px-xl py-l sm:px-xxl">
             <div className="flex items-center gap-m">
-              <span className="flex icon-size-600 items-center justify-center rounded-xl bg-gradient-to-br from-lineage-downstream to-primary text-primary-foreground shadow-lg">
+              <span className="atlas-brand-mark flex icon-size-600 items-center justify-center rounded-lg text-primary-foreground">
                 <Compass className="icon-size-300" />
               </span>
               <span>
@@ -171,13 +171,13 @@ export function FirstSyncView() {
                 </p>
 
                 <div className="mt-xl flex flex-wrap gap-s">
-                  <span className="rounded-full border border-border bg-background/60 px-m py-s text-200 font-semibold">
+                  <span className="rounded-full border border-border bg-secondary px-m py-s text-200 font-semibold">
                     {data.items.length || "No"} indexed items
                   </span>
-                  <span className="rounded-full border border-border bg-background/60 px-m py-s text-200 font-semibold">
+                  <span className="rounded-full border border-border bg-secondary px-m py-s text-200 font-semibold">
                     {data.edges.length || "No"} lineage links
                   </span>
-                  <span className="rounded-full border border-border bg-background/60 px-m py-s text-200 font-semibold">
+                  <span className="rounded-full border border-border bg-secondary px-m py-s text-200 font-semibold">
                     {data.principals.length || "No"} principals
                   </span>
                 </div>
@@ -190,7 +190,7 @@ export function FirstSyncView() {
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.22 + index * 0.07, duration: 0.4 }}
-                    className="group flex items-start gap-m rounded-xl border border-border bg-background/45 p-m transition-colors hover:border-primary/35 hover:bg-accent/70"
+                    className="group flex items-start gap-m rounded-lg border border-border bg-secondary p-m transition-colors hover:border-primary/35 hover:bg-accent"
                   >
                     <span className="flex icon-size-600 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-transform group-hover:-translate-y-xxs">
                       <Icon className="icon-size-200" />
@@ -212,7 +212,7 @@ export function FirstSyncView() {
               transition={{ delay: 0.18, duration: 0.55, ease: "easeOut" }}
               className="flex flex-col gap-l bg-secondary/65 p-xl sm:p-xxl"
             >
-              <div className="relative overflow-hidden rounded-2xl border border-border bg-background/55 p-l">
+              <div className="relative overflow-hidden rounded-xl border border-border bg-secondary p-l">
                 <div className="flex items-center justify-between gap-m">
                   <div>
                     <div className="text-100 font-bold uppercase tracking-[0.16em] text-lineage-downstream">
@@ -338,7 +338,7 @@ export function FirstSyncView() {
                 </svg>
               </div>
 
-              <div className="mt-auto rounded-2xl border border-primary/25 bg-card p-l shadow-xl">
+              <div className="mt-auto rounded-xl border border-border bg-card p-l shadow-fabric-4">
                 <div className="flex items-start justify-between gap-m">
                   <div className="min-w-0">
                     <div className="text-100 font-bold uppercase tracking-[0.14em] text-primary">
@@ -385,7 +385,7 @@ export function FirstSyncView() {
                   type="button"
                   onClick={() => void sync()}
                   disabled={syncing || !configured || !canSync}
-                  className="mt-l flex h-11 w-full items-center justify-center gap-s rounded-xl bg-gradient-to-r from-primary to-lineage-downstream px-l text-300 font-semibold text-primary-foreground shadow-lg transition hover:brightness-110 disabled:opacity-55"
+                  className="mt-l flex h-10 w-full items-center justify-center gap-s rounded-md bg-primary px-l text-300 font-semibold text-primary-foreground shadow-fabric-2 transition-colors hover:bg-primary-hover disabled:opacity-55"
                 >
                   {syncing ? (
                     <RefreshCw className="icon-size-200 animate-spin" />
@@ -446,7 +446,7 @@ export function FirstSyncView() {
             </motion.section>
           </div>
 
-          <footer className="border-t border-border/70 bg-background/35 px-xl py-m sm:px-xxl">
+          <footer className="border-t border-border bg-secondary px-xl py-m sm:px-xxl">
             <div className="grid grid-cols-5 gap-s">
               {SYNC_STEPS.map((step, index) => (
                 <div key={step} className="flex items-center gap-s">

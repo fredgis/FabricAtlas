@@ -135,7 +135,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Global `Ctrl+K` search | Searches items, tables, views, columns, measures, principals, jobs, configuration and notes |
 | Targeted navigation | Opens the matching drawer, asset, review, job or Workspace Hub section |
 | Personal saved views | Stores user-scoped filter presets in the Fabric-backed Rayfin database |
-| Dark and light themes | Uses dark mode by default with a persistent light-mode preference |
+| Light and dark themes | Uses a Fabric-aligned light mode by default with an optional persistent dark mode |
 | Responsive navigation | Keeps grouped Explore, Govern, Operate and System sections usable on smaller screens |
 
 </details>

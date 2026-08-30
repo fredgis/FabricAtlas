@@ -416,12 +416,11 @@ export function GovernanceCenterView({
 
   return (
     <div className="atlas-content-frame flex flex-col gap-l p-l sm:p-xxl">
-      <Card className="overflow-hidden border-primary/30">
-        <div className="relative overflow-hidden bg-gradient-to-br from-primary/18 via-card to-lineage-downstream/12 p-l sm:p-xl">
-          <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-lineage-downstream/10 blur-3xl" />
+      <Card className="overflow-hidden border-border shadow-fabric-4">
+        <div className="atlas-fabric-hero relative overflow-hidden p-l sm:p-xl">
           <div className="relative flex flex-col gap-l lg:flex-row lg:items-end lg:justify-between">
             <div className="flex items-start gap-m">
-              <span className="flex icon-size-700 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-xl">
+              <span className="atlas-brand-mark flex icon-size-700 shrink-0 items-center justify-center rounded-xl text-primary-foreground">
                 <ShieldCheck className="icon-size-400" aria-hidden="true" />
               </span>
               <div>

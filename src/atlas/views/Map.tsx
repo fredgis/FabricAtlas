@@ -843,7 +843,7 @@ export function MapView() {
           ].map(([label, value]) => (
             <div
               key={label}
-              className="min-w-[78px] rounded-xl border border-border bg-card px-[10px] py-[7px]"
+              className="min-w-[78px] rounded-lg border border-border bg-card px-[10px] py-[7px] shadow-fabric-2"
             >
               <div className="font-numeric text-[15px] font-bold">{value}</div>
               <div className="text-[10px] text-muted-foreground">{label}</div>
@@ -852,8 +852,8 @@ export function MapView() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-[8px] border-b border-border bg-secondary/70 px-[20px] py-[8px]">
-        <div className="flex rounded-lg border border-border bg-background p-[2px]">
+      <div className="flex flex-wrap items-center gap-[8px] border-b border-border bg-card px-[20px] py-[8px] shadow-fabric-2">
+        <div className="flex rounded-md border border-border bg-secondary p-[2px]">
           {(["items", "objects"] as const).map((value) => (
             <button
               key={value}
@@ -861,7 +861,7 @@ export function MapView() {
               onClick={() => setMode(value)}
               className={cn(
                 "h-[30px] rounded-md px-[12px] text-[12px] font-semibold capitalize text-muted-foreground",
-                mode === value && "bg-accent text-foreground shadow-sm",
+                mode === value && "bg-card text-brand-foreground shadow-fabric-2",
               )}
             >
               {value}
@@ -990,7 +990,7 @@ export function MapView() {
           className="atlas-map-grid relative min-h-[500px] overflow-auto bg-muted/30"
         >
           {mode === "objects" && (
-            <div className="sticky left-[16px] top-[12px] z-20 max-w-[500px] rounded-lg border border-border bg-card/95 px-[10px] py-[7px] text-[11px] text-muted-foreground shadow-lg backdrop-blur">
+            <div className="sticky left-[16px] top-[12px] z-20 max-w-[500px] rounded-lg border border-border bg-card px-[10px] py-[7px] text-[11px] text-muted-foreground shadow-fabric-4">
               Object metadata is exact; field-to-report usage remains item-level because
               Fabric does not expose visual field bindings through the current APIs.
             </div>
@@ -1009,7 +1009,7 @@ export function MapView() {
                   {layout.groups.map((group) => (
                     <div
                       key={group.id}
-                      className="pointer-events-none absolute left-[14px] right-[14px] rounded-2xl border border-border/60 bg-card/20"
+                      className="pointer-events-none absolute left-[14px] right-[14px] rounded-xl border border-border/60 bg-card/30"
                       style={{ top: group.y, height: group.height }}
                     >
                       <span className="absolute left-[12px] top-[8px] max-w-[280px] truncate rounded-md bg-background/80 px-[7px] py-[2px] text-[9px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
@@ -1128,7 +1128,7 @@ export function MapView() {
                         onPointerMove={nodeMove}
                         onPointerUp={nodeUp}
                         className={cn(
-                          "absolute flex touch-none select-none items-center gap-[10px] rounded-xl border bg-card px-[12px] text-left shadow-sm transition-[box-shadow,opacity,border-color,transform] hover:-translate-y-[1px] hover:shadow-lg",
+                          "absolute flex touch-none select-none items-center gap-[10px] rounded-lg border bg-card px-[12px] text-left shadow-fabric-2 transition-[box-shadow,opacity,border-color,transform] hover:-translate-y-[1px] hover:shadow-fabric-8",
                           selectedNode ? "border-primary/70" : "border-border",
                           dim && "opacity-30",
                           "cursor-grab active:cursor-grabbing",
@@ -1307,7 +1307,7 @@ export function MapView() {
                         onPointerMove={objectNodeMove}
                         onPointerUp={objectNodeUp}
                         className={cn(
-                          "absolute flex touch-none cursor-grab select-none items-center gap-[10px] rounded-xl border border-border bg-card px-[11px] text-left shadow-sm transition-[box-shadow,opacity,border-color,transform] hover:-translate-y-[1px] hover:shadow-lg active:cursor-grabbing",
+                          "absolute flex touch-none cursor-grab select-none items-center gap-[10px] rounded-lg border border-border bg-card px-[11px] text-left shadow-fabric-2 transition-[box-shadow,opacity,border-color,transform] hover:-translate-y-[1px] hover:shadow-fabric-8 active:cursor-grabbing",
                           selectedNode && "border-primary/70",
                           (!matches || dim) && "opacity-25",
                         )}
@@ -1372,7 +1372,7 @@ export function MapView() {
           </div>
 
           {mode === "items" && visibleItems.length > 0 && (
-            <div className="pointer-events-none absolute right-[16px] top-[16px] z-20 h-[90px] w-[146px] overflow-hidden rounded-xl border border-border bg-card/90 shadow-lg backdrop-blur">
+            <div className="pointer-events-none absolute right-[16px] top-[16px] z-20 h-[90px] w-[146px] overflow-hidden rounded-lg border border-border bg-card shadow-fabric-4">
               {visibleItems.map((item) => {
                 const point = posOf(item.fabricId);
                 return (
@@ -1395,7 +1395,7 @@ export function MapView() {
             </div>
           )}
 
-          <div className="sticky bottom-[14px] left-[14px] z-20 ml-[14px] flex w-fit flex-wrap items-center gap-[12px] rounded-xl border border-border bg-card/90 px-[11px] py-[8px] text-[10px] text-muted-foreground shadow-lg backdrop-blur">
+          <div className="sticky bottom-[14px] left-[14px] z-20 ml-[14px] flex w-fit flex-wrap items-center gap-[12px] rounded-lg border border-border bg-card px-[11px] py-[8px] text-[10px] text-muted-foreground shadow-fabric-4">
             <span className="flex items-center gap-[5px] text-lineage-upstream">
               <span className="h-[2px] w-[18px] bg-lineage-upstream" /> upstream
             </span>
@@ -1412,7 +1412,7 @@ export function MapView() {
             </span>
           </div>
 
-          <div className="sticky bottom-[14px] float-right z-20 mr-[14px] flex w-fit items-center gap-[3px] rounded-xl border border-border bg-card/90 p-[3px] shadow-lg backdrop-blur">
+          <div className="sticky bottom-[14px] float-right z-20 mr-[14px] flex w-fit items-center gap-[3px] rounded-lg border border-border bg-card p-[3px] shadow-fabric-4">
             <button
               type="button"
               aria-label="Zoom out"

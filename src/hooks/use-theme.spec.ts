@@ -9,26 +9,28 @@ describe("useAppTheme", () => {
     document.documentElement.style.colorScheme = "";
   });
 
-  it("defaults to dark and persists an explicit light preference", async () => {
+  it("defaults to light and persists an explicit dark preference", async () => {
     const { result } = renderHook(() => useAppTheme());
 
-    expect(result.current.isDark).toBe(true);
+    expect(result.current.isDark).toBe(false);
     await waitFor(() =>
-      expect(document.documentElement.classList.contains("dark")).toBe(true),
+      expect(document.documentElement.classList.contains("dark")).toBe(false),
     );
 
     act(() => result.current.toggleTheme());
 
-    expect(result.current.isDark).toBe(false);
-    await waitFor(() => expect(localStorage.getItem("atlas.theme")).toBe("light"));
-    expect(document.documentElement.classList.contains("dark")).toBe(false);
+    expect(result.current.isDark).toBe(true);
+    await waitFor(() =>
+      expect(localStorage.getItem("atlas.theme.v2")).toBe("dark"),
+    );
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
   });
 
-  it("restores a saved light preference", () => {
-    localStorage.setItem("atlas.theme", "light");
+  it("restores a saved dark preference", () => {
+    localStorage.setItem("atlas.theme.v2", "dark");
 
     const { result } = renderHook(() => useAppTheme());
 
-    expect(result.current.isDark).toBe(false);
+    expect(result.current.isDark).toBe(true);
   });
 });

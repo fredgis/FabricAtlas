@@ -912,7 +912,7 @@ function DetailPanel({
         <button
           type="button"
           onClick={() => void copy()}
-          className="inline-flex min-h-xxxl items-center justify-center gap-s rounded-lg bg-primary px-l py-s text-300 font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+          className="inline-flex min-h-xxxl items-center justify-center gap-s rounded-lg bg-primary px-l py-s text-300 font-semibold text-primary-foreground transition-colors hover:bg-primary-hover"
         >
           {copied ? (
             <Check className="icon-size-200" aria-hidden="true" />
@@ -1204,7 +1204,7 @@ export function AccessView({
   return (
     <div className="atlas-content-frame flex flex-col gap-l p-l sm:p-xxl">
       <Card className="overflow-hidden border-primary/25">
-        <div className="flex flex-col gap-l border-b border-border bg-gradient-to-r from-primary/10 via-card to-lineage-downstream/5 p-l lg:flex-row lg:items-end lg:justify-between">
+        <div className="atlas-fabric-hero flex flex-col gap-l border-b border-border p-l lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
             <SectionLabel>Governance / additive permissions</SectionLabel>
             <h1 className="mt-xs text-600 font-bold leading-600">
@@ -1414,7 +1414,7 @@ export function AccessView({
                 type="button"
                 onClick={() => downloadCsv(filteredRows)}
                 disabled={filteredRows.length === 0}
-                className="inline-flex min-h-xxxl items-center justify-center gap-s rounded-lg bg-primary px-m py-s text-300 font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                className="inline-flex min-h-xxxl items-center justify-center gap-s rounded-lg bg-primary px-m py-s text-300 font-semibold text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-50"
               >
                 <Download className="icon-size-200" aria-hidden="true" />
                 Export CSV

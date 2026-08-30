@@ -38,7 +38,7 @@ export function WorkspaceHubView({
 
   return (
     <div className="atlas-content-frame flex flex-col gap-l p-xl lg:p-xxl">
-      <Card className="overflow-hidden border-primary/25 bg-gradient-to-r from-primary/10 via-card to-lineage-downstream/5">
+      <Card className="atlas-fabric-hero overflow-hidden border-border shadow-fabric-4">
         <div className="flex flex-col gap-l p-l lg:flex-row lg:items-end lg:justify-between">
           <div>
             <SectionLabel>Operate / workspace context</SectionLabel>

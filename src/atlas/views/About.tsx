@@ -37,7 +37,7 @@ function ProjectLink({
       rel="noreferrer"
       className={
         primary
-          ? "inline-flex items-center justify-center gap-s rounded-lg bg-primary px-l py-m text-300 font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+          ? "inline-flex items-center justify-center gap-s rounded-lg bg-primary px-l py-m text-300 font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
           : "inline-flex items-center justify-center gap-s rounded-lg border border-border bg-background px-l py-m text-300 font-semibold transition-colors hover:border-primary/50 hover:bg-accent"
       }
     >
@@ -63,7 +63,7 @@ export function AboutView() {
 
   return (
     <div className="atlas-content-frame flex min-h-full items-center p-xl lg:p-xxl">
-      <Card className="relative isolate w-full overflow-hidden border-primary/30 bg-gradient-to-br from-primary/15 via-card to-lineage-downstream/10 shadow-xl">
+      <Card className="atlas-fabric-hero relative isolate w-full overflow-hidden border-border shadow-fabric-4">
         <div className="atlas-overview-beam" aria-hidden="true" />
         <div className="grid lg:grid-cols-[1.25fr_0.75fr]">
           <section className="flex flex-col justify-center p-xl sm:p-xxxl">
@@ -81,7 +81,7 @@ export function AboutView() {
             </div>
 
             <div className="mt-xl flex items-center gap-l">
-              <span className="flex icon-size-700 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-lineage-downstream to-primary text-primary-foreground shadow-lg">
+              <span className="atlas-brand-mark flex icon-size-700 shrink-0 items-center justify-center rounded-xl text-primary-foreground">
                 <Map className="icon-size-400" aria-hidden="true" />
               </span>
               <div>
@@ -114,7 +114,7 @@ export function AboutView() {
             </div>
           </section>
 
-          <aside className="flex flex-col justify-center border-t border-border/70 bg-background/40 p-xl backdrop-blur-sm sm:p-xxl lg:border-l lg:border-t-0">
+          <aside className="flex flex-col justify-center border-t border-border bg-secondary/70 p-xl sm:p-xxl lg:border-l lg:border-t-0">
             <SectionLabel>Clone &amp; run</SectionLabel>
             <div className="mt-m overflow-hidden rounded-xl border border-border bg-secondary">
               <div className="flex items-center gap-s border-b border-border px-m py-s text-200 text-muted-foreground">

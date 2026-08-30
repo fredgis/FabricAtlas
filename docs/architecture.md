@@ -115,8 +115,14 @@ in Workspace Hub so technical facts and human context stay adjacent.
 
 ## Theming
 
-Dark is the default. `src/hooks/use-theme.ts` stores an explicit light or dark preference and toggles
-the `.dark` class for Tailwind. Design tokens are defined in `src/global.css`.
+Light is the default so the embedded app follows the surrounding Fabric portal.
+`src/hooks/use-theme.ts` stores an explicit light or dark preference and toggles
+the `.dark` class for Tailwind.
+
+Design tokens in `src/global.css` map the Atlas semantic palette to Fabric UX
+and Fluent 2 neutrals, brand actions, status colors, spacing, radii and
+elevation. Atlas keeps a restrained purple-to-teal spectrum for product
+identity and lineage while standard interactions use the Fabric brand color.
 
 ## Preview vs deployed
 

@@ -225,13 +225,12 @@ export function OverviewView({
 
   return (
     <main className="flex flex-col gap-xxl p-l sm:p-xxl">
-      <Card className="atlas-overview-hero relative isolate overflow-hidden border-primary/30 shadow-xl">
-        <div className="atlas-overview-beam motion-reduce:hidden" aria-hidden="true" />
+      <Card className="atlas-overview-hero relative isolate overflow-hidden border-border shadow-fabric-4">
         <div className="grid lg:grid-cols-5">
           <div className="flex flex-col justify-between gap-xxxl p-xl sm:p-xxl lg:col-span-3 lg:p-xxxl">
             <div>
               <div className="flex items-center gap-m">
-                <span className="flex icon-size-700 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-lineage-downstream to-primary text-primary-foreground shadow-lg">
+                <span className="atlas-brand-mark flex icon-size-700 shrink-0 items-center justify-center rounded-xl text-primary-foreground">
                   <Compass className="icon-size-400" aria-hidden="true" />
                 </span>
                 <div>
@@ -263,7 +262,7 @@ export function OverviewView({
               <button
                 type="button"
                 onClick={() => onOpen("map")}
-                className="group inline-flex items-center justify-between gap-s rounded-lg bg-primary px-l py-m text-300 font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+                className="group inline-flex items-center justify-between gap-s rounded-md bg-primary px-l py-m text-300 font-semibold text-primary-foreground shadow-fabric-2 transition-colors hover:bg-primary-hover"
               >
                 <span className="inline-flex items-center gap-s">
                   <Waypoints className="icon-size-200" aria-hidden="true" />
@@ -277,7 +276,7 @@ export function OverviewView({
               <button
                 type="button"
                 onClick={() => onOpen("catalog")}
-                className="group inline-flex items-center justify-between gap-s rounded-lg border border-border bg-background/70 px-l py-m text-300 font-semibold transition-colors hover:border-primary/40 hover:bg-accent"
+                className="group inline-flex items-center justify-between gap-s rounded-md border border-border bg-card px-l py-m text-300 font-semibold transition-colors hover:border-primary/40 hover:bg-accent"
               >
                 <span className="inline-flex items-center gap-s">
                   <FolderTree className="icon-size-200" aria-hidden="true" />
@@ -291,7 +290,7 @@ export function OverviewView({
               <button
                 type="button"
                 onClick={() => onOpen("access")}
-                className="group inline-flex items-center justify-between gap-s rounded-lg border border-border bg-background/70 px-l py-m text-300 font-semibold transition-colors hover:border-primary/40 hover:bg-accent"
+                className="group inline-flex items-center justify-between gap-s rounded-md border border-border bg-card px-l py-m text-300 font-semibold transition-colors hover:border-primary/40 hover:bg-accent"
               >
                 <span className="inline-flex items-center gap-s">
                   <ShieldCheck className="icon-size-200" aria-hidden="true" />
@@ -305,7 +304,7 @@ export function OverviewView({
             </nav>
           </div>
 
-          <aside className="flex flex-col justify-center gap-xl border-t border-border/70 bg-background/40 p-xl backdrop-blur-sm sm:p-xxl lg:col-span-2 lg:border-l lg:border-t-0 lg:p-xxxl">
+          <aside className="flex flex-col justify-center gap-xl border-t border-border bg-secondary/70 p-xl sm:p-xxl lg:col-span-2 lg:border-l lg:border-t-0 lg:p-xxxl">
             <div className="flex items-center gap-l">
               <span
                 className={`relative flex icon-size-600 shrink-0 items-center justify-center rounded-full border ${pulse.className}`}

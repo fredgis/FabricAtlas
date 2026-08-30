@@ -165,7 +165,7 @@ export function CommentsView({
               <button
                 type="submit"
                 disabled={posting || !text.trim()}
-                className="mt-l inline-flex w-full items-center justify-center gap-s rounded-lg bg-primary px-l py-m text-300 font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+                className="mt-l inline-flex w-full items-center justify-center gap-s rounded-lg bg-primary px-l py-m text-300 font-semibold text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
               >
                 {posting ? (
                   <Loader2 className="icon-size-200 animate-spin" aria-hidden="true" />

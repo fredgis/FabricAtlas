@@ -7,14 +7,14 @@
 
 import { useEffect, useState } from "react";
 
-const THEME_KEY = "atlas.theme";
+const THEME_KEY = "atlas.theme.v2";
 
 export function useAppTheme() {
     const [isDark, setIsDark] = useState(() => {
         try {
-            return localStorage.getItem(THEME_KEY) !== "light";
+            return localStorage.getItem(THEME_KEY) === "dark";
         } catch {
-            return true;
+            return false;
         }
     });
 

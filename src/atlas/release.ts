@@ -15,7 +15,7 @@ export const REPOSITORY_URL =
   "https://github.com/fredgis/FabricAtlas";
 
 export const APP_VERSION =
-  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.5.0";
+  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.5.1";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -27,6 +27,21 @@ export const BUILD_DATE =
 export const DEPLOYMENT_ID = `${APP_VERSION}:${BUILD_COMMIT}:${BUILD_DATE}`;
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "1.5.1",
+    date: "2026-08-30",
+    title: "Fabric UX visual alignment",
+    sections: [
+      {
+        title: "Experience",
+        items: [
+          "Light mode is now the default, matching the surrounding Fabric portal.",
+          "Shell, navigation, cards, dialogs, filters and first sync follow Fluent 2 surface, spacing and elevation patterns.",
+          "Fabric interaction colors are paired with a restrained Atlas spectrum for lineage and product identity.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.5.0",
     date: "2026-08-29",
