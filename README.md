@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/fabric-atlas-hero-v3.svg" alt="Fabric Atlas, governance map for Microsoft Fabric workspaces" width="100%">
+<img src="docs/assets/fabric-atlas-hero-v4.svg" alt="Fabric Atlas, open-source workspace intelligence for Microsoft Fabric" width="100%">
 
 Fabric Atlas gives a team one readable map of its Fabric workspace. It brings
 together lineage, item metadata, access, sensitivity and run history, then keeps
@@ -156,50 +156,63 @@ Fabric Atlas collects that metadata without copying business data.
 
 ## Product screenshots
 
+### Workspace overview
+
+The overview brings health, freshness, governance signals and inventory reach
+together in a Fabric-native operational landing page.
+
+![Fabric Atlas workspace overview](docs/screenshots/overview.png)
+
 ### Guided deployment sync
 
-Each deployed build starts with one controlled metadata refresh. The screen
-shows scan progress before the validated snapshot becomes visible to the team.
+Each deployed build starts with a controlled metadata refresh. Progress, target
+workspace and the source-to-insight topology stay visible throughout the scan.
 
 ![Guided Fabric Atlas deployment sync](docs/screenshots/deployment-sync.png)
 
-### Item lineage
+### Interactive lineage
 
-The item map separates independent data products and follows the Fabric path
-from orchestration to reports. Select a node to inspect its impact without
-moving the current layout.
+The map follows Fabric assets from orchestration to consumption. Selecting an
+item highlights its verified path while the inspector keeps schema, access,
+runs and impact actions beside the graph.
 
 ![Fabric Atlas item lineage](docs/screenshots/lineage-items.png)
 
 ### Object lineage
 
-Object mode expands the path into source tables, model tables, fields and
-consumers. Nodes support selection, group movement and the same animated
-upstream or downstream tracing as item mode.
+Object mode expands a synchronized table into its columns and connected Fabric
+items. The inspector keeps ownership, impact and related metadata visible while
+objects are selected or rearranged.
 
 ![Fabric Atlas object lineage](docs/screenshots/lineage-objects.png)
 
-### Jobs and health
+### Asset Catalog
 
-Recent Fabric activity is grouped by date with status, duration and failure
-signals kept in one table.
+Tables, views, columns and measures are grouped by Fabric item. Selecting an
+asset exposes its source, model context and additive effective access.
 
-![Fabric Atlas jobs and health](docs/screenshots/jobs-health.png)
+![Fabric Atlas Asset Catalog](docs/screenshots/asset-catalog.png)
 
-### Item details
+### Governance Center
 
-The catalog drawer keeps properties, lineage, access, inventory, configuration
-and jobs beside the selected Fabric item.
+Findings, snapshot changes, history, coverage and sensitivity are grouped into
+one governance workspace with saved views and evidence links.
 
-![Fabric Atlas item details](docs/screenshots/item-details.png)
+![Fabric Atlas Governance Center](docs/screenshots/governance-center.png)
 
-### Measures and effective access
+### Access Review
 
-The Asset Catalog groups tables, columns and measures by Fabric item. Selecting
-a measure shows its expression, model context and effective access without
-leaving the inventory.
+The review matrix combines inherited and direct permissions, then supports
+focused filtering, personal decisions and CSV export.
 
-![Fabric Atlas measures and effective access](docs/screenshots/asset-catalog-measures.png)
+![Fabric Atlas Access Review](docs/screenshots/access-review.png)
+
+### Impact reports
+
+An item or schema object can produce an exportable report with verified
+upstream, downstream and relationship evidence.
+
+![Fabric Atlas impact report](docs/screenshots/impact-report.png)
 
 ## How it works
 
