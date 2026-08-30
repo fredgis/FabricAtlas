@@ -15,7 +15,7 @@ export const REPOSITORY_URL =
   "https://github.com/fredgis/FabricAtlas";
 
 export const APP_VERSION =
-  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.9.0";
+  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? "1.9.1";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -26,7 +26,47 @@ export const BUILD_DATE =
 
 export const DEPLOYMENT_ID = `${APP_VERSION}:${BUILD_COMMIT}:${BUILD_DATE}`;
 
+function deploymentGeneration(value: string | undefined): string | undefined {
+  const match = /^(\d+)\.(\d+)(?:\.|:|$)/.exec(value?.trim() ?? "");
+  return match ? `${match[1]}.${match[2]}` : undefined;
+}
+
+export function sameDeploymentGeneration(
+  left: string | undefined,
+  right: string | undefined,
+): boolean {
+  if (!left || !right) return left === right;
+  const leftGeneration = deploymentGeneration(left);
+  const rightGeneration = deploymentGeneration(right);
+  return leftGeneration && rightGeneration
+    ? leftGeneration === rightGeneration
+    : left === right;
+}
+
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "1.9.1",
+    date: "2026-08-30",
+    title: "Immediate sync refresh and Radar baseline",
+    sections: [
+      {
+        title: "Synchronization",
+        items: [
+          "Every successful sync replaces the active catalog and history immediately, then remounts the current view against the new snapshot.",
+          "Fresh snapshots retain their deployment identity so Radar no longer resets to a baseline after every synchronization.",
+          "Patch releases preserve the existing snapshot contract and do not force an unnecessary deployment sync.",
+        ],
+      },
+      {
+        title: "Radar & Asset Catalog",
+        items: [
+          "The first validated snapshot now arms a visible Radar baseline with the monitored target signals.",
+          "Non-risky workspace changes remain visible from the clear Radar state and open the exact adjacent comparison.",
+          "Schema-capable Fabric items remain listed in Asset Catalog even when Fabric exposes no tables, views, columns or measures yet.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.9.0",
     date: "2026-08-30",

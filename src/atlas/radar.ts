@@ -10,6 +10,7 @@ import {
   type AtlasHistory,
   type HistoricalSnapshot,
 } from "./history";
+import { sameDeploymentGeneration } from "./release";
 
 export type FindingDeltaStatus = "new" | "resolved" | "persisting";
 
@@ -43,8 +44,9 @@ export type RadarResult =
   | {
       state: "baseline";
       currentSnapshotId: string;
-      previousSnapshotId: string;
+      previousSnapshotId?: string;
       deploymentId?: string;
+      reason: "first-snapshot" | "deployment-changed";
     }
   | {
       state: "ready";
@@ -52,6 +54,7 @@ export type RadarResult =
       previousSnapshotId: string;
       deltas: FindingDelta[];
       riskyChanges: RiskyChange[];
+      observedChanges: AtlasChange[];
       provenanceComplete: boolean;
     };
 
@@ -133,8 +136,7 @@ function changedDeployment(
   previous: string | undefined,
   current: string | undefined,
 ): boolean {
-  if (!previous && !current) return false;
-  return previous !== current;
+  return !sameDeploymentGeneration(previous, current);
 }
 
 function sensitivityRank(
@@ -220,26 +222,37 @@ export function buildRadar(
     sensitivityRanks?: Readonly<Record<string, number>>;
   } = {},
 ): RadarResult {
-  if (history.summaries.length < 2) {
+  if (history.summaries.length === 0) {
     return {
       state: "insufficient-history",
-      missing: 2 - history.summaries.length,
+      missing: 1,
     };
   }
   const [currentSummary, previousSummary] = history.summaries;
   const current = history.snapshots.find(
     (snapshot) => snapshot.snapshotId === currentSummary.snapshotId,
   );
+  if (!current) {
+    return {
+      state: "loading",
+      missingSnapshotIds: [currentSummary.snapshotId],
+    };
+  }
+  if (!previousSummary) {
+    return {
+      state: "baseline",
+      currentSnapshotId: current.snapshotId,
+      deploymentId: currentSummary.deploymentId,
+      reason: "first-snapshot",
+    };
+  }
   const previous = history.snapshots.find(
     (snapshot) => snapshot.snapshotId === previousSummary.snapshotId,
   );
-  if (!current || !previous) {
+  if (!previous) {
     return {
       state: "loading",
-      missingSnapshotIds: [
-        !current ? currentSummary.snapshotId : undefined,
-        !previous ? previousSummary.snapshotId : undefined,
-      ].filter((value): value is string => !!value),
+      missingSnapshotIds: [previousSummary.snapshotId],
     };
   }
   if (
@@ -253,6 +266,7 @@ export function buildRadar(
       currentSnapshotId: current.snapshotId,
       previousSnapshotId: previous.snapshotId,
       deploymentId: currentSummary.deploymentId,
+      reason: "deployment-changed",
     };
   }
   const threshold = SEVERITY_ORDER[options.minSeverity ?? "low"];
@@ -279,6 +293,7 @@ export function buildRadar(
       previous.catalog,
       options.sensitivityRanks,
     ),
+    observedChanges: changes,
     provenanceComplete: history.summaries.length === history.snapshots.length,
   };
 }

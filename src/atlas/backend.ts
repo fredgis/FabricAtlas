@@ -525,6 +525,7 @@ async function persistSync(
     ...atlas,
     workspace: {
       ...atlas.workspace,
+      deploymentId: DEPLOYMENT_ID,
       snapshotId,
       syncedAt: syncedAt.toISOString(),
     },

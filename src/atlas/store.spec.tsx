@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ATLAS_CONFIG } from "./config";
 import { buildAtlasHistory, snapshotFromData } from "./history";
@@ -178,6 +184,67 @@ describe("AtlasProvider synchronization", () => {
     expect(screen.getByTestId("requires-sync")).toHaveTextContent("false");
     expect(screen.getByTestId("progress")).toHaveTextContent("100");
     expect(screen.getByTestId("stage")).toHaveTextContent("Workspace is ready");
+  });
+
+  it("refreshes current data and history before background reconciliation", async () => {
+    const first = structuredClone(SAMPLE_DATA);
+    first.workspace.snapshotId = "first-snapshot";
+    first.workspace.syncedAt = "2026-08-30T12:00:00.000Z";
+    first.workspace.deploymentId = "1.9.1:test";
+    const second = structuredClone(first);
+    second.workspace.snapshotId = "second-snapshot";
+    second.workspace.syncedAt = "2026-08-30T13:00:00.000Z";
+    second.items.push({
+      ...second.items[0],
+      fabricId: "new-warehouse",
+      displayName: "New warehouse",
+      itemType: "Warehouse",
+    });
+    let resolveReconciliation: (
+      value: ReturnType<typeof buildAtlasHistory>,
+    ) => void = () => undefined;
+    backend.loadFromDb.mockResolvedValue(first);
+    backend.loadHistoryFromDb
+      .mockResolvedValueOnce(
+        buildAtlasHistory([snapshotFromData(first)]),
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveReconciliation = resolve;
+        }),
+      );
+    backend.runFabricSync.mockResolvedValue(second);
+
+    render(
+      <AtlasProvider isPreview={false} currentUser={currentUser}>
+        <Harness />
+      </AtlasProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("history-current")).toHaveTextContent(
+        "first-snapshot",
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Sync" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("item-count")).toHaveTextContent(
+        String(second.items.length),
+      ),
+    );
+    expect(screen.getByTestId("history-current")).toHaveTextContent(
+      "second-snapshot",
+    );
+    expect(screen.getByTestId("history-count")).toHaveTextContent("2");
+
+    await act(async () => {
+      resolveReconciliation(
+        buildAtlasHistory([
+          snapshotFromData(second),
+          snapshotFromData(first),
+        ]),
+      );
+    });
   });
 
   it("hydrates user-scoped finding acknowledgements", async () => {

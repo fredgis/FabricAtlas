@@ -33,7 +33,7 @@ describe("GovernanceCenterView", () => {
     expect(screen.getByRole("tab", { name: /Posture/ })).toBeVisible();
     expect(
       screen.getByRole("heading", {
-        name: "What became risky since the last sync",
+        name: "Your governance baseline is ready",
       }),
     ).toBeInTheDocument();
   });
@@ -111,6 +111,7 @@ describe("RadarPanel", () => {
     previousSnapshotId: "previous",
     deltas: [],
     riskyChanges: [],
+    observedChanges: [],
     provenanceComplete: true,
   };
   const baseProps = {
@@ -123,6 +124,7 @@ describe("RadarPanel", () => {
     onAcknowledge: vi.fn(async () => undefined),
     onMute: vi.fn(async () => undefined),
     onRestore: vi.fn(async () => undefined),
+    onReviewChanges: vi.fn(),
     onRetryHistory: vi.fn(),
     onOpen: vi.fn(),
     onDownload: vi.fn(),
@@ -137,6 +139,57 @@ describe("RadarPanel", () => {
     expect(
       screen.getByLabelText("Radar monitored signals"),
     ).toHaveTextContent("AccessSensitivityLineageConsumed removals");
+  });
+
+  it("shows an armed baseline immediately after the first snapshot", () => {
+    render(
+      <RadarPanel
+        {...baseProps}
+        radar={{
+          state: "baseline",
+          currentSnapshotId: "current",
+          reason: "first-snapshot",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Baseline established")).toBeInTheDocument();
+    expect(
+      screen.getByText(/first validated snapshot is now the reference/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Radar monitored signals"),
+    ).toHaveTextContent("AccessSensitivityLineageConsumed removals");
+  });
+
+  it("links non-risky synchronized changes from the clear Radar state", () => {
+    const onReviewChanges = vi.fn();
+    render(
+      <RadarPanel
+        {...baseProps}
+        radar={{
+          ...readyRadar,
+          observedChanges: [
+            {
+              id: "item-added:new-warehouse",
+              type: "item-added",
+              domain: "item",
+              snapshotId: "current",
+              syncedAt: "2026-08-30T13:00:00.000Z",
+              label: "New warehouse added",
+              itemFabricId: "new-warehouse",
+            },
+          ],
+        }}
+        onReviewChanges={onReviewChanges}
+      />,
+    );
+
+    expect(
+      screen.getByText(/1 workspace change detected/i),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
+    expect(onReviewChanges).toHaveBeenCalledTimes(1);
   });
 
   it("offers a retry instead of leaving a failed comparison loading", () => {

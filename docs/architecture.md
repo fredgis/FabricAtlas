@@ -91,9 +91,11 @@ Rayfin create policies compare the authenticated email with each row's
 also filter that writer before pagination, and hydration ignores any manifest
 that fails the same trust boundary.
 
-The workspace manifest stores the deployed build ID. A new build shows the
-guided sync screen until the authorized synchronizer publishes its snapshot.
-After that one sync, every user loads the same validated build snapshot.
+The workspace manifest stores the deployed build ID. The first deployment or a
+new major/minor snapshot contract shows the guided sync screen until the
+authorized synchronizer publishes its snapshot. Compatible patch releases reuse
+the validated snapshot history. After synchronization, current data and history
+switch to the new snapshot together before background reconciliation.
 
 The MSAL account used for Sync must match the current Rayfin user and tenant.
 Tokens use session storage so switching Fabric users cannot silently reuse the

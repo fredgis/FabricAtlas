@@ -17,7 +17,10 @@ import {
   runFabricSync,
 } from "./backend";
 import { ATLAS_CONFIG, isSyncConfigured } from "./config";
-import { DEPLOYMENT_ID } from "./release";
+import {
+  DEPLOYMENT_ID,
+  sameDeploymentGeneration,
+} from "./release";
 import {
   buildAtlasHistory,
   snapshotFromData,
@@ -92,6 +95,27 @@ const AtlasContext = createContext<AtlasContextValue | null>(null);
 
 function clone(d: AtlasData): AtlasData {
   return JSON.parse(JSON.stringify(d));
+}
+
+function historyAfterSync(
+  previous: AtlasHistory,
+  currentData: AtlasData,
+): AtlasHistory {
+  const snapshotId = currentData.workspace.snapshotId;
+  if (!snapshotId) return previous;
+  const limit = ATLAS_CONFIG.snapshotRetentionCount;
+  const current = snapshotFromData(currentData, snapshotId);
+  return buildAtlasHistory(
+    [
+      current,
+      ...previous.snapshots.filter(
+        (snapshot) => snapshot.snapshotId !== snapshotId,
+      ),
+    ].slice(0, limit),
+    previous.summaries
+      .filter((summary) => summary.snapshotId !== snapshotId)
+      .slice(0, Math.max(0, limit - 1)),
+  );
 }
 
 const EMPTY_DATA: AtlasData = {
@@ -287,7 +311,12 @@ export function AtlasProvider({
         setLastSyncedAt(
           db.workspace.syncedAt ?? db.syncRuns[0]?.finishedAt,
         );
-        setRequiresDeploymentSync(db.workspace.deploymentId !== DEPLOYMENT_ID);
+        setRequiresDeploymentSync(
+          !sameDeploymentGeneration(
+            db.workspace.deploymentId,
+            DEPLOYMENT_ID,
+          ),
+        );
         setHydrating(false);
         setHistoryLoading(true);
         setHistoryError(undefined);
@@ -397,6 +426,9 @@ export function AtlasProvider({
         ...next.syncRuns,
       ].slice(0, 20);
       setData(next);
+      setHistory((previousHistory) =>
+        historyAfterSync(previousHistory, next),
+      );
       setLastSyncedAt(finishedAt);
       setHistoryError(undefined);
       setHistoryLoading(true);

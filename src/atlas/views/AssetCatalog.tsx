@@ -88,6 +88,18 @@ const KIND_META: Record<
   },
 };
 
+const SCHEMA_CATALOG_ITEM_TYPES = new Set<ItemType>([
+  "Lakehouse",
+  "Warehouse",
+  "Eventhouse",
+  "KQLDatabase",
+  "SQLEndpoint",
+  "SQLDatabase",
+  "SemanticModel",
+  "Datamart",
+  "MirroredDatabase",
+]);
+
 const ACCESS_META: Record<
   AccessLevel,
   { label: string; className: string }
@@ -288,26 +300,62 @@ export function AssetCatalogView({
   const filtered = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return assets.filter(
-      (asset) =>
-        (kind === "all" || asset.kind === kind) &&
-        (!normalizedQuery ||
-          asset.name.toLowerCase().includes(normalizedQuery) ||
-          asset.itemName.toLowerCase().includes(normalizedQuery) ||
-          (asset.table ?? "").toLowerCase().includes(normalizedQuery) ||
-          (asset.source ?? "").toLowerCase().includes(normalizedQuery) ||
-          (asset.description ?? "").toLowerCase().includes(normalizedQuery)),
+      (asset) => {
+        const item = itemById.get(asset.itemFabricId);
+        const itemMatches =
+          item?.displayName.toLowerCase().includes(normalizedQuery) ||
+          typeMeta(item?.itemType ?? asset.itemType)
+            .label.toLowerCase()
+            .includes(normalizedQuery);
+        return (
+          (kind === "all" || asset.kind === kind) &&
+          (!normalizedQuery ||
+            itemMatches ||
+            asset.name.toLowerCase().includes(normalizedQuery) ||
+            asset.itemName.toLowerCase().includes(normalizedQuery) ||
+            (asset.table ?? "").toLowerCase().includes(normalizedQuery) ||
+            (asset.source ?? "").toLowerCase().includes(normalizedQuery) ||
+            (asset.description ?? "").toLowerCase().includes(normalizedQuery))
+        );
+      },
     );
-  }, [assets, query, kind]);
+  }, [assets, itemById, query, kind]);
+
+  const inventoryItems = useMemo(() => {
+    const itemIdsWithAssets = new Set(
+      assets.map((asset) => asset.itemFabricId),
+    );
+    return items.filter(
+      (item) =>
+        itemIdsWithAssets.has(item.fabricId) ||
+        SCHEMA_CATALOG_ITEM_TYPES.has(item.itemType),
+    );
+  }, [assets, items]);
 
   const groups = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
     const grouped = new Map<string, Asset[]>();
+    if (kind === "all") {
+      for (const item of inventoryItems) {
+        if (
+          !normalizedQuery ||
+          item.displayName.toLowerCase().includes(normalizedQuery) ||
+          typeMeta(item.itemType).label.toLowerCase().includes(normalizedQuery)
+        ) {
+          grouped.set(item.fabricId, []);
+        }
+      }
+    }
     for (const asset of filtered) {
       const group = grouped.get(asset.itemFabricId) ?? [];
       group.push(asset);
       grouped.set(asset.itemFabricId, group);
     }
-    return [...grouped.entries()];
-  }, [filtered]);
+    return inventoryItems.flatMap((item) => {
+      const group = grouped.get(item.fabricId);
+      return group ? ([[item.fabricId, group]] as const) : [];
+    });
+  }, [filtered, inventoryItems, kind, query]);
 
   const [selId, setSelId] = useState(initialFocusedAsset?.id ?? "");
   const [impactOpen, setImpactOpen] = useState(false);
@@ -427,7 +475,7 @@ export function AssetCatalogView({
                 Items
               </dt>
               <dd className="font-numeric text-400 font-bold">
-                {new Set(assets.map((asset) => asset.itemFabricId)).size}
+                {inventoryItems.length}
               </dd>
             </div>
             <div className="px-l py-s text-center">
@@ -624,7 +672,20 @@ export function AssetCatalogView({
                         className="border-t border-border bg-secondary/30 p-s"
                       >
                         <div className="space-y-xs">
-                          {groupAssets.map((asset) => {
+                          {groupAssets.length === 0 ? (
+                            <div className="flex items-start gap-m rounded-lg border border-dashed border-border bg-card p-m">
+                              <Boxes className="icon-size-300 shrink-0 text-muted-foreground" />
+                              <div>
+                                <div className="text-300 font-semibold">
+                                  Item synchronized
+                                </div>
+                                <p className="mt-xs text-200 text-muted-foreground">
+                                  No tables, views, columns or measures were
+                                  exposed for this item in the latest sync.
+                                </p>
+                              </div>
+                            </div>
+                          ) : groupAssets.map((asset) => {
                             const meta = KIND_META[asset.kind];
                             const active = selectedAsset?.id === asset.id;
                             return (

@@ -23,7 +23,9 @@ the last validated snapshot in Fabric so everyone sees the same state.
 
 ## Quick look
 
-https://github.com/user-attachments/assets/21b1d273-da69-4869-a96c-26d4b6003aa7
+https://github.com/user-attachments/assets/9b7162a0-fefc-432b-8c01-e90dacb8f1db
+
+[Watch the Full HD version on YouTube](https://youtu.be/cgkhUFTEPeI)
 
 ## What it does
 
@@ -54,7 +56,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Functionality | What it provides |
 |---|---|
 | Guided first synchronization | A dedicated deployment screen with staged progress before the first catalog becomes visible |
-| Header synchronization | Reuses the same progress model for later refreshes without leaving the current page |
+| Header synchronization | Reuses the same progress model and atomically refreshes every view against the new snapshot |
 | Progress donut | Replaces the initial topology illustration with an accessible percentage and stage-driven donut |
 | Immutable snapshots | Writes catalog rows first and publishes the workspace manifest only after every write succeeds |
 | Last-known-good fallback | Ignores incomplete snapshots and loads the newest valid workspace state |
@@ -63,7 +65,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Versioned sync contract | Records required, optional and metadata-capability status for every synchronized snapshot |
 | Bounded UDF execution | Applies one deadline, bounded retries and payload limits below Fabric's public endpoint ceilings |
 | Accessible sync feedback | Announces stages and errors, while reduced-motion preferences disable repeating motion |
-| Deployment gate | Requires one synchronization for each deployed build before users enter the catalog |
+| Deployment gate | Requires synchronization for the first deployment or a new major/minor snapshot contract, while compatible patch releases reuse validated history |
 | Trusted synchronizer | Restricts snapshot publication to the configured synchronization account |
 | Snapshot history | Loads previous validated snapshots for comparisons and governance trends |
 
@@ -75,7 +77,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Functionality | What it provides |
 |---|---|
 | Findings | Actionable access, metadata, operations and lineage checks based on synchronized evidence |
-| Governance Radar | Shows only new critical/high findings and risky access, sensitivity, lineage or removal changes, with a target watermark when the latest adjacent comparison is clear |
+| Governance Radar | Establishes a visible first-snapshot baseline, shows only new priority risks, and links non-risky changes to the exact latest comparison |
 | Personal Radar state | Acknowledges one occurrence or mutes a stable finding for the signed-in user |
 | Change Center | Compares any two validated snapshots across items, schema, access, sensitivity, lineage and jobs |
 | Shareable comparisons | Preserves both selected snapshots, section and filters in the URL |
@@ -94,7 +96,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Functionality | What it provides |
 |---|---|
 | Workspace catalog | Groups Fabric items by type with search, health, ownership, labels, tags and detail drawers |
-| Asset Catalog | Lists tables, views, columns and measures under their parent Fabric item |
+| Asset Catalog | Lists tables, views, columns and measures under their parent Fabric item, while keeping synchronized schema-capable items visible when no objects are exposed |
 | Deep metadata | Shows data types, descriptions, visibility, sources, row counts, measure expressions and collection provenance when available |
 | DAX dependency evidence | Resolves measure references only to real synchronized columns or measures and labels inferred source hops |
 | Item context | Keeps properties, lineage, access, configuration and job history beside the selected item |
@@ -195,8 +197,10 @@ together in a Fabric-native operational landing page.
 
 ### Guided deployment sync
 
-Each deployed build starts with a controlled metadata refresh. Progress, target
-workspace and the source-to-insight topology stay visible throughout the scan.
+The first deployment or a new major/minor snapshot contract starts with a
+controlled metadata refresh. Progress, target workspace and the live progress
+donut stay visible throughout the scan; compatible patch releases reuse the
+validated catalog.
 
 ![Guided Fabric Atlas deployment sync](docs/screenshots/deployment-sync.png)
 

@@ -7,6 +7,7 @@ import {
   snapshotSummaryFromManifest,
 } from "./backend";
 import { ATLAS_CONFIG } from "./config";
+import { DEPLOYMENT_ID } from "./release";
 
 const mocks = vi.hoisted(() => {
   const names = [
@@ -164,6 +165,7 @@ describe("Rayfin snapshot persistence", () => {
     expect(persisted).toMatchObject({
       items: SAMPLE_DATA.items,
       workspace: {
+        deploymentId: DEPLOYMENT_ID,
         snapshotId: expect.any(String),
         syncedAt: expect.any(String),
       },

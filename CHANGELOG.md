@@ -4,6 +4,26 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] - 2026-08-30
+
+### Added
+
+- A visible Governance Radar baseline immediately after the first validated snapshot.
+- A clear-state link for non-risky workspace changes, bound to the exact latest adjacent snapshot pair.
+- Synchronized Asset Catalog groups for schema-capable items even when Fabric exposes no objects yet.
+
+### Changed
+
+- Successful synchronization replaces current data and history atomically and remounts the active view against the new snapshot.
+- Patch releases within the same major/minor snapshot contract reuse existing history instead of forcing another deployment sync.
+- Asset searches by item name or type retain all real child assets.
+
+### Fixed
+
+- Freshly persisted snapshots now retain their deployment identity in memory, preventing Radar from resetting to a baseline after every sync.
+- New Fabric items, including Warehouses, become visible across the application immediately after synchronization.
+- Radar’s non-risky change action now opens the same adjacent snapshots used to calculate its count.
+
 ## [1.9.0] - 2026-08-30
 
 ### Added

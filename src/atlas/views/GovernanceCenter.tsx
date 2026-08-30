@@ -101,6 +101,13 @@ interface RadarEntry {
   risk?: RiskyChange;
 }
 
+const RADAR_SIGNALS = [
+  "Access",
+  "Sensitivity",
+  "Lineage",
+  "Consumed removals",
+] as const;
+
 function downloadMarkdown(content: string, filename: string): void {
   const url = URL.createObjectURL(
     new Blob([content], { type: "text/markdown;charset=utf-8" }),
@@ -747,6 +754,15 @@ export function GovernanceCenterView({
           })
         }
         onRestore={(id) => removeFindingAcknowledgement(id)}
+        onReviewChanges={() => {
+          if (radar.state === "ready") {
+            setCurrentSnapshotId(radar.currentSnapshotId);
+            setPreviousSnapshotId(radar.previousSnapshotId);
+          }
+          setChangeSearch("");
+          setChangeDomain("all");
+          setSection("changes");
+        }}
         onRetryHistory={() => {
           if (radar.state !== "loading") return;
           for (const snapshotId of radar.missingSnapshotIds) {
@@ -1076,6 +1092,7 @@ export function RadarPanel({
   onAcknowledge,
   onMute,
   onRestore,
+  onReviewChanges,
   onRetryHistory,
   onOpen,
   onDownload,
@@ -1091,11 +1108,14 @@ export function RadarPanel({
   onAcknowledge: (entry: RadarEntry) => Promise<void>;
   onMute: (entry: RadarEntry) => Promise<void>;
   onRestore: (id: string) => Promise<void>;
+  onReviewChanges: () => void;
   onRetryHistory: () => void;
   onOpen: (entry: RadarEntry) => void;
   onDownload: () => void;
 }) {
   const ready = radar.state === "ready";
+  const firstSnapshotBaseline =
+    radar.state === "baseline" && radar.reason === "first-snapshot";
   return (
     <Card className="overflow-hidden border-primary/25 shadow-fabric-4">
       <div className="atlas-fabric-hero flex flex-col gap-l p-l lg:flex-row lg:items-center">
@@ -1105,11 +1125,14 @@ export function RadarPanel({
         <div className="min-w-0 flex-1">
           <SectionLabel>Governance radar</SectionLabel>
           <h2 className="mt-xs text-500 font-semibold">
-            What became risky since the last sync
+            {firstSnapshotBaseline
+              ? "Your governance baseline is ready"
+              : "What became risky since the last sync"}
           </h2>
           <p className="mt-xs text-200 text-muted-foreground">
-            New high-priority findings and dangerous access, sensitivity,
-            lineage or removal changes only.
+            {firstSnapshotBaseline
+              ? "The first validated snapshot arms the Radar; the next sync will produce risk deltas."
+              : "New high-priority findings and dangerous access, sensitivity, lineage or removal changes only."}
           </p>
         </div>
         {ready && (
@@ -1141,7 +1164,7 @@ export function RadarPanel({
         )}
         {radar.state === "insufficient-history" ? (
           <div className="p-l text-200 text-muted-foreground">
-            A second validated snapshot is required for Radar.
+            A first validated snapshot is required to arm Radar.
           </div>
         ) : radar.state === "loading" && failedSnapshotIds.length > 0 ? (
           <div
@@ -1173,50 +1196,23 @@ export function RadarPanel({
             Loading the latest governance comparison…
           </div>
         ) : radar.state === "baseline" ? (
-          <div className="flex items-center gap-s p-l text-200 text-muted-foreground">
-            <RotateCcw className="icon-size-200 text-primary" />
-            Initial reference for this deployment. The next sync will establish
-            deltas.
-          </div>
+          <RadarTargetState
+            mode="baseline"
+            title="Baseline established"
+            description={
+              radar.reason === "first-snapshot"
+                ? "This first validated snapshot is now the reference. The next sync will measure new high-priority regressions."
+                : "The deployment changed, so this snapshot is the new safe reference. The next sync will establish comparable deltas."
+            }
+          />
         ) : entries.length === 0 && suppressed.length === 0 ? (
-          <div className="relative overflow-hidden p-l">
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute right-l top-1/2 -translate-y-1/2 text-status-healthy opacity-10"
-            >
-              <RadarIcon className="icon-size-800" />
-              <ShieldCheck className="absolute left-1/2 top-1/2 icon-size-400 -translate-x-1/2 -translate-y-1/2" />
-            </div>
-            <div className="relative max-w-3xl">
-              <div className="flex items-center gap-s text-300 font-semibold text-status-healthy">
-                <CheckCircle2 className="icon-size-200" />
-                No new high-priority regression detected
-              </div>
-              <p className="mt-xs text-200 text-muted-foreground">
-                The latest adjacent snapshots meet the Radar goal across the
-                signals it evaluates.
-              </p>
-              <div
-                aria-label="Radar monitored signals"
-                className="mt-m flex flex-wrap gap-s"
-              >
-                {[
-                  "Access",
-                  "Sensitivity",
-                  "Lineage",
-                  "Consumed removals",
-                ].map((signal) => (
-                  <span
-                    key={signal}
-                    className="inline-flex items-center gap-xs rounded-full border border-status-healthy/20 bg-status-healthy/5 px-s py-xs text-100 font-semibold text-status-healthy"
-                  >
-                    <CheckCircle2 className="icon-size-100" />
-                    {signal}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
+          <RadarTargetState
+            mode="clear"
+            title="No new high-priority regression detected"
+            description="The latest adjacent snapshots meet the Radar goal across the signals it evaluates."
+            observedChangeCount={radar.observedChanges.length}
+            onReviewChanges={onReviewChanges}
+          />
         ) : entries.length === 0 ? (
           <div className="flex items-center gap-s p-l text-200 text-muted-foreground">
             <CheckCheck className="icon-size-200 text-primary" />
@@ -1311,6 +1307,76 @@ export function RadarPanel({
         )}
       </div>
     </Card>
+  );
+}
+
+function RadarTargetState({
+  mode,
+  title,
+  description,
+  observedChangeCount = 0,
+  onReviewChanges,
+}: {
+  mode: "baseline" | "clear";
+  title: string;
+  description: string;
+  observedChangeCount?: number;
+  onReviewChanges?: () => void;
+}) {
+  const baseline = mode === "baseline";
+  const StatusIcon = baseline ? Clock3 : CheckCircle2;
+  const CenterIcon = baseline ? Clock3 : ShieldCheck;
+  const watermarkClass = baseline ? "text-primary" : "text-status-healthy";
+  const titleClass = baseline ? "text-primary" : "text-status-healthy";
+  const signalClass = baseline
+    ? "inline-flex items-center gap-xs rounded-full border border-primary/20 bg-primary/5 px-s py-xs text-100 font-semibold text-primary"
+    : "inline-flex items-center gap-xs rounded-full border border-status-healthy/20 bg-status-healthy/5 px-s py-xs text-100 font-semibold text-status-healthy";
+
+  return (
+    <div className="relative overflow-hidden p-l">
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none absolute right-l top-1/2 -translate-y-1/2 opacity-10 ${watermarkClass}`}
+      >
+        <RadarIcon className="icon-size-800" />
+        <CenterIcon className="absolute left-1/2 top-1/2 icon-size-400 -translate-x-1/2 -translate-y-1/2" />
+      </div>
+      <div className="relative max-w-3xl">
+        <div className="flex items-center gap-s text-300 font-semibold">
+          <StatusIcon className={`icon-size-200 ${titleClass}`} />
+          <span className={titleClass}>{title}</span>
+        </div>
+        <p className="mt-xs text-200 text-muted-foreground">{description}</p>
+        <div
+          aria-label="Radar monitored signals"
+          className="mt-m flex flex-wrap gap-s"
+        >
+          {RADAR_SIGNALS.map((signal) => (
+            <span key={signal} className={signalClass}>
+              <StatusIcon className="icon-size-100" />
+              {signal}
+            </span>
+          ))}
+        </div>
+        {!baseline && observedChangeCount > 0 && onReviewChanges && (
+          <div className="mt-m flex flex-col gap-s rounded-lg border border-border bg-secondary/70 p-m sm:flex-row sm:items-center">
+            <FileClock className="icon-size-200 shrink-0 text-primary" />
+            <p className="min-w-0 flex-1 text-200 text-muted-foreground">
+              {observedChangeCount} workspace change
+              {observedChangeCount === 1 ? "" : "s"} detected; none matched
+              Radar&apos;s high-priority rules.
+            </p>
+            <button
+              type="button"
+              onClick={onReviewChanges}
+              className="shrink-0 rounded-lg border border-border bg-card px-m py-s text-200 font-semibold text-primary hover:bg-primary/10"
+            >
+              Review changes
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

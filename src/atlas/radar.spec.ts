@@ -45,7 +45,23 @@ describe("Governance Radar", () => {
       snapshotFromData(previous),
     ]);
 
-    expect(buildRadar(history)).toMatchObject({ state: "baseline" });
+    expect(buildRadar(history)).toMatchObject({
+      state: "baseline",
+      reason: "deployment-changed",
+    });
+  });
+
+  it("establishes a visual baseline after the first validated snapshot", () => {
+    const current = structuredClone(SAMPLE_DATA);
+    current.workspace.snapshotId = "current";
+    current.workspace.syncedAt = "2026-08-30T12:00:00.000Z";
+    const history = buildAtlasHistory([snapshotFromData(current)]);
+
+    expect(buildRadar(history)).toMatchObject({
+      state: "baseline",
+      currentSnapshotId: "current",
+      reason: "first-snapshot",
+    });
   });
 
   it("reports loading when summary catalogs are not hydrated", () => {
@@ -59,6 +75,39 @@ describe("Governance Radar", () => {
       state: "loading",
       missingSnapshotIds: ["previous"],
     });
+  });
+
+  it("retains non-risky inventory changes for Radar context", () => {
+    const previous = structuredClone(SAMPLE_DATA);
+    previous.workspace.snapshotId = "previous";
+    previous.workspace.syncedAt = "2026-08-30T12:00:00.000Z";
+    previous.workspace.deploymentId = "1.9.0:old-commit:2026-08-30";
+    const current = structuredClone(previous);
+    current.workspace.snapshotId = "current";
+    current.workspace.syncedAt = "2026-08-30T13:00:00.000Z";
+    current.workspace.deploymentId = "1.9.1:new-commit:2026-08-31";
+    current.items.push({
+      ...current.items[0],
+      fabricId: "new-warehouse",
+      displayName: "New warehouse",
+      itemType: "Warehouse",
+    });
+    const result = buildRadar(
+      buildAtlasHistory([
+        snapshotFromData(current),
+        snapshotFromData(previous),
+      ]),
+    );
+
+    expect(result.state).toBe("ready");
+    if (result.state !== "ready") return;
+    expect(result.observedChanges).toEqual([
+      expect.objectContaining({
+        type: "item-added",
+        itemFabricId: "new-warehouse",
+      }),
+    ]);
+    expect(result.riskyChanges).toEqual([]);
   });
 
   it("keeps only concrete risky changes", () => {

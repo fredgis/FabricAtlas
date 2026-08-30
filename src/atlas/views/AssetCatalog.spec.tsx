@@ -77,4 +77,37 @@ describe("AssetCatalogView", () => {
     expect(screen.getAllByText("DAX").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/total_revenue_chf/).length).toBeGreaterThan(0);
   });
+
+  it("keeps synchronized schema-capable items visible without objects", () => {
+    render(
+      <AtlasProvider isPreview>
+        <AssetCatalogView />
+      </AtlasProvider>,
+    );
+
+    const group = screen
+      .getAllByText("AlpineRent Telemetry")
+      .map((element) => element.closest("button"))
+      .find((button) => button?.textContent?.includes("Eventhouse"));
+    expect(group).toBeInTheDocument();
+    fireEvent.click(group!);
+    expect(screen.getByText("Item synchronized")).toBeInTheDocument();
+    expect(
+      screen.getByText(/No tables, views, columns or measures were exposed/),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps real assets visible when searching by item type", () => {
+    render(
+      <AtlasProvider isPreview>
+        <AssetCatalogView />
+      </AtlasProvider>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Search assets"), {
+      target: { value: "Warehouse" },
+    });
+    expect(screen.getByText("dim_date")).toBeInTheDocument();
+    expect(screen.queryByText("Item synchronized")).not.toBeInTheDocument();
+  });
 });
