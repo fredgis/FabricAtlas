@@ -14,6 +14,7 @@ the last validated snapshot in Fabric so everyone sees the same state.
 
 [Install](docs/installation.md) ·
 [Architecture](docs/architecture.md) ·
+[Whitepaper](docs/fabric-atlas-whitepaper.pdf) ·
 [Functionalities](#functionalities) ·
 [Roadmap](#roadmap) ·
 [Changelog](CHANGELOG.md) ·
@@ -26,6 +27,24 @@ the last validated snapshot in Fabric so everyone sees the same state.
 https://github.com/user-attachments/assets/9b7162a0-fefc-432b-8c01-e90dacb8f1db
 
 [Watch the Full HD version on YouTube](https://youtu.be/cgkhUFTEPeI)
+
+## Whitepaper
+
+The [Fabric Atlas whitepaper](docs/fabric-atlas-whitepaper.pdf) explains how
+the product collects and validates metadata, publishes immutable snapshots,
+traces item and DAX dependencies, reviews effective access, and builds
+principal-centred departure packs. It also covers governance, operations,
+security boundaries, deployment and known API limits.
+
+The screenshots use FGI-MAIN as one example deployment. Its counts and findings
+are not product defaults or a reference architecture.
+
+<a href="docs/fabric-atlas-whitepaper.pdf">
+  <img src="docs/assets/fabric-atlas-whitepaper-hero.png" alt="Fabric Atlas whitepaper preview with the cover, lineage, governance and departure pack pages" width="100%">
+</a>
+
+[Read the PDF](docs/fabric-atlas-whitepaper.pdf) ·
+[Read the Markdown version](docs/fabric-atlas-whitepaper.md)
 
 ## What it does
 
