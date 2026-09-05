@@ -8,7 +8,7 @@ import type {
   MetadataObjectLineageEdge,
   MetadataObjectRef,
 } from "./item-metadata";
-import type { Item } from "./model";
+import { typeMeta, type Item } from "./model";
 
 const OBJECT_ROW_GAP = 100;
 export const MAX_VISIBLE_OBJECT_EDGES = 250;
@@ -23,6 +23,8 @@ export interface ObjectGraphNode {
   itemId?: string;
   kind: "source" | "table" | "field" | "owner" | "consumer" | "metadata";
   metadataRef?: MetadataObjectRef;
+  collapsedItemGroup?: boolean;
+  objectCount?: number;
   x: number;
   y: number;
 }
@@ -50,6 +52,92 @@ export interface MetadataObjectGraphFilters {
   sourceItemId?: string;
   tableName?: string;
   objectKind?: MetadataObjectKind | "all";
+}
+
+export interface ObjectItemGroup {
+  itemId: string;
+  label: string;
+  objectCount: number;
+}
+
+function objectNodeItemId(node: ObjectGraphNode, activeItemId: string): string {
+  return node.itemId ?? activeItemId;
+}
+
+export function objectItemGroups(
+  graph: ObjectGraph,
+  activeItemId: string,
+  itemById: ReadonlyMap<string, Item>,
+): ObjectItemGroup[] {
+  const counts = new Map<string, number>();
+  for (const node of graph.nodes) {
+    const itemId = objectNodeItemId(node, activeItemId);
+    if (!itemId) continue;
+    counts.set(itemId, (counts.get(itemId) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([itemId, objectCount]) => ({
+      itemId,
+      objectCount,
+      label: itemById.get(itemId)?.displayName ?? itemId,
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label));
+}
+
+export function groupObjectGraphByItem(
+  graph: ObjectGraph,
+  activeItemId: string,
+  itemById: ReadonlyMap<string, Item>,
+  expandedItemIds: ReadonlySet<string>,
+): ObjectGraph {
+  const groupedNodes = new Map<string, ObjectGraphNode[]>();
+  const ungroupedNodes: ObjectGraphNode[] = [];
+  for (const node of graph.nodes) {
+    const itemId = objectNodeItemId(node, activeItemId);
+    if (!itemId) {
+      ungroupedNodes.push(node);
+      continue;
+    }
+    groupedNodes.set(itemId, [...(groupedNodes.get(itemId) ?? []), node]);
+  }
+
+  const replacementByNodeId = new Map<string, string>();
+  const nodes = [...ungroupedNodes];
+  for (const [itemId, itemNodes] of groupedNodes) {
+    if (expandedItemIds.has(itemId)) {
+      nodes.push(...itemNodes);
+      continue;
+    }
+    const item = itemById.get(itemId);
+    const meta = item ? typeMeta(item.itemType) : undefined;
+    const groupId = `item-group:${itemId}`;
+    for (const node of itemNodes) replacementByNodeId.set(node.id, groupId);
+    nodes.push({
+      id: groupId,
+      label: item?.displayName ?? itemId,
+      subtitle: `${itemNodes.length} ${itemNodes.length === 1 ? "object" : "objects"} · collapsed`,
+      code: meta?.code ?? "IT",
+      color: meta?.color ?? "var(--color-primary)",
+      itemId,
+      kind: "owner",
+      collapsedItemGroup: true,
+      objectCount: itemNodes.length,
+      x: Math.min(...itemNodes.map((node) => node.x)),
+      y: Math.min(...itemNodes.map((node) => node.y)),
+    });
+  }
+
+  const edgeKeys = new Set<string>();
+  const edges = graph.edges.flatMap((edge) => {
+    const source = replacementByNodeId.get(edge.source) ?? edge.source;
+    const target = replacementByNodeId.get(edge.target) ?? edge.target;
+    const key = `${source}\u0000${target}\u0000${edge.relation}`;
+    if (source === target || edgeKeys.has(key)) return [];
+    edgeKeys.add(key);
+    return [{ ...edge, source, target }];
+  });
+
+  return { ...graph, nodes, edges };
 }
 
 function metadataNodeStyle(kind: MetadataObjectKind): {

@@ -4,6 +4,22 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.3] - 2026-09-05
+
+### Added
+
+- Object lineage groups connected objects by Fabric item, keeps the active item expanded and exposes Expand item groups / Collapse item groups controls.
+- The complete lineage canvas can be panned by holding the left mouse button on its background and dragging.
+
+### Changed
+
+- Impact mode now preserves the complete graph, node positions and scroll context while changing only dependency highlighting.
+- Replaced the README Governance Center, Access Review and impact-report screenshots.
+
+### Fixed
+
+- Selecting a collapsed connected-item group now switches the active item and rebuilds object lineage instead of retaining the previous Ontology graph.
+
 ## [1.11.2] - 2026-09-05
 
 ### Changed

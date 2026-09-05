@@ -11,7 +11,9 @@ import type { MetadataObjectLineageEdge } from "../item-metadata";
 import { MAP_INSPECTOR_DEFAULT_WIDTH } from "../map-inspector";
 import {
   buildMetadataObjectGraph,
+  groupObjectGraphByItem,
   MAX_VISIBLE_OBJECT_EDGES,
+  objectItemGroups,
 } from "../metadata-object-graph";
 import { SAMPLE_DATA, typeMeta } from "../model";
 import { AtlasProvider } from "../store";
@@ -169,6 +171,34 @@ describe("MapView selection", () => {
       expect(denseGraph.edges).toHaveLength(MAX_VISIBLE_OBJECT_EDGES);
       expect(denseGraph.truncated).toBe(true);
     });
+
+    it("groups connected items and keeps only the active item expanded", () => {
+      const graph = buildMetadataObjectGraph(edges, "ontology", items);
+      const groups = objectItemGroups(graph, "ontology", items);
+      const grouped = groupObjectGraphByItem(
+        graph,
+        "ontology",
+        items,
+        new Set(["ontology"]),
+      );
+
+      expect(groups).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ itemId: "warehouse", objectCount: 1 }),
+          expect.objectContaining({ itemId: "ontology", objectCount: 3 }),
+        ]),
+      );
+      expect(
+        grouped.nodes.find((node) => node.id === "item-group:warehouse"),
+      ).toMatchObject({
+        label: "Operations warehouse",
+        collapsedItemGroup: true,
+        objectCount: 1,
+      });
+      expect(
+        grouped.nodes.some((node) => node.label === "Installed at"),
+      ).toBe(true);
+    });
   });
 
   const selectInspectorTab = async (
@@ -277,6 +307,72 @@ describe("MapView selection", () => {
     expect(selectedLakehouse).toHaveAttribute("aria-pressed", "true");
     expect(selectedLakehouse.style.left).toBe(position.left);
     expect(selectedLakehouse.style.top).toBe(position.top);
+  });
+
+  it("keeps the complete graph and node positions when impact mode changes", () => {
+    window.history.replaceState(null, "", "/#map");
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+
+    const before = new Map(
+      SAMPLE_DATA.items.map((item) => {
+        const node = screen.getByLabelText(
+          `${item.displayName}, ${typeMeta(item.itemType).label}, ${item.health}`,
+        );
+        return [
+          item.fabricId,
+          { left: node.style.left, top: node.style.top },
+        ];
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("switch", { name: "Impact mode" }));
+
+    for (const item of SAMPLE_DATA.items) {
+      const node = screen.getByLabelText(
+        `${item.displayName}, ${typeMeta(item.itemType).label}, ${item.health}`,
+      );
+      expect({ left: node.style.left, top: node.style.top }).toEqual(
+        before.get(item.fabricId),
+      );
+    }
+  });
+
+  it("pans the complete graph by dragging its background", () => {
+    window.history.replaceState(null, "", "/#map");
+    const { container } = render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+    const viewport = container.querySelector<HTMLDivElement>(".atlas-map-grid")!;
+    viewport.scrollLeft = 120;
+    viewport.scrollTop = 80;
+
+    fireEvent.pointerDown(viewport, {
+      button: 0,
+      pointerId: 17,
+      clientX: 200,
+      clientY: 160,
+    });
+    fireEvent.pointerMove(viewport, {
+      pointerId: 17,
+      clientX: 150,
+      clientY: 110,
+    });
+    fireEvent.pointerUp(viewport, {
+      button: 0,
+      pointerId: 17,
+      clientX: 150,
+      clientY: 110,
+    });
+
+    expect(viewport.scrollLeft).toBe(170);
+    expect(viewport.scrollTop).toBe(130);
+    expect(viewport).toHaveClass("cursor-grab");
   });
 
   it("keeps item nodes compact with visible space between rows and stages", () => {
@@ -422,7 +518,9 @@ describe("MapView selection", () => {
     )!;
 
     fireEvent.click(
-      screen.getByLabelText("AlpineRent Executive Dashboard, Report"),
+      screen.getByLabelText(
+        /AlpineRent Executive Dashboard, 1 object · collapsed/i,
+      ),
     );
 
     expect(
@@ -489,6 +587,38 @@ describe("MapView selection", () => {
         (button) => button.getAttribute("aria-expanded") === "false",
       ),
     ).toBe(true);
+  });
+
+  it("expands and collapses object nodes by Fabric item", () => {
+    window.history.replaceState(null, "", "/#map");
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "objects" }));
+    expect(
+      screen.getByLabelText(
+        /AlpineRent Executive Dashboard, 1 object · collapsed/i,
+      ),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Expand item groups" }),
+    );
+    expect(
+      screen.getByLabelText("AlpineRent Executive Dashboard, Report"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse item groups" }),
+    );
+    expect(
+      screen.getByLabelText(
+        /AlpineRent Sales Model, \d+ objects · collapsed/i,
+      ),
+    ).toBeInTheDocument();
   });
 
   it("moves a multi-selection together and fully resets positions", () => {

@@ -33,7 +33,9 @@ import {
 } from "../catalog-objects";
 import {
   buildMetadataObjectGraph,
+  groupObjectGraphByItem,
   MAX_VISIBLE_OBJECT_EDGES,
+  objectItemGroups,
   type ObjectGraph,
   type ObjectGraphEdge as ObjectEdge,
   type ObjectGraphNode as ObjectNode,
@@ -462,10 +464,14 @@ export function MapView() {
   >((searchParam("objectKind") as MetadataObjectKind | "all") || "all");
   const [tab, setTab] = useState<InspectorTab>(initialInspectorTab);
   const [openTables, setOpenTables] = useState<Set<string>>(new Set());
+  const [expandedObjectItemIds, setExpandedObjectItemIds] = useState<
+    Set<string>
+  >(() => new Set(startingId ? [startingId] : []));
   const [drag, setDrag] = useState<Record<string, Point>>({});
   const [dragId, setDragId] = useState<string | null>(null);
   const [objectDrag, setObjectDrag] = useState<Record<string, Point>>({});
   const [objectDragId, setObjectDragId] = useState<string | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
   const [selectedObjectId, setSelectedObjectId] = useState("");
   const [selectedObjectIds, setSelectedObjectIds] = useState<Set<string>>(
     new Set(),
@@ -487,6 +493,12 @@ export function MapView() {
     pointer: Point;
     moved: boolean;
   } | null>(null);
+  const mapPanning = useRef<{
+    pointerId: number;
+    pointer: Point;
+    scrollLeft: number;
+    scrollTop: number;
+  } | null>(null);
   const suppressItemClick = useRef(false);
   const suppressObjectClick = useRef(false);
   const mapRef = useRef<HTMLDivElement>(null);
@@ -507,17 +519,6 @@ export function MapView() {
         impactMode ? Number.POSITIVE_INFINITY : 1,
       ),
     [activeId, impactMode, lineageIndex],
-  );
-  const focusImpact = useMemo(
-    () =>
-      resolvedFocusId === activeId
-        ? impact
-        : getLineageImpact(
-            lineageIndex,
-            resolvedFocusId,
-            impactMode ? Number.POSITIVE_INFINITY : 1,
-          ),
-    [activeId, impact, impactMode, lineageIndex, resolvedFocusId],
   );
   const upstream = useMemo(
     () =>
@@ -549,15 +550,6 @@ export function MapView() {
     () => new Set([activeId, ...impact.upstream.ids, ...impact.downstream.ids]),
     [activeId, impact.downstream.ids, impact.upstream.ids],
   );
-  const focusedItems = useMemo(
-    () =>
-      new Set([
-        resolvedFocusId,
-        ...focusImpact.upstream.ids,
-        ...focusImpact.downstream.ids,
-      ]),
-    [focusImpact.downstream.ids, focusImpact.upstream.ids, resolvedFocusId],
-  );
   const types = useMemo(
     () =>
       [...new Set(items.map((item) => item.itemType))].sort((a, b) =>
@@ -567,20 +559,16 @@ export function MapView() {
   );
   const visibleItems = useMemo(() => {
     if (
-      !impactMode &&
       typeFilter === "all" &&
       healthFilter === "all" &&
       !query.trim()
     ) {
       return items;
     }
-    return items.filter((item) => {
-      return (
-        matchesItemFilters(item, typeFilter, healthFilter, query) &&
-        (!impactMode || !resolvedFocusId || focusedItems.has(item.fabricId))
-      );
-    });
-  }, [focusedItems, healthFilter, impactMode, items, query, resolvedFocusId, typeFilter]);
+    return items.filter((item) =>
+      matchesItemFilters(item, typeFilter, healthFilter, query),
+    );
+  }, [healthFilter, items, query, typeFilter]);
   const visibleIds = useMemo(
     () => new Set(visibleItems.map((item) => item.fabricId)),
     [visibleItems],
@@ -673,7 +661,7 @@ export function MapView() {
   )
     ? objectKindFilter
     : "all";
-  const objects = useMemo(
+  const ungroupedObjects = useMemo(
     () =>
       selectedMetadataEdges.length > 0
         ? buildMetadataObjectGraph(
@@ -711,6 +699,20 @@ export function MapView() {
       tableName,
       upstream,
     ],
+  );
+  const objectGroups = useMemo(
+    () => objectItemGroups(ungroupedObjects, activeId, itemById),
+    [activeId, itemById, ungroupedObjects],
+  );
+  const objects = useMemo(
+    () =>
+      groupObjectGraphByItem(
+        ungroupedObjects,
+        activeId,
+        itemById,
+        expandedObjectItemIds,
+      ),
+    [activeId, expandedObjectItemIds, itemById, ungroupedObjects],
   );
   const objectLineageIndex = useMemo(
     () => createObjectLineageIndex(objects.edges),
@@ -867,7 +869,10 @@ export function MapView() {
       suppressItemClick.current = false;
     }, 0);
   };
-  const resetObjectContext = (clearQuery = false) => {
+  const resetObjectContext = (
+    clearQuery = false,
+    expandedItemId = activeId,
+  ) => {
     setSelectedObjectId("");
     setSelectedObjectIds(new Set());
     setObjectDrag({});
@@ -875,6 +880,9 @@ export function MapView() {
     setSourceItemFilter("all");
     setObjectKindFilter("all");
     setOpenTables(new Set());
+    setExpandedObjectItemIds(
+      new Set(expandedItemId ? [expandedItemId] : []),
+    );
     if (clearQuery) setQuery("");
   };
   const nodeClick = (event: RME<HTMLButtonElement>, id: string) => {
@@ -890,7 +898,7 @@ export function MapView() {
       setSelectedItemIds(new Set([id]));
       setSelId(id);
     }
-    resetObjectContext();
+    resetObjectContext(false, id);
     setTab("summary");
   };
 
@@ -899,7 +907,7 @@ export function MapView() {
     setSelId(itemId);
     setFocusId(itemId);
     setSelectedItemIds(new Set([itemId]));
-    resetObjectContext(true);
+    resetObjectContext(true, itemId);
     setTypeFilter("all");
     setHealthFilter("all");
     setTab("summary");
@@ -932,7 +940,7 @@ export function MapView() {
     setFocusId(nextId);
     setSelectedItemIds(new Set(nextId ? [nextId] : []));
     setDrag({});
-    resetObjectContext();
+    resetObjectContext(false, nextId);
   };
 
   const changeObjectTable = (nextTable: string) => {
@@ -982,6 +990,16 @@ export function MapView() {
   ) => {
     event.currentTarget.setPointerCapture?.(event.pointerId);
     const multi = event.ctrlKey || event.metaKey || event.shiftKey;
+    if (
+      !multi &&
+      node.collapsedItemGroup &&
+      node.itemId === activeId
+    ) {
+      setExpandedObjectItemIds((previous) =>
+        new Set([...previous, activeId]),
+      );
+      return;
+    }
     let selection = selectedObjectIds;
     if (!selection.has(node.id)) {
       selection = multi
@@ -1036,6 +1054,42 @@ export function MapView() {
     window.setTimeout(() => {
       suppressObjectClick.current = false;
     }, 0);
+  };
+
+  const mapPanStart = (event: RPE<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const target = event.target;
+    if (
+      target instanceof Element &&
+      target.closest("button, a, input, select, textarea, [role='button']")
+    ) {
+      return;
+    }
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    mapPanning.current = {
+      pointerId: event.pointerId,
+      pointer: { x: event.clientX, y: event.clientY },
+      scrollLeft: event.currentTarget.scrollLeft,
+      scrollTop: event.currentTarget.scrollTop,
+    };
+    setIsPanning(true);
+  };
+
+  const mapPanMove = (event: RPE<HTMLDivElement>) => {
+    const current = mapPanning.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.currentTarget.scrollLeft =
+      current.scrollLeft - (event.clientX - current.pointer.x);
+    event.currentTarget.scrollTop =
+      current.scrollTop - (event.clientY - current.pointer.y);
+  };
+
+  const mapPanEnd = (event: RPE<HTMLDivElement>) => {
+    if (mapPanning.current?.pointerId !== event.pointerId) return;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    mapPanning.current = null;
+    setIsPanning(false);
   };
 
   const objectNodeClick = (
@@ -1181,7 +1235,14 @@ export function MapView() {
             <button
               key={value}
               type="button"
-              onClick={() => setMode(value)}
+              onClick={() => {
+                setMode(value);
+                if (value === "objects") {
+                  setExpandedObjectItemIds(
+                    new Set(activeId ? [activeId] : []),
+                  );
+                }
+              }}
               className={cn(
                 "rounded-md px-m font-semibold capitalize text-muted-foreground",
                 mode === value && "bg-card text-brand-foreground shadow-fabric-2",
@@ -1347,6 +1408,30 @@ export function MapView() {
             Focus selection
           </button>
         )}
+        {mode === "objects" && objectGroups.length > 1 && (
+          <>
+            <button
+              type="button"
+              onClick={() =>
+                setExpandedObjectItemIds(
+                  new Set(objectGroups.map((group) => group.itemId)),
+                )
+              }
+              className="flex items-center gap-s rounded-lg border border-border px-m font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <ChevronDown size={13} />
+              Expand item groups
+            </button>
+            <button
+              type="button"
+              onClick={() => setExpandedObjectItemIds(new Set())}
+              className="flex items-center gap-s rounded-lg border border-border px-m font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <ChevronRight size={13} />
+              Collapse item groups
+            </button>
+          </>
+        )}
         {(mode === "items"
           ? selectedItemIds.size
           : selectedObjectIds.size) > 1 && (
@@ -1370,7 +1455,14 @@ export function MapView() {
       <div className="flex min-h-0 flex-1 flex-col xl:flex-row">
         <div
           ref={mapRef}
-          className="atlas-map-grid relative min-h-[500px] min-w-0 flex-1 overflow-auto bg-muted/30"
+          onPointerDown={mapPanStart}
+          onPointerMove={mapPanMove}
+          onPointerUp={mapPanEnd}
+          onPointerCancel={mapPanEnd}
+          className={cn(
+            "atlas-map-grid relative min-h-[500px] min-w-0 flex-1 touch-none overflow-auto bg-muted/30",
+            isPanning ? "cursor-grabbing select-none" : "cursor-grab",
+          )}
         >
           {mode === "objects" && (
             <div className="sticky left-[16px] top-[12px] z-20 max-w-[500px] rounded-lg border border-border bg-card px-[10px] py-[7px] text-[11px] text-muted-foreground shadow-fabric-4">
