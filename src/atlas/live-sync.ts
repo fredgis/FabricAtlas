@@ -207,18 +207,24 @@ async function acquireToken(
 
 const OPTIONAL_METADATA_TOKEN_SCOPES = {
   kustoToken: {
-    scope: "https://kusto.kusto.windows.net/.default",
+    scope: "https://kusto.kusto.windows.net/user_impersonation",
     purpose: "KQL metadata",
   },
   sqlToken: {
-    scope: "https://database.windows.net/.default",
+    scope: "https://database.windows.net/user_impersonation",
     purpose: "SQL metadata",
   },
-  storageToken: {
-    scope: "https://storage.azure.com/.default",
-    purpose: "OneLake metadata",
-  },
 } as const;
+
+const FABRIC_DISCOVERY_SCOPES = [
+  "https://analysis.windows.net/powerbi/api/UserDataFunction.Execute.All",
+  "https://analysis.windows.net/powerbi/api/Workspace.Read.All",
+  "https://analysis.windows.net/powerbi/api/Item.Read.All",
+  "https://analysis.windows.net/powerbi/api/Item.ReadWrite.All",
+  "https://analysis.windows.net/powerbi/api/Dataset.Read.All",
+  "https://analysis.windows.net/powerbi/api/Report.Read.All",
+  "https://analysis.windows.net/powerbi/api/Tenant.Read.All",
+];
 
 export interface SyncRequestTokens {
   fabricToken: string;
@@ -256,7 +262,7 @@ async function acquireOptionalMetadataTokens(
         identity,
         [request.scope],
         request.purpose,
-        false,
+        true,
       );
     } catch (error) {
       console.warn(
@@ -264,8 +270,33 @@ async function acquireOptionalMetadataTokens(
         error instanceof Error ? error.message : String(error),
       );
     }
+
   }
   return tokens;
+}
+
+async function acquireFabricSyncToken(
+  identity: SyncIdentity,
+): Promise<string> {
+  try {
+    return await acquireToken(
+      identity,
+      FABRIC_DISCOVERY_SCOPES,
+      "Fabric metadata",
+      true,
+    );
+  } catch (error) {
+    console.warn(
+      "[atlas] advanced Fabric definition permission unavailable; using the standard metadata scope",
+      error instanceof Error ? error.message : String(error),
+    );
+    return acquireToken(
+      identity,
+      [ATLAS_CONFIG.scope],
+      "Power BI",
+      true,
+    );
+  }
 }
 
 /* ----------------------------- UDF invoke ------------------------------ */
@@ -893,12 +924,7 @@ export async function invokeSyncAll(
     );
   }
   const url = retargetToSyncAll(raw);
-  const fabricToken = await acquireToken(
-    identity,
-    [ATLAS_CONFIG.scope],
-    "Power BI",
-    true,
-  );
+  const fabricToken = await acquireFabricSyncToken(identity);
   const metadataTokens = await acquireOptionalMetadataTokens(identity);
   const resp = await fetch(url, {
     method: "POST",
