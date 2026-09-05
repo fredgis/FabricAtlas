@@ -80,10 +80,17 @@ or delete action.
 
 The Sync button calls `runFabricSync` (`src/atlas/backend.ts`). When deployed,
 the browser invokes the published `sync_all` Fabric User Data Function. The
-required Fabric/Power BI token is accompanied by optional Kusto, Azure SQL and
-OneLake tokens acquired for the same signed-in identity. Each token is used
-only by its matching metadata collector. The app maps the response, writes it
-through the Rayfin Data API, and records a `SyncRun`.
+required Fabric/Power BI token is accompanied by optional Kusto and Azure SQL
+tokens acquired for the same signed-in identity. Each token is used only by its
+matching metadata collector. The `storageToken` function parameter is reserved
+for future OneLake discovery and is not currently acquired by the browser. The
+app maps the response, writes it through the Rayfin Data API, and records a
+`SyncRun`.
+
+Initial synchronization and later refreshes use the same five-phase progress
+tracker. The discovery phase reports the actual number of enriched items and
+the active Fabric item type, together with elapsed time, rather than advancing
+a simulated percentage.
 
 Contract version 2 separates required sections from optional enrichment and
 records metadata capabilities for ownership, sensitivity, endorsement, tags,
@@ -92,11 +99,33 @@ the refresh. Optional token, permission, encrypted-label or endpoint failures
 remain visible as evidence but do not invalidate otherwise authoritative
 metadata. Valid empty workspaces are accepted.
 
-The UDF shares one 92-second monotonic deadline across API calls, incremental
-response reads, retries and sleeps. It retries bounded `429` and transient
-`5xx` responses, caps upstream and final payloads at 25 MiB, and returns
-structured safe errors. The browser independently streams and caps the response
-at 26 MiB before parsing.
+Microsoft Fabric currently enforces a
+[200-second User Data Function execution limit](https://learn.microsoft.com/en-us/python/api/fabric-user-data-functions/fabric.functions.userdatafunctiontimeouterror?view=fabric-user-data-functions-python-latest).
+Atlas uses one 180-second monotonic budget across API calls, SQL/KQL
+metadata queries, incremental response reads, retries and sleeps, leaving 20
+seconds for final projection, serialization and platform response handling. It
+retries bounded `429` and transient `5xx` responses, caps upstream and final
+payloads at 25 MiB, and returns structured safe errors. The browser independently
+streams and caps the response at 26 MiB before parsing.
+
+Object-lineage relations are not truncated by count. Synchronization starts
+with a deferred-enrichment base call that returns the authoritative workspace,
+scanner, access and base-lineage envelope. The client then groups workspace
+items by Fabric type and invokes `sync_items` in bounded operational batches.
+Each batch returns `completedItemIds` and `remainingItemIds`. When its remaining
+budget is too short to start another item, the UDF returns a continuation before
+the platform timeout.
+
+The client requeues continuations, splits a timed-out or oversized multi-item
+batch, and retries a single slow item in a fresh function slice. Repeated
+no-progress attempts are bounded, and a deterministic single-item response-size
+failure is surfaced explicitly instead of looping forever. Other item types
+continue independently in the same queue. A platform
+`UserDataFunctionTimeoutError` is therefore a retry signal for the affected
+slice, not a reason to discard completed slices. Non-retryable validation or
+permission failures still preserve the previous validated snapshot. The
+browser warns before refresh or navigation closes the tab while the queue is
+active.
 
 Each refresh writes a new immutable snapshot. Content rows are written first and
 the `Workspace` manifest is written last. A failed or incomplete refresh never

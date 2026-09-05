@@ -196,7 +196,8 @@ protection. Unknown labels intentionally produce no downgrade alert.
 
 1. Open the `atlas_sync_functions` item in your workspace (Fabric portal). Make sure its code matches
    [`function_app.py`](../fabric/udf/atlas_sync_functions/function_app.py), then click **Publish** and
-   copy the `sync_all` invoke URL.
+   confirm both `sync_all` and `sync_items` are public endpoints. Copy the `sync_all` invoke URL; the
+   app derives the sibling `sync_items` URL for resumable per-type enrichment.
 2. Put the `sync_all` invoke URL in `RAYFIN_PUBLIC_ATLAS_UDF_URL` as shown above, redeploy, open the
    app and click **Start first sync**. The first-run screen shows live progress but never asks users
    to paste configuration values. After a successful index, future visits open the dashboard

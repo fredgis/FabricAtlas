@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   ITEM_METADATA_SCHEMA_NAME,
   MAX_DATA_AGENT_ELEMENTS,
-  MAX_OBJECT_LINEAGE_EDGES,
   METADATA_OBJECT_TYPES,
   OPTIONAL_METADATA_SYNC_SECTIONS,
   isItemMetadataSchemaEntry,
@@ -902,7 +901,36 @@ describe("metadata lineage", () => {
     });
   });
 
-  it("rejects inferred, malformed, and unbounded object-edge payloads", () => {
+  it("accepts complete object-edge payloads without a relation-count cap", () => {
+    const edgeCount = 2_500;
+    const objectEdges = Array.from(
+      { length: edgeCount },
+      (_, index) => ({
+        source: {
+          itemId: "source",
+          kind: "column",
+          id: `source-column-${index}`,
+          name: `Source column ${index}`,
+          tableName: "Customers",
+        },
+        target: {
+          itemId: "ontology",
+          kind: "property",
+          id: `ontology-property-${index}`,
+          name: `Ontology property ${index}`,
+          tableName: "Customer",
+        },
+        relation: "binds property",
+        confidence: "verified",
+      }),
+    );
+
+    expect(parseObjectLineagePayload({ objectEdges })?.objectEdges).toHaveLength(
+      edgeCount,
+    );
+  });
+
+  it("rejects inferred and malformed object-edge payloads", () => {
     const inferred = {
       source: {
         itemId: "source",
@@ -921,14 +949,6 @@ describe("metadata lineage", () => {
     };
 
     expect(parseObjectLineagePayload({ objectEdges: [inferred] })).toBeUndefined();
-    expect(
-      parseObjectLineagePayload({
-        objectEdges: Array.from(
-          { length: MAX_OBJECT_LINEAGE_EDGES + 1 },
-          () => inferred,
-        ),
-      }),
-    ).toBeUndefined();
     expect(
       parseObjectLineagePayload({
         objectEdges: [

@@ -86,6 +86,7 @@ export interface AtlasContextValue {
   syncing: boolean;
   syncProgress: number;
   syncStage: string;
+  syncStartedAt?: number;
   lastSyncedAt?: string;
   isPreview: boolean;
   configured: boolean;
@@ -248,6 +249,7 @@ export function AtlasProvider({
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState(0);
   const [syncStage, setSyncStage] = useState("Ready to sync");
+  const [syncStartedAt, setSyncStartedAt] = useState<number | undefined>();
   const [lastSyncedAt, setLastSyncedAt] = useState<string | undefined>(
     isPreview ? SAMPLE_DATA.syncRuns[0]?.finishedAt : undefined,
   );
@@ -310,6 +312,16 @@ export function AtlasProvider({
     },
     [],
   );
+
+  useEffect(() => {
+    if (!syncing) return;
+    const preventRefresh = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", preventRefresh);
+    return () => window.removeEventListener("beforeunload", preventRefresh);
+  }, [syncing]);
 
   useEffect(() => {
     if (isPreview) return;
@@ -544,19 +556,13 @@ export function AtlasProvider({
     setSyncing(true);
     setSyncProgress(3);
     setSyncStage("Starting workspace sync");
+    const syncStartedAtMs = Date.now();
+    setSyncStartedAt(syncStartedAtMs);
     setSyncError(undefined);
     setHistoryLoading(false);
-    const startedAt = new Date().toISOString();
+    const startedAt = new Date(syncStartedAtMs).toISOString();
     let succeeded = false;
     let reportedProgress = 3;
-    const heartbeat = window.setInterval(() => {
-      if (operationGeneration.current !== generation) return;
-      if (reportedProgress < 42) {
-        reportedProgress += 1;
-        setSyncProgress(reportedProgress);
-        if (reportedProgress >= 12) setSyncStage("Scanning workspace metadata");
-      }
-    }, 900);
     try {
       const fresh = await runFabricSync(
         isPreview,
@@ -635,8 +641,8 @@ export function AtlasProvider({
       setSyncError(err instanceof Error ? err.message : String(err));
       setSyncProgress(0);
       setSyncStage("Sync failed");
+      setSyncStartedAt(undefined);
     } finally {
-      window.clearInterval(heartbeat);
       if (operationGeneration.current === generation) {
         setSyncing(false);
       }
@@ -644,6 +650,7 @@ export function AtlasProvider({
         progressResetTimer.current = window.setTimeout(() => {
           setSyncProgress(0);
           setSyncStage("Ready to sync");
+          setSyncStartedAt(undefined);
         }, 1200);
       }
     }
@@ -1086,6 +1093,7 @@ export function AtlasProvider({
       syncing,
       syncProgress,
       syncStage,
+      syncStartedAt,
       lastSyncedAt,
       isPreview,
       configured,
@@ -1108,7 +1116,7 @@ export function AtlasProvider({
       removeGovernanceException: removeSharedGovernanceException,
       loadHistorySnapshot,
     }),
-    [data, history, hydrating, historyLoading, historyError, historyFailedSnapshotIds, savedViews, savedViewsLoading, savedViewsError, findingAcks, findingAcksLoading, findingAcksError, findingAckPendingIds, governancePolicy.targets, governancePolicyLoading, governancePolicyError, governanceExceptions, governanceExceptionsLoading, governanceExceptionsError, governanceExceptionPendingIds, syncing, syncProgress, syncStage, lastSyncedAt, isPreview, configured, canSync, hasData, requiresDeploymentSync, syncError, currentUser, sync, addComment, addSavedView, removeSavedView, saveFindingAcknowledgement, removeFindingAcknowledgement, reloadGovernancePolicy, saveGovernanceTargets, resetGovernanceTargets, reloadGovernanceExceptions, saveSharedGovernanceException, removeSharedGovernanceException, loadHistorySnapshot],
+    [data, history, hydrating, historyLoading, historyError, historyFailedSnapshotIds, savedViews, savedViewsLoading, savedViewsError, findingAcks, findingAcksLoading, findingAcksError, findingAckPendingIds, governancePolicy.targets, governancePolicyLoading, governancePolicyError, governanceExceptions, governanceExceptionsLoading, governanceExceptionsError, governanceExceptionPendingIds, syncing, syncProgress, syncStage, syncStartedAt, lastSyncedAt, isPreview, configured, canSync, hasData, requiresDeploymentSync, syncError, currentUser, sync, addComment, addSavedView, removeSavedView, saveFindingAcknowledgement, removeFindingAcknowledgement, reloadGovernancePolicy, saveGovernanceTargets, resetGovernanceTargets, reloadGovernanceExceptions, saveSharedGovernanceException, removeSharedGovernanceException, loadHistorySnapshot],
   );
 
   return <AtlasContext.Provider value={value}>{children}</AtlasContext.Provider>;

@@ -296,6 +296,50 @@ describe("AtlasProvider synchronization", () => {
     expect(screen.getByTestId("stage")).toHaveTextContent("Workspace is ready");
   });
 
+  it("warns before a refresh while resumable synchronization is active", async () => {
+    let finishSync: ((value: typeof SAMPLE_DATA) => void) | undefined;
+    backend.runFabricSync.mockImplementation(
+      async (
+        _isPreview: boolean,
+        _user: unknown,
+        report: (progress: number, stage: string) => void,
+      ) => {
+        report(20, "Workspace topology received");
+        return new Promise<typeof SAMPLE_DATA>((resolve) => {
+          finishSync = resolve;
+        });
+      },
+    );
+
+    render(
+      <AtlasProvider isPreview={false} currentUser={currentUser}>
+        <Harness />
+      </AtlasProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("hydrating")).toHaveTextContent("false"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Sync" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("syncing")).toHaveTextContent("true"),
+    );
+
+    const duringSync = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(duringSync);
+    expect(duringSync.defaultPrevented).toBe(true);
+
+    await act(async () => {
+      finishSync?.(structuredClone(SAMPLE_DATA));
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("syncing")).toHaveTextContent("false"),
+    );
+
+    const afterSync = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(afterSync);
+    expect(afterSync.defaultPrevented).toBe(false);
+  });
+
   it("uses the unique synchronized principal display name for comments", async () => {
     const principal = SAMPLE_DATA.principals.find(
       (candidate) => candidate.kind === "user" && candidate.email,
