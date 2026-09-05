@@ -211,6 +211,31 @@ describe("validateRawSync", () => {
         ),
       ).not.toThrow();
     });
+
+    it("rejects enrichment failures before snapshot publication", () => {
+      const enrichment: RawSync = {
+        schemaVersion: 2,
+        syncMode: "enrichment",
+        requestedItemIds: ["one"],
+        completedItemIds: ["one"],
+        remainingItemIds: [],
+        itemFailures: { one: "invalid-response" },
+        schema: { one: [] },
+        config: [],
+        jobs: [],
+        lineage: [],
+        artifactMetadata: {},
+        itemMetadata: {},
+        objectEdges: [],
+        sections: {},
+        capabilities: {},
+        errors: ["enrichment:one: invalid-response"],
+      };
+
+      expect(() => validateSyncEnrichment(enrichment, ["one"])).toThrow(
+        /could not enrich every requested item.*previous snapshot was preserved/i,
+      );
+    });
   });
 
   describe("sync request metadata tokens", () => {

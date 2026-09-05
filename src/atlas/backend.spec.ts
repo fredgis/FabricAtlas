@@ -348,6 +348,35 @@ describe("Rayfin snapshot persistence", () => {
     expect(mocks.data.SyncRun.delete).not.toHaveBeenCalled();
   });
 
+  it("retries the completed SyncRun update before publishing the manifest", async () => {
+    mocks.data.SyncRun.update.mockRejectedValueOnce(
+      new Error("temporary update failure"),
+    );
+
+    await expect(runFabricSync(false, identity)).resolves.toBeTruthy();
+
+    expect(mocks.data.SyncRun.update).toHaveBeenCalledTimes(2);
+    expect(mocks.data.Workspace.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not publish the manifest when synchronization is cancelled during persistence", async () => {
+    const controller = new AbortController();
+    mocks.data.FabricItem.create.mockImplementationOnce(async (row) => {
+      controller.abort();
+      return row;
+    });
+
+    await expect(
+      runFabricSync(false, identity, undefined, controller.signal),
+    ).rejects.toThrow(/synchronization cancelled/i);
+
+    expect(mocks.data.Workspace.create).not.toHaveBeenCalled();
+    expect(mocks.data.SyncRun.update).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ status: "failed" }),
+    );
+  });
+
   it("preserves principal workspace roles through persistence and hydration", async () => {
     const atlas = structuredClone(SAMPLE_DATA);
     atlas.workspace.fabricId = workspaceId;

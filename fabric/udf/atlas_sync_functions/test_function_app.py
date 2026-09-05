@@ -3716,6 +3716,27 @@ class SyncOrchestrationTests(unittest.TestCase):
                 correlationId="not-a-correlation-id",
             )
 
+    def test_role_assignment_preserves_guest_evidence(self):
+        result = function_app._sanitize_role_assignment({
+            "role": "Viewer",
+            "principal": {
+                "id": "99999999-9999-4999-8999-999999999999",
+                "displayName": "Guest User",
+                "type": "User",
+                "userType": "Guest",
+                "userDetails": {
+                    "userPrincipalName": "guest@example.com",
+                    "userType": "Guest",
+                },
+            },
+        })
+
+        self.assertEqual(result["principal"]["userType"], "Guest")
+        self.assertEqual(
+            result["principal"]["userDetails"]["userType"],
+            "Guest",
+        )
+
     def test_sync_all_returns_v2_envelope_and_keeps_top_level_items(self):
         items = [
             {

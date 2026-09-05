@@ -1191,15 +1191,22 @@ def _sanitize_role_assignment(value):
         )
         if text:
             safe_principal[key] = text
+    user_type = _strict_text(principal.get("userType"))
+    if user_type:
+        safe_principal["userType"] = user_type
     details = principal.get("userDetails")
     if isinstance(details, dict):
         user_principal_name = _strict_text(
             details.get("userPrincipalName")
         )
+        detail_user_type = _strict_text(details.get("userType"))
+        safe_details = {}
         if user_principal_name:
-            safe_principal["userDetails"] = {
-                "userPrincipalName": user_principal_name,
-            }
+            safe_details["userPrincipalName"] = user_principal_name
+        if detail_user_type:
+            safe_details["userType"] = detail_user_type
+        if safe_details:
+            safe_principal["userDetails"] = safe_details
     if not safe_principal.get("id"):
         fallback = (
             safe_principal.get("userDetails", {}).get("userPrincipalName")

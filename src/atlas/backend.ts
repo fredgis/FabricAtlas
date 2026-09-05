@@ -19,6 +19,7 @@ import {
   invokeSyncAll,
   mapSyncToAtlas,
   realText,
+  SyncCancelledError,
   toItemType,
   type SyncIdentity,
 } from "./live-sync";
@@ -54,6 +55,14 @@ export type SyncProgressReporter = (progress: number, stage: string) => void;
 
 type Row = Record<string, unknown>;
 const SNAPSHOT_WRITE_BATCH_SIZE = 8;
+const SYNC_RUN_UPDATE_RETRY_DELAYS_MS = [0, 100, 400];
+
+function assertSyncActive(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new SyncCancelledError("Synchronization cancelled.");
+  }
+}
+
 interface EntityQuery {
   where: (filter: Row) => EntityQuery;
   first: (count: number) => EntityQuery;
@@ -302,21 +311,34 @@ async function updateSyncAttempt(
   if (!api.update) {
     throw new Error("Rayfin SyncRun does not support status updates");
   }
-  await api.update(
-    { id: attempt.id },
-    {
-    finishedAt,
-    status,
-    itemsSynced,
-    durationMs: Math.max(0, finishedAt.getTime() - attempt.startedAt.getTime()),
-    failureCode: status === "failed" ? "sync-failed" : undefined,
-    failureMessage:
-      status === "failed"
-        ? "Synchronization failed before snapshot publication."
-        : undefined,
-    summary,
-    },
-  );
+  let lastError: unknown;
+  for (const delay of SYNC_RUN_UPDATE_RETRY_DELAYS_MS) {
+    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+    try {
+      await api.update(
+        { id: attempt.id },
+        {
+          finishedAt,
+          status,
+          itemsSynced,
+          durationMs: Math.max(
+            0,
+            finishedAt.getTime() - attempt.startedAt.getTime(),
+          ),
+          failureCode: status === "failed" ? "sync-failed" : undefined,
+          failureMessage:
+            status === "failed"
+              ? "Synchronization failed before snapshot publication."
+              : undefined,
+          summary,
+        },
+      );
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
 }
 
 /* --------------------------- comments --------------------------- */
@@ -369,6 +391,7 @@ export async function runFabricSync(
     reportProgress?.(100, "Sync complete");
     return null;
   }
+  assertSyncActive(signal);
   const attempt = await startSyncAttempt(user);
   try {
     const raw = await invokeSyncAll(
@@ -386,6 +409,7 @@ export async function runFabricSync(
       atlas,
       reportProgress,
       attempt,
+      signal,
     );
     reportProgress?.(100, "Sync complete");
     return persisted;
@@ -410,6 +434,7 @@ async function persistSync(
   atlas: AtlasData,
   reportProgress?: SyncProgressReporter,
   attempt?: SyncAttempt,
+  signal?: AbortSignal,
 ): Promise<AtlasData> {
   if (!attempt) {
     throw new Error("A synchronization attempt is required for persistence");
@@ -426,6 +451,7 @@ async function persistSync(
       offset < rows.length;
       offset += SNAPSHOT_WRITE_BATCH_SIZE
     ) {
+      assertSyncActive(signal);
       const payloads = rows
         .slice(offset, offset + SNAPSHOT_WRITE_BATCH_SIZE)
         .map((row) => ({
@@ -442,9 +468,11 @@ async function persistSync(
           result.status === "rejected",
       );
       if (failure) throw failure.reason;
+      assertSyncActive(signal);
     }
   };
 
+  assertSyncActive(signal);
   reportProgress?.(70, "Preparing the Atlas database");
   reportProgress?.(76, "Writing workspace items");
 
@@ -624,24 +652,22 @@ async function persistSync(
     snapshotId,
     writerEmail,
   );
+  assertSyncActive(signal);
 
   // The audit row and every snapshot row must succeed before the Workspace
   // marker is written. That final marker is the atomic visibility switch:
   // orphaned rows from a failed attempt are never selected by hydration.
   reportProgress?.(97, "Finalizing the workspace snapshot");
   const syncSummary = `${atlas.items.length} items · ${atlas.edges.length} lineage edges · ${atlas.principals.length} principals · ${atlas.jobs.length} jobs`;
+  await updateSyncAttempt(
+    attempt,
+    "completed",
+    syncedAt,
+    atlas.items.length,
+    syncSummary,
+  );
+  assertSyncActive(signal);
   await data.Workspace.create(manifest);
-  try {
-    await updateSyncAttempt(
-      attempt,
-      "completed",
-      syncedAt,
-      atlas.items.length,
-      syncSummary,
-    );
-  } catch (error) {
-    console.warn("[atlas] sync completion audit deferred", error);
-  }
   reportProgress?.(99, "Applying snapshot retention");
   try {
     await pruneSnapshots(data, wid, snapshotId, writerEmail);

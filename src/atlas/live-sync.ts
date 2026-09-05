@@ -255,7 +255,9 @@ export function buildSyncRequestBody(
 async function acquireOptionalMetadataTokens(
   identity: SyncIdentity,
   allowPopup = true,
+  signal?: AbortSignal,
 ): Promise<Omit<SyncRequestTokens, "fabricToken">> {
+  assertSyncActive(signal);
   const tokens: Omit<SyncRequestTokens, "fabricToken"> = {};
   for (const [name, request] of Object.entries(
     OPTIONAL_METADATA_TOKEN_SCOPES,
@@ -266,19 +268,21 @@ async function acquireOptionalMetadataTokens(
     ]
   >) {
     try {
+      assertSyncActive(signal);
       tokens[name] = await acquireToken(
         identity,
         [request.scope],
         request.purpose,
         allowPopup,
       );
+      assertSyncActive(signal);
     } catch (error) {
+      assertSyncActive(signal);
       console.warn(
         `[atlas] ${request.purpose} token unavailable`,
         error instanceof Error ? error.message : String(error),
       );
     }
-
   }
   return tokens;
 }
@@ -286,35 +290,44 @@ async function acquireOptionalMetadataTokens(
 async function acquireFabricSyncToken(
   identity: SyncIdentity,
   allowPopup = true,
+  signal?: AbortSignal,
 ): Promise<string> {
+  assertSyncActive(signal);
   try {
-    return await acquireToken(
+    const token = await acquireToken(
       identity,
       FABRIC_DISCOVERY_SCOPES,
       "Fabric metadata",
       allowPopup,
     );
+    assertSyncActive(signal);
+    return token;
   } catch (error) {
+    assertSyncActive(signal);
     console.warn(
       "[atlas] advanced Fabric definition permission unavailable; using the standard metadata scope",
       error instanceof Error ? error.message : String(error),
     );
-    return acquireToken(
+    const token = await acquireToken(
       identity,
       [ATLAS_CONFIG.scope],
       "Power BI",
       allowPopup,
     );
+    assertSyncActive(signal);
+    return token;
   }
 }
 
 async function renewSyncTokens(
   identity: SyncIdentity,
   current: SyncRequestTokens,
+  signal?: AbortSignal,
 ): Promise<SyncRequestTokens> {
+  assertSyncActive(signal);
   const next = { ...current };
   if (tokenNeedsRefresh(current.fabricToken)) {
-    next.fabricToken = await acquireFabricSyncToken(identity, false);
+    next.fabricToken = await acquireFabricSyncToken(identity, false, signal);
   }
   for (const [name, request] of Object.entries(
     OPTIONAL_METADATA_TOKEN_SCOPES,
@@ -332,7 +345,9 @@ async function renewSyncTokens(
       request.purpose,
       false,
     );
+    assertSyncActive(signal);
   }
+  assertSyncActive(signal);
   return next;
 }
 
@@ -1249,6 +1264,11 @@ export function validateSyncEnrichment(
       "Fabric returned an invalid resumable sync response. The previous snapshot was preserved.",
     );
   }
+  if (Object.keys(raw.itemFailures ?? {}).length > 0) {
+    throw new Error(
+      "Fabric could not enrich every requested item. The previous snapshot was preserved.",
+    );
+  }
   if (syncDeadlineExceeded(raw)) {
     throw new Error(
       "Fabric returned an invalid resumable sync deadline state. The previous snapshot was preserved.",
@@ -1299,6 +1319,12 @@ const MAX_BASE_SLICE_ATTEMPTS = 4;
 const MAX_SINGLE_ITEM_SLICE_ATTEMPTS = 6;
 const SYNC_SLICE_TIMEOUT_MS = 195_000;
 const TOKEN_REFRESH_WINDOW_MS = 5 * 60_000;
+
+function assertSyncActive(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new SyncCancelledError("Synchronization cancelled.");
+  }
+}
 
 function tokenExpiryMs(token: string): number | undefined {
   const payload = token.split(".")[1];
@@ -1365,6 +1391,7 @@ async function invokeSyncFunctionSlice(
   parameters: Partial<SyncRequestTokens>,
   signal?: AbortSignal,
 ): Promise<RawSync> {
+  assertSyncActive(signal);
   const controller = new AbortController();
   let timedOut = false;
   const timeout = window.setTimeout(() => {
@@ -1503,9 +1530,14 @@ export async function invokeSyncAll(
     validateUdfUrl(raw, workspaceId),
     "sync_all",
   );
+  assertSyncActive(signal);
   reportProgress?.(5, "Authorizing Fabric metadata access");
-  const fabricToken = await acquireFabricSyncToken(identity);
-  const metadataTokens = await acquireOptionalMetadataTokens(identity);
+  const fabricToken = await acquireFabricSyncToken(identity, true, signal);
+  const metadataTokens = await acquireOptionalMetadataTokens(
+    identity,
+    true,
+    signal,
+  );
   let tokens: SyncRequestTokens = {
     fabricToken,
     ...metadataTokens,
@@ -1514,8 +1546,9 @@ export async function invokeSyncAll(
   let baseAttempt = 0;
   let result: RawSync;
   while (true) {
+    assertSyncActive(signal);
     if (baseAttempt > 0) {
-      tokens = await renewSyncTokens(identity, tokens);
+      tokens = await renewSyncTokens(identity, tokens, signal);
     }
     reportProgress?.(
       8,
@@ -1561,6 +1594,7 @@ export async function invokeSyncAll(
       signal,
     );
   }
+  assertSyncActive(signal);
   validateRawSync(result, workspaceId);
   if (result.syncMode !== "base") {
     reportProgress?.(60, "Deep workspace discovery complete");
@@ -1594,6 +1628,7 @@ export async function invokeSyncAll(
   let merged = result;
 
   while (batches.length > 0) {
+    assertSyncActive(signal);
     const next = batches.shift()!;
     const itemIds = next.itemIds.filter(
       (itemId) => !completedItemIds.has(itemId),
@@ -1608,7 +1643,7 @@ export async function invokeSyncAll(
 
     let enrichment: RawSync;
     try {
-      tokens = await renewSyncTokens(identity, tokens);
+      tokens = await renewSyncTokens(identity, tokens, signal);
       enrichment = await invokeSyncItemSlice(
         raw,
         workspaceId,
@@ -1729,6 +1764,7 @@ export async function invokeSyncAll(
     remainingItemIds: undefined,
   };
   reportProgress?.(60, "Deep workspace discovery complete");
+  assertSyncActive(signal);
   validateRawSync(merged, workspaceId);
   return merged;
 }
