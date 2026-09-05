@@ -24,7 +24,11 @@ udf = fn.UserDataFunctions()
 FABRIC = "https://api.fabric.microsoft.com/v1"
 PBI = "https://api.powerbi.com/v1.0/myorg"
 ADMIN = PBI + "/admin"
-EXECUTION_BUDGET_SECONDS = 92
+FABRIC_UDF_TIMEOUT_SECONDS = 200
+PLATFORM_COMPLETION_RESERVE_SECONDS = 20
+EXECUTION_BUDGET_SECONDS = (
+    FABRIC_UDF_TIMEOUT_SECONDS - PLATFORM_COMPLETION_RESERVE_SECONDS
+)
 REQUEST_TIMEOUT_SECONDS = 20
 MAX_REQUEST_ATTEMPTS = 4
 MAX_BACKOFF_SECONDS = 8
@@ -36,10 +40,11 @@ MAX_DEFINITION_DECODED_BYTES = 8 * 1024 * 1024
 MAX_DEFINITION_FACTS_PER_ITEM = 1000
 MAX_SCHEMA_OBJECTS_PER_ITEM = 1000
 MAX_SCHEMA_COLUMNS_PER_OBJECT = 500
-MAX_OBJECT_LINEAGE_EDGES = 1000
 MAX_SQL_CATALOG_ROWS = 50000
 MAX_SQL_RELATIONSHIP_ROWS = 5000
 MAX_SQL_TOKEN_CHARACTERS = 65536
+MAX_SYNC_ITEM_IDS_CHARACTERS = 65536
+MIN_ENRICHMENT_ITEM_BUDGET_SECONDS = 30
 MAX_ARTIFACT_METADATA_ELEMENTS = 2048
 MAX_ARTIFACT_METADATA_COLLECTION = 512
 SQL_COPT_SS_ACCESS_TOKEN = 1256
@@ -163,6 +168,10 @@ class _ExecutionDeadline:
         if remaining <= 0:
             raise DeadlineExceeded("execution deadline exhausted")
         return min(max(0.001, bounded_timeout), remaining)
+
+    def checkpoint(self, reserve_seconds=0):
+        if self.remaining() <= reserve_seconds:
+            raise DeadlineExceeded("execution deadline exhausted")
 
     def sleep(self, seconds, sleeper=None):
         if seconds <= 0:
@@ -721,9 +730,6 @@ def _add_artifact_object_edge(artifact, source, target, relation):
     if not source or not target or not relation:
         return
     edges = artifact.setdefault("_objectEdges", [])
-    if len(edges) >= MAX_OBJECT_LINEAGE_EDGES:
-        artifact["_objectEdgesTruncated"] = True
-        return
     edges.append({
         "source": source,
         "target": target,
@@ -936,7 +942,6 @@ def _collect_atlas_object_edges(schema_by_item, extra_edges=None):
 
     edges = []
     seen = set()
-    truncated = False
     containment_parent_types = {
         "KQL table",
         "KQL external table",
@@ -950,7 +955,6 @@ def _collect_atlas_object_edges(schema_by_item, extra_edges=None):
     }
 
     def add(source, target, relation):
-        nonlocal truncated
         relation = _bounded_text(relation)
         if not source or not target or not relation:
             return
@@ -964,9 +968,6 @@ def _collect_atlas_object_edges(schema_by_item, extra_edges=None):
             relation,
         )
         if key in seen:
-            return
-        if len(edges) >= MAX_OBJECT_LINEAGE_EDGES:
-            truncated = True
             return
         seen.add(key)
         edges.append({
@@ -1022,14 +1023,14 @@ def _collect_atlas_object_edges(schema_by_item, extra_edges=None):
                 reference_for(target_id, value),
                 relation,
             )
-    return edges, truncated
+    return edges
 
 
 def _atlas_object_edges(schema_by_item, extra_edges=None):
     return _collect_atlas_object_edges(
         schema_by_item,
         extra_edges=extra_edges,
-    )[0]
+    )
 
 
 def _artifact_id(value):
@@ -4488,7 +4489,13 @@ def _metadata_endpoint_ids(value):
     return ids
 
 
-def _storage_endpoint_ids(token, ws, storage, arts):
+def _storage_endpoint_ids(
+    token,
+    ws,
+    storage,
+    arts,
+    resolve_details=True,
+):
     storage_id = _artifact_id(storage)
     ids = set()
     for artifact in arts:
@@ -4505,7 +4512,7 @@ def _storage_endpoint_ids(token, ws, storage, arts):
                 ids.add(endpoint_id)
     ids.update(_metadata_endpoint_ids(storage))
     ids.update(_metadata_endpoint_ids(storage.get("_detail")))
-    if storage.get("_type") == "Lakehouse":
+    if resolve_details and storage.get("_type") == "Lakehouse":
         if (
             not storage.get("_detail")
             and not storage.get("_detailAttempted")
@@ -4558,7 +4565,13 @@ def _downstream_semantic_models(arts, start_ids):
     return models
 
 
-def _derive_storage_schemas(token, ws, arts, schema):
+def _derive_storage_schemas(
+    token,
+    ws,
+    arts,
+    schema,
+    resolve_details=True,
+):
     for storage in arts:
         if storage.get("_type") not in (
             "Lakehouse",
@@ -4567,7 +4580,13 @@ def _derive_storage_schemas(token, ws, arts, schema):
         ):
             continue
         storage_id = _artifact_id(storage)
-        endpoint_ids = _storage_endpoint_ids(token, ws, storage, arts)
+        endpoint_ids = _storage_endpoint_ids(
+            token,
+            ws,
+            storage,
+            arts,
+            resolve_details=resolve_details,
+        )
         model_ids = _downstream_semantic_models(
             arts,
             {storage_id, *endpoint_ids},
@@ -4956,7 +4975,7 @@ def _item_config(token, ws, a, typ, item_schema=None):
     return rows
 
 
-def _item_schema(token, ws, a, typ):
+def _item_schema(token, ws, a, typ, defer_enrichment=False):
     """Return only object metadata supplied by supported Fabric/Power BI APIs."""
     if typ == "SemanticModel":
         return _schema_objects(
@@ -4966,11 +4985,12 @@ def _item_schema(token, ws, a, typ):
             include_measures=True,
         )
     elif typ == "Lakehouse":
-        direct_values = (
-            a["_lakehouseTables"]
-            if "_lakehouseTables" in a
-            else _lh_tables(token, ws, a.get("id"))
-        )
+        if defer_enrichment:
+            direct_values = []
+        elif "_lakehouseTables" in a:
+            direct_values = a["_lakehouseTables"]
+        else:
+            direct_values = _lh_tables(token, ws, a.get("id"))
         direct = _schema_objects(
             direct_values,
             "Table",
@@ -5154,6 +5174,229 @@ def _guard_response_size(value, max_bytes=MAX_RESPONSE_BYTES):
     return value
 
 
+def _parse_sync_item_ids(value):
+    if (
+        not isinstance(value, str)
+        or not value.strip()
+        or len(value) > MAX_SYNC_ITEM_IDS_CHARACTERS
+    ):
+        raise ValueError("sync item identifiers were invalid")
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError, json.JSONDecodeError) as error:
+        raise ValueError("sync item identifiers were invalid") from error
+    if not isinstance(parsed, list) or not parsed:
+        raise ValueError("sync item identifiers were invalid")
+    item_ids = []
+    seen = set()
+    for value in parsed:
+        item_id = _normalized_id(value)
+        if not item_id or item_id in seen:
+            raise ValueError("sync item identifiers were invalid")
+        seen.add(item_id)
+        item_ids.append(item_id)
+    return item_ids
+
+
+def _new_sync_trackers():
+    return {
+        "itemDetails": _new_optional_tracker(),
+        "lakehouseTables": _new_optional_tracker(),
+        "reportPages": _new_optional_tracker(),
+        "jobs": _new_optional_tracker(),
+        "definitions": _new_optional_tracker(),
+        "kqlSchema": _new_optional_tracker(),
+        "sqlSchema": _new_optional_tracker(),
+    }
+
+
+def _merge_optional_trackers(target, source):
+    for name, tracker in source.items():
+        current = target[name]
+        for result in ("success", "unsupported", "failed"):
+            current[result] += tracker[result]
+        for code in tracker["codes"]:
+            if code not in current["codes"]:
+                current["codes"].append(code)
+
+
+@udf.function()
+def sync_items(
+    fabricToken: str,
+    workspaceId: str,
+    itemIds: str,
+    kustoToken: str = "",
+    sqlToken: str = "",
+    storageToken: str = "",
+) -> dict:
+    """Return resumable deep metadata for a validated workspace item batch."""
+    ws = _workspace_id(workspaceId)
+    requested_item_ids = _parse_sync_item_ids(itemIds)
+    out = {
+        "schemaVersion": 2,
+        "syncMode": "enrichment",
+        "requestedItemIds": requested_item_ids,
+        "completedItemIds": [],
+        "remainingItemIds": [],
+        "schema": {},
+        "config": [],
+        "jobs": [],
+        "lineage": [],
+        "objectEdges": [],
+        "artifactMetadata": {},
+        "itemMetadata": {},
+        "capabilities": {},
+        "sections": {},
+        "errors": [],
+    }
+    deadline = _ExecutionDeadline()
+    trackers = _new_sync_trackers()
+    completed_artifacts = []
+    internal_schema = {}
+    extra_object_edges = []
+
+    with _deadline_scope(deadline):
+        raw_items = _get_all(
+            fabricToken,
+            f"/workspaces/{ws}/items",
+        )
+        items = [_sanitize_item(item) for item in raw_items]
+        if any(item is None for item in items):
+            raise ValueError("workspace items contained invalid metadata")
+        items_by_id = {item["id"]: item for item in items}
+        missing_item_ids = [
+            item_id
+            for item_id in requested_item_ids
+            if item_id not in items_by_id
+        ]
+        if missing_item_ids:
+            raise ValueError("sync item identifiers were outside the workspace")
+        workspace_item_ids = set(items_by_id)
+
+        for index, item_id in enumerate(requested_item_ids):
+            if (
+                index > 0
+                and deadline.remaining()
+                <= MIN_ENRICHMENT_ITEM_BUDGET_SECONDS
+            ):
+                out["remainingItemIds"] = requested_item_ids[index:]
+                break
+
+            item = items_by_id[item_id]
+            item_type = ITEM_TYPE_ALIASES.get(
+                item.get("type"),
+                item.get("type"),
+            )
+            artifact = dict(item)
+            artifact["_type"] = item_type
+            item_trackers = _new_sync_trackers()
+            item_errors = []
+            try:
+                _enrich_artifact(
+                    fabricToken,
+                    ws,
+                    artifact,
+                    item_trackers,
+                    item_errors,
+                    kusto_token=kustoToken,
+                    sql_token=sqlToken,
+                )
+                deadline.checkpoint()
+                item_schema = _finalize_schema_object_ids(
+                    item_id,
+                    item_type,
+                    _item_schema(
+                        fabricToken,
+                        ws,
+                        artifact,
+                        item_type,
+                    ),
+                )
+                deadline.checkpoint()
+                item_config = _item_config(
+                    fabricToken,
+                    ws,
+                    artifact,
+                    item_type,
+                    item_schema,
+                )
+                deadline.checkpoint()
+            except DeadlineExceeded:
+                out["remainingItemIds"] = requested_item_ids[index:]
+                break
+
+            safe_jobs = []
+            try:
+                jobs = _get_all(
+                    fabricToken,
+                    f"/workspaces/{ws}/items/{item_id}/jobs/instances",
+                )
+                _track_optional(item_trackers["jobs"], "success")
+                safe_jobs = []
+                for value in jobs[:3]:
+                    job = _sanitize_job(value, item)
+                    if job is None:
+                        raise ValueError("job record was invalid")
+                    safe_jobs.append(job)
+                deadline.checkpoint()
+            except urllib.error.HTTPError as error:
+                code = _safe_error_code(error, optional=True)
+                if code == "endpoint-unsupported":
+                    _track_optional(
+                        item_trackers["jobs"],
+                        "unsupported",
+                        code,
+                    )
+                else:
+                    _track_optional(item_trackers["jobs"], "failed", code)
+                    item_errors.append(f"jobs:{item_id}: {code}")
+            except Exception as error:
+                if isinstance(error, DeadlineExceeded):
+                    out["remainingItemIds"] = requested_item_ids[index:]
+                    break
+                code = _safe_error_code(error, optional=True)
+                _track_optional(item_trackers["jobs"], "failed", code)
+                item_errors.append(f"jobs:{item_id}: {code}")
+
+            _merge_optional_trackers(trackers, item_trackers)
+            out["errors"].extend(item_errors)
+            out["completedItemIds"].append(item_id)
+            internal_schema[item_id] = item_schema
+            out["schema"][item_id] = _public_schema(item_schema)
+            out["config"].extend(item_config)
+            out["jobs"].extend(safe_jobs)
+            metadata = artifact.get("_artifactMetadata")
+            if isinstance(metadata, dict):
+                out["artifactMetadata"][item_id] = metadata
+            item_metadata = _metadata_for_item(artifact, False)
+            item_metadata.pop("scannerMatched", None)
+            item_metadata.pop("ownerAvailable", None)
+            if item_metadata:
+                out["itemMetadata"][item_id] = item_metadata
+            extra_object_edges.extend(artifact.get("_objectEdges") or [])
+            completed_artifacts.append(artifact)
+
+        out["lineage"] = _official_lineage(
+            completed_artifacts,
+            workspace_item_ids,
+            ws,
+        )
+        out["objectEdges"] = _collect_atlas_object_edges(
+            internal_schema,
+            extra_edges=extra_object_edges,
+        )
+
+    for name, tracker in trackers.items():
+        _finish_optional_section(out, name, tracker)
+    _set_optional_capabilities(out)
+    out["syncedAt"] = (
+        datetime.datetime.now(datetime.timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
+    return _guard_response_size(out)
+
+
 @udf.function()
 def sync_all(
     fabricToken: str,
@@ -5161,11 +5404,18 @@ def sync_all(
     kustoToken: str = "",
     sqlToken: str = "",
     storageToken: str = "",
+    deferEnrichment: str = "",
 ) -> dict:
     """Return the v2 metadata-only Fabric Atlas synchronization envelope."""
     ws = _workspace_id(workspaceId)
+    defer_enrichment = str(deferEnrichment).strip().casefold() in (
+        "1",
+        "true",
+        "yes",
+    )
     out = {
         "schemaVersion": 2,
+        "syncMode": "base" if defer_enrichment else "complete",
         "workspace": None,
         "items": [],
         "roleAssignments": [],
@@ -5194,15 +5444,7 @@ def sync_all(
         "errors": [],
     }
     deadline = _ExecutionDeadline()
-    trackers = {
-        "itemDetails": _new_optional_tracker(),
-        "lakehouseTables": _new_optional_tracker(),
-        "reportPages": _new_optional_tracker(),
-        "jobs": _new_optional_tracker(),
-        "definitions": _new_optional_tracker(),
-        "kqlSchema": _new_optional_tracker(),
-        "sqlSchema": _new_optional_tracker(),
-    }
+    trackers = _new_sync_trackers()
 
     with _deadline_scope(deadline):
         try:
@@ -5343,15 +5585,16 @@ def sync_all(
                 if artifact_id not in workspace_item_ids:
                     continue
                 try:
-                    _enrich_artifact(
-                        fabricToken,
-                        ws,
-                        artifact,
-                        trackers,
-                        out["errors"],
-                        kusto_token=kustoToken,
-                        sql_token=sqlToken,
-                    )
+                    if not defer_enrichment:
+                        _enrich_artifact(
+                            fabricToken,
+                            ws,
+                            artifact,
+                            trackers,
+                            out["errors"],
+                            kusto_token=kustoToken,
+                            sql_token=sqlToken,
+                        )
                     out["itemMetadata"][artifact_id] = _metadata_for_item(
                         artifact,
                         artifact_id in scanner_by_id,
@@ -5456,6 +5699,7 @@ def sync_all(
                         ws,
                         artifact,
                         artifact["_type"],
+                        defer_enrichment=defer_enrichment,
                     )
                     if item_schema:
                         all_schema[artifact_id] = item_schema
@@ -5470,6 +5714,7 @@ def sync_all(
                     ws,
                     artifacts,
                     all_schema,
+                    resolve_details=not defer_enrichment,
                 )
             except Exception as error:
                 schema_failed = True
@@ -5500,27 +5745,13 @@ def sync_all(
                 if _artifact_id(artifact) in workspace_item_ids
                 for edge in artifact.get("_objectEdges") or []
             ]
-            object_edges, object_edges_truncated = (
-                _collect_atlas_object_edges(
-                    workspace_schema,
-                    extra_edges=extra_object_edges,
-                )
-            )
-            object_edges_truncated = (
-                object_edges_truncated
-                or any(
-                    artifact.get("_objectEdgesTruncated")
-                    for artifact in artifacts
-                )
+            object_edges = _collect_atlas_object_edges(
+                workspace_schema,
+                extra_edges=extra_object_edges,
             )
             out["objectEdges"] = object_edges
             out["capabilities"]["objectLineage"] = {
                 "status": "complete",
-                **(
-                    {"code": "truncated"}
-                    if object_edges_truncated
-                    else {}
-                ),
             }
             out["schema"] = {
                 item_id: _public_schema(tables)
@@ -5577,39 +5808,42 @@ def sync_all(
                 _set_section(out, name, "failed", scanner_code)
                 out["errors"].append(f"{name}: {scanner_code}")
 
-        for item in out["items"]:
-            try:
-                jobs = _get_all(
-                    fabricToken,
-                    f"/workspaces/{ws}/items/{item['id']}/jobs/instances",
-                )
-                _track_optional(trackers["jobs"], "success")
-                for value in jobs[:3]:
-                    job = _sanitize_job(value, item)
-                    if job is None:
-                        raise ValueError("job record was invalid")
-                    out["jobs"].append(job)
-            except urllib.error.HTTPError as error:
-                code = _safe_error_code(error, optional=True)
-                if code == "endpoint-unsupported":
-                    _track_optional(
-                        trackers["jobs"],
-                        "unsupported",
-                        code,
+        if not defer_enrichment:
+            for item in out["items"]:
+                try:
+                    jobs = _get_all(
+                        fabricToken,
+                        f"/workspaces/{ws}/items/{item['id']}/jobs/instances",
                     )
-                else:
+                    _track_optional(trackers["jobs"], "success")
+                    for value in jobs[:3]:
+                        job = _sanitize_job(value, item)
+                        if job is None:
+                            raise ValueError("job record was invalid")
+                        out["jobs"].append(job)
+                except urllib.error.HTTPError as error:
+                    code = _safe_error_code(error, optional=True)
+                    if code == "endpoint-unsupported":
+                        _track_optional(
+                            trackers["jobs"],
+                            "unsupported",
+                            code,
+                        )
+                    else:
+                        _track_optional(trackers["jobs"], "failed", code)
+                        out["errors"].append(f"jobs: {code}")
+                except Exception as error:
+                    code = _safe_error_code(error, optional=True)
                     _track_optional(trackers["jobs"], "failed", code)
                     out["errors"].append(f"jobs: {code}")
-            except Exception as error:
-                code = _safe_error_code(error, optional=True)
-                _track_optional(trackers["jobs"], "failed", code)
-                out["errors"].append(f"jobs: {code}")
-                if isinstance(error, DeadlineExceeded):
-                    break
+                    if isinstance(error, DeadlineExceeded):
+                        break
 
     for name, tracker in trackers.items():
         _finish_optional_section(out, name, tracker)
     _set_optional_capabilities(out)
+    if defer_enrichment:
+        out["enrichmentItemIds"] = [item["id"] for item in out["items"]]
     out["syncedAt"] = (
         datetime.datetime.now(datetime.timezone.utc)
         .isoformat(timespec="milliseconds")

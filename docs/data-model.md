@@ -107,7 +107,8 @@ retains safe KQL, Ontology, Graph Model and Data Agent structures after reload.
 Verified object-lineage edges use the private `__object_edges__` section. Each
 edge stores source and target item, object kind, stable ID, readable name,
 optional parent/table context, relation and `confidence: verified`. The parser
-rejects inferred, malformed, self-referential or oversized edge sets.
+rejects inferred, malformed or self-referential edges without imposing a
+relation-count cap on the verified set.
 
 No extra Rayfin entity is required, so this metadata follows the same immutable
 snapshot publication and retention boundary as the catalog.

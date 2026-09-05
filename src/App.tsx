@@ -37,6 +37,7 @@ import {
 import { useThemeContext } from "@/hooks/theme.context";
 import { useAtlas } from "./atlas/store";
 import { CommandPalette } from "./atlas/components/CommandPalette";
+import { SynchronizationProgress } from "./atlas/components/SynchronizationProgress";
 import {
   navigationForSearch,
   type AtlasFocusRequest,
@@ -220,6 +221,7 @@ function App() {
     syncing,
     syncProgress,
     syncStage,
+    syncStartedAt,
     syncError,
     canSync,
     lastSyncedAt,
@@ -470,22 +472,16 @@ function App() {
             </button>
             <Avatar name={currentUser.name} size={30} />
           </div>
-          {(syncing || syncProgress > 0) && (
-            <div
-              role="progressbar"
-              aria-label="Workspace synchronization progress"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={syncProgress}
-              className="absolute inset-x-0 bottom-0 h-[3px] overflow-hidden bg-muted"
-            >
-              <div
-                className="h-full bg-gradient-to-r from-primary to-lineage-downstream transition-[width] duration-500"
-                style={{ width: `${syncProgress}%` }}
-              />
-            </div>
-          )}
         </header>
+        {(syncing || syncProgress > 0) && (
+          <SynchronizationProgress
+            key={syncStartedAt}
+            progress={syncProgress}
+            stage={syncStage}
+            active={syncing}
+            variant="banner"
+          />
+        )}
         {density.error && (
           <p role="status" className="border-b border-status-warning/30 bg-status-warning/10 px-l py-s text-200 text-foreground">
             {density.error}

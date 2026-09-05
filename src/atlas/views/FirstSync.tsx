@@ -15,10 +15,10 @@ import {
 } from "lucide-react";
 import { useThemeContext } from "@/hooks/theme.context";
 import { ATLAS_CONFIG } from "../config";
+import { SynchronizationProgress } from "../components/SynchronizationProgress";
 import { REPOSITORY_URL } from "../release";
 import { useAtlas } from "../store";
 import { syncContactMessage } from "../sync-contact";
-import { cn } from "../ui";
 
 const CAPABILITIES = [
   {
@@ -41,14 +41,6 @@ const CAPABILITIES = [
     title: "Configuration",
     detail: "Schemas, settings and jobs",
   },
-];
-
-const SYNC_STEPS = [
-  "Connect",
-  "Discover",
-  "Map",
-  "Secure",
-  "Persist",
 ];
 
 function safeText(value: string | undefined, fallback: string): string {
@@ -86,6 +78,7 @@ export function FirstSyncView() {
     syncError,
     syncProgress,
     syncStage,
+    syncStartedAt,
     hasData,
     requiresDeploymentSync,
   } = useAtlas();
@@ -94,12 +87,6 @@ export function FirstSyncView() {
     data.workspace.displayName,
     ATLAS_CONFIG.workspaceName,
   );
-  const donutProgress = syncing ? syncProgress : 0;
-  const donutRadius = 76;
-  const donutCircumference = 2 * Math.PI * donutRadius;
-  const donutOffset =
-    donutCircumference * (1 - Math.min(100, donutProgress) / 100);
-
   return (
     <div className="relative min-h-screen overflow-auto bg-background text-foreground">
       <div className="atlas-first-sync-bg pointer-events-none fixed inset-0" />
@@ -239,107 +226,18 @@ export function FirstSyncView() {
               }}
               className="flex flex-col gap-l bg-secondary/65 p-xl sm:p-xxl"
             >
-              <div className="relative overflow-hidden rounded-xl border border-border bg-secondary p-l">
-                <div className="flex items-center justify-between gap-m">
-                  <div>
-                    <div className="text-100 font-bold uppercase tracking-[0.16em] text-lineage-downstream">
-                      Synchronization progress
-                    </div>
-                    <div className="mt-xs text-300 font-semibold">
-                      {syncing
-                        ? syncStage
-                        : deploymentRefresh
-                          ? "Ready to refresh the map"
-                          : "Ready to build the first atlas"}
-                    </div>
-                  </div>
-                  <span className="flex items-center gap-xs text-200 text-muted-foreground">
-                    <span
-                      className={cn(
-                        "h-xs w-xs rounded-full",
-                        syncing
-                          ? "animate-pulse bg-lineage-downstream"
-                          : "bg-lineage-neutral",
-                      )}
-                    />
-                    {syncing ? "live" : "waiting"}
-                  </span>
-                </div>
-
-                <div className="mt-l flex flex-col items-center">
-                  <div
-                    role="progressbar"
-                    aria-label="Workspace synchronization donut"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={donutProgress}
-                    className="relative h-56 w-56"
-                  >
-                    <svg
-                      viewBox="0 0 200 200"
-                      className="h-full w-full -rotate-90"
-                      aria-hidden="true"
-                    >
-                      <circle
-                        cx="100"
-                        cy="100"
-                        r={donutRadius}
-                        fill="none"
-                        stroke="var(--color-muted)"
-                        strokeWidth="18"
-                      />
-                      <circle
-                        cx="100"
-                        cy="100"
-                        r={donutRadius}
-                        fill="none"
-                        stroke="var(--color-primary)"
-                        strokeWidth="18"
-                        strokeLinecap="round"
-                        strokeDasharray={donutCircumference}
-                        strokeDashoffset={donutOffset}
-                        style={{
-                          transition: reduceMotion
-                            ? "none"
-                            : "stroke-dashoffset 500ms ease",
-                        }}
-                      />
-                    </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                      <span className="font-numeric text-hero-700 font-bold text-foreground">
-                        {donutProgress}%
-                      </span>
-                      <span className="mt-xs max-w-32 text-200 text-muted-foreground">
-                        {syncing ? syncStage : "Ready"}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-l grid w-full grid-cols-5 gap-xs">
-                    {SYNC_STEPS.map((step, index) => {
-                      const threshold = index * 20;
-                      const active = donutProgress >= threshold;
-                      return (
-                        <div key={step} className="text-center">
-                          <span
-                            className={cn(
-                              "mx-auto flex h-7 w-7 items-center justify-center rounded-full border font-numeric text-100 font-semibold",
-                              active
-                                ? "border-primary bg-primary/10 text-brand-foreground"
-                                : "border-border bg-card text-muted-foreground",
-                            )}
-                          >
-                            {index + 1}
-                          </span>
-                          <span className="mt-xs block truncate text-100 text-muted-foreground">
-                            {step}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
+              <SynchronizationProgress
+                key={syncStartedAt ?? "ready"}
+                progress={syncing ? syncProgress : 0}
+                stage={
+                  syncing
+                    ? syncStage
+                    : deploymentRefresh
+                      ? "Ready to refresh the map"
+                      : "Ready to build the first atlas"
+                }
+                active={syncing}
+              />
 
               <div className="mt-auto rounded-xl border border-border bg-card p-l shadow-fabric-4">
                 <div className="flex items-start justify-between gap-m">
@@ -354,39 +252,6 @@ export function FirstSyncView() {
                   <div className="font-numeric text-500 font-bold text-primary">
                     {syncing ? `${syncProgress}%` : "01"}
                   </div>
-                </div>
-
-                <div
-                  role="status"
-                  aria-live="polite"
-                  aria-atomic="true"
-                  className="mt-l flex items-center justify-between gap-m text-200"
-                >
-                  <span className="font-semibold">
-                    {syncing
-                      ? syncStage
-                      : deploymentRefresh
-                        ? "Ready to refresh this deployment"
-                        : "Ready to create the catalog"}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {syncing ? "in progress" : "one full pass"}
-                  </span>
-                </div>
-                <div
-                  role="progressbar"
-                  aria-label="Workspace synchronization progress"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={syncing ? syncProgress : 0}
-                  className="mt-s h-s overflow-hidden rounded-full bg-muted"
-                >
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-primary via-lineage-downstream to-status-healthy transition-[width] duration-500"
-                    style={{
-                      width: `${syncing ? Math.max(syncProgress, 3) : 0}%`,
-                    }}
-                  />
                 </div>
 
                 <button
@@ -460,23 +325,6 @@ export function FirstSyncView() {
             </motion.section>
           </div>
 
-          <footer className="border-t border-border bg-secondary px-xl py-m sm:px-xxl">
-            <div className="grid grid-cols-5 gap-s">
-              {SYNC_STEPS.map((step, index) => (
-                <div key={step} className="flex items-center gap-s">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-primary/30 bg-primary/10 font-numeric text-100 font-bold text-primary">
-                    {index + 1}
-                  </span>
-                  <span className="hidden text-200 font-semibold text-muted-foreground sm:inline">
-                    {step}
-                  </span>
-                  {index < SYNC_STEPS.length - 1 && (
-                    <span className="h-px flex-1 bg-border" />
-                  )}
-                </div>
-              ))}
-            </div>
-          </footer>
         </motion.div>
       </main>
     </div>

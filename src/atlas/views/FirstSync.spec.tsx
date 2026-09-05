@@ -5,7 +5,7 @@ import { AtlasProvider } from "../store";
 import { FirstSyncView } from "./FirstSync";
 
 describe("FirstSyncView", () => {
-  it("shows an accessible donut driven by synchronization progress", () => {
+  it("shows the shared accessible synchronization progress display", () => {
     render(
       <ThemeContext.Provider
         value={{ isDark: false, toggleTheme: () => undefined }}
@@ -18,18 +18,16 @@ describe("FirstSyncView", () => {
 
     expect(
       screen.getByRole("progressbar", {
-        name: "Workspace synchronization donut",
+        name: "Workspace synchronization progress",
       }),
     ).toHaveAttribute("aria-valuenow", "0");
     expect(
+      screen.getByRole("region", {
+        name: "Workspace synchronization status",
+      }),
+    ).toHaveTextContent("Phase 1 of 5");
+    expect(
       screen.queryByLabelText(/Animated preview of Fabric lineage/),
     ).not.toBeInTheDocument();
-    expect(
-      screen
-        .getByRole("progressbar", {
-          name: "Workspace synchronization donut",
-        })
-        .querySelector("svg"),
-    ).toHaveClass("h-full", "w-full");
   });
 });

@@ -6,7 +6,6 @@
 import { ATLAS_CONFIG, getUdfUrl } from "./config";
 import { normalizeLineageEdges } from "./lineage";
 import {
-  MAX_OBJECT_LINEAGE_EDGES,
   itemMetadataFromSchema,
   metadataItemLineageEdges,
   metadataObjectLineageEdges,
@@ -231,6 +230,8 @@ export interface SyncRequestTokens {
   kustoToken?: string;
   sqlToken?: string;
   storageToken?: string;
+  deferEnrichment?: string;
+  itemIds?: string;
 }
 
 export function buildSyncRequestBody(
@@ -303,6 +304,7 @@ async function acquireFabricSyncToken(
 
 export interface RawSync {
   schemaVersion?: number;
+  syncMode?: string;
   workspace?: Record<string, unknown>;
   items?: Array<Record<string, unknown>>;
   roleAssignments?: Array<Record<string, unknown>>;
@@ -365,6 +367,10 @@ export interface RawSync {
   artifactMetadata?: Record<string, unknown>;
   objectEdges?: unknown;
   objectLineage?: unknown;
+  enrichmentItemIds?: string[];
+  requestedItemIds?: string[];
+  completedItemIds?: string[];
+  remainingItemIds?: string[];
   syncedAt?: string;
   schema?: Record<
     string,
@@ -386,6 +392,7 @@ export interface RawSync {
         name?: string;
         expression?: string;
         expr?: string;
+        objectType?: string;
         description?: string;
         isHidden?: boolean;
       }>;
@@ -393,6 +400,231 @@ export interface RawSync {
     }>
   >;
   errors?: string[];
+}
+
+export interface SyncItemBatch {
+  itemType: string;
+  itemIds: string[];
+  attempt: number;
+}
+
+const SYNC_ITEM_BATCH_SIZE = 8;
+
+export function buildSyncItemBatches(
+  items: Array<Record<string, unknown>>,
+  batchSize = SYNC_ITEM_BATCH_SIZE,
+): SyncItemBatch[] {
+  if (!Number.isInteger(batchSize) || batchSize < 1) {
+    throw new Error("Sync batch size must be a positive integer.");
+  }
+  const groups = new Map<string, string[]>();
+  for (const item of items) {
+    const itemId = realText(item.id);
+    const itemType = realText(item.type);
+    if (!itemId || !itemType) continue;
+    const itemIds = groups.get(itemType) ?? [];
+    itemIds.push(itemId);
+    groups.set(itemType, itemIds);
+  }
+  return [...groups.entries()].flatMap(([itemType, itemIds]) => {
+    const batches: SyncItemBatch[] = [];
+    for (let index = 0; index < itemIds.length; index += batchSize) {
+      batches.push({
+        itemType,
+        itemIds: itemIds.slice(index, index + batchSize),
+        attempt: 0,
+      });
+    }
+    return batches;
+  });
+}
+
+function uniqueBy<T>(values: T[], key: (value: T) => string): T[] {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const identity = key(value);
+    if (seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
+}
+
+type RawSchemaTable = NonNullable<RawSync["schema"]>[string][number];
+type RawSchemaColumn = NonNullable<RawSchemaTable["columns"]>[number];
+type RawSchemaMeasure = NonNullable<RawSchemaTable["measures"]>[number];
+
+function mergeSchemaValues<T extends { name?: string; objectType?: string }>(
+  current: T[] = [],
+  incoming: T[] = [],
+): T[] {
+  const values = new Map<string, T>();
+  for (const value of [...current, ...incoming]) {
+    const key = (value.name ?? "").trim().toLocaleLowerCase();
+    values.set(key, { ...values.get(key), ...value });
+  }
+  return [...values.values()];
+}
+
+function mergeSchemaTables(
+  current: RawSchemaTable[] = [],
+  incoming: RawSchemaTable[] = [],
+): RawSchemaTable[] {
+  const values = new Map<string, RawSchemaTable>();
+  for (const table of [...current, ...incoming]) {
+    const key = (table.name ?? "").trim().toLocaleLowerCase();
+    const previous = values.get(key);
+    values.set(
+      key,
+      previous
+        ? {
+            ...previous,
+            ...table,
+            columns: mergeSchemaValues<RawSchemaColumn>(
+              previous.columns,
+              table.columns,
+            ),
+            measures: mergeSchemaValues<RawSchemaMeasure>(
+              previous.measures,
+              table.measures,
+            ),
+          }
+        : table,
+    );
+  }
+  return [...values.values()];
+}
+
+function mergeSyncStatus(
+  current:
+    | { status?: "complete" | "unsupported" | "failed"; code?: string }
+    | undefined,
+  incoming:
+    | { status?: "complete" | "unsupported" | "failed"; code?: string }
+    | undefined,
+) {
+  if (!current) return incoming;
+  if (!incoming) return current;
+  if (current.status === "unsupported" && current.code === "not-applicable") {
+    return incoming;
+  }
+  if (incoming.status === "unsupported" && incoming.code === "not-applicable") {
+    return current;
+  }
+  if (current.status === "failed") return current;
+  if (incoming.status === "failed") return incoming;
+  if (current.status === "complete" || incoming.status === "complete") {
+    return {
+      status: "complete" as const,
+      code:
+        current.status === "unsupported" || incoming.status === "unsupported"
+          ? "partial-unsupported"
+          : incoming.code ?? current.code,
+    };
+  }
+  return incoming.code ? incoming : current;
+}
+
+function mergeSyncStatusMaps(
+  current: RawSync["sections"],
+  incoming: RawSync["sections"],
+): RawSync["sections"] {
+  const result = { ...(current ?? {}) };
+  for (const [name, status] of Object.entries(incoming ?? {})) {
+    result[name] = mergeSyncStatus(result[name], status) ?? status;
+  }
+  return result;
+}
+
+function mergeItemMetadata(
+  current: RawSync["itemMetadata"],
+  incoming: RawSync["itemMetadata"],
+): RawSync["itemMetadata"] {
+  const result = { ...(current ?? {}) };
+  for (const [itemId, metadata] of Object.entries(incoming ?? {})) {
+    const previous = result[itemId];
+    result[itemId] = {
+      ...previous,
+      ...metadata,
+      scannerMatched:
+        previous?.scannerMatched ?? metadata.scannerMatched,
+      ownerAvailable:
+        previous?.ownerAvailable === true || metadata.ownerAvailable === true,
+      owner:
+        previous?.owner || metadata.owner
+          ? { ...previous?.owner, ...metadata.owner }
+          : undefined,
+      endorsement:
+        previous?.endorsement || metadata.endorsement
+          ? { ...previous?.endorsement, ...metadata.endorsement }
+          : undefined,
+      sensitivity:
+        previous?.sensitivity || metadata.sensitivity
+          ? { ...previous?.sensitivity, ...metadata.sensitivity }
+          : undefined,
+      tags: metadata.tags ?? previous?.tags,
+    };
+  }
+  return result;
+}
+
+export function mergeSyncEnrichment(
+  current: RawSync,
+  enrichment: RawSync,
+): RawSync {
+  const schema = { ...(current.schema ?? {}) };
+  for (const [itemId, tables] of Object.entries(enrichment.schema ?? {})) {
+    schema[itemId] = mergeSchemaTables(schema[itemId], tables);
+  }
+  const currentObjectEdges = Array.isArray(current.objectEdges)
+    ? current.objectEdges
+    : [];
+  const enrichmentObjectEdges = Array.isArray(enrichment.objectEdges)
+    ? enrichment.objectEdges
+    : [];
+  return {
+    ...current,
+    syncMode: "complete",
+    jobs: uniqueBy(
+      [...(current.jobs ?? []), ...(enrichment.jobs ?? [])],
+      (job) =>
+        [
+          job.itemId,
+          job.jobType,
+          job.startTimeUtc,
+          job.endTimeUtc,
+          job.status,
+        ].join("\u0000"),
+    ),
+    lineage: uniqueBy(
+      [...(current.lineage ?? []), ...(enrichment.lineage ?? [])],
+      (edge) => [edge.source, edge.target, edge.relation].join("\u0000"),
+    ),
+    config: uniqueBy(
+      [...(current.config ?? []), ...(enrichment.config ?? [])],
+      (entry) =>
+        [entry.itemId, entry.section, entry.label, entry.value].join("\u0000"),
+    ),
+    schema,
+    artifactMetadata: {
+      ...(current.artifactMetadata ?? {}),
+      ...(enrichment.artifactMetadata ?? {}),
+    },
+    itemMetadata: mergeItemMetadata(
+      current.itemMetadata,
+      enrichment.itemMetadata,
+    ),
+    objectEdges: [...currentObjectEdges, ...enrichmentObjectEdges],
+    sections: mergeSyncStatusMaps(current.sections, enrichment.sections),
+    capabilities: mergeSyncStatusMaps(
+      current.capabilities,
+      enrichment.capabilities,
+    ),
+    errors: uniqueBy(
+      [...(current.errors ?? []), ...(enrichment.errors ?? [])],
+      (error) => error,
+    ),
+    syncedAt: enrichment.syncedAt ?? current.syncedAt,
+  };
 }
 
 function itemEndorsement(value: unknown): Item["endorsement"] {
@@ -532,6 +764,21 @@ function validatedSyncSections(
   return result;
 }
 
+export function syncDeadlineExceeded(raw: RawSync): boolean {
+  return (
+    raw.errors?.some(
+      (error) =>
+        typeof error === "string" && error.includes("deadline-exhausted"),
+    ) === true ||
+    Object.values(raw.sections ?? {}).some(
+      (section) => section?.code === "deadline-exhausted",
+    ) ||
+    Object.values(raw.capabilities ?? {}).some(
+      (section) => section?.code === "deadline-exhausted",
+    )
+  );
+}
+
 const REQUIRED_ARRAYS = [
   "items",
   "roleAssignments",
@@ -638,6 +885,11 @@ export function validateRawSync(
   if (raw.errors.some((error) => typeof error !== "string")) {
     throw new Error(
       "The sync result contained invalid completion status. The previous snapshot was preserved.",
+    );
+  }
+  if (syncDeadlineExceeded(raw)) {
+    throw new Error(
+      "Fabric metadata discovery reached its safe execution budget before the workspace was complete. The previous snapshot was preserved.",
     );
   }
   if (raw.schemaVersion === 2) {
@@ -902,20 +1154,201 @@ export function validateRawSync(
   }
 }
 
+export function validateSyncEnrichment(
+  raw: RawSync,
+  expectedItemIds: string[],
+): void {
+  if (
+    raw.schemaVersion !== 2 ||
+    raw.syncMode !== "enrichment" ||
+    !Array.isArray(raw.requestedItemIds) ||
+    !Array.isArray(raw.completedItemIds) ||
+    !Array.isArray(raw.remainingItemIds) ||
+    !raw.requestedItemIds.every((value) => typeof value === "string") ||
+    !raw.completedItemIds.every((value) => typeof value === "string") ||
+    !raw.remainingItemIds.every((value) => typeof value === "string")
+  ) {
+    throw new Error(
+      "Fabric returned an invalid resumable sync response. The previous snapshot was preserved.",
+    );
+  }
+  const expected = new Set(expectedItemIds);
+  const requested = new Set(raw.requestedItemIds);
+  const completed = new Set(raw.completedItemIds);
+  const remaining = new Set(raw.remainingItemIds);
+  const returned = new Set([...completed, ...remaining]);
+  if (
+    requested.size !== expectedItemIds.length ||
+    completed.size !== raw.completedItemIds.length ||
+    remaining.size !== raw.remainingItemIds.length ||
+    [...expected].some((itemId) => !requested.has(itemId)) ||
+    [...requested].some((itemId) => !expected.has(itemId)) ||
+    [...completed].some((itemId) => remaining.has(itemId)) ||
+    returned.size !== expected.size ||
+    [...expected].some((itemId) => !returned.has(itemId)) ||
+    !Array.isArray(raw.jobs) ||
+    !Array.isArray(raw.lineage) ||
+    !Array.isArray(raw.config) ||
+    !isRecord(raw.schema) ||
+    !isRecord(raw.artifactMetadata) ||
+    !isRecord(raw.itemMetadata) ||
+    !Array.isArray(raw.objectEdges) ||
+    !Array.isArray(raw.errors) ||
+    raw.errors.some((error) => typeof error !== "string")
+  ) {
+    throw new Error(
+      "Fabric returned an invalid resumable sync response. The previous snapshot was preserved.",
+    );
+  }
+  if (syncDeadlineExceeded(raw)) {
+    throw new Error(
+      "Fabric returned an invalid resumable sync deadline state. The previous snapshot was preserved.",
+    );
+  }
+  if (!parseObjectLineagePayload(raw.objectEdges)) {
+    throw new Error(
+      "Fabric returned invalid resumable object lineage. The previous snapshot was preserved.",
+    );
+  }
+}
+
 export function isSyncConfigured(): boolean {
   return !!getUdfUrl();
 }
 
-// The portal gives one invoke URL per function; if the user pastes another
-// function's URL (e.g. ping), retarget the last function segment to sync_all.
-function retargetToSyncAll(url: string): string {
-  if (/sync_all/i.test(url)) return url;
-  return url.replace(/\/(ping|list_items|list_role_assignments|get_workspace)(\/|:|\?|$)/i, "/sync_all$2");
+export function isUdfTimeoutFailure(status: number, body: string): boolean {
+  return (
+    status === 408 ||
+    status === 504 ||
+    /UserDataFunctionTimeoutError|exceeded the timeout limit|function timed out/i.test(
+      body,
+    )
+  );
+}
+
+function retargetSyncFunction(url: string, functionName: string): string {
+  return url.replace(
+    /\/(ping|list_items|list_role_assignments|get_workspace|sync_all|sync_items)(\/|:|\?|$)/i,
+    `/${functionName}$2`,
+  );
+}
+
+type RetryableSyncSliceReason = "timeout" | "response-size";
+
+class RetryableSyncSliceError extends Error {
+  constructor(
+    readonly reason: RetryableSyncSliceReason,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+const MAX_BASE_SLICE_ATTEMPTS = 4;
+const MAX_SINGLE_ITEM_SLICE_ATTEMPTS = 6;
+
+function syncItemTypeLabel(itemType: string): string {
+  return (
+    {
+      SQLDatabase: "SQL Database",
+      KQLDatabase: "KQL Database",
+      SemanticModel: "Semantic Model",
+      DataAgent: "Data Agent",
+      GraphModel: "Graph Model",
+      KQLQueryset: "KQL Queryset",
+      KQLDashboard: "KQL Dashboard",
+    }[itemType] ?? itemType
+  );
+}
+
+async function invokeSyncFunctionSlice(
+  baseUrl: string,
+  functionName: "sync_all" | "sync_items",
+  workspaceId: string,
+  tokens: SyncRequestTokens,
+  parameters: Partial<SyncRequestTokens>,
+): Promise<RawSync> {
+  const response = await fetch(retargetSyncFunction(baseUrl, functionName), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${tokens.fabricToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(
+      buildSyncRequestBody(workspaceId, {
+        ...tokens,
+        ...parameters,
+      }),
+    ),
+  });
+  if (!response.ok) {
+    console.warn("[atlas] resumable UDF invocation failed", response.status);
+    const body = await readBoundedResponseText(response, 64 * 1024).catch(
+      () => "",
+    );
+    if (
+      isUdfTimeoutFailure(response.status, body)
+    ) {
+      throw new RetryableSyncSliceError(
+        "timeout",
+        "The Fabric metadata slice must be resumed.",
+      );
+    }
+    if (/ResponseSizeExceeded|response exceeded the safe size limit/i.test(body)) {
+      throw new RetryableSyncSliceError(
+        "response-size",
+        "The Fabric metadata slice exceeded the safe response size.",
+      );
+    }
+    throw new Error(
+      `Fabric synchronization failed (HTTP ${response.status}). The previous snapshot was preserved.`,
+    );
+  }
+  const contentLength = Number(response.headers.get("content-length"));
+  if (
+    Number.isFinite(contentLength) &&
+    contentLength > MAX_SYNC_RESPONSE_BYTES
+  ) {
+    throw new RetryableSyncSliceError(
+      "response-size",
+      "The Fabric metadata slice exceeded the safe response size.",
+    );
+  }
+  try {
+    return parseSyncResponseText(await readBoundedResponseText(response));
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      /exceeded the Atlas safety limit/i.test(error.message)
+    ) {
+      throw new RetryableSyncSliceError(
+        "response-size",
+        "The Fabric metadata slice exceeded the safe response size.",
+      );
+    }
+    throw error;
+  }
+}
+
+async function invokeSyncItemSlice(
+  baseUrl: string,
+  workspaceId: string,
+  tokens: SyncRequestTokens,
+  batch: SyncItemBatch,
+): Promise<RawSync> {
+  return invokeSyncFunctionSlice(
+    baseUrl,
+    "sync_items",
+    workspaceId,
+    tokens,
+    { itemIds: JSON.stringify(batch.itemIds) },
+  );
 }
 
 export async function invokeSyncAll(
   workspaceId: string,
   identity: SyncIdentity,
+  reportProgress?: (progress: number, stage: string) => void,
 ): Promise<RawSync> {
   const raw = getUdfUrl();
   if (!raw) {
@@ -923,43 +1356,236 @@ export async function invokeSyncAll(
       "Sync endpoint not configured yet — publish the atlas_sync_functions UDF and paste its invoke URL.",
     );
   }
-  const url = retargetToSyncAll(raw);
+  const url = retargetSyncFunction(raw, "sync_all");
+  reportProgress?.(5, "Authorizing Fabric metadata access");
   const fabricToken = await acquireFabricSyncToken(identity);
   const metadataTokens = await acquireOptionalMetadataTokens(identity);
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${fabricToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(
-      buildSyncRequestBody(workspaceId, {
-        fabricToken,
-        ...metadataTokens,
-      }),
-    ),
-  });
-  if (!resp.ok) {
-    console.warn("[atlas] UDF invocation failed", resp.status);
-    throw new Error(
-      `Fabric sync failed (HTTP ${resp.status}). The previous snapshot was preserved.`,
+  const tokens: SyncRequestTokens = {
+    fabricToken,
+    ...metadataTokens,
+  };
+  let baseAttempt = 0;
+  let result: RawSync;
+  while (true) {
+    reportProgress?.(
+      8,
+      baseAttempt === 0
+        ? "Discovering workspace topology"
+        : "Continuing workspace topology in a fresh Fabric function slice",
+    );
+    try {
+      result = await invokeSyncFunctionSlice(
+        url,
+        "sync_all",
+        workspaceId,
+        tokens,
+        { deferEnrichment: "true" },
+      );
+    } catch (error) {
+      if (!(error instanceof RetryableSyncSliceError)) throw error;
+      baseAttempt += 1;
+      if (
+        error.reason === "response-size" ||
+        baseAttempt >= MAX_BASE_SLICE_ATTEMPTS
+      ) {
+        throw new Error(
+          "Fabric could not return the authoritative workspace topology within a safe function slice. The previous snapshot was preserved.",
+        );
+      }
+      await new Promise((resolve) =>
+        window.setTimeout(
+          resolve,
+          Math.min(10_000, 1_000 * 2 ** Math.min(baseAttempt, 3)),
+        ),
+      );
+      continue;
+    }
+    if (!syncDeadlineExceeded(result)) break;
+    baseAttempt += 1;
+    if (baseAttempt >= MAX_BASE_SLICE_ATTEMPTS) {
+      throw new Error(
+        "Fabric could not complete the authoritative workspace topology after multiple function slices. The previous snapshot was preserved.",
+      );
+    }
+    await new Promise((resolve) =>
+      window.setTimeout(
+        resolve,
+        Math.min(10_000, 1_000 * 2 ** Math.min(baseAttempt, 3)),
+      ),
     );
   }
-  const contentLength = Number(resp.headers.get("content-length"));
-  if (
-    Number.isFinite(contentLength) &&
-    contentLength > MAX_SYNC_RESPONSE_BYTES
-  ) {
-    throw new Error(
-      "Fabric returned a sync payload that exceeded the Atlas safety limit. The previous snapshot was preserved.",
-    );
-  }
-  // Fabric UDF wraps the return under `output`; accept a raw body too.
-  const result = parseSyncResponseText(
-    await readBoundedResponseText(resp),
-  );
   validateRawSync(result, workspaceId);
-  return result;
+  if (result.syncMode !== "base") {
+    reportProgress?.(60, "Deep workspace discovery complete");
+    return result;
+  }
+  if (!Array.isArray(result.enrichmentItemIds)) {
+    throw new Error(
+      "Fabric did not return the resumable enrichment plan. The previous snapshot was preserved.",
+    );
+  }
+  reportProgress?.(20, "Workspace topology received");
+
+  const enrichmentItemIds = new Set(
+    (result.enrichmentItemIds ?? [])
+      .map((itemId) => realText(itemId))
+      .filter((itemId): itemId is string => !!itemId),
+  );
+  const batches = buildSyncItemBatches(
+    (result.items ?? []).filter((item) => {
+      const itemId = realText(item.id);
+      return itemId && enrichmentItemIds.has(itemId);
+    }),
+  );
+  const totalItems = enrichmentItemIds.size;
+  if (totalItems !== (result.items ?? []).length) {
+    throw new Error(
+      "Fabric returned an incomplete resumable enrichment plan. The previous snapshot was preserved.",
+    );
+  }
+  const completedItemIds = new Set<string>();
+  let merged = result;
+
+  while (batches.length > 0) {
+    const next = batches.shift()!;
+    const itemIds = next.itemIds.filter(
+      (itemId) => !completedItemIds.has(itemId),
+    );
+    if (itemIds.length === 0) continue;
+    const batch = { ...next, itemIds };
+    const label = syncItemTypeLabel(batch.itemType);
+    reportProgress?.(
+      20 + Math.floor((completedItemIds.size / Math.max(1, totalItems)) * 40),
+      `Discovering ${label} metadata (${completedItemIds.size}/${totalItems})`,
+    );
+
+    let enrichment: RawSync;
+    try {
+      enrichment = await invokeSyncItemSlice(
+        raw,
+        workspaceId,
+        tokens,
+        batch,
+      );
+    } catch (error) {
+      if (!(error instanceof RetryableSyncSliceError)) throw error;
+      if (itemIds.length > 1) {
+        const middle = Math.ceil(itemIds.length / 2);
+        batches.push(
+          {
+            ...batch,
+            itemIds: itemIds.slice(0, middle),
+            attempt: batch.attempt + 1,
+          },
+          {
+            ...batch,
+            itemIds: itemIds.slice(middle),
+            attempt: batch.attempt + 1,
+          },
+        );
+      } else {
+        if (
+          error.reason === "response-size" ||
+          batch.attempt + 1 >= MAX_SINGLE_ITEM_SLICE_ATTEMPTS
+        ) {
+          throw new Error(
+            `${label} metadata for one item could not complete within safe Fabric function slices. The previous snapshot was preserved.`,
+          );
+        }
+        reportProgress?.(
+          20 +
+            Math.floor(
+              (completedItemIds.size / Math.max(1, totalItems)) * 40,
+            ),
+          `Continuing ${label} item in a fresh Fabric function slice`,
+        );
+        await new Promise((resolve) =>
+          window.setTimeout(
+            resolve,
+            Math.min(10_000, 1_000 * 2 ** Math.min(batch.attempt, 3)),
+          ),
+        );
+        batches.push({ ...batch, attempt: batch.attempt + 1 });
+      }
+      continue;
+    }
+
+    validateSyncEnrichment(enrichment, itemIds);
+    merged = mergeSyncEnrichment(merged, enrichment);
+    for (const itemId of enrichment.completedItemIds ?? []) {
+      completedItemIds.add(itemId);
+    }
+    const remainingItemIds = (enrichment.remainingItemIds ?? []).filter(
+      (itemId) => !completedItemIds.has(itemId),
+    );
+    if (remainingItemIds.length > 0) {
+      if (
+        (enrichment.completedItemIds?.length ?? 0) === 0 &&
+        remainingItemIds.length > 1
+      ) {
+        const middle = Math.ceil(remainingItemIds.length / 2);
+        batches.push(
+          {
+            ...batch,
+            itemIds: remainingItemIds.slice(0, middle),
+            attempt: batch.attempt + 1,
+          },
+          {
+            ...batch,
+            itemIds: remainingItemIds.slice(middle),
+            attempt: batch.attempt + 1,
+          },
+        );
+      } else if ((enrichment.completedItemIds?.length ?? 0) === 0) {
+        if (batch.attempt + 1 >= MAX_SINGLE_ITEM_SLICE_ATTEMPTS) {
+          throw new Error(
+            `${label} metadata for one item made no progress across multiple Fabric function slices. The previous snapshot was preserved.`,
+          );
+        }
+        reportProgress?.(
+          20 +
+            Math.floor(
+              (completedItemIds.size / Math.max(1, totalItems)) * 40,
+            ),
+          `Continuing ${label} item in a fresh Fabric function slice`,
+        );
+        await new Promise((resolve) =>
+          window.setTimeout(
+            resolve,
+            Math.min(10_000, 1_000 * 2 ** Math.min(batch.attempt, 3)),
+          ),
+        );
+        batches.push({
+          ...batch,
+          itemIds: remainingItemIds,
+          attempt: batch.attempt + 1,
+        });
+      } else {
+        batches.push({
+          ...batch,
+          itemIds: remainingItemIds,
+          attempt: 0,
+        });
+      }
+    }
+  }
+
+  if (completedItemIds.size !== totalItems) {
+    throw new Error(
+      "Fabric did not complete every resumable metadata slice. The previous snapshot was preserved.",
+    );
+  }
+  merged = {
+    ...merged,
+    syncMode: "complete",
+    enrichmentItemIds: undefined,
+    requestedItemIds: undefined,
+    completedItemIds: undefined,
+    remainingItemIds: undefined,
+  };
+  reportProgress?.(60, "Deep workspace discovery complete");
+  validateRawSync(merged, workspaceId);
+  return merged;
 }
 
 /* ------------------------------ mapping -------------------------------- */
@@ -1364,8 +1990,6 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
         index === 0 ||
         JSON.stringify(edge) !== JSON.stringify(values[index - 1]),
     );
-  const objectEdges = allObjectEdges.slice(0, MAX_OBJECT_LINEAGE_EDGES);
-
   const ws = (raw.workspace ?? {}) as Record<string, unknown>;
   const workspace: WorkspaceInfo = {
     fabricId: String(ws.id ?? fallback.fabricId),
@@ -1381,14 +2005,6 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
           status,
         ]),
       ),
-      ...(allObjectEdges.length > objectEdges.length
-        ? {
-            metadataObjectLineage: {
-              status: "failed" as const,
-              code: "object-edge-limit",
-            },
-          }
-        : {}),
     },
   };
 
@@ -1402,7 +2018,7 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
     config,
     schema,
     itemMetadata,
-    objectEdges,
+    objectEdges: allObjectEdges,
     comments: [],
     syncRuns: [],
   };

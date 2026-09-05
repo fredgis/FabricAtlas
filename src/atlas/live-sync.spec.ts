@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   accountMatchesIdentity,
+  buildSyncItemBatches,
   buildSyncRequestBody,
+  isUdfTimeoutFailure,
   mapSyncToAtlas,
+  mergeSyncEnrichment,
   normalizeFabricTimestamp,
   parseSyncResponseText,
   readBoundedResponseText,
   selectMsalAccount,
+  syncDeadlineExceeded,
   validateRawSync,
+  validateSyncEnrichment,
   type MsalAccount,
   type RawSync,
 } from "./live-sync";
@@ -33,6 +38,180 @@ describe("validateRawSync", () => {
     expect(() => validateRawSync(completeSync(), workspaceId)).not.toThrow();
   });
 
+  describe("resumable metadata enrichment", () => {
+    it("groups item slices by type without limiting the complete workspace", () => {
+      const items = [
+        ...Array.from({ length: 10 }, (_, index) => ({
+          id: `sql-${index}`,
+          type: "SQLDatabase",
+        })),
+        ...Array.from({ length: 2 }, (_, index) => ({
+          id: `kql-${index}`,
+          type: "KQLDatabase",
+        })),
+      ];
+
+      expect(buildSyncItemBatches(items, 8)).toEqual([
+        {
+          itemType: "SQLDatabase",
+          itemIds: Array.from({ length: 8 }, (_, index) => `sql-${index}`),
+          attempt: 0,
+        },
+        {
+          itemType: "SQLDatabase",
+          itemIds: ["sql-8", "sql-9"],
+          attempt: 0,
+        },
+        {
+          itemType: "KQLDatabase",
+          itemIds: ["kql-0", "kql-1"],
+          attempt: 0,
+        },
+      ]);
+    });
+
+    it("merges scanner and deep metadata from completed slices", () => {
+      const base: RawSync = {
+        schema: {
+          sql: [
+            {
+              name: "dbo.Customers",
+              objectType: "Table",
+              columns: [{ name: "CustomerId", dataType: "int" }],
+              measures: [],
+            },
+          ],
+        },
+        jobs: [],
+        lineage: [],
+        config: [],
+        artifactMetadata: {},
+        itemMetadata: {
+          sql: {
+            scannerMatched: true,
+            ownerAvailable: true,
+            sensitivity: { labelId: "scanner-label" },
+          },
+        },
+        objectEdges: [],
+        sections: {
+          definitions: { status: "unsupported", code: "not-applicable" },
+        },
+        capabilities: {
+          definitionEnrichment: {
+            status: "unsupported",
+            code: "not-applicable",
+          },
+        },
+        errors: [],
+      };
+      const enrichment: RawSync = {
+        schema: {
+          sql: [
+            {
+              name: "dbo.Customers",
+              objectType: "Managed",
+              columns: [{ name: "Name", dataType: "nvarchar" }],
+              measures: [],
+            },
+          ],
+        },
+        jobs: [{ itemId: "sql", jobType: "Refresh", status: "Completed" }],
+        lineage: [{ source: "sql", target: "report", relation: "report" }],
+        config: [
+          {
+            itemId: "sql",
+            section: "SQL database",
+            label: "Server",
+            value: "example.database.fabric.microsoft.com",
+          },
+        ],
+        artifactMetadata: { sql: { kind: "sql" } },
+        itemMetadata: {
+          sql: {
+            sensitivity: {
+              labelId: "detail-label",
+              displayName: "Confidential",
+            },
+            tags: [{ id: "tag-1", displayName: "Finance" }],
+          },
+        },
+        objectEdges: [{ relation: "contains" }],
+        sections: {
+          definitions: { status: "complete" },
+        },
+        capabilities: {
+          definitionEnrichment: { status: "complete" },
+        },
+        errors: [],
+      };
+
+      const merged = mergeSyncEnrichment(base, enrichment);
+
+      expect(merged.schema?.sql).toHaveLength(1);
+      expect(merged.schema?.sql[0]).toMatchObject({
+        objectType: "Managed",
+      });
+      expect(merged.schema?.sql[0].columns).toHaveLength(2);
+      expect(merged.jobs).toHaveLength(1);
+      expect(merged.lineage).toHaveLength(1);
+      expect(merged.objectEdges).toHaveLength(1);
+      expect(merged.capabilities?.definitionEnrichment?.status).toBe("complete");
+      expect(merged.itemMetadata?.sql).toMatchObject({
+        scannerMatched: true,
+        ownerAvailable: true,
+        sensitivity: {
+          labelId: "detail-label",
+          displayName: "Confidential",
+        },
+        tags: [{ id: "tag-1", displayName: "Finance" }],
+      });
+    });
+
+    it("accepts a completed prefix with an explicit continuation", () => {
+      const enrichment: RawSync = {
+        schemaVersion: 2,
+        syncMode: "enrichment",
+        requestedItemIds: ["one", "two"],
+        completedItemIds: ["one"],
+        remainingItemIds: ["two"],
+        schema: { one: [] },
+        config: [],
+        jobs: [],
+        lineage: [],
+        artifactMetadata: {},
+        itemMetadata: {},
+        objectEdges: [],
+        sections: {},
+        capabilities: {},
+        errors: [],
+      };
+
+      expect(() =>
+        validateSyncEnrichment(enrichment, ["one", "two"]),
+      ).not.toThrow();
+      expect(() =>
+        validateSyncEnrichment(
+          { ...enrichment, remainingItemIds: [] },
+          ["one", "two"],
+        ),
+      ).toThrow(/invalid resumable sync response/i);
+
+      expect(() =>
+        validateSyncEnrichment(
+          {
+            ...enrichment,
+            requestedItemIds: ["one"],
+            completedItemIds: [],
+            remainingItemIds: ["one"],
+            schema: {},
+          },
+          ["one"],
+        ),
+      ).not.toThrow();
+    });
+  });
+
   describe("sync request metadata tokens", () => {
     it("passes available audience tokens without manufacturing missing values", () => {
       expect(
@@ -46,6 +225,7 @@ describe("validateRawSync", () => {
         kustoToken: "kusto-token",
       });
     });
+
   });
 
   describe("sync response parsing", () => {
@@ -75,6 +255,17 @@ describe("validateRawSync", () => {
       await expect(readBoundedResponseText(response, 8)).rejects.toThrow(
         /exceeded.*safety limit/i,
       );
+    });
+
+    it("recognizes Fabric UDF platform timeout responses", () => {
+      expect(isUdfTimeoutFailure(504, "")).toBe(true);
+      expect(
+        isUdfTimeoutFailure(
+          500,
+          "fabric.functions.UserDataFunctionTimeoutError: exceeded the timeout limit",
+        ),
+      ).toBe(true);
+      expect(isUdfTimeoutFailure(500, "unrelated error")).toBe(false);
     });
   });
 
@@ -114,6 +305,37 @@ describe("validateRawSync", () => {
     raw.errors = ["jobs: transient upstream failure"];
 
     expect(() => validateRawSync(raw, workspaceId)).not.toThrow();
+  });
+
+  it("rejects deadline exhaustion even when it occurred in optional metadata", () => {
+    const raw = completeSync();
+    raw.schemaVersion = 2;
+    raw.sections = {
+      workspace: { status: "complete" },
+      items: { status: "complete" },
+      roleAssignments: { status: "complete" },
+      scanner: { status: "complete" },
+      schema: { status: "complete" },
+      lineage: { status: "complete" },
+      access: { status: "complete" },
+      config: { status: "complete" },
+    };
+    raw.capabilities = {
+      endorsement: { status: "complete" },
+      sensitivity: { status: "complete" },
+      tags: { status: "complete" },
+      ownership: { status: "complete", code: "type-specific" },
+      definitions: { status: "failed", code: "deadline-exhausted" },
+    };
+    raw.itemMetadata = {
+      "item-1": { scannerMatched: true },
+    };
+    raw.errors = ["definitions:item-1: deadline-exhausted"];
+
+    expect(() => validateRawSync(raw, workspaceId)).toThrow(
+      /execution budget.*previous snapshot was preserved/i,
+    );
+    expect(syncDeadlineExceeded(raw)).toBe(true);
   });
 
   it("rejects failed required v2 sections", () => {

@@ -300,7 +300,6 @@ export const MAX_DATA_AGENT_ELEMENTS = 2_048;
 const MAX_NESTING_DEPTH = 16;
 const MAX_VISITED_VALUES = 10_000;
 const MAX_SERIALIZED_METADATA_LENGTH = 1_000_000;
-export const MAX_OBJECT_LINEAGE_EDGES = 1_000;
 
 const FORBIDDEN_CONTENT_KEYS = new Set([
   "aiinstructions",
@@ -338,19 +337,23 @@ function normalizedKey(value: string): string {
   return value.replace(/[^a-z0-9]/gi, "").toLowerCase();
 }
 
-function containsUnsafeContent(value: unknown): boolean {
+function containsUnsafeContent(
+  value: unknown,
+  maxVisitedValues = MAX_VISITED_VALUES,
+  maxArrayLength = MAX_DATA_AGENT_ELEMENTS,
+): boolean {
   const ancestors = new WeakSet<object>();
   let visited = 0;
 
   const walk = (candidate: unknown, depth: number): boolean => {
     visited += 1;
-    if (visited > MAX_VISITED_VALUES || depth > MAX_NESTING_DEPTH) return true;
+    if (visited > maxVisitedValues || depth > MAX_NESTING_DEPTH) return true;
     if (!candidate || typeof candidate !== "object") return false;
     if (ancestors.has(candidate)) return true;
     ancestors.add(candidate);
 
     if (Array.isArray(candidate)) {
-      if (candidate.length > MAX_DATA_AGENT_ELEMENTS) return true;
+      if (candidate.length > maxArrayLength) return true;
       const unsafe = candidate.some((entry) => walk(entry, depth + 1));
       ancestors.delete(candidate);
       return unsafe;
@@ -2225,26 +2228,14 @@ function parseMetadataObjectRef(
 }
 
 function objectLineageEntries(value: unknown): unknown[] | undefined {
-  if (Array.isArray(value)) {
-    return value.length <= MAX_OBJECT_LINEAGE_EDGES ? value : undefined;
-  }
+  if (Array.isArray(value)) return value;
   if (!isRecord(value)) return undefined;
   const direct = value.objectEdges;
-  if (Array.isArray(direct)) {
-    return direct.length <= MAX_OBJECT_LINEAGE_EDGES
-      ? direct
-      : undefined;
-  }
+  if (Array.isArray(direct)) return direct;
   const lineage = value.objectLineage;
-  if (Array.isArray(lineage)) {
-    return lineage.length <= MAX_OBJECT_LINEAGE_EDGES
-      ? lineage
-      : undefined;
-  }
+  if (Array.isArray(lineage)) return lineage;
   if (isRecord(lineage) && Array.isArray(lineage.edges)) {
-    return lineage.edges.length <= MAX_OBJECT_LINEAGE_EDGES
-      ? lineage.edges
-      : undefined;
+    return lineage.edges;
   }
   return undefined;
 }
@@ -2252,7 +2243,15 @@ function objectLineageEntries(value: unknown): unknown[] | undefined {
 export function parseObjectLineagePayload(
   value: unknown,
 ): ObjectLineagePayload | undefined {
-  if (containsUnsafeContent(value)) return undefined;
+  if (
+    containsUnsafeContent(
+      value,
+      Number.POSITIVE_INFINITY,
+      Number.POSITIVE_INFINITY,
+    )
+  ) {
+    return undefined;
+  }
   const entries = objectLineageEntries(value);
   if (!entries) return undefined;
   const edges: MetadataObjectLineageEdge[] = [];

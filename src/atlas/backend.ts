@@ -296,11 +296,10 @@ export async function runFabricSync(
     return null;
   }
   requireSyncWriter(user);
-  reportProgress?.(8, "Connecting to Microsoft Fabric");
-  const raw = await invokeSyncAll(workspaceId(), user);
-  reportProgress?.(48, "Workspace metadata received");
+  const raw = await invokeSyncAll(workspaceId(), user, reportProgress);
+  reportProgress?.(62, "Workspace metadata complete");
   const atlas = mapSyncToAtlas(raw, WS_FALLBACK);
-  reportProgress?.(58, "Building the governance catalog");
+  reportProgress?.(66, "Building the governance catalog");
   // Carry over comments that already live in the DB (sync doesn't touch them).
   try {
     const existing = await loadFromDb(false);
@@ -308,7 +307,7 @@ export async function runFabricSync(
   } catch {
     /* ignore */
   }
-  reportProgress?.(66, "Preserving team notes");
+  reportProgress?.(69, "Preserving team notes");
   const persisted = await persistSync(atlas, user, reportProgress);
   reportProgress?.(100, "Sync complete");
   return persisted;

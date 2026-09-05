@@ -85,8 +85,9 @@ Fabric Atlas collects that metadata without copying business data.
 | Trusted snapshot retention | Keeps 2–50 validated snapshots, supports explicit writer rotation and removes stale rows only after a new manifest is published |
 | Lightweight history | Stores versioned trend summaries in manifests and loads detailed comparisons only when selected |
 | Versioned sync contract | Records required, optional and metadata-capability status for every synchronized snapshot |
-| Bounded UDF execution | Applies one deadline, bounded retries and payload limits below Fabric's public endpoint ceilings |
-| Accessible sync feedback | Announces stages and errors, while reduced-motion preferences disable repeating motion |
+| Bounded UDF execution | Uses a 180-second deadline below Fabric's 200-second function limit, bounded retries and transport-size safety without truncating object-lineage relations by count |
+| Resumable deep discovery | Runs one authoritative base scan, then processes item metadata in type-grouped UDF slices that automatically continue, split or isolate a slow item |
+| Accessible sync feedback | Shows five real phases, the active stage and elapsed time during both initial synchronization and later refreshes |
 | Deployment gate | Requires synchronization for the first deployment or a new major/minor snapshot contract, while compatible patch releases reuse validated history |
 | Trusted synchronizer | Restricts snapshot publication to the configured synchronization account |
 | Snapshot history | Loads previous validated snapshots for comparisons and governance trends |
@@ -231,9 +232,14 @@ Fabric Atlas collects that metadata without copying business data.
 ### Guided deployment sync
 
 The first deployment or a new major/minor snapshot contract starts with a
-controlled metadata refresh. Progress, target workspace and the live progress
-donut stay visible throughout the scan; compatible patch releases reuse the
-validated catalog.
+controlled metadata refresh. A five-phase tracker, active stage, elapsed time
+and target workspace stay visible throughout the scan. The same tracker appears
+during later refreshes, while compatible patch releases reuse the validated
+catalog. Deep discovery advances with the real completed-item count. A slow
+type is continued in a new UDF slice, and an individual slow item is retried in
+isolation. Repeated no-progress attempts stop with an explicit item-level error
+instead of looping forever. The browser warns before leaving while this
+resumable queue is active.
 
 ![Guided Fabric Atlas deployment sync](docs/screenshots/deployment-sync-v191.png)
 
@@ -323,8 +329,12 @@ flowchart LR
 The browser cannot call Fabric management APIs directly. A published User Data
 Function performs the metadata scan server-side with the signed-in user's
 delegated token. Its versioned response reports required, optional and
-capability status. The app validates and size-bounds that result, stores a
-workspace-scoped snapshot through Rayfin, and keeps the previous valid snapshot
+capability status. Atlas first retrieves the authoritative workspace topology,
+then invokes resumable enrichment slices grouped by item type. Each slice
+returns completed and remaining item IDs, so timeout or response-size pressure
+causes automatic continuation instead of truncation. The app validates and
+size-bounds every result, stores one complete workspace-scoped snapshot through
+Rayfin, and keeps the previous valid snapshot
 if a refresh fails.
 
 See [Architecture](docs/architecture.md) for the full data flow.
@@ -345,7 +355,7 @@ available in the current app.
 | P2 | Simultaneous departures | Assess several departing principals together so reassignment does not depend on another departing person |
 | P2 | Entra group membership | Expand group evidence where permissions allow it, while distinguishing direct grants from membership-derived access |
 | P2 | Multi-workspace catalog and verified lineage | Index an explicitly selected workspace scope and show cross-workspace relationships only when Microsoft exposes the evidence |
-| P2 | Resumable synchronization | Process bounded batches and resume failed work without discarding the last validated snapshot |
+| P2 | Durable background synchronization | Persist continuation state server-side so a refresh can survive a closed browser and later support scheduled execution |
 | P3 | Report visual field usage | Read supported report definitions to trace measure and column references to visuals, subject to report permissions and sensitivity restrictions |
 
 ### Multi-workspace milestones

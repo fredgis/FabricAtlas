@@ -12,18 +12,33 @@ Per-item access and lineage come from the Fabric **admin scanner** (`getInfo`),
 which needs the `Tenant.Read.All` delegated permission (already consented on the
 `FabricAtlas Sync` app registration) and the tenant's read-only admin API settings
 enabled. The browser rejects any failed required section and keeps the previous
-database snapshot active. Optional enrichment failures remain visible in the
-contract without invalidating complete required metadata. Scanner access is
-therefore required for a synchronized result to become authoritative.
+database snapshot active. Unsupported endpoints and unavailable optional tokens
+remain visible without invalidating complete required metadata. Deadline
+exhaustion in any discovery section rejects the refresh so a partial deep scan
+cannot become authoritative. Scanner access is therefore required for a
+synchronized result to become authoritative.
 
 Lineage uses documented immutable identifiers for Report bindings, Dashboard
 tiles and upstream Dataflow, Datamart and Semantic Model dependencies. A
 dependency is accepted only when its scanner `groupId` is absent or matches the
 current workspace. Display names are never used to invent an edge.
 
-`sync_all` uses one 92-second monotonic deadline, including response reads,
-bounded retries and `Retry-After` sleeps. It caps upstream and final payloads at
-25 MiB, below the 100-second and 30 MB public endpoint limits.
+Fabric enforces a 200-second function timeout. Each Atlas invocation uses one
+180-second monotonic budget, including metadata queries, response reads,
+bounded retries and `Retry-After` sleeps. The remaining 20 seconds are reserved
+for final projection, serialization and platform response handling. Upstream
+and final payloads are capped at 25 MiB. Verified object-lineage relations are
+deduplicated but never truncated by count.
+
+The browser calls `sync_all` with deferred enrichment to obtain the
+authoritative workspace, scanner, access and base-lineage envelope. It then
+invokes `sync_items` with item IDs grouped by Fabric type. A slice stops before
+starting another item when less than 30 seconds remain and returns both
+`completedItemIds` and `remainingItemIds`. The client continues those IDs in a
+fresh slice, splits a timed-out multi-item request, and isolates a slow single
+item. Repeated no-progress attempts are bounded so a deterministic oversized or
+stalled item cannot leave the browser in an infinite loop. No partial slice
+publishes a Rayfin workspace manifest.
 
 For schema-enabled lakehouses, the lakehouse `/tables` endpoint may return a
 schema wrapper or no usable result. The UDF flattens schema/table responses when
@@ -38,7 +53,7 @@ objects or columns.
 | --- | --- |
 | Lakehouse | All objects returned by the paginated Lakehouse Tables REST API (managed/external type). Columns are merged from scanner metadata and downstream semantic models reached through the real SQL endpoint ID. |
 | Warehouse | Tables/views/columns when the admin scanner supplies them. Otherwise downstream semantic-model objects are returned as a clearly labelled subset. Fabric REST item properties are captured, but complete inventory requires SQL catalog access. |
-| SQL Database | Same safe behavior as Warehouse: scanner objects first, downstream model subset second, REST properties/config facts always. Complete inventory requires SQL catalog access. |
+| SQL Database | Schemas, tables, views, columns, primary keys and foreign keys from constant read-only `sys.*` catalog queries against every workspace-resolved Fabric SQL endpoint. |
 | Semantic Model | Scanner tables, columns, measures, descriptions, hidden flags and measure expressions. |
 | Report | Pages from the supported Power BI `Get Pages In Group` API. The admin scanner and Reports REST do not expose visuals or field bindings, so those are explicitly reported as unavailable rather than fabricated. |
 
@@ -75,7 +90,8 @@ and [Get Pages In Group](https://learn.microsoft.com/rest/api/power-bi/reports/g
 | `list_items` | `fabricToken, workspaceId` | workspace items |
 | `list_role_assignments` | `fabricToken, workspaceId` | users/groups + their workspace role |
 | `get_workspace` | `fabricToken, workspaceId` | workspace metadata |
-| `sync_all` | `fabricToken, workspaceId` | Schema v2 payload with workspace data, required/optional section status, metadata capabilities and safe errors |
+| `sync_all` | `fabricToken, workspaceId, kustoToken?, sqlToken?, storageToken?, deferEnrichment?` | Schema v2 payload with workspace data, required/optional section status, metadata capabilities and safe errors |
+| `sync_items` | `fabricToken, workspaceId, itemIds, kustoToken?, sqlToken?, storageToken?` | Resumable deep metadata slice with completed and remaining item IDs |
 
 Required sections are `workspace`, `items`, `roleAssignments`, `scanner`,
 `schema`, `lineage`, `access` and `config`. Optional sections are `jobs`,

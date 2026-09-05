@@ -392,35 +392,34 @@ class LakehouseSchemaTests(unittest.TestCase):
         )
         self.assertEqual(public_schema[0]["objectType"], "KQL table")
 
-    def test_generalized_object_edges_are_bounded(self):
+    def test_generalized_object_edges_keep_the_complete_set(self):
         item_id = "11111111-1111-4111-8111-111111111111"
-        schema = function_app._finalize_schema_object_ids(
-            item_id,
-            "KQLDatabase",
-            [
-                {
-                    "name": "Events",
-                    "objectType": "KQL table",
-                    "columns": [
-                        {"name": f"Column{index}", "dataType": "nvarchar"}
-                        for index in range(4)
-                    ],
-                    "measures": [],
-                }
-            ],
+        extra_edges = [
+            {
+                "source": {
+                    "itemId": item_id,
+                    "kind": "column",
+                    "id": f"source-{index}",
+                    "name": f"Source {index}",
+                },
+                "target": {
+                    "itemId": item_id,
+                    "kind": "property",
+                    "id": f"target-{index}",
+                    "name": f"Target {index}",
+                },
+                "relation": "binds property",
+                "confidence": "verified",
+            }
+            for index in range(2500)
+        ]
+
+        edges = function_app._collect_atlas_object_edges(
+            {},
+            extra_edges=extra_edges,
         )
 
-        with mock.patch.object(
-            function_app,
-            "MAX_OBJECT_LINEAGE_EDGES",
-            2,
-        ):
-            edges, truncated = function_app._collect_atlas_object_edges(
-                {item_id: schema}
-            )
-
-        self.assertEqual(len(edges), 2)
-        self.assertTrue(truncated)
+        self.assertEqual(len(edges), 2500)
         self.assertTrue(
             all(edge["confidence"] == "verified" for edge in edges)
         )
@@ -660,6 +659,15 @@ class ObjectInventoryTests(unittest.TestCase):
 
 
 class RequestReliabilityTests(unittest.TestCase):
+    def test_execution_budget_leaves_platform_completion_reserve(self):
+        self.assertEqual(function_app.FABRIC_UDF_TIMEOUT_SECONDS, 200)
+        self.assertEqual(function_app.EXECUTION_BUDGET_SECONDS, 180)
+        self.assertEqual(
+            function_app.FABRIC_UDF_TIMEOUT_SECONDS
+            - function_app.EXECUTION_BUDGET_SECONDS,
+            function_app.PLATFORM_COMPLETION_RESERVE_SECONDS,
+        )
+
     def test_req_returns_json_and_uses_bounded_timeout(self):
         clock = _Clock()
         deadline = function_app._ExecutionDeadline(5, clock.monotonic)
@@ -3177,6 +3185,7 @@ class SyncOrchestrationTests(unittest.TestCase):
         scan,
         role_assignments=None,
         jobs_error=None,
+        defer_enrichment="",
     ):
         role_assignments = role_assignments or [
             {
@@ -3220,7 +3229,228 @@ class SyncOrchestrationTests(unittest.TestCase):
                 return_value=scan,
             ),
         ):
-            return function_app.sync_all("token", self.workspace_id)
+            return function_app.sync_all(
+                "token",
+                self.workspace_id,
+                deferEnrichment=defer_enrichment,
+            )
+
+    def test_sync_all_can_defer_per_item_enrichment(self):
+        items = [
+            {
+                "id": "flow",
+                "type": "Dataflow",
+                "displayName": "Flow",
+            }
+        ]
+        scan = {"dataflows": [{"objectId": "flow"}]}
+
+        with mock.patch.object(function_app, "_enrich_artifact") as enrich:
+            result = self._run_sync(
+                items,
+                scan,
+                defer_enrichment="true",
+            )
+
+        enrich.assert_not_called()
+        self.assertEqual(result["syncMode"], "base")
+        self.assertEqual(result["enrichmentItemIds"], ["flow"])
+        self.assertEqual(result["jobs"], [])
+
+    def test_sync_items_returns_completed_deep_metadata(self):
+        items = [
+            {
+                "id": "sql",
+                "type": "SQLDatabase",
+                "displayName": "SQL",
+            }
+        ]
+
+        def get_all(_token, path):
+            if path.endswith("/items"):
+                return items
+            if "/jobs/instances" in path:
+                return []
+            raise AssertionError(path)
+
+        with (
+            mock.patch.object(
+                function_app,
+                "_get_all",
+                side_effect=get_all,
+            ),
+            mock.patch.object(
+                function_app,
+                "_enrich_artifact",
+                side_effect=lambda _token, _ws, artifact, *_args, **_kwargs: (
+                    artifact.update(
+                        {
+                            "sensitivity": {
+                                "labelId": "label-1",
+                                "displayName": "Confidential",
+                            },
+                            "tags": [{"id": "tag-1", "displayName": "Finance"}],
+                        }
+                    )
+                ),
+            ),
+            mock.patch.object(
+                function_app,
+                "_item_schema",
+                return_value=[
+                    {
+                        "name": "dbo.Customers",
+                        "objectType": "SQL table",
+                        "columns": [],
+                        "measures": [],
+                    }
+                ],
+            ),
+            mock.patch.object(
+                function_app,
+                "_item_config",
+                return_value=[
+                    {
+                        "itemId": "sql",
+                        "section": "SQL database",
+                        "label": "Database",
+                        "value": "SQL",
+                    }
+                ],
+            ),
+        ):
+            result = function_app.sync_items(
+                "token",
+                self.workspace_id,
+                '["sql"]',
+            )
+
+        self.assertEqual(result["completedItemIds"], ["sql"])
+        self.assertEqual(result["remainingItemIds"], [])
+        self.assertEqual(result["schema"]["sql"][0]["name"], "dbo.Customers")
+        self.assertEqual(len(result["config"]), 1)
+        self.assertEqual(
+            result["itemMetadata"]["sql"]["sensitivity"]["labelId"],
+            "label-1",
+        )
+        self.assertEqual(
+            result["itemMetadata"]["sql"]["tags"][0]["id"],
+            "tag-1",
+        )
+
+    def test_deferred_storage_derivation_skips_lakehouse_detail_calls(self):
+        storage = {
+            "id": "lake",
+            "_type": "Lakehouse",
+        }
+
+        with mock.patch.object(function_app, "_get") as get:
+            endpoint_ids = function_app._storage_endpoint_ids(
+                "token",
+                self.workspace_id,
+                storage,
+                [storage],
+                resolve_details=False,
+            )
+
+        get.assert_not_called()
+        self.assertEqual(endpoint_ids, set())
+
+    def test_sync_items_returns_a_continuation_before_the_deadline(self):
+        items = [
+            {"id": "one", "type": "Lakehouse", "displayName": "One"},
+            {"id": "two", "type": "Lakehouse", "displayName": "Two"},
+        ]
+        processed = []
+
+        class _Deadline:
+            def remaining(self):
+                return 20 if processed else 180
+
+            def checkpoint(self, reserve_seconds=0):
+                if self.remaining() <= reserve_seconds:
+                    raise function_app.DeadlineExceeded(
+                        "execution deadline exhausted"
+                    )
+
+        def get_all(_token, path):
+            if path.endswith("/items"):
+                return items
+            if "/jobs/instances" in path:
+                return []
+            raise AssertionError(path)
+
+        def enrich(_token, _ws, artifact, *_args, **_kwargs):
+            processed.append(artifact["id"])
+
+        with (
+            mock.patch.object(
+                function_app,
+                "_ExecutionDeadline",
+                return_value=_Deadline(),
+            ),
+            mock.patch.object(
+                function_app,
+                "_get_all",
+                side_effect=get_all,
+            ),
+            mock.patch.object(
+                function_app,
+                "_enrich_artifact",
+                side_effect=enrich,
+            ),
+            mock.patch.object(
+                function_app,
+                "_item_schema",
+                return_value=[],
+            ),
+            mock.patch.object(
+                function_app,
+                "_item_config",
+                return_value=[],
+            ),
+        ):
+            result = function_app.sync_items(
+                "token",
+                self.workspace_id,
+                '["one","two"]',
+            )
+
+        self.assertEqual(result["completedItemIds"], ["one"])
+        self.assertEqual(result["remainingItemIds"], ["two"])
+
+    def test_sync_items_requeues_an_item_that_exhausts_its_slice(self):
+        items = [
+            {"id": "graph", "type": "GraphModel", "displayName": "Graph"}
+        ]
+
+        def get_all(_token, path):
+            if path.endswith("/items"):
+                return items
+            raise AssertionError(path)
+
+        with (
+            mock.patch.object(
+                function_app,
+                "_get_all",
+                side_effect=get_all,
+            ),
+            mock.patch.object(
+                function_app,
+                "_enrich_artifact",
+                side_effect=function_app.DeadlineExceeded(
+                    "execution deadline exhausted"
+                ),
+            ),
+        ):
+            result = function_app.sync_items(
+                "token",
+                self.workspace_id,
+                '["graph"]',
+            )
+
+        self.assertEqual(result["completedItemIds"], [])
+        self.assertEqual(result["remainingItemIds"], ["graph"])
 
     def test_sync_all_returns_v2_envelope_and_keeps_top_level_items(self):
         items = [

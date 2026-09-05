@@ -4,6 +4,24 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.1] - 2026-09-05
+
+### Changed
+
+- Initial deployment sync and later workspace refreshes now share the same five-phase progress display with the active stage and elapsed time.
+- Workspace discovery no longer uses a product-level object-lineage relation count cap. Every verified relation returned by the collector is validated, mapped and persisted.
+- The UDF execution budget is now 180 seconds, leaving a 20-second completion reserve below Fabric's documented 200-second function timeout.
+- Deep discovery now runs as an authoritative base scan followed by resumable item batches grouped by Fabric type, with actual completed-item progress.
+
+### Fixed
+
+- Large valid object-lineage payloads no longer fail validation after crossing the parser's internal traversal budget.
+- Synchronization no longer advances to an artificial 42% while the Fabric metadata request is still running.
+- A deadline state returned outside the resumable slice protocol cannot publish a snapshot.
+- Timed-out or oversized enrichment batches now continue automatically, split into smaller batches, or retry a single slow item in an isolated UDF slice.
+- Deterministic single-item size failures and repeated no-progress slices now stop explicitly instead of leaving synchronization in an infinite retry loop.
+- Active synchronization now warns before a browser refresh can discard the in-memory continuation queue.
+
 ## [1.11.0] - 2026-09-05
 
 ### Added
@@ -23,7 +41,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Asset Catalog now uses workload-specific object labels instead of presenting every object as a table or column.
 - Map object mode uses verified metadata edges when available and retains the existing DAX graph as the Semantic Model fallback.
 - Snapshot persistence stores safe item metadata and verified object edges in bounded hidden `ConfigEntry` chunks.
-- Synchronization acquires separate optional Kusto, Azure SQL and OneLake audience tokens for the same authenticated Fabric user.
+- Synchronization acquires separate optional Kusto and Azure SQL audience tokens for the same authenticated Fabric user.
 
 ### Security
 
