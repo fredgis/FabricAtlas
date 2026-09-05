@@ -241,14 +241,14 @@ isolation. Repeated no-progress attempts stop with an explicit item-level error
 instead of looping forever. The browser warns before leaving while this
 resumable queue is active.
 
-![Guided Fabric Atlas deployment sync](docs/screenshots/deployment-sync-v191.png)
+![Guided Fabric Atlas deployment sync](docs/screenshots/deployment-sync-v1111.png)
 
 ### Workspace overview
 
 The overview brings health, freshness, governance signals and inventory reach
 together in a Fabric-native operational landing page.
 
-![Fabric Atlas workspace overview](docs/screenshots/overview-fabric-menu-v191.png)
+![Fabric Atlas workspace overview](docs/screenshots/workspace-overview-v1111.png)
 
 ### Interactive lineage
 
@@ -256,22 +256,24 @@ The map follows Fabric assets from orchestration to consumption. Selecting an
 item highlights its verified path while the inspector keeps schema, access,
 runs and impact actions beside the graph.
 
-![Fabric Atlas item lineage](docs/screenshots/interactive-lineage-v191.png)
+![Fabric Atlas item lineage](docs/screenshots/interactive-lineage-v1111.png)
 
 ### Object lineage
 
 Object mode expands a synchronized table into its columns and connected Fabric
 items. The inspector keeps ownership, impact and related metadata visible while
-objects are selected or rearranged.
+objects are selected or rearranged. Selecting an object from another Fabric item
+switches the active item and rebuilds the object graph. Deep-lineage tables can
+be expanded or collapsed together.
 
-![Fabric Atlas object lineage](docs/screenshots/lineage-objects-v191.png)
+![Fabric Atlas object lineage](docs/screenshots/object-lineage-v1111.png)
 
 ### Asset Catalog
 
 Tables, views, columns and measures are grouped by Fabric item. Selecting an
 asset exposes its source, model context and additive effective access.
 
-![Fabric Atlas Asset Catalog](docs/screenshots/asset-catalog-v191.png)
+![Fabric Atlas Asset Catalog](docs/screenshots/asset-catalog-v1111.png)
 
 ### Governance Center
 

@@ -867,6 +867,16 @@ export function MapView() {
       suppressItemClick.current = false;
     }, 0);
   };
+  const resetObjectContext = (clearQuery = false) => {
+    setSelectedObjectId("");
+    setSelectedObjectIds(new Set());
+    setObjectDrag({});
+    setTableName("");
+    setSourceItemFilter("all");
+    setObjectKindFilter("all");
+    setOpenTables(new Set());
+    if (clearQuery) setQuery("");
+  };
   const nodeClick = (event: RME<HTMLButtonElement>, id: string) => {
     if (suppressItemClick.current) return;
     const multi = event.ctrlKey || event.metaKey || event.shiftKey;
@@ -880,10 +890,20 @@ export function MapView() {
       setSelectedItemIds(new Set([id]));
       setSelId(id);
     }
-    setSelectedObjectId("");
-    setSelectedObjectIds(new Set());
-    setObjectDrag({});
+    resetObjectContext();
     setTab("summary");
+  };
+
+  const switchActiveItem = (itemId: string) => {
+    if (!itemById.has(itemId) || itemId === activeId) return false;
+    setSelId(itemId);
+    setFocusId(itemId);
+    setSelectedItemIds(new Set([itemId]));
+    resetObjectContext(true);
+    setTypeFilter("all");
+    setHealthFilter("all");
+    setTab("summary");
+    return true;
   };
 
   const selectObjectNode = (node: ObjectNode) => {
@@ -912,9 +932,7 @@ export function MapView() {
     setFocusId(nextId);
     setSelectedItemIds(new Set(nextId ? [nextId] : []));
     setDrag({});
-    setSelectedObjectId("");
-    setSelectedObjectIds(new Set());
-    setObjectDrag({});
+    resetObjectContext();
   };
 
   const changeObjectTable = (nextTable: string) => {
@@ -1026,6 +1044,14 @@ export function MapView() {
   ) => {
     if (suppressObjectClick.current) return;
     const multi = event.ctrlKey || event.metaKey || event.shiftKey;
+    if (
+      !multi &&
+      node.itemId &&
+      node.itemId !== activeId &&
+      switchActiveItem(node.itemId)
+    ) {
+      return;
+    }
     if (multi) {
       const next = new Set(selectedObjectIds);
       if (next.has(node.id) && next.size > 1) next.delete(node.id);
@@ -1048,6 +1074,9 @@ export function MapView() {
       else next.add(name);
       return next;
     });
+  const expandAllTables = () =>
+    setOpenTables(new Set(schema.map((table) => table.name)));
+  const collapseAllTables = () => setOpenTables(new Set());
 
   const fit = () => {
     const viewport = mapRef.current;
@@ -2053,13 +2082,7 @@ export function MapView() {
                             <button
                               key={item.fabricId}
                               type="button"
-                              onClick={() => {
-                                setSelId(item.fabricId);
-                                setSelectedObjectId("");
-                                setSelectedObjectIds(new Set());
-                                setObjectDrag({});
-                                setTab("summary");
-                              }}
+                              onClick={() => switchActiveItem(item.fabricId)}
                               className="atlas-row flex items-center gap-[8px] rounded-lg px-[7px] text-left hover:bg-accent"
                             >
                               <TypeGlyph type={item.itemType} size={23} />
@@ -2094,16 +2117,34 @@ export function MapView() {
                     <div className="flex items-center justify-between gap-[8px]">
                       <SectionLabel>Deep lineage · {schema.length} tables</SectionLabel>
                       {schema.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMode("objects");
-                            changeObjectTable(schema[0].name);
-                          }}
-                          className="text-[10px] font-semibold text-primary hover:underline"
-                        >
-                          Show on map
-                        </button>
+                        <div className="flex flex-wrap items-center justify-end gap-s">
+                          <button
+                            type="button"
+                            onClick={expandAllTables}
+                            disabled={Boolean(query.trim())}
+                            className="text-200 font-semibold text-muted-foreground hover:text-foreground disabled:opacity-50"
+                          >
+                            Expand all
+                          </button>
+                          <button
+                            type="button"
+                            onClick={collapseAllTables}
+                            disabled={Boolean(query.trim())}
+                            className="text-200 font-semibold text-muted-foreground hover:text-foreground disabled:opacity-50"
+                          >
+                            Collapse all
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMode("objects");
+                              changeObjectTable(schema[0].name);
+                            }}
+                            className="text-200 font-semibold text-primary hover:underline"
+                          >
+                            Show on map
+                          </button>
+                        </div>
                       )}
                     </div>
                     <div className="mt-[8px] flex flex-col gap-[5px]">

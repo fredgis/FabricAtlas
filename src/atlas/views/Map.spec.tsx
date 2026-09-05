@@ -408,6 +408,28 @@ describe("MapView selection", () => {
     ).toBeInTheDocument();
   });
 
+  it("refreshes object lineage when a node from another item is selected", () => {
+    window.history.replaceState(null, "", "/#map");
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "objects" }));
+    const report = SAMPLE_DATA.items.find(
+      (item) => item.displayName === "AlpineRent Executive Dashboard",
+    )!;
+
+    fireEvent.click(
+      screen.getByLabelText("AlpineRent Executive Dashboard, Report"),
+    );
+
+    expect(
+      new URL(window.location.href).searchParams.get("item"),
+    ).toBe(report.fabricId);
+  });
+
   it("selects the matching table when the object table filter changes", () => {
     window.history.replaceState(null, "", "/#map");
     render(
@@ -430,6 +452,43 @@ describe("MapView selection", () => {
     expect(
       selectedTable,
     ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("expands and collapses every deep-lineage table", async () => {
+    window.history.replaceState(null, "", "/#map");
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "objects" }));
+    await selectInspectorTab("Summary", "Schema");
+    const tableToggles = () =>
+      screen
+        .getAllByRole("button")
+        .filter((button) => button.hasAttribute("aria-expanded"));
+
+    expect(tableToggles().length).toBeGreaterThan(1);
+    expect(
+      tableToggles().every(
+        (button) => button.getAttribute("aria-expanded") === "false",
+      ),
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
+    expect(
+      tableToggles().every(
+        (button) => button.getAttribute("aria-expanded") === "true",
+      ),
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
+    expect(
+      tableToggles().every(
+        (button) => button.getAttribute("aria-expanded") === "false",
+      ),
+    ).toBe(true);
   });
 
   it("moves a multi-selection together and fully resets positions", () => {
