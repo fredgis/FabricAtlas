@@ -3966,32 +3966,19 @@ def _collect_sql_schema(token, artifact):
     artifact["_sqlMetadataFacts"] = facts
 
 
-def _sql_metadata_for_item(sql_metadata, item_id):
-    if sql_metadata is None:
-        return None
-    if not isinstance(sql_metadata, dict):
-        raise ValueError("sqlMetadata must be an object")
-    value = sql_metadata.get(item_id)
-    if value is None:
-        for key, candidate in sql_metadata.items():
-            if _normalized_id(key) == item_id:
-                value = candidate
-                break
-    return value
-
-
 def _sql_metadata_projection(value):
+    """Sanitize SQL catalog fixtures used by tests and offline diagnostics."""
     if not isinstance(value, dict):
         raise ValueError("SQL metadata item was not an object")
     tables = _schema_objects(
         value.get("tables") if isinstance(value.get("tables"), list) else [],
         "SQL table",
-        "Pre-collected SQL system catalog metadata",
+        "Sanitized SQL system catalog metadata",
     )
     views = _schema_objects(
         value.get("views") if isinstance(value.get("views"), list) else [],
         "SQL view",
-        "Pre-collected SQL system catalog metadata",
+        "Sanitized SQL system catalog metadata",
     )
     facts = []
     for collection, label in (
@@ -4019,7 +4006,8 @@ def _sql_metadata_projection(value):
                 if source and target:
                     facts.append((
                         label,
-                        _strict_text(entry.get("name")) or f"{source}->{target}",
+                        _strict_text(entry.get("name"))
+                        or f"{source}->{target}",
                         f"{source} -> {target}",
                     ))
     return _merge_schema_tables(tables, views), facts
@@ -4033,7 +4021,6 @@ def _enrich_artifact(
     errors,
     kusto_token="",
     sql_token="",
-    sql_metadata=None,
 ):
     artifact_type = artifact.get("_type")
     artifact_id = artifact.get("id")
@@ -4226,15 +4213,8 @@ def _enrich_artifact(
 
     if artifact_type == "SQLDatabase" and artifact_id:
         try:
-            supplied = _sql_metadata_for_item(sql_metadata, artifact_id)
             if _strict_text(sql_token):
                 _collect_sql_schema(sql_token, artifact)
-                artifact["_sqlSchemaStatus"] = "complete"
-                _track_optional(trackers["sqlSchema"], "success")
-            elif supplied is not None:
-                schema, facts = _sql_metadata_projection(supplied)
-                artifact["_sqlSchema"] = schema
-                artifact["_sqlMetadataFacts"] = facts
                 artifact["_sqlSchemaStatus"] = "complete"
                 _track_optional(trackers["sqlSchema"], "success")
             else:
@@ -5177,7 +5157,6 @@ def sync_all(
     kustoToken: str = "",
     sqlToken: str = "",
     storageToken: str = "",
-    sqlMetadata: dict = None,
 ) -> dict:
     """Return the v2 metadata-only Fabric Atlas synchronization envelope."""
     ws = _workspace_id(workspaceId)
@@ -5368,7 +5347,6 @@ def sync_all(
                         out["errors"],
                         kusto_token=kustoToken,
                         sql_token=sqlToken,
-                        sql_metadata=sqlMetadata,
                     )
                     out["itemMetadata"][artifact_id] = _metadata_for_item(
                         artifact,

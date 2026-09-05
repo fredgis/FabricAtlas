@@ -2491,7 +2491,7 @@ class KqlAndSqlMetadataTests(unittest.TestCase):
 
         self.assertTrue(connection.cursors[0].closed)
 
-    def test_sql_token_uses_live_catalog_before_injected_metadata(self):
+    def test_sql_token_uses_live_catalog(self):
         artifact = {"id": self.sql_id, "_type": "SQLDatabase"}
         trackers = {
             "itemDetails": function_app._new_optional_tracker(),
@@ -2538,11 +2538,6 @@ class KqlAndSqlMetadataTests(unittest.TestCase):
                 trackers,
                 [],
                 sql_token="sql-token",
-                sql_metadata={
-                    self.sql_id: {
-                        "tables": [{"name": "Injected"}],
-                    }
-                },
             )
 
         collect_sql.assert_called_once_with("sql-token", artifact)
@@ -2759,7 +2754,7 @@ class KqlAndSqlMetadataTests(unittest.TestCase):
         )
         self.assertEqual(trackers["kqlSchema"]["unsupported"], 1)
 
-    def test_sql_precollected_catalog_is_allowlisted(self):
+    def test_sql_metadata_fixture_projection_is_allowlisted(self):
         value = {
             "tables": [
                 {
@@ -2843,7 +2838,7 @@ class KqlAndSqlMetadataTests(unittest.TestCase):
         ):
             self.assertNotIn(secret, serialized)
 
-    def test_sql_without_token_or_injected_metadata_reports_token_absence(self):
+    def test_sql_without_token_reports_token_absence(self):
         artifact = {"id": self.sql_id, "_type": "SQLDatabase"}
         trackers = {
             "itemDetails": function_app._new_optional_tracker(),
