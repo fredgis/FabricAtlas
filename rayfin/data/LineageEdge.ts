@@ -1,5 +1,5 @@
 import { entity, authenticated, uuid, text, boolean } from '@microsoft/rayfin-core';
-import { SYNC_WRITER_EMAIL } from './sync-policy.js';
+import { SYNC_WRITER_SUBJECT } from './sync-policy.js';
 
 /**
  * A directed dependency between two Fabric items (source -> target), derived
@@ -8,13 +8,13 @@ import { SYNC_WRITER_EMAIL } from './sync-policy.js';
 @entity()
 @authenticated('read')
 @authenticated('delete', {
-  policy: (claims) => claims.email.eq(SYNC_WRITER_EMAIL),
+  policy: (claims) => claims.sub.eq(SYNC_WRITER_SUBJECT),
 })
 @authenticated('create', {
   policy: (claims, item) =>
     claims.email
       .eq(item.writerEmail)
-      .and(claims.email.eq(SYNC_WRITER_EMAIL)),
+      .and(claims.sub.eq(SYNC_WRITER_SUBJECT)),
 })
 export class LineageEdge {
   @uuid() id!: string;

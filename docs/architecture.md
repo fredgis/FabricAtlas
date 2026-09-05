@@ -59,14 +59,14 @@ governance graph: items, object inventory, lineage, principals, grants, jobs,
 configuration, history and shared comments. Deployment owners must treat the
 Fabric app audience as the catalog read boundary.
 
-Writes remain narrower. Snapshot creation and retention are restricted to the
-configured synchronizer. `SavedView`, `AccessReview` and `FindingAck` bind all
+Writes remain narrower. Snapshot creation, updates and retention are restricted
+to the configured immutable Rayfin subject (`claims.sub`); the synchronizer
+email remains contact and historical writer metadata. `SavedView`, `AccessReview` and `FindingAck` bind all
 operations to `claims.sub == user_id`. Comment creation requires both the
 authenticated email and subject to match `authorEmail` and `authorId`.
-Atlas resolves `authorName` from one unique synchronized principal email when
-possible, then falls back to the authenticated session label. `authorEmail`
-remains the authoritative identity and is displayed beside a distinct label so
-readers can verify the author.
+Team notes persist the authenticated email as both the author label and policy-
+bound email, while `authorId` remains bound to `claims.sub`. Client-selected
+catalog labels cannot impersonate another note author.
 
 `AccessReviewEvent` uses the same personal subject boundary but exposes only
 create and read. Shared `GovernancePolicy` and `GovernanceException` records are
@@ -80,9 +80,10 @@ or delete action.
 
 The Sync button calls `runFabricSync` (`src/atlas/backend.ts`). When deployed,
 the browser invokes the published `sync_all` Fabric User Data Function. The
-required Fabric/Power BI token is accompanied by optional Kusto and Azure SQL
-tokens acquired for the same signed-in identity. Each token is used only by its
-matching metadata collector. The `storageToken` function parameter is reserved
+required read-only Fabric/Power BI token is accompanied by separate optional
+definition (`Item.ReadWrite.All`), Kusto and Azure SQL tokens acquired for the
+same signed-in identity. Each token is used only by its matching metadata
+collector. The `storageToken` function parameter is reserved
 for future OneLake discovery and is not currently acquired by the browser. The
 app maps the response, writes it through the Rayfin Data API, and records a
 `SyncRun`.
@@ -91,6 +92,10 @@ Initial synchronization and later refreshes use the same five-phase progress
 tracker. The discovery phase reports the actual number of enriched items and
 the active Fabric item type, together with elapsed time, rather than advancing
 a simulated percentage.
+
+Each browser request has its own 195-second abort deadline. Users can cancel an
+active synchronization, and expiring audience tokens are renewed silently
+between slices.
 
 Contract version 2 separates required sections from optional enrichment and
 records metadata capabilities for ownership, sensitivity, endorsement, tags,
@@ -127,21 +132,29 @@ permission failures still preserve the previous validated snapshot. The
 browser warns before refresh or navigation closes the tab while the queue is
 active.
 
-Each refresh writes a new immutable snapshot. Content rows are written first and
-the `Workspace` manifest is written last. A failed or incomplete refresh never
-becomes active. On startup, hydration validates manifest counts and falls back
-to the previous complete snapshot when necessary.
+Each refresh creates one correlated `SyncRun` attempt before Fabric discovery,
+then records the real terminal time, duration and outcome. Content rows are
+written first and re-read through the same fully paginated hydration path. The
+`Workspace` manifest is written only after the persisted snapshot reconstructs
+successfully. A failed or incomplete refresh never becomes active.
+
+Team notes are loaded independently from snapshot hydration. A note transport,
+pagination or parsing failure appears only in the notes surface and cannot hide
+an otherwise valid catalog.
 
 Content rows are created in bounded batches of eight requests. Entity groups
-remain sequential, each in-flight batch settles before an error is propagated,
-and neither the `SyncRun` audit nor the `Workspace` visibility manifest starts
-after a failed batch.
+remain sequential and each in-flight batch settles before an error is
+propagated. The audit attempt is updated in place rather than deleted and
+recreated.
 
 After the new manifest is visible, Atlas applies trusted snapshot retention.
 Every candidate is filtered by workspace, snapshot and writer, child rows are
 deleted in bounded batches, and the Workspace manifest is deleted last. Only
 the configured synchronizer has delete permission. Cleanup failures are logged
 and retried by a later sync without invalidating the published snapshot.
+Unpublished failed, stale-running or legacy-completed attempts are eligible for
+scoped child-row cleanup only after a one-hour grace period; their `SyncRun`
+audit evidence is retained.
 When the synchronizer changes, explicitly configured former writers remain
 trusted for reads and cleanup while only the current writer can create or
 delete rows.

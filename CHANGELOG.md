@@ -4,6 +4,39 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-09-05
+
+### Added
+
+- Durable synchronization attempts with correlation IDs, running/completed/failed states, duration and failure metadata.
+- User-controlled synchronization cancellation, per-request browser deadlines and silent token renewal between resumable slices.
+- Explicit demo mode, immutable synchronizer subject configuration and tri-state external-principal evidence.
+- Node.js 24 runtime pins and grouped Dependabot updates for npm and UDF Python dependencies.
+
+### Changed
+
+- Fabric synchronization now uses a read-oriented token by default and acquires `Item.ReadWrite.All` separately only for optional item-definition discovery.
+- Snapshot publication verifies every persisted child row through the production pagination path before publishing the workspace manifest.
+- Team notes load independently from the shared catalog and retain their own loading, retry and error states.
+- Upgraded MSAL Browser to 4.30.0 and the Rayfin package family to 1.34.0.
+
+### Fixed
+
+- Slow requests and deferred `Retry-After` responses now produce resumable continuations instead of invalid completed items.
+- KQL schema discovery and Rayfin reads no longer silently truncate at fixed page or object limits; continuation cycles and response-size limits fail explicitly.
+- Deterministic item metadata failures are isolated without hiding retryable timing failures.
+- Scanner responses without user information no longer publish an authoritative empty access snapshot.
+- Lakehouse detail fallback now tolerates expected permission/not-found responses without swallowing server or timing failures.
+- Legacy workspace roles round-trip deterministically, and failed or abandoned snapshot rows are cleaned only after a grace period.
+
+### Security
+
+- UDF destinations are restricted to matching HTTPS Fabric User Data Function endpoints before delegated tokens are acquired, and redirects are rejected in both browser and UDF transports.
+- Catalog publication policies use the authenticated immutable subject instead of a mutable email claim.
+- Team-note author labels are derived from the authenticated email, and client-supplied UUIDs are validated.
+- Removed public diagnostic metadata functions; only `ping`, `sync_all` and `sync_items` remain published.
+- Production dependency audit is clean; known vulnerable transitive build dependencies are pinned where compatible.
+
 ## [1.11.5] - 2026-09-05
 
 ### Fixed

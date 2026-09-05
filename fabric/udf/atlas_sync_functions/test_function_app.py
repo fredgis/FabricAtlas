@@ -1,4 +1,5 @@
 import base64
+import copy
 import datetime
 import importlib.util
 import io
@@ -673,8 +674,8 @@ class RequestReliabilityTests(unittest.TestCase):
         deadline = function_app._ExecutionDeadline(5, clock.monotonic)
 
         with mock.patch.object(
-            function_app.urllib.request,
-            "urlopen",
+            function_app,
+            "_open_request",
             return_value=_Response({"ok": True}),
         ) as urlopen:
             result = function_app._req(
@@ -692,8 +693,8 @@ class RequestReliabilityTests(unittest.TestCase):
         deadline = function_app._ExecutionDeadline(10, clock.monotonic)
 
         with mock.patch.object(
-            function_app.urllib.request,
-            "urlopen",
+            function_app,
+            "_open_request",
             side_effect=[
                 _http_error(429, "2"),
                 _Response({"ok": True}),
@@ -724,8 +725,8 @@ class RequestReliabilityTests(unittest.TestCase):
         retry_at = "Sun, 30 Aug 2026 09:00:03 GMT"
 
         with mock.patch.object(
-            function_app.urllib.request,
-            "urlopen",
+            function_app,
+            "_open_request",
             side_effect=[
                 _http_error(429, retry_at),
                 _Response({"ok": True}),
@@ -746,8 +747,8 @@ class RequestReliabilityTests(unittest.TestCase):
         deadline = function_app._ExecutionDeadline(30, clock.monotonic)
 
         with mock.patch.object(
-            function_app.urllib.request,
-            "urlopen",
+            function_app,
+            "_open_request",
             side_effect=[
                 _http_error(503),
                 _http_error(502),
@@ -768,11 +769,11 @@ class RequestReliabilityTests(unittest.TestCase):
         deadline = function_app._ExecutionDeadline(0.25, clock.monotonic)
 
         with mock.patch.object(
-            function_app.urllib.request,
-            "urlopen",
+            function_app,
+            "_open_request",
             side_effect=_http_error(503),
         ):
-            with self.assertRaises(function_app.DeadlineExceeded):
+            with self.assertRaises(function_app.RetryAfterDeferred):
                 function_app._req(
                     "token",
                     "https://example.test",
@@ -787,8 +788,8 @@ class RequestReliabilityTests(unittest.TestCase):
         deadline = function_app._ExecutionDeadline(10, clock.monotonic)
 
         with mock.patch.object(
-            function_app.urllib.request,
-            "urlopen",
+            function_app,
+            "_open_request",
             side_effect=_http_error(400),
         ) as urlopen:
             with self.assertRaises(urllib.error.HTTPError):
@@ -812,8 +813,8 @@ class RequestReliabilityTests(unittest.TestCase):
                 20,
             ),
             mock.patch.object(
-                function_app.urllib.request,
-                "urlopen",
+                function_app,
+                "_open_request",
                 return_value=oversized,
             ),
         ):
@@ -821,6 +822,40 @@ class RequestReliabilityTests(unittest.TestCase):
                 function_app._req(
                     "token",
                     "https://example.test",
+                )
+
+    def test_paginated_fabric_calls_reject_repeated_continuation_urls(self):
+        repeated = (
+            "https://api.fabric.microsoft.com/v1/workspaces/"
+            "11111111-1111-4111-8111-111111111111/items"
+        )
+        with mock.patch.object(
+            function_app,
+            "_get",
+            return_value={"value": [], "continuationUri": repeated},
+        ):
+            with self.assertRaises(function_app.PaginationError):
+                function_app._get_all(
+                    "token",
+                    "/workspaces/11111111-1111-4111-8111-111111111111/items",
+                )
+
+    def test_paginated_data_calls_reject_repeated_continuation_urls(self):
+        repeated = (
+            "https://api.fabric.microsoft.com/v1/workspaces/"
+            "11111111-1111-4111-8111-111111111111/lakehouses/"
+            "22222222-2222-4222-8222-222222222222/tables"
+        )
+        with mock.patch.object(
+            function_app,
+            "_get",
+            return_value={"data": [], "continuationUri": repeated},
+        ):
+            with self.assertRaises(function_app.PaginationError):
+                function_app._get_all_data(
+                    "token",
+                    "/workspaces/11111111-1111-4111-8111-111111111111/"
+                    "lakehouses/22222222-2222-4222-8222-222222222222/tables",
                 )
 
     def test_req_enforces_wall_clock_deadline_while_reading(self):
@@ -845,18 +880,74 @@ class RequestReliabilityTests(unittest.TestCase):
                 4,
             ),
             mock.patch.object(
-                function_app.urllib.request,
-                "urlopen",
+                function_app,
+                "_open_request",
                 return_value=_SlowResponse(),
             ),
         ):
-            with self.assertRaises(function_app.DeadlineExceeded):
+            with self.assertRaises(function_app.RequestTimeout):
                 function_app._req(
                     "token",
                     "https://example.test",
                     deadline=deadline,
                     per_request_timeout=5,
                 )
+
+    def test_redirect_handler_never_forwards_authorization(self):
+        handler = function_app._NoRedirectHandler()
+        for target in (
+            "https://attacker.example",
+            "http://attacker.example",
+        ):
+            with self.subTest(target=target):
+                self.assertIsNone(
+                    handler.redirect_request(
+                        mock.Mock(),
+                        mock.Mock(),
+                        302,
+                        "Found",
+                        {},
+                        target,
+                    )
+                )
+
+    def test_public_surface_excludes_debug_data_endpoints(self):
+        for name in ("ping", "sync_items", "sync_all"):
+            self.assertTrue(callable(getattr(function_app, name)))
+        for name in (
+            "list_items",
+            "list_role_assignments",
+            "get_workspace",
+        ):
+            self.assertFalse(hasattr(function_app, name))
+
+    def test_sanitize_job_rejects_missing_item_identity(self):
+        self.assertIsNone(
+            function_app._sanitize_job(
+                {"jobType": "Refresh", "status": "Completed"},
+                {},
+            )
+        )
+
+    def test_safe_error_codes_distinguish_slice_failures(self):
+        self.assertEqual(
+            function_app._safe_error_code(
+                function_app.RequestTimeout("slow")
+            ),
+            "request-timeout",
+        )
+        self.assertEqual(
+            function_app._safe_error_code(
+                function_app.RetryAfterDeferred("later")
+            ),
+            "retry-after-deferred",
+        )
+        self.assertEqual(
+            function_app._safe_error_code(
+                function_app.ResponseSizeExceeded("large")
+            ),
+            "response-size-exceeded",
+        )
 
 
 class MetadataBoundaryTests(unittest.TestCase):
@@ -1829,6 +1920,7 @@ class DefinitionMetadataTests(unittest.TestCase):
                         artifact,
                         trackers,
                         errors,
+                        definition_token="token",
                     )
 
                 self.assertEqual(
@@ -2196,6 +2288,7 @@ class DefinitionMetadataTests(unittest.TestCase):
                 artifact,
                 trackers,
                 [],
+                definition_token="token",
             )
 
         self.assertTrue(artifact["_artifactMetadataTruncated"])
@@ -2708,7 +2801,7 @@ class KqlAndSqlMetadataTests(unittest.TestCase):
             ],
         )
 
-    def test_kql_functions_respect_schema_object_limit(self):
+    def test_kql_functions_are_not_silently_truncated(self):
         schema_document = {
             "Databases": {
                 "Telemetry": {
@@ -2720,20 +2813,48 @@ class KqlAndSqlMetadataTests(unittest.TestCase):
                 }
             }
         }
+        schema, functions, _views = function_app._kusto_schema(
+            schema_document,
+            "Telemetry",
+        )
+
+        self.assertEqual(len(schema), 5)
+        self.assertEqual(len(functions), 5)
+        self.assertTrue(
+            all(value["objectType"] == "KQL function" for value in schema)
+        )
+
+    def test_kql_columns_are_not_silently_truncated(self):
+        schema_document = {
+            "Databases": {
+                "Telemetry": {
+                    "Tables": {
+                        "Events": {
+                            "Name": "Events",
+                            "Schema": {
+                                "OrderedColumns": [
+                                    {"Name": "One", "CslType": "string"},
+                                    {"Name": "Two", "CslType": "long"},
+                                ]
+                            },
+                        }
+                    }
+                }
+            }
+        }
         with mock.patch.object(
             function_app,
-            "MAX_SCHEMA_OBJECTS_PER_ITEM",
-            3,
+            "MAX_SCHEMA_COLUMNS_PER_OBJECT",
+            1,
         ):
-            schema, functions, _views = function_app._kusto_schema(
+            schema, _functions, _views = function_app._kusto_schema(
                 schema_document,
                 "Telemetry",
             )
 
-        self.assertEqual(len(schema), 3)
-        self.assertEqual(len(functions), 3)
-        self.assertTrue(
-            all(value["objectType"] == "KQL function" for value in schema)
+        self.assertEqual(
+            [column["name"] for column in schema[0]["columns"]],
+            ["One", "Two"],
         )
 
     def test_kql_token_absence_is_explicit_and_nonfatal(self):
@@ -3186,7 +3307,16 @@ class SyncOrchestrationTests(unittest.TestCase):
         role_assignments=None,
         jobs_error=None,
         defer_enrichment="",
+        scanner_user_info=True,
     ):
+        scan = copy.deepcopy(scan)
+        if scanner_user_info:
+            for values in scan.values():
+                if not isinstance(values, list):
+                    continue
+                for value in values:
+                    if isinstance(value, dict):
+                        value.setdefault("users", [])
         role_assignments = role_assignments or [
             {
                 "role": "Admin",
@@ -3232,6 +3362,7 @@ class SyncOrchestrationTests(unittest.TestCase):
             return function_app.sync_all(
                 "token",
                 self.workspace_id,
+                definitionToken="token",
                 deferEnrichment=defer_enrichment,
             )
 
@@ -3258,9 +3389,10 @@ class SyncOrchestrationTests(unittest.TestCase):
         self.assertEqual(result["jobs"], [])
 
     def test_sync_items_returns_completed_deep_metadata(self):
+        sql_id = "22222222-2222-4222-8222-222222222222"
         items = [
             {
-                "id": "sql",
+                "id": sql_id,
                 "type": "SQLDatabase",
                 "displayName": "SQL",
             }
@@ -3311,7 +3443,7 @@ class SyncOrchestrationTests(unittest.TestCase):
                 "_item_config",
                 return_value=[
                     {
-                        "itemId": "sql",
+                        "itemId": sql_id,
                         "section": "SQL database",
                         "label": "Database",
                         "value": "SQL",
@@ -3322,19 +3454,24 @@ class SyncOrchestrationTests(unittest.TestCase):
             result = function_app.sync_items(
                 "token",
                 self.workspace_id,
-                '["sql"]',
+                json.dumps([sql_id]),
+                correlationId=self.workspace_id,
             )
 
-        self.assertEqual(result["completedItemIds"], ["sql"])
+        self.assertEqual(result["correlationId"], self.workspace_id)
+        self.assertEqual(result["completedItemIds"], [sql_id])
         self.assertEqual(result["remainingItemIds"], [])
-        self.assertEqual(result["schema"]["sql"][0]["name"], "dbo.Customers")
+        self.assertEqual(
+            result["schema"][sql_id][0]["name"],
+            "dbo.Customers",
+        )
         self.assertEqual(len(result["config"]), 1)
         self.assertEqual(
-            result["itemMetadata"]["sql"]["sensitivity"]["labelId"],
+            result["itemMetadata"][sql_id]["sensitivity"]["labelId"],
             "label-1",
         )
         self.assertEqual(
-            result["itemMetadata"]["sql"]["tags"][0]["id"],
+            result["itemMetadata"][sql_id]["tags"][0]["id"],
             "tag-1",
         )
 
@@ -3356,10 +3493,45 @@ class SyncOrchestrationTests(unittest.TestCase):
         get.assert_not_called()
         self.assertEqual(endpoint_ids, set())
 
+    def test_storage_detail_permission_failures_remain_best_effort(self):
+        storage = {
+            "id": "66666666-6666-4666-8666-666666666666",
+            "_type": "Lakehouse",
+        }
+        with mock.patch.object(
+            function_app,
+            "_get",
+            side_effect=_http_error(403),
+        ):
+            self.assertEqual(
+                function_app._storage_endpoint_ids(
+                    "token",
+                    self.workspace_id,
+                    storage,
+                    [storage],
+                ),
+                set(),
+            )
+
+        with mock.patch.object(
+            function_app,
+            "_get",
+            side_effect=_http_error(500),
+        ):
+            with self.assertRaises(urllib.error.HTTPError):
+                function_app._storage_endpoint_ids(
+                    "token",
+                    self.workspace_id,
+                    storage,
+                    [storage],
+                )
+
     def test_sync_items_returns_a_continuation_before_the_deadline(self):
+        one_id = "33333333-3333-4333-8333-333333333333"
+        two_id = "44444444-4444-4444-8444-444444444444"
         items = [
-            {"id": "one", "type": "Lakehouse", "displayName": "One"},
-            {"id": "two", "type": "Lakehouse", "displayName": "Two"},
+            {"id": one_id, "type": "Lakehouse", "displayName": "One"},
+            {"id": two_id, "type": "Lakehouse", "displayName": "Two"},
         ]
         processed = []
 
@@ -3413,15 +3585,16 @@ class SyncOrchestrationTests(unittest.TestCase):
             result = function_app.sync_items(
                 "token",
                 self.workspace_id,
-                '["one","two"]',
+                json.dumps([one_id, two_id]),
             )
 
-        self.assertEqual(result["completedItemIds"], ["one"])
-        self.assertEqual(result["remainingItemIds"], ["two"])
+        self.assertEqual(result["completedItemIds"], [one_id])
+        self.assertEqual(result["remainingItemIds"], [two_id])
 
     def test_sync_items_requeues_an_item_that_exhausts_its_slice(self):
+        graph_id = "55555555-5555-4555-8555-555555555555"
         items = [
-            {"id": "graph", "type": "GraphModel", "displayName": "Graph"}
+            {"id": graph_id, "type": "GraphModel", "displayName": "Graph"}
         ]
 
         def get_all(_token, path):
@@ -3446,11 +3619,123 @@ class SyncOrchestrationTests(unittest.TestCase):
             result = function_app.sync_items(
                 "token",
                 self.workspace_id,
-                '["graph"]',
+                json.dumps([graph_id]),
             )
 
         self.assertEqual(result["completedItemIds"], [])
-        self.assertEqual(result["remainingItemIds"], ["graph"])
+        self.assertEqual(result["remainingItemIds"], [graph_id])
+
+    def test_sync_items_requeues_an_item_after_request_timeout(self):
+        item_id = "77777777-7777-4777-8777-777777777777"
+        with (
+            mock.patch.object(
+                function_app,
+                "_get_all",
+                return_value=[
+                    {
+                        "id": item_id,
+                        "type": "GraphModel",
+                        "displayName": "Graph",
+                    }
+                ],
+            ),
+            mock.patch.object(
+                function_app,
+                "_enrich_artifact",
+                side_effect=function_app.RequestTimeout("slow response"),
+            ),
+        ):
+            result = function_app.sync_items(
+                "token",
+                self.workspace_id,
+                json.dumps([item_id]),
+            )
+
+        self.assertEqual(result["completedItemIds"], [])
+        self.assertEqual(result["remainingItemIds"], [item_id])
+        self.assertEqual(result["errors"], [])
+
+    def test_sync_items_isolates_invalid_item_metadata(self):
+        item_id = "88888888-8888-4888-8888-888888888888"
+
+        def get_all(_token, path):
+            if path.endswith("/items"):
+                return [
+                    {
+                        "id": item_id,
+                        "type": "SQLDatabase",
+                        "displayName": "SQL",
+                    }
+                ]
+            if "/jobs/instances" in path:
+                return []
+            raise AssertionError(path)
+
+        with (
+            mock.patch.object(
+                function_app,
+                "_get_all",
+                side_effect=get_all,
+            ),
+            mock.patch.object(function_app, "_enrich_artifact"),
+            mock.patch.object(
+                function_app,
+                "_item_schema",
+                side_effect=ValueError("unexpected order"),
+            ),
+        ):
+            result = function_app.sync_items(
+                "token",
+                self.workspace_id,
+                json.dumps([item_id]),
+            )
+
+        self.assertEqual(result["completedItemIds"], [item_id])
+        self.assertEqual(result["remainingItemIds"], [])
+        self.assertEqual(result["itemFailures"], {item_id: "invalid-response"})
+        self.assertEqual(
+            result["errors"],
+            [f"enrichment:{item_id}: invalid-response"],
+        )
+
+    def test_sync_items_rejects_non_uuid_item_ids(self):
+        with self.assertRaisesRegex(ValueError, "valid UUID"):
+            function_app.sync_items(
+                "token",
+                self.workspace_id,
+                '["not-an-item-id"]',
+            )
+
+        with self.assertRaisesRegex(ValueError, "valid UUID"):
+            function_app.sync_items(
+                "token",
+                self.workspace_id,
+                json.dumps([
+                    "99999999-9999-4999-8999-999999999999",
+                ]),
+                correlationId="not-a-correlation-id",
+            )
+
+    def test_role_assignment_preserves_guest_evidence(self):
+        result = function_app._sanitize_role_assignment({
+            "role": "Viewer",
+            "principal": {
+                "id": "99999999-9999-4999-8999-999999999999",
+                "displayName": "Guest User",
+                "type": "User",
+                "userType": "Guest",
+                "userDetails": {
+                    "userPrincipalName": "guest@example.com",
+                    "userType": "Guest",
+                },
+            },
+        })
+
+        self.assertEqual(result["principal"]["userType"], "Guest")
+        self.assertEqual(
+            result["principal"]["userDetails"]["userType"],
+            "Guest",
+        )
 
     def test_sync_all_returns_v2_envelope_and_keeps_top_level_items(self):
         items = [
@@ -3672,6 +3957,31 @@ class SyncOrchestrationTests(unittest.TestCase):
         self.assertEqual(result["sections"]["scanner"]["status"], "complete")
         self.assertEqual(result["sections"]["config"]["status"], "complete")
         self.assertEqual(result["errors"], [])
+
+    def test_missing_scanner_user_information_is_not_complete_access(self):
+        result = self._run_sync(
+            [
+                {
+                    "id": "model",
+                    "type": "SemanticModel",
+                    "displayName": "Model",
+                }
+            ],
+            {"datasets": [{"id": "model", "tables": []}]},
+            scanner_user_info=False,
+        )
+
+        self.assertEqual(
+            result["sections"]["access"],
+            {
+                "status": "failed",
+                "code": "scanner-user-information-unavailable",
+            },
+        )
+        self.assertIn(
+            "access: scanner-user-information-unavailable",
+            result["errors"],
+        )
 
     def test_optional_transient_job_failure_uses_safe_code(self):
         result = self._run_sync(

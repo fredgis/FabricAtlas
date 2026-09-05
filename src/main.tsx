@@ -21,15 +21,20 @@ import { AtlasProvider } from './atlas/store';
 
 import "./global.css"
 
-// In Fabric the app boots with Rayfin + Fabric auth. Run standalone (no rayfin
-// env — e.g. `npm run dev` locally, or the README screenshot build) it drops
-// into preview mode backed by the sample dataset instead of throwing.
 let rayfinAuthService: IAuthService | null = null;
-let previewMode = false;
-try {
-    rayfinAuthService = bootstrapAuth();
-} catch {
-    previewMode = true;
+const previewMode =
+    import.meta.env.VITE_RAYFIN_ATLAS_DEMO_MODE === "true";
+let bootstrapError: Error | null = null;
+if (!previewMode) {
+    try {
+        rayfinAuthService = bootstrapAuth();
+    } catch (error) {
+        bootstrapError = new Error(
+            `Fabric Atlas authentication is not configured: ${
+                error instanceof Error ? error.message : String(error)
+            }`,
+        );
+    }
 }
 
 function ThemeShell({ children }: { children: ReactNode }) {
@@ -62,7 +67,17 @@ function AuthenticatedAtlas() {
 }
 
 function Root() {
-    if (previewMode || !rayfinAuthService) {
+    if (bootstrapError) {
+        return (
+            <ThemeShell>
+                <ErrorFallback
+                    error={bootstrapError}
+                    resetErrorBoundary={() => window.location.reload()}
+                />
+            </ThemeShell>
+        );
+    }
+    if (previewMode) {
         return (
             <ThemeShell>
                 <ErrorBoundary FallbackComponent={ErrorFallback}>
@@ -73,6 +88,7 @@ function Root() {
             </ThemeShell>
         );
     }
+    if (!rayfinAuthService) return null;
 
     return (
         <ThemeShell>

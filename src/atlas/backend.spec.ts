@@ -6,9 +6,11 @@ import {
   projectItemMetadataToSchema,
 } from "./item-metadata";
 import {
+  loadCommentsFromDb,
   loadFromDb,
   loadHistoryFromDb,
   persistComment,
+  readWithRetry,
   runFabricSync,
   snapshotSummaryFromManifest,
 } from "./backend";
@@ -30,8 +32,10 @@ const mocks = vi.hoisted(() => {
   const data = Object.fromEntries(
     names.map((name) => {
       const api = {
+        rows: [] as Record<string, unknown>[],
         findMany: vi.fn(),
         create: vi.fn(),
+        update: vi.fn(),
         delete: vi.fn(),
         select: vi.fn(),
       };
@@ -64,6 +68,37 @@ const identity = {
   name: "user@example.com",
   email: "user@example.com",
 };
+
+it("reads beyond the former 100-page snapshot limit", async () => {
+  let pageIndex = 0;
+  const query = {
+    where: vi.fn(),
+    first: vi.fn(),
+    after: vi.fn(),
+    executePaginated: vi.fn(async () => {
+      const current = pageIndex++;
+      return {
+        items: [{ id: `row-${current}` }],
+        hasNextPage: current < 100,
+        endCursor: current < 100 ? `cursor-${current}` : undefined,
+      };
+    }),
+  };
+  query.where.mockReturnValue(query);
+  query.first.mockReturnValue(query);
+  query.after.mockReturnValue(query);
+
+  const rows = await readWithRetry(
+    {
+      select: vi.fn(() => query),
+      create: vi.fn(),
+    },
+    ["id"],
+    {},
+  );
+
+  expect(rows).toHaveLength(101);
+});
 
 function summaryMarker(
   snapshotId: string,
@@ -102,15 +137,49 @@ function summaryMarker(
 describe("Rayfin snapshot persistence", () => {
   beforeEach(() => {
     ATLAS_CONFIG.syncAdminEmail = identity.email;
+    ATLAS_CONFIG.syncAdminSubject = identity.id;
     ATLAS_CONFIG.snapshotRetentionCount = 12;
     ATLAS_CONFIG.previousSyncWriters = [];
     (
       window as unknown as { __atlasWorkspaceId?: string }
     ).__atlasWorkspaceId = workspaceId;
     for (const api of Object.values(mocks.data)) {
-      api.findMany.mockReset().mockResolvedValue([]);
-      api.create.mockReset().mockImplementation(async (row) => row);
-      api.delete.mockReset().mockResolvedValue(undefined);
+      api.rows.length = 0;
+      api.findMany.mockReset().mockImplementation(async (filter = {}) =>
+        api.rows.filter((row) =>
+          Object.entries(filter as Record<string, unknown>).every(
+            ([field, condition]) => {
+              const expected =
+                condition &&
+                typeof condition === "object" &&
+                "eq" in condition
+                  ? (condition as { eq: unknown }).eq
+                  : condition;
+              return String(row[field] ?? "").toLowerCase() ===
+                String(expected ?? "").toLowerCase();
+            },
+          ),
+        ),
+      );
+      api.create.mockReset().mockImplementation(async (row) => {
+        const stored = {
+          id: (row as Record<string, unknown>).id ?? crypto.randomUUID(),
+          ...(row as Record<string, unknown>),
+        };
+        api.rows.push(stored);
+        return stored;
+      });
+      api.update.mockReset().mockImplementation(async (filter, values) => {
+        const id = String((filter as { id?: unknown }).id ?? "");
+        const row = api.rows.find((candidate) => String(candidate.id) === id);
+        if (row) Object.assign(row, values);
+        return row;
+      });
+      api.delete.mockReset().mockImplementation(async (filter) => {
+        const id = String((filter as { id?: unknown }).id ?? "");
+        const index = api.rows.findIndex((row) => String(row.id) === id);
+        if (index >= 0) api.rows.splice(index, 1);
+      });
       api.select.mockReset().mockImplementation(() => {
         let filter: Record<string, unknown> = {};
         const query = {
@@ -125,8 +194,27 @@ describe("Rayfin snapshot persistence", () => {
             return query;
           },
           async executePaginated() {
+            const mocked = await api.findMany(filter);
+            const persisted = api.rows.filter((row) =>
+              Object.entries(filter).every(([field, condition]) => {
+                const expected =
+                  condition &&
+                  typeof condition === "object" &&
+                  "eq" in condition
+                    ? (condition as { eq: unknown }).eq
+                    : condition;
+                return String(row[field] ?? "").toLowerCase() ===
+                  String(expected ?? "").toLowerCase();
+              }),
+            );
+            const seen = new Set<string>();
             return {
-              items: await api.findMany(filter),
+              items: [...mocked, ...persisted].filter((row) => {
+                const id = String(row.id ?? JSON.stringify(row));
+                if (seen.has(id)) return false;
+                seen.add(id);
+                return true;
+              }),
               hasNextPage: false,
             };
           },
@@ -149,9 +237,17 @@ describe("Rayfin snapshot persistence", () => {
       "database unavailable",
     );
     expect(mocks.data.Workspace.create).not.toHaveBeenCalled();
-    expect(mocks.data.SyncRun.create).not.toHaveBeenCalled();
     expect(
-      Object.values(mocks.data).some((api) => api.delete.mock.calls.length),
+      mocks.data.SyncRun.create.mock.calls.map(([row]) => row.status),
+    ).toEqual(["running"]);
+    expect(mocks.data.SyncRun.update).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ status: "failed" }),
+    );
+    expect(
+      Object.entries(mocks.data)
+        .filter(([name]) => name !== "SyncRun")
+        .some(([, api]) => api.delete.mock.calls.length),
     ).toBe(false);
   });
 
@@ -159,7 +255,7 @@ describe("Rayfin snapshot persistence", () => {
     const comment = {
       id: "33333333-3333-4333-8333-333333333333",
       authorId: identity.id,
-      authorName: "Fred Gisbert",
+      authorName: identity.email,
       authorEmail: identity.email,
       body: "Document the refresh owner.",
       createdAt: "2026-08-30T15:00:00.000Z",
@@ -169,17 +265,11 @@ describe("Rayfin snapshot persistence", () => {
     expect(mocks.data.Comment.create).toHaveBeenCalledWith(
       expect.objectContaining({
         authorId: identity.id,
-        authorName: "Fred Gisbert",
+        authorName: identity.email,
         authorEmail: identity.email,
       }),
     );
 
-    mocks.data.Comment.findMany.mockResolvedValue([
-      {
-        ...comment,
-        workspace_id: workspaceId,
-      },
-    ]);
     mocks.data.Workspace.findMany.mockResolvedValue([
       summaryMarker(
         "44444444-4444-4444-8444-444444444444",
@@ -187,10 +277,10 @@ describe("Rayfin snapshot persistence", () => {
       ),
     ]);
 
-    const hydrated = await loadFromDb(false);
-    expect(hydrated?.comments).toEqual([
+    const comments = await loadCommentsFromDb(false);
+    expect(comments).toEqual([
       expect.objectContaining({
-        authorName: "Fred Gisbert",
+        authorName: identity.email,
         authorEmail: identity.email,
       }),
     ]);
@@ -202,6 +292,13 @@ describe("Rayfin snapshot persistence", () => {
         id: "33333333-3333-4333-8333-333333333333",
         name: "viewer@example.com",
         email: "viewer@example.com",
+      }),
+    ).rejects.toThrow(/configured Atlas sync administrator/i);
+    await expect(
+      runFabricSync(false, {
+        id: "33333333-3333-4333-8333-333333333333",
+        name: identity.email,
+        email: identity.email,
       }),
     ).rejects.toThrow(/configured Atlas sync administrator/i);
     expect(mocks.invokeSyncAll).not.toHaveBeenCalled();
@@ -234,6 +331,124 @@ describe("Rayfin snapshot persistence", () => {
         mocks.data[name].create.mock.invocationCallOrder as number[],
     );
     expect(Math.max(...contentOrders)).toBeLessThan(markerOrder);
+    expect(mocks.data.SyncRun.create).toHaveBeenCalledTimes(1);
+    expect(mocks.data.SyncRun.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "running",
+        correlationId: expect.any(String),
+      }),
+    );
+    expect(mocks.data.SyncRun.update).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({
+        status: "completed",
+        durationMs: expect.any(Number),
+      }),
+    );
+    expect(mocks.data.SyncRun.delete).not.toHaveBeenCalled();
+  });
+
+  it("retries the completed SyncRun update before publishing the manifest", async () => {
+    mocks.data.SyncRun.update.mockRejectedValueOnce(
+      new Error("temporary update failure"),
+    );
+
+    await expect(runFabricSync(false, identity)).resolves.toBeTruthy();
+
+    expect(mocks.data.SyncRun.update).toHaveBeenCalledTimes(2);
+    expect(mocks.data.Workspace.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not publish the manifest when synchronization is cancelled during persistence", async () => {
+    const controller = new AbortController();
+    mocks.data.FabricItem.create.mockImplementationOnce(async (row) => {
+      controller.abort();
+      return row;
+    });
+
+    await expect(
+      runFabricSync(false, identity, undefined, controller.signal),
+    ).rejects.toThrow(/synchronization cancelled/i);
+
+    expect(mocks.data.Workspace.create).not.toHaveBeenCalled();
+    expect(mocks.data.SyncRun.update).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ status: "failed" }),
+    );
+  });
+
+  it("preserves principal workspace roles through persistence and hydration", async () => {
+    const atlas = structuredClone(SAMPLE_DATA);
+    atlas.workspace.fabricId = workspaceId;
+    atlas.principals[0].workspaceRole = "Admin";
+    mocks.mapSyncToAtlas.mockReturnValue(atlas);
+
+    await runFabricSync(false, identity);
+    const hydrated = await loadFromDb(false);
+
+    expect(mocks.data.Principal.create).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceRole: "Admin" }),
+    );
+    expect(hydrated?.principals[0].workspaceRole).toBe("Admin");
+  });
+
+  it("cleans orphan snapshot rows after a later successful publication", async () => {
+    const orphanSnapshotId = "99999999-9999-4999-8999-999999999999";
+    mocks.data.SyncRun.rows.push({
+      id: "orphan-attempt",
+      workspace_id: workspaceId,
+      snapshotId: orphanSnapshotId,
+      writerEmail: identity.email,
+      startedAt: new Date("2026-09-05T10:00:00.000Z"),
+      finishedAt: new Date("2026-09-05T10:01:00.000Z"),
+      status: "failed",
+    });
+    mocks.data.FabricItem.rows.push({
+      id: "orphan-item",
+      workspace_id: workspaceId,
+      snapshotId: orphanSnapshotId,
+      writerEmail: identity.email,
+      fabricId: "orphan",
+      displayName: "Orphan",
+      itemType: "Lakehouse",
+    });
+
+    await runFabricSync(false, identity);
+
+    expect(mocks.data.FabricItem.delete).toHaveBeenCalledWith({
+      id: "orphan-item",
+    });
+    expect(
+      mocks.data.SyncRun.rows.some((row) => row.id === "orphan-attempt"),
+    ).toBe(true);
+  });
+
+  it("keeps young unpublished attempts inside the orphan grace period", async () => {
+    const orphanSnapshotId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    mocks.data.SyncRun.rows.push({
+      id: "young-attempt",
+      workspace_id: workspaceId,
+      snapshotId: orphanSnapshotId,
+      writerEmail: identity.email,
+      startedAt: new Date(),
+      finishedAt: new Date(),
+      status: "failed",
+    });
+    mocks.data.FabricItem.rows.push({
+      id: "young-item",
+      workspace_id: workspaceId,
+      snapshotId: orphanSnapshotId,
+      writerEmail: identity.email,
+      fabricId: "young",
+      displayName: "Young",
+      itemType: "Lakehouse",
+    });
+
+    await runFabricSync(false, identity);
+
+    expect(mocks.data.FabricItem.delete).not.toHaveBeenCalledWith({
+      id: "young-item",
+    });
   });
 
   it("writes snapshot rows with bounded concurrency", async () => {
@@ -243,6 +458,9 @@ describe("Rayfin snapshot persistence", () => {
       fabricId: `item-${index}`,
       displayName: `Item ${index}`,
     }));
+    atlas.schema = {};
+    atlas.itemMetadata = {};
+    atlas.objectEdges = [];
     mocks.mapSyncToAtlas.mockReturnValue(atlas);
     let active = 0;
     let maximumActive = 0;
@@ -251,7 +469,12 @@ describe("Rayfin snapshot persistence", () => {
       maximumActive = Math.max(maximumActive, active);
       await new Promise((resolve) => setTimeout(resolve, 2));
       active -= 1;
-      return row;
+      const stored = {
+        id: crypto.randomUUID(),
+        ...(row as Record<string, unknown>),
+      };
+      mocks.data.FabricItem.rows.push(stored);
+      return stored;
     });
 
     await runFabricSync(false, identity);
@@ -286,7 +509,13 @@ describe("Rayfin snapshot persistence", () => {
     expect(mocks.data.FabricItem.create).toHaveBeenCalledTimes(8);
     expect(settled).toBe(8);
     expect(mocks.data.Principal.create).not.toHaveBeenCalled();
-    expect(mocks.data.SyncRun.create).not.toHaveBeenCalled();
+    expect(
+      mocks.data.SyncRun.create.mock.calls.map(([row]) => row.status),
+    ).toEqual(["running"]);
+    expect(mocks.data.SyncRun.update).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ status: "failed" }),
+    );
     expect(mocks.data.Workspace.create).not.toHaveBeenCalled();
   });
 

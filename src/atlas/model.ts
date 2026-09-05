@@ -192,10 +192,14 @@ export interface Comment {
 
 export interface SyncRun {
   id: string;
+  correlationId?: string;
   startedAt: string;
   finishedAt?: string;
   status: "running" | "completed" | "failed";
   itemsSynced?: number;
+  durationMs?: number;
+  failureCode?: string;
+  failureMessage?: string;
   triggeredBy?: string;
   summary?: string;
 }

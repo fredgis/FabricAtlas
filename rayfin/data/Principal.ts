@@ -1,7 +1,8 @@
 import { entity, authenticated, uuid, text, set, boolean } from '@microsoft/rayfin-core';
-import { SYNC_WRITER_EMAIL } from './sync-policy.js';
+import { SYNC_WRITER_SUBJECT } from './sync-policy.js';
 
 export type PrincipalKind = 'user' | 'group' | 'servicePrincipal' | 'guest';
+export type WorkspaceRole = 'Admin' | 'Member' | 'Contributor' | 'Viewer';
 
 /**
  * A user, group, service principal or guest that has access to the workspace
@@ -10,13 +11,13 @@ export type PrincipalKind = 'user' | 'group' | 'servicePrincipal' | 'guest';
 @entity()
 @authenticated('read')
 @authenticated('delete', {
-  policy: (claims) => claims.email.eq(SYNC_WRITER_EMAIL),
+  policy: (claims) => claims.sub.eq(SYNC_WRITER_SUBJECT),
 })
 @authenticated('create', {
   policy: (claims, item) =>
     claims.email
       .eq(item.writerEmail)
-      .and(claims.email.eq(SYNC_WRITER_EMAIL)),
+      .and(claims.sub.eq(SYNC_WRITER_SUBJECT)),
 })
 export class Principal {
   @uuid() id!: string;
@@ -27,5 +28,6 @@ export class Principal {
   @text({ max: 200 }) displayName!: string;
   @set('user', 'group', 'servicePrincipal', 'guest') kind!: PrincipalKind;
   @text({ max: 150, optional: true }) email?: string;
-  @boolean({ default: false }) external!: boolean;
+  @boolean({ optional: true }) external?: boolean;
+  @text({ max: 20, optional: true }) workspaceRole?: WorkspaceRole;
 }

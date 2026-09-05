@@ -11,7 +11,8 @@ brokered authentication. It runs as an item inside a Microsoft Fabric workspace.
 ## Prerequisites
 
 ### To run locally (preview)
-- Node.js 20+ (`node --version`) — that's it. Preview mode uses a bundled sample workspace.
+- Node.js 24 (`node --version`). The repository pins the tested runtime in
+  `.nvmrc` and `.node-version`.
 
 ### To deploy and use the live Sync
 1. A Microsoft Fabric workspace on a capacity in a **region that supports Fabric Apps (preview)**.
@@ -33,23 +34,40 @@ brokered authentication. It runs as an item inside a Microsoft Fabric workspace.
    [`fabric/udf/atlas_sync_functions/`](../fabric/udf/atlas_sync_functions/).
    Keep its pinned `fabric-user-data-functions` version from `requirements.txt`.
 
+| Responsibility | Required identity or role |
+|---|---|
+| Run scanner-backed synchronization | A **Fabric Administrator** using the configured synchronizer account |
+| Enable Fabric Apps and enhanced read-only admin API metadata | Fabric tenant administrator |
+| Create the SPA, add redirects and grant delegated consent | Entra application/consent administrator or application owner with sufficient directory permissions |
+| Deploy the Rayfin app into the target workspace | Workspace contributor or higher with Fabric App creation rights |
+
 ## 1. Clone and install
 
 ```bash
 git clone https://github.com/fredgis/FabricAtlas.git
 cd FabricAtlas
-npm install
+npm ci
+```
+
+To scaffold from the reusable template instead:
+
+```bash
+npx rayfin init my-atlas -t https://github.com/fredgis/FabricAtlas
 ```
 
 ## 2. Run it locally (preview mode, no Fabric needed)
 
-Fabric Atlas boots in preview mode when it is not embedded in Fabric, backed by a rich sample
-workspace. This is the fastest way to explore the UI and is what powers the screenshots.
+Preview data is explicit and never activates because production authentication
+failed. Enable it only for local exploration:
 
 ```bash
+export VITE_RAYFIN_ATLAS_DEMO_MODE=true
 npm run dev
 # open http://localhost:5173
 ```
+
+In PowerShell, use
+`$env:VITE_RAYFIN_ATLAS_DEMO_MODE = "true"` before `npm run dev`.
 
 Everything works against the sample dataset: overview, map, catalog, asset catalog, access matrix,
 sensitivity, jobs and Workspace Hub. Nothing is written anywhere.
@@ -75,6 +93,7 @@ Fabric auth), applies the schema, and publishes the app — in one command.
 ```powershell
 npx rayfin login                       # sign in with Entra ID (target the tenant that owns the workspace)
 $env:RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_EMAIL = "<authorized-sync-user>"
+$env:RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_SUBJECT = "<authorized-sync-subject>"
 npx rayfin up --workspace "<workspace-name>"
 ```
 
@@ -97,7 +116,7 @@ remain user-scoped.
 The **Sync** button reads the live workspace. A deployed Rayfin app can't call the Fabric REST APIs
 directly (no token in app code, no browser CORS), so Sync acquires a Power BI token with **MSAL** and
 calls the `atlas_sync_functions` **User Data Function**, which calls Fabric on the user's behalf. See
-the "Why a Fabric User Data Function?" note in the [root README](../README.md).
+the [How it works](../README.md#how-it-works) section in the root README.
 
 ### 5a. Create the Entra app registration (once)
 
@@ -109,12 +128,11 @@ the Azure CLI (replace nothing that is already a placeholder):
 appId=$(az ad app create --display-name "Fabric Atlas Sync" --sign-in-audience AzureADMyOrg \
   --query appId -o tsv)
 
-# 2. Add delegated permissions on the Power BI Service (resource 00000009-0000-0000-c000-000000000000):
+# 2. Add the required delegated Power BI permissions:
 #    UserDataFunction.Execute.All, Workspace.Read.All, Item.Read.All,
-#    Lakehouse.Read.All, Warehouse.Read.All, SQLDatabase.Read.All,
-#    Report.Read.All, Dataset.Read.All, Tenant.Read.All
-#    Optional Ontology, Graph Model and Data Agent definition discovery
-#    additionally requires Item.ReadWrite.All.
+#    Report.Read.All, Dataset.Read.All and Tenant.Read.All.
+#    Item.ReadWrite.All is requested separately and only for optional Ontology,
+#    Graph Model and Data Agent definition enrichment.
 #    (add each with: az ad app permission add --id $appId --api 00000009-0000-0000-c000-000000000000
 #     --api-permissions <scope-id>=Scope), then grant admin consent:
 #
@@ -141,6 +159,7 @@ RAYFIN_PUBLIC_ATLAS_SPA_CLIENT_ID=<client-id>
 RAYFIN_PUBLIC_ATLAS_UDF_URL=https://<...>/functions/sync_all/invoke
 RAYFIN_PUBLIC_ATLAS_WORKSPACE_NAME=<workspace-display-name>
 RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_EMAIL=<authorized-sync-user>
+RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_SUBJECT=<authorized-sync-subject>
 RAYFIN_PUBLIC_ATLAS_SNAPSHOT_RETENTION_COUNT=12
 # Optional during synchronizer rotation:
 RAYFIN_PUBLIC_ATLAS_PREVIOUS_SYNC_WRITERS=<former-user@example.com>
@@ -150,12 +169,12 @@ RAYFIN_PUBLIC_ATLAS_SENSITIVITY_RANKS='{"<label-id>":3,"<lower-label-id>":1}'
 Then `npx rayfin up` again so the values are baked into the deployed bundle, and add the new hosting
 origin to the app registration's SPA redirect URIs.
 
-`RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_EMAIL` is also compiled into the Rayfin create
-and delete policies. Set it before schema generation and deployment; changing
-it requires another `npx rayfin up`. Snapshot retention defaults to 12 and is
-clamped between 2 and 50. When rotating the synchronizer, list former writer
-emails in `RAYFIN_PUBLIC_ATLAS_PREVIOUS_SYNC_WRITERS` until their retained
-history has been migrated or pruned.
+`RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_SUBJECT` is compiled into Rayfin create, update
+and delete policies and must match the authenticated Rayfin `session.user.id`
+(`claims.sub`). The email is retained as the visible contact and historical
+snapshot writer. Set both before schema generation and deployment; changing
+either requires another `npx rayfin up`. Snapshot retention defaults to 12 and
+is clamped between 2 and 50.
 
 The synchronizer setting must also be available to the CLI process that
 compiles these policies. Keep it in `rayfin/.env` for frontend generation and
@@ -163,16 +182,20 @@ export it in the deployment shell as shown above. Confirm that the database
 configuration phase succeeds: some CLI versions continue publishing static
 content after a database configuration failure.
 
-Only this configured account can run the first synchronization or publish later
-snapshots. Other authenticated users see the account on the guided sync screen
-so they know who to contact.
+Only the configured immutable subject can run the first synchronization or
+publish later snapshots. Resolve the account's stable object identifier through
+Entra or the authenticated Rayfin session and keep the email for contact.
 
-Deep discovery is capability-based. Without Kusto or Azure SQL delegated
+Deep discovery is capability-based. Without optional definition, Kusto or Azure SQL delegated
 consent, those items remain visible and Atlas reports their deep schema as
 unavailable. Ontology, Graph Model and Data Agent definitions require
-`Item.ReadWrite.All` and read/write permission on the item because that is the
-current Fabric API contract. Encrypted sensitivity labels can block Ontology
-definition retrieval.
+the separately acquired `Item.ReadWrite.All` token and read/write permission on
+the item because that is the current Fabric API contract. Encrypted sensitivity
+labels can block Ontology definition retrieval.
+
+`rayfin up` adds the deployment origin to Rayfin's authentication allowlist.
+The Entra SPA redirect URI is managed separately and must contain the same
+hosting origin.
 
 Atlas uses these permissions only for read operations. It never calls
 definition update/delete APIs, never elevates the signed-in user and never

@@ -10,6 +10,7 @@ import {
 } from "react";
 import { SAMPLE_DATA, type AtlasData, type Comment } from "./model";
 import {
+  loadCommentsFromDb,
   loadFromDb,
   loadHistoryFromDb,
   loadHistoricalSnapshotFromDb,
@@ -83,6 +84,8 @@ export interface AtlasContextValue {
   governanceExceptionsLoading: boolean;
   governanceExceptionsError?: string;
   governanceExceptionPendingIds: Set<string>;
+  commentsLoading: boolean;
+  commentsError?: string;
   syncing: boolean;
   syncProgress: number;
   syncStage: string;
@@ -96,6 +99,8 @@ export interface AtlasContextValue {
   syncError?: string;
   currentUser: CurrentUser;
   sync: () => Promise<void>;
+  cancelSync: () => void;
+  reloadComments: () => Promise<void>;
   addComment: (body: string, itemFabricId?: string) => Promise<void>;
   addSavedView: (input: {
     name: string;
@@ -127,27 +132,6 @@ const AtlasContext = createContext<AtlasContextValue | null>(null);
 
 function clone(d: AtlasData): AtlasData {
   return JSON.parse(JSON.stringify(d));
-}
-
-function commentAuthorName(
-  data: AtlasData,
-  user: CurrentUser,
-): string {
-  const email = user.email?.trim().toLocaleLowerCase();
-  const matches = email
-    ? data.principals.filter(
-        (principal) =>
-          principal.email?.trim().toLocaleLowerCase() === email,
-      )
-    : [];
-  const resolved =
-    matches.length === 1 ? matches[0].displayName.trim() : "";
-  return (
-    resolved ||
-    user.name.trim() ||
-    user.email?.trim() ||
-    "Authenticated user"
-  ).slice(0, 160);
 }
 
 function historyAfterSync(
@@ -256,14 +240,16 @@ export function AtlasProvider({
   const [configured] = useState<boolean>(isSyncConfigured());
   const canSync =
     isPreview ||
-    (!!currentUser.email &&
-      currentUser.email.trim().toLowerCase() ===
-        ATLAS_CONFIG.syncAdminEmail.trim().toLowerCase());
+    (!!currentUser.id &&
+      currentUser.id.trim() === ATLAS_CONFIG.syncAdminSubject.trim());
   const [requiresDeploymentSync, setRequiresDeploymentSync] = useState(
     !isPreview,
   );
   const [syncError, setSyncError] = useState<string | undefined>();
+  const [commentsLoading, setCommentsLoading] = useState(!isPreview);
+  const [commentsError, setCommentsError] = useState<string | undefined>();
   const progressResetTimer = useRef<number | undefined>(undefined);
+  const syncAbortController = useRef<AbortController | undefined>(undefined);
   const operationGeneration = useRef(0);
   const dataRef = useRef(data);
   const historyRef = useRef(history);
@@ -303,6 +289,22 @@ export function AtlasProvider({
   useEffect(() => {
     governanceExceptionsLoadingRef.current = governanceExceptionsLoading;
   }, [governanceExceptionsLoading]);
+
+  const reloadComments = useCallback(async () => {
+    if (isPreview) return;
+    setCommentsLoading(true);
+    setCommentsError(undefined);
+    try {
+      const comments = await loadCommentsFromDb(false);
+      setData((current) => ({ ...current, comments }));
+    } catch (error) {
+      setCommentsError(
+        error instanceof Error ? error.message : String(error),
+      );
+    } finally {
+      setCommentsLoading(false);
+    }
+  }, [isPreview]);
 
   useEffect(
     () => () => {
@@ -491,9 +493,11 @@ export function AtlasProvider({
         if (!alive || operationGeneration.current !== generation) return;
         if (!db) {
           setHistoryLoading(false);
+          void reloadComments();
           return;
         }
         setData(db);
+        void reloadComments();
         setLastSyncedAt(
           db.workspace.syncedAt ?? db.syncRuns[0]?.finishedAt,
         );
@@ -536,7 +540,7 @@ export function AtlasProvider({
     return () => {
       alive = false;
     };
-  }, [isPreview]);
+  }, [isPreview, reloadComments]);
 
   const sync = useCallback(async () => {
     if (!canSync) {
@@ -560,6 +564,8 @@ export function AtlasProvider({
     setSyncStartedAt(syncStartedAtMs);
     setSyncError(undefined);
     setHistoryLoading(false);
+    const abortController = new AbortController();
+    syncAbortController.current = abortController;
     const startedAt = new Date(syncStartedAtMs).toISOString();
     let succeeded = false;
     let reportedProgress = 3;
@@ -573,6 +579,7 @@ export function AtlasProvider({
           setSyncProgress(reportedProgress);
           setSyncStage(stage);
         },
+        abortController.signal,
       );
       if (operationGeneration.current !== generation) return;
       const previous = dataRef.current;
@@ -593,18 +600,20 @@ export function AtlasProvider({
       }
       const finishedAt =
         next.workspace.syncedAt ?? new Date().toISOString();
-      next.syncRuns = [
-        {
-          id: `s-${Date.now()}`,
-          startedAt,
-          finishedAt,
-          status: "completed" as const,
-          itemsSynced: next.items.length,
-          triggeredBy: currentUser.name,
-          summary: `${next.items.length} items · ${next.edges.length} lineage edges · ${next.principals.length} principals · ${next.jobs.length} jobs`,
-        },
-        ...next.syncRuns,
-      ].slice(0, 20);
+      if (!fresh) {
+        next.syncRuns = [
+          {
+            id: `s-${Date.now()}`,
+            startedAt,
+            finishedAt,
+            status: "completed" as const,
+            itemsSynced: next.items.length,
+            triggeredBy: currentUser.name,
+            summary: `${next.items.length} items · ${next.edges.length} lineage edges · ${next.principals.length} principals · ${next.jobs.length} jobs`,
+          },
+          ...next.syncRuns,
+        ].slice(0, 20);
+      }
       setData(next);
       setHistory((previousHistory) =>
         historyAfterSync(previousHistory, next),
@@ -646,6 +655,9 @@ export function AtlasProvider({
       if (operationGeneration.current === generation) {
         setSyncing(false);
       }
+      if (syncAbortController.current === abortController) {
+        syncAbortController.current = undefined;
+      }
       if (succeeded && operationGeneration.current === generation) {
         progressResetTimer.current = window.setTimeout(() => {
           setSyncProgress(0);
@@ -656,6 +668,10 @@ export function AtlasProvider({
     }
   }, [canSync, isPreview, currentUser]);
 
+  const cancelSync = useCallback(() => {
+    syncAbortController.current?.abort();
+  }, []);
+
   const addComment = useCallback(
     async (body: string, itemFabricId?: string) => {
       const text = body.trim();
@@ -664,7 +680,11 @@ export function AtlasProvider({
         id: `c-${Date.now()}`,
         itemFabricId,
         authorId: currentUser.id,
-        authorName: commentAuthorName(dataRef.current, currentUser),
+        authorName: (
+          currentUser.email ??
+          currentUser.name ??
+          "Authenticated user"
+        ).slice(0, 160),
         authorEmail: currentUser.email,
         body: text,
         createdAt: new Date().toISOString(),
@@ -1090,6 +1110,8 @@ export function AtlasProvider({
       governanceExceptionsLoading,
       governanceExceptionsError,
       governanceExceptionPendingIds,
+      commentsLoading,
+      commentsError,
       syncing,
       syncProgress,
       syncStage,
@@ -1103,6 +1125,8 @@ export function AtlasProvider({
       syncError,
       currentUser,
       sync,
+      cancelSync,
+      reloadComments,
       addComment,
       addSavedView,
       removeSavedView,
@@ -1116,7 +1140,7 @@ export function AtlasProvider({
       removeGovernanceException: removeSharedGovernanceException,
       loadHistorySnapshot,
     }),
-    [data, history, hydrating, historyLoading, historyError, historyFailedSnapshotIds, savedViews, savedViewsLoading, savedViewsError, findingAcks, findingAcksLoading, findingAcksError, findingAckPendingIds, governancePolicy.targets, governancePolicyLoading, governancePolicyError, governanceExceptions, governanceExceptionsLoading, governanceExceptionsError, governanceExceptionPendingIds, syncing, syncProgress, syncStage, syncStartedAt, lastSyncedAt, isPreview, configured, canSync, hasData, requiresDeploymentSync, syncError, currentUser, sync, addComment, addSavedView, removeSavedView, saveFindingAcknowledgement, removeFindingAcknowledgement, reloadGovernancePolicy, saveGovernanceTargets, resetGovernanceTargets, reloadGovernanceExceptions, saveSharedGovernanceException, removeSharedGovernanceException, loadHistorySnapshot],
+    [data, history, hydrating, historyLoading, historyError, historyFailedSnapshotIds, savedViews, savedViewsLoading, savedViewsError, findingAcks, findingAcksLoading, findingAcksError, findingAckPendingIds, governancePolicy.targets, governancePolicyLoading, governancePolicyError, governanceExceptions, governanceExceptionsLoading, governanceExceptionsError, governanceExceptionPendingIds, commentsLoading, commentsError, syncing, syncProgress, syncStage, syncStartedAt, lastSyncedAt, isPreview, configured, canSync, hasData, requiresDeploymentSync, syncError, currentUser, sync, cancelSync, reloadComments, addComment, addSavedView, removeSavedView, saveFindingAcknowledgement, removeFindingAcknowledgement, reloadGovernancePolicy, saveGovernanceTargets, resetGovernanceTargets, reloadGovernanceExceptions, saveSharedGovernanceException, removeSharedGovernanceException, loadHistorySnapshot],
   );
 
   return <AtlasContext.Provider value={value}>{children}</AtlasContext.Provider>;

@@ -3,7 +3,7 @@
 // data model. See the "Why a Fabric User Data Function?" note in the README for
 // why this hop through a server-side function is required.
 
-import { ATLAS_CONFIG, getUdfUrl } from "./config";
+import { ATLAS_CONFIG, getUdfUrl, validateUdfUrl } from "./config";
 import { normalizeLineageEdges } from "./lineage";
 import {
   itemMetadataFromSchema,
@@ -205,6 +205,11 @@ async function acquireToken(
 }
 
 const OPTIONAL_METADATA_TOKEN_SCOPES = {
+  definitionToken: {
+    scope:
+      "https://analysis.windows.net/powerbi/api/Item.ReadWrite.All",
+    purpose: "Fabric definition metadata",
+  },
   kustoToken: {
     scope: "https://kusto.kusto.windows.net/user_impersonation",
     purpose: "KQL metadata",
@@ -219,7 +224,6 @@ const FABRIC_DISCOVERY_SCOPES = [
   "https://analysis.windows.net/powerbi/api/UserDataFunction.Execute.All",
   "https://analysis.windows.net/powerbi/api/Workspace.Read.All",
   "https://analysis.windows.net/powerbi/api/Item.Read.All",
-  "https://analysis.windows.net/powerbi/api/Item.ReadWrite.All",
   "https://analysis.windows.net/powerbi/api/Dataset.Read.All",
   "https://analysis.windows.net/powerbi/api/Report.Read.All",
   "https://analysis.windows.net/powerbi/api/Tenant.Read.All",
@@ -227,11 +231,13 @@ const FABRIC_DISCOVERY_SCOPES = [
 
 export interface SyncRequestTokens {
   fabricToken: string;
+  definitionToken?: string;
   kustoToken?: string;
   sqlToken?: string;
   storageToken?: string;
   deferEnrichment?: string;
   itemIds?: string;
+  correlationId?: string;
 }
 
 export function buildSyncRequestBody(
@@ -248,56 +254,101 @@ export function buildSyncRequestBody(
 
 async function acquireOptionalMetadataTokens(
   identity: SyncIdentity,
+  allowPopup = true,
+  signal?: AbortSignal,
 ): Promise<Omit<SyncRequestTokens, "fabricToken">> {
+  assertSyncActive(signal);
   const tokens: Omit<SyncRequestTokens, "fabricToken"> = {};
   for (const [name, request] of Object.entries(
     OPTIONAL_METADATA_TOKEN_SCOPES,
   ) as Array<
     [
-      keyof Omit<SyncRequestTokens, "fabricToken">,
+      keyof typeof OPTIONAL_METADATA_TOKEN_SCOPES,
       (typeof OPTIONAL_METADATA_TOKEN_SCOPES)[keyof typeof OPTIONAL_METADATA_TOKEN_SCOPES],
     ]
   >) {
     try {
+      assertSyncActive(signal);
       tokens[name] = await acquireToken(
         identity,
         [request.scope],
         request.purpose,
-        true,
+        allowPopup,
       );
+      assertSyncActive(signal);
     } catch (error) {
+      assertSyncActive(signal);
       console.warn(
         `[atlas] ${request.purpose} token unavailable`,
         error instanceof Error ? error.message : String(error),
       );
     }
-
   }
   return tokens;
 }
 
 async function acquireFabricSyncToken(
   identity: SyncIdentity,
+  allowPopup = true,
+  signal?: AbortSignal,
 ): Promise<string> {
+  assertSyncActive(signal);
   try {
-    return await acquireToken(
+    const token = await acquireToken(
       identity,
       FABRIC_DISCOVERY_SCOPES,
       "Fabric metadata",
-      true,
+      allowPopup,
     );
+    assertSyncActive(signal);
+    return token;
   } catch (error) {
+    assertSyncActive(signal);
     console.warn(
       "[atlas] advanced Fabric definition permission unavailable; using the standard metadata scope",
       error instanceof Error ? error.message : String(error),
     );
-    return acquireToken(
+    const token = await acquireToken(
       identity,
       [ATLAS_CONFIG.scope],
       "Power BI",
-      true,
+      allowPopup,
     );
+    assertSyncActive(signal);
+    return token;
   }
+}
+
+async function renewSyncTokens(
+  identity: SyncIdentity,
+  current: SyncRequestTokens,
+  signal?: AbortSignal,
+): Promise<SyncRequestTokens> {
+  assertSyncActive(signal);
+  const next = { ...current };
+  if (tokenNeedsRefresh(current.fabricToken)) {
+    next.fabricToken = await acquireFabricSyncToken(identity, false, signal);
+  }
+  for (const [name, request] of Object.entries(
+    OPTIONAL_METADATA_TOKEN_SCOPES,
+  ) as Array<
+    [
+      keyof typeof OPTIONAL_METADATA_TOKEN_SCOPES,
+      (typeof OPTIONAL_METADATA_TOKEN_SCOPES)[keyof typeof OPTIONAL_METADATA_TOKEN_SCOPES],
+    ]
+  >) {
+    const token = current[name];
+    if (!token || !tokenNeedsRefresh(token)) continue;
+    next[name] = await acquireToken(
+      identity,
+      [request.scope],
+      request.purpose,
+      false,
+    );
+    assertSyncActive(signal);
+  }
+  assertSyncActive(signal);
+  return next;
 }
 
 /* ----------------------------- UDF invoke ------------------------------ */
@@ -305,6 +356,7 @@ async function acquireFabricSyncToken(
 export interface RawSync {
   schemaVersion?: number;
   syncMode?: string;
+  correlationId?: string;
   workspace?: Record<string, unknown>;
   items?: Array<Record<string, unknown>>;
   roleAssignments?: Array<Record<string, unknown>>;
@@ -371,6 +423,7 @@ export interface RawSync {
   requestedItemIds?: string[];
   completedItemIds?: string[];
   remainingItemIds?: string[];
+  itemFailures?: Record<string, string>;
   syncedAt?: string;
   schema?: Record<
     string,
@@ -613,6 +666,10 @@ export function mergeSyncEnrichment(
       current.itemMetadata,
       enrichment.itemMetadata,
     ),
+    itemFailures: {
+      ...(current.itemFailures ?? {}),
+      ...(enrichment.itemFailures ?? {}),
+    },
     objectEdges: [...currentObjectEdges, ...enrichmentObjectEdges],
     sections: mergeSyncStatusMaps(current.sections, enrichment.sections),
     capabilities: mergeSyncStatusMaps(
@@ -765,16 +822,22 @@ function validatedSyncSections(
 }
 
 export function syncDeadlineExceeded(raw: RawSync): boolean {
+  const retryCodes = new Set([
+    "deadline-exhausted",
+    "request-timeout",
+    "retry-after-deferred",
+  ]);
   return (
     raw.errors?.some(
       (error) =>
-        typeof error === "string" && error.includes("deadline-exhausted"),
+        typeof error === "string" &&
+        [...retryCodes].some((code) => error.includes(code)),
     ) === true ||
     Object.values(raw.sections ?? {}).some(
-      (section) => section?.code === "deadline-exhausted",
+      (section) => !!section?.code && retryCodes.has(section.code),
     ) ||
     Object.values(raw.capabilities ?? {}).some(
-      (section) => section?.code === "deadline-exhausted",
+      (section) => !!section?.code && retryCodes.has(section.code),
     )
   );
 }
@@ -1192,12 +1255,18 @@ export function validateSyncEnrichment(
     !isRecord(raw.schema) ||
     !isRecord(raw.artifactMetadata) ||
     !isRecord(raw.itemMetadata) ||
+    (raw.itemFailures != null && !isRecord(raw.itemFailures)) ||
     !Array.isArray(raw.objectEdges) ||
     !Array.isArray(raw.errors) ||
     raw.errors.some((error) => typeof error !== "string")
   ) {
     throw new Error(
       "Fabric returned an invalid resumable sync response. The previous snapshot was preserved.",
+    );
+  }
+  if (Object.keys(raw.itemFailures ?? {}).length > 0) {
+    throw new Error(
+      "Fabric could not enrich every requested item. The previous snapshot was preserved.",
     );
   }
   if (syncDeadlineExceeded(raw)) {
@@ -1228,7 +1297,7 @@ export function isUdfTimeoutFailure(status: number, body: string): boolean {
 
 function retargetSyncFunction(url: string, functionName: string): string {
   return url.replace(
-    /\/(ping|list_items|list_role_assignments|get_workspace|sync_all|sync_items)(\/|:|\?|$)/i,
+    /\/(ping|sync_all|sync_items)(\/|:|\?|$)/i,
     `/${functionName}$2`,
   );
 }
@@ -1244,8 +1313,61 @@ class RetryableSyncSliceError extends Error {
   }
 }
 
+export class SyncCancelledError extends Error {}
+
 const MAX_BASE_SLICE_ATTEMPTS = 4;
 const MAX_SINGLE_ITEM_SLICE_ATTEMPTS = 6;
+const SYNC_SLICE_TIMEOUT_MS = 195_000;
+const TOKEN_REFRESH_WINDOW_MS = 5 * 60_000;
+
+function assertSyncActive(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new SyncCancelledError("Synchronization cancelled.");
+  }
+}
+
+function tokenExpiryMs(token: string): number | undefined {
+  const payload = token.split(".")[1];
+  if (!payload) return undefined;
+  try {
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const decoded = JSON.parse(
+      atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")),
+    ) as { exp?: unknown };
+    return typeof decoded.exp === "number" ? decoded.exp * 1000 : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function tokenNeedsRefresh(
+  token: string,
+  now = Date.now(),
+): boolean {
+  const expiresAt = tokenExpiryMs(token);
+  return expiresAt != null && expiresAt - now <= TOKEN_REFRESH_WINDOW_MS;
+}
+
+function abortableDelay(milliseconds: number, signal?: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new SyncCancelledError("Synchronization cancelled."));
+      return;
+    }
+    const complete = () => {
+      signal?.removeEventListener("abort", cancel);
+      resolve();
+    };
+    const timer = window.setTimeout(complete, milliseconds);
+    const cancel = () => {
+      window.clearTimeout(timer);
+      signal?.removeEventListener("abort", cancel);
+      reject(new SyncCancelledError("Synchronization cancelled."));
+    };
+    signal?.addEventListener("abort", cancel, { once: true });
+  });
+}
+
 
 function syncItemTypeLabel(itemType: string): string {
   return (
@@ -1267,56 +1389,97 @@ async function invokeSyncFunctionSlice(
   workspaceId: string,
   tokens: SyncRequestTokens,
   parameters: Partial<SyncRequestTokens>,
+  signal?: AbortSignal,
 ): Promise<RawSync> {
-  const response = await fetch(retargetSyncFunction(baseUrl, functionName), {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${tokens.fabricToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(
-      buildSyncRequestBody(workspaceId, {
-        ...tokens,
-        ...parameters,
-      }),
-    ),
-  });
-  if (!response.ok) {
-    console.warn("[atlas] resumable UDF invocation failed", response.status);
-    const body = await readBoundedResponseText(response, 64 * 1024).catch(
-      () => "",
+  assertSyncActive(signal);
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, SYNC_SLICE_TIMEOUT_MS);
+  const cancel = () => controller.abort();
+  signal?.addEventListener("abort", cancel, { once: true });
+  try {
+    const response = await fetch(
+      retargetSyncFunction(baseUrl, functionName),
+      {
+        method: "POST",
+        redirect: "error",
+        signal: controller.signal,
+        headers: {
+          Authorization: `Bearer ${tokens.fabricToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(
+          buildSyncRequestBody(workspaceId, {
+            ...tokens,
+            ...parameters,
+          }),
+        ),
+      },
     );
-    if (
-      isUdfTimeoutFailure(response.status, body)
-    ) {
-      throw new RetryableSyncSliceError(
-        "timeout",
-        "The Fabric metadata slice must be resumed.",
+    if (!response.ok) {
+      console.warn("[atlas] resumable UDF invocation failed", response.status);
+      const body = await readBoundedResponseText(response, 64 * 1024).catch(
+        () => "",
+      );
+      if (isUdfTimeoutFailure(response.status, body)) {
+        throw new RetryableSyncSliceError(
+          "timeout",
+          "The Fabric metadata slice must be resumed.",
+        );
+      }
+      if (
+        /ResponseSizeExceeded|response exceeded the safe size limit/i.test(
+          body,
+        )
+      ) {
+        throw new RetryableSyncSliceError(
+          "response-size",
+          "The Fabric metadata slice exceeded the safe response size.",
+        );
+      }
+      throw new Error(
+        `Fabric synchronization failed (HTTP ${response.status}). The previous snapshot was preserved.`,
       );
     }
-    if (/ResponseSizeExceeded|response exceeded the safe size limit/i.test(body)) {
+    const contentLength = Number(response.headers.get("content-length"));
+    if (
+      Number.isFinite(contentLength) &&
+      contentLength > MAX_SYNC_RESPONSE_BYTES
+    ) {
       throw new RetryableSyncSliceError(
         "response-size",
         "The Fabric metadata slice exceeded the safe response size.",
       );
     }
-    throw new Error(
-      `Fabric synchronization failed (HTTP ${response.status}). The previous snapshot was preserved.`,
+    const parsed = parseSyncResponseText(
+      await readBoundedResponseText(response),
     );
-  }
-  const contentLength = Number(response.headers.get("content-length"));
-  if (
-    Number.isFinite(contentLength) &&
-    contentLength > MAX_SYNC_RESPONSE_BYTES
-  ) {
-    throw new RetryableSyncSliceError(
-      "response-size",
-      "The Fabric metadata slice exceeded the safe response size.",
-    );
-  }
-  try {
-    return parseSyncResponseText(await readBoundedResponseText(response));
+    if (
+      tokens.correlationId &&
+      parsed.correlationId !== tokens.correlationId
+    ) {
+      throw new Error(
+        "Fabric returned a sync response with an invalid correlation ID. The previous snapshot was preserved.",
+      );
+    }
+    return parsed;
   } catch (error) {
+    if (error instanceof RetryableSyncSliceError) throw error;
+    if (signal?.aborted) {
+      throw new SyncCancelledError("Synchronization cancelled.");
+    }
+    if (
+      timedOut ||
+      (error instanceof DOMException && error.name === "AbortError")
+    ) {
+      throw new RetryableSyncSliceError(
+        "timeout",
+        "The Fabric metadata slice exceeded the browser deadline.",
+      );
+    }
     if (
       error instanceof Error &&
       /exceeded the Atlas safety limit/i.test(error.message)
@@ -1327,6 +1490,9 @@ async function invokeSyncFunctionSlice(
       );
     }
     throw error;
+  } finally {
+    window.clearTimeout(timeout);
+    signal?.removeEventListener("abort", cancel);
   }
 }
 
@@ -1335,6 +1501,7 @@ async function invokeSyncItemSlice(
   workspaceId: string,
   tokens: SyncRequestTokens,
   batch: SyncItemBatch,
+  signal?: AbortSignal,
 ): Promise<RawSync> {
   return invokeSyncFunctionSlice(
     baseUrl,
@@ -1342,6 +1509,7 @@ async function invokeSyncItemSlice(
     workspaceId,
     tokens,
     { itemIds: JSON.stringify(batch.itemIds) },
+    signal,
   );
 }
 
@@ -1349,6 +1517,8 @@ export async function invokeSyncAll(
   workspaceId: string,
   identity: SyncIdentity,
   reportProgress?: (progress: number, stage: string) => void,
+  signal?: AbortSignal,
+  correlationId?: string,
 ): Promise<RawSync> {
   const raw = getUdfUrl();
   if (!raw) {
@@ -1356,17 +1526,30 @@ export async function invokeSyncAll(
       "Sync endpoint not configured yet — publish the atlas_sync_functions UDF and paste its invoke URL.",
     );
   }
-  const url = retargetSyncFunction(raw, "sync_all");
+  const url = retargetSyncFunction(
+    validateUdfUrl(raw, workspaceId),
+    "sync_all",
+  );
+  assertSyncActive(signal);
   reportProgress?.(5, "Authorizing Fabric metadata access");
-  const fabricToken = await acquireFabricSyncToken(identity);
-  const metadataTokens = await acquireOptionalMetadataTokens(identity);
-  const tokens: SyncRequestTokens = {
+  const fabricToken = await acquireFabricSyncToken(identity, true, signal);
+  const metadataTokens = await acquireOptionalMetadataTokens(
+    identity,
+    true,
+    signal,
+  );
+  let tokens: SyncRequestTokens = {
     fabricToken,
     ...metadataTokens,
+    correlationId,
   };
   let baseAttempt = 0;
   let result: RawSync;
   while (true) {
+    assertSyncActive(signal);
+    if (baseAttempt > 0) {
+      tokens = await renewSyncTokens(identity, tokens, signal);
+    }
     reportProgress?.(
       8,
       baseAttempt === 0
@@ -1380,6 +1563,7 @@ export async function invokeSyncAll(
         workspaceId,
         tokens,
         { deferEnrichment: "true" },
+        signal,
       );
     } catch (error) {
       if (!(error instanceof RetryableSyncSliceError)) throw error;
@@ -1392,11 +1576,9 @@ export async function invokeSyncAll(
           "Fabric could not return the authoritative workspace topology within a safe function slice. The previous snapshot was preserved.",
         );
       }
-      await new Promise((resolve) =>
-        window.setTimeout(
-          resolve,
-          Math.min(10_000, 1_000 * 2 ** Math.min(baseAttempt, 3)),
-        ),
+      await abortableDelay(
+        Math.min(10_000, 1_000 * 2 ** Math.min(baseAttempt, 3)),
+        signal,
       );
       continue;
     }
@@ -1407,13 +1589,12 @@ export async function invokeSyncAll(
         "Fabric could not complete the authoritative workspace topology after multiple function slices. The previous snapshot was preserved.",
       );
     }
-    await new Promise((resolve) =>
-      window.setTimeout(
-        resolve,
-        Math.min(10_000, 1_000 * 2 ** Math.min(baseAttempt, 3)),
-      ),
+    await abortableDelay(
+      Math.min(10_000, 1_000 * 2 ** Math.min(baseAttempt, 3)),
+      signal,
     );
   }
+  assertSyncActive(signal);
   validateRawSync(result, workspaceId);
   if (result.syncMode !== "base") {
     reportProgress?.(60, "Deep workspace discovery complete");
@@ -1447,6 +1628,7 @@ export async function invokeSyncAll(
   let merged = result;
 
   while (batches.length > 0) {
+    assertSyncActive(signal);
     const next = batches.shift()!;
     const itemIds = next.itemIds.filter(
       (itemId) => !completedItemIds.has(itemId),
@@ -1461,11 +1643,13 @@ export async function invokeSyncAll(
 
     let enrichment: RawSync;
     try {
+      tokens = await renewSyncTokens(identity, tokens, signal);
       enrichment = await invokeSyncItemSlice(
         raw,
         workspaceId,
         tokens,
         batch,
+        signal,
       );
     } catch (error) {
       if (!(error instanceof RetryableSyncSliceError)) throw error;
@@ -1499,11 +1683,9 @@ export async function invokeSyncAll(
             ),
           `Continuing ${label} item in a fresh Fabric function slice`,
         );
-        await new Promise((resolve) =>
-          window.setTimeout(
-            resolve,
-            Math.min(10_000, 1_000 * 2 ** Math.min(batch.attempt, 3)),
-          ),
+        await abortableDelay(
+          Math.min(10_000, 1_000 * 2 ** Math.min(batch.attempt, 3)),
+          signal,
         );
         batches.push({ ...batch, attempt: batch.attempt + 1 });
       }
@@ -1549,11 +1731,9 @@ export async function invokeSyncAll(
             ),
           `Continuing ${label} item in a fresh Fabric function slice`,
         );
-        await new Promise((resolve) =>
-          window.setTimeout(
-            resolve,
-            Math.min(10_000, 1_000 * 2 ** Math.min(batch.attempt, 3)),
-          ),
+        await abortableDelay(
+          Math.min(10_000, 1_000 * 2 ** Math.min(batch.attempt, 3)),
+          signal,
         );
         batches.push({
           ...batch,
@@ -1584,6 +1764,7 @@ export async function invokeSyncAll(
     remainingItemIds: undefined,
   };
   reportProgress?.(60, "Deep workspace discovery complete");
+  assertSyncActive(signal);
   validateRawSync(merged, workspaceId);
   return merged;
 }
@@ -1619,6 +1800,30 @@ function accessLevelFrom(ar?: string | null): AccessLevel {
   if (s.includes("write")) return "edit";
   if (s.includes("read")) return "view";
   return "none";
+}
+
+function externalIdentityState(
+  userType: unknown,
+  principalType: unknown,
+  email: string | undefined,
+): boolean | undefined {
+  const normalizedUserType = normalized(userType);
+  const normalizedPrincipalType = normalized(principalType);
+  if (
+    normalizedUserType === "guest" ||
+    normalizedUserType === "external" ||
+    normalizedPrincipalType === "guest"
+  ) {
+    return true;
+  }
+  if (
+    normalizedUserType === "member" ||
+    normalizedUserType === "internal"
+  ) {
+    return false;
+  }
+  if (email?.toUpperCase().includes("#EXT#")) return true;
+  return undefined;
 }
 
 function canonicalPrincipalId(value: unknown): string | undefined {
@@ -1755,7 +1960,13 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
     const existing = principalsById.get(key);
     if (existing) {
       if (!existing.email && principal.email) existing.email = principal.email;
-      existing.external = existing.external || principal.external;
+      if (principal.external === true) existing.external = true;
+      else if (
+        existing.external == null &&
+        principal.external === false
+      ) {
+        existing.external = false;
+      }
       return existing;
     }
     principalsById.set(key, principal);
@@ -1766,13 +1977,17 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
     const p = (ra.principal ?? {}) as Record<string, unknown>;
     const details = (p.userDetails ?? {}) as Record<string, unknown>;
     const email = details.userPrincipalName as string | undefined;
-    const isGuest = !!email && email.toUpperCase().includes("#EXT#");
+    const external = externalIdentityState(
+      details.userType ?? p.userType,
+      p.type,
+      email,
+    );
     const kind: PrincipalKind =
       p.type === "Group"
         ? "group"
         : p.type === "ServicePrincipal"
           ? "servicePrincipal"
-          : isGuest
+          : external === true
             ? "guest"
             : "user";
     const name = String(p.displayName ?? email ?? p.id ?? "Unknown");
@@ -1784,7 +1999,7 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
       displayName: name,
       kind,
       email,
-      external: isGuest,
+      external,
       workspaceRole: role,
     });
     grants.push({
@@ -1797,7 +2012,7 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
           ? "admin"
           : kind === "servicePrincipal"
             ? "servicePrincipal"
-            : kind === "guest"
+            : external === true
               ? "external"
               : undefined,
     });
@@ -1813,13 +2028,17 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
       ? "Entire tenant"
       : String(g.principalName || g.principalEmail || "Unknown");
     const email = g.principalEmail;
-    const isGuest = !!email && email.toUpperCase().includes("#EXT#");
+    const external = externalIdentityState(
+      g.userType,
+      g.principalType,
+      email,
+    );
     const kind: PrincipalKind =
       tenantWide || g.principalType === "Group"
         ? "group"
         : g.principalType === "App" || g.principalType === "ServicePrincipal"
           ? "servicePrincipal"
-          : isGuest
+          : external === true
             ? "guest"
             : "user";
     const explicitPrincipalId = canonicalPrincipalId(g.principalId);
@@ -1852,7 +2071,7 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
       displayName: name,
       kind,
       email: email || undefined,
-      external: isGuest,
+      external,
       workspaceRole: "Viewer",
     });
     if (g.itemId && itemIds.has(g.itemId)) {
@@ -1864,7 +2083,7 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
         roleName: g.accessRight || undefined,
         flag: tenantWide
           ? "broad"
-          : isGuest
+          : external === true
             ? "external"
             : kind === "servicePrincipal"
               ? "servicePrincipal"

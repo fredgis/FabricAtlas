@@ -10,6 +10,7 @@ import json
 import math
 import numbers
 import re
+import socket
 import struct
 import time
 import uuid
@@ -127,7 +128,19 @@ class DeadlineExceeded(RuntimeError):
     pass
 
 
+class RequestTimeout(RuntimeError):
+    pass
+
+
+class RetryAfterDeferred(RuntimeError):
+    pass
+
+
 class ResponseSizeExceeded(RuntimeError):
+    pass
+
+
+class PaginationError(RuntimeError):
     pass
 
 
@@ -155,6 +168,25 @@ class SqlCatalogQueryError(RuntimeError):
     pass
 
 
+SLICE_RETRY_ERRORS = (
+    DeadlineExceeded,
+    RequestTimeout,
+    RetryAfterDeferred,
+)
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *_args, **_kwargs):
+        return None
+
+
+_HTTP_OPENER = urllib.request.build_opener(_NoRedirectHandler())
+
+
+def _open_request(request, timeout):
+    return _HTTP_OPENER.open(request, timeout=timeout)
+
+
 class _ExecutionDeadline:
     def __init__(self, seconds=EXECUTION_BUDGET_SECONDS, clock=None):
         self.clock = clock or time.monotonic
@@ -180,6 +212,13 @@ class _ExecutionDeadline:
             raise DeadlineExceeded("execution deadline exhausted")
         (sleeper or time.sleep)(seconds)
 
+    def retry_sleep(self, seconds, sleeper=None):
+        if seconds >= self.remaining():
+            raise RetryAfterDeferred(
+                "retry delay exceeds the remaining execution budget"
+            )
+        (sleeper or time.sleep)(seconds)
+
 
 _ACTIVE_DEADLINE = contextvars.ContextVar(
     "atlas_sync_deadline",
@@ -201,6 +240,13 @@ def _workspace_id(value):
         return str(uuid.UUID(str(value)))
     except (ValueError, TypeError, AttributeError):
         raise ValueError("workspaceId must be a valid UUID")
+
+
+def _item_id(value):
+    try:
+        return str(uuid.UUID(str(value)))
+    except (ValueError, TypeError, AttributeError):
+        raise ValueError("item ID must be a valid UUID")
 
 
 def _fabric_url(url):
@@ -253,7 +299,9 @@ def _read_response_bytes(response, deadline, attempt_expires_at):
             attempt_expires_at - deadline.clock(),
         )
         if remaining <= 0:
-            raise DeadlineExceeded("request deadline exhausted")
+            if deadline.remaining() <= 0:
+                raise DeadlineExceeded("execution deadline exhausted")
+            raise RequestTimeout("request deadline exhausted")
         _set_response_timeout(response, max(0.001, remaining))
         chunk = response.read(
             min(
@@ -268,11 +316,10 @@ def _read_response_bytes(response, deadline, attempt_expires_at):
             raise ResponseSizeExceeded(
                 "upstream response exceeded the safe size limit"
             )
-        if (
-            deadline.remaining() <= 0
-            or deadline.clock() >= attempt_expires_at
-        ):
-            raise DeadlineExceeded("request deadline exhausted")
+        if deadline.remaining() <= 0:
+            raise DeadlineExceeded("execution deadline exhausted")
+        if deadline.clock() >= attempt_expires_at:
+            raise RequestTimeout("request deadline exhausted")
     return bytes(payload)
 
 
@@ -304,7 +351,7 @@ def _req_response(
         timeout = active_deadline.request_timeout(per_request_timeout)
         attempt_expires_at = active_deadline.clock() + timeout
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as response:
+            with _open_request(req, timeout=timeout) as response:
                 payload = _read_response_bytes(
                     response,
                     active_deadline,
@@ -335,7 +382,23 @@ def _req_response(
                 if retry_after is not None
                 else min(MAX_BACKOFF_SECONDS, 0.5 * (2 ** attempt))
             )
-            active_deadline.sleep(delay, sleeper=sleeper)
+            active_deadline.retry_sleep(delay, sleeper=sleeper)
+        except (TimeoutError, socket.timeout) as error:
+            if attempt + 1 >= max_attempts:
+                raise RequestTimeout("request timed out") from error
+            active_deadline.sleep(
+                min(MAX_BACKOFF_SECONDS, 0.5 * (2 ** attempt)),
+                sleeper=sleeper,
+            )
+        except urllib.error.URLError as error:
+            if not isinstance(error.reason, (TimeoutError, socket.timeout)):
+                raise
+            if attempt + 1 >= max_attempts:
+                raise RequestTimeout("request timed out") from error
+            active_deadline.sleep(
+                min(MAX_BACKOFF_SECONDS, 0.5 * (2 ** attempt)),
+                sleeper=sleeper,
+            )
     raise RuntimeError("request attempts exhausted")
 
 
@@ -372,27 +435,31 @@ def _get(token, url):
 def _get_all(token, path):
     items = []
     url = FABRIC + path
-    guard = 0
-    while url and guard < 50:
-        guard += 1
-        data = _get(token, _fabric_url(url))
+    visited = set()
+    while url:
+        url = _fabric_url(url)
+        if url in visited:
+            raise PaginationError("Fabric pagination repeated a URL")
+        visited.add(url)
+        data = _get(token, url)
         if isinstance(data, dict):
             items.extend(data.get("value", []))
             url = data.get("continuationUri")
         else:
             raise ValueError("Fabric list response was not an object")
-    if url:
-        raise RuntimeError("Fabric pagination exceeded the safety limit")
     return items
 
 
 def _get_all_data(token, path):
     items = []
     url = FABRIC + path
-    guard = 0
-    while url and guard < 50:
-        guard += 1
-        data = _get(token, _fabric_url(url))
+    visited = set()
+    while url:
+        url = _fabric_url(url)
+        if url in visited:
+            raise PaginationError("Fabric data pagination repeated a URL")
+        visited.add(url)
+        data = _get(token, url)
         if not isinstance(data, dict):
             raise ValueError("Fabric data-list response was not an object")
         values = data.get("data", [])
@@ -400,29 +467,12 @@ def _get_all_data(token, path):
             raise ValueError("Fabric data-list response did not contain a list")
         items.extend(values)
         url = data.get("continuationUri")
-    if url:
-        raise RuntimeError("Fabric data pagination exceeded the safety limit")
     return items
 
 
 @udf.function()
 def ping(name: str) -> str:
     return "pong: " + name
-
-
-@udf.function()
-def list_items(fabricToken: str, workspaceId: str) -> list:
-    return _get_all(fabricToken, f"/workspaces/{_workspace_id(workspaceId)}/items")
-
-
-@udf.function()
-def list_role_assignments(fabricToken: str, workspaceId: str) -> list:
-    return _get_all(fabricToken, f"/workspaces/{_workspace_id(workspaceId)}/roleAssignments")
-
-
-@udf.function()
-def get_workspace(fabricToken: str, workspaceId: str) -> dict:
-    return _get(fabricToken, f"{FABRIC}/workspaces/{_workspace_id(workspaceId)}")
 
 
 # ---- admin scanner: the one source that returns per-item access + lineage ----
@@ -1141,15 +1191,22 @@ def _sanitize_role_assignment(value):
         )
         if text:
             safe_principal[key] = text
+    user_type = _strict_text(principal.get("userType"))
+    if user_type:
+        safe_principal["userType"] = user_type
     details = principal.get("userDetails")
     if isinstance(details, dict):
         user_principal_name = _strict_text(
             details.get("userPrincipalName")
         )
+        detail_user_type = _strict_text(details.get("userType"))
+        safe_details = {}
         if user_principal_name:
-            safe_principal["userDetails"] = {
-                "userPrincipalName": user_principal_name,
-            }
+            safe_details["userPrincipalName"] = user_principal_name
+        if detail_user_type:
+            safe_details["userType"] = detail_user_type
+        if safe_details:
+            safe_principal["userDetails"] = safe_details
     if not safe_principal.get("id"):
         fallback = (
             safe_principal.get("userDetails", {}).get("userPrincipalName")
@@ -1163,14 +1220,15 @@ def _sanitize_role_assignment(value):
 
 
 def _sanitize_job(value, item):
-    if not isinstance(value, dict):
+    item_id = _artifact_id(item)
+    if not isinstance(value, dict) or not item_id:
         return None
     job_type = _strict_text(value.get("jobType") or value.get("invokeType"))
     status = _strict_text(value.get("status"))
     if not job_type or not status:
         return None
     job = {
-        "itemId": item["id"],
+        "itemId": item_id,
         "itemDisplayName": item.get("displayName"),
         "itemType": item.get("type"),
         "jobType": job_type,
@@ -1304,6 +1362,14 @@ def _metadata_for_item(artifact, scanner_matched):
 def _safe_error_code(error, optional=False):
     if isinstance(error, DeadlineExceeded):
         return "deadline-exhausted"
+    if isinstance(error, RequestTimeout):
+        return "request-timeout"
+    if isinstance(error, RetryAfterDeferred):
+        return "retry-after-deferred"
+    if isinstance(error, ResponseSizeExceeded):
+        return "response-size-exceeded"
+    if isinstance(error, PaginationError):
+        return "pagination-invalid"
     if isinstance(error, urllib.error.HTTPError):
         if error.code == 423:
             return "encrypted-label-blocked"
@@ -1336,6 +1402,14 @@ def _safe_error_code(error, optional=False):
 def _definition_error_code(error):
     if isinstance(error, DeadlineExceeded):
         return "deadline-exhausted"
+    if isinstance(error, RequestTimeout):
+        return "request-timeout"
+    if isinstance(error, RetryAfterDeferred):
+        return "retry-after-deferred"
+    if isinstance(error, ResponseSizeExceeded):
+        return "response-size-exceeded"
+    if isinstance(error, PaginationError):
+        return "pagination-invalid"
     if isinstance(error, urllib.error.HTTPError):
         if error.code in (401, 403):
             return "read-write-permission-required"
@@ -3427,8 +3501,6 @@ def _kusto_schema(response, database_name):
         ("MaterializedViews", "KQL materialized view"),
     ):
         for key, value in _kusto_entities(database, collection):
-            if len(tables) >= MAX_SCHEMA_OBJECTS_PER_ITEM:
-                break
             name = _strict_text(value.get("Name")) or _strict_text(key)
             schema = value.get("Schema")
             schema = schema if isinstance(schema, dict) else value
@@ -3436,7 +3508,7 @@ def _kusto_schema(response, database_name):
             columns = []
             for column in (
                 ordered_columns if isinstance(ordered_columns, list) else []
-            )[:MAX_SCHEMA_COLUMNS_PER_OBJECT]:
+            ):
                 if not isinstance(column, dict):
                     continue
                 column_name = _strict_text(column.get("Name"))
@@ -3458,10 +3530,7 @@ def _kusto_schema(response, database_name):
                     "measures": [],
                 })
     functions = []
-    for key, value in _kusto_entities(
-        database,
-        "Functions",
-    )[:MAX_SCHEMA_OBJECTS_PER_ITEM]:
+    for key, value in _kusto_entities(database, "Functions"):
         name = _strict_text(value.get("Name")) or _strict_text(key)
         if not name:
             continue
@@ -3473,7 +3542,7 @@ def _kusto_schema(response, database_name):
         )
         for parameter in (
             raw_parameters if isinstance(raw_parameters, list) else []
-        )[:MAX_ARTIFACT_METADATA_COLLECTION]:
+        ):
             if not isinstance(parameter, dict):
                 continue
             parameter_name = _strict_text(
@@ -3511,10 +3580,7 @@ def _kusto_schema(response, database_name):
         functions.append(metadata)
 
     materialized_views = []
-    for key, value in _kusto_entities(
-        database,
-        "MaterializedViews",
-    )[:MAX_SCHEMA_OBJECTS_PER_ITEM]:
+    for key, value in _kusto_entities(database, "MaterializedViews"):
         name = _strict_text(value.get("Name")) or _strict_text(key)
         if not name:
             continue
@@ -3525,7 +3591,7 @@ def _kusto_schema(response, database_name):
             schema.get("OrderedColumns")
             if isinstance(schema.get("OrderedColumns"), list)
             else []
-        )[:MAX_SCHEMA_COLUMNS_PER_OBJECT]:
+        ):
             if not isinstance(column, dict):
                 continue
             column_name = _strict_text(column.get("Name"))
@@ -3554,8 +3620,6 @@ def _kusto_schema(response, database_name):
         materialized_views.append(metadata)
 
     for function in functions:
-        if len(tables) >= MAX_SCHEMA_OBJECTS_PER_ITEM:
-            break
         tables.append({
                 "_mergeKey": f"Functions:{function['name']}",
                 "name": function["name"],
@@ -4024,6 +4088,7 @@ def _enrich_artifact(
     artifact,
     trackers,
     errors,
+    definition_token="",
     kusto_token="",
     sql_token="",
 ):
@@ -4039,6 +4104,8 @@ def _enrich_artifact(
             )
             _merge_detail_metadata(artifact, artifact["_detail"])
             _track_optional(trackers["itemDetails"], "success")
+        except SLICE_RETRY_ERRORS:
+            raise
         except urllib.error.HTTPError as error:
             code = _safe_error_code(error, optional=True)
             if code == "endpoint-unsupported":
@@ -4065,6 +4132,8 @@ def _enrich_artifact(
                 f"/workspaces/{ws}/lakehouses/{artifact_id}/tables?maxResults=100",
             )
             _track_optional(trackers["lakehouseTables"], "success")
+        except SLICE_RETRY_ERRORS:
+            raise
         except urllib.error.HTTPError as error:
             artifact["_lakehouseTables"] = []
             code = _safe_error_code(error, optional=True)
@@ -4117,6 +4186,8 @@ def _enrich_artifact(
                     raise ValueError("Power BI pages response was not a list")
                 artifact["_reportPages"] = values
                 _track_optional(trackers["reportPages"], "success")
+            except SLICE_RETRY_ERRORS:
+                raise
             except urllib.error.HTTPError as error:
                 code = _safe_error_code(error, optional=True)
                 if code == "endpoint-unsupported":
@@ -4147,45 +4218,55 @@ def _enrich_artifact(
                 errors.append(f"reportPages: {code}")
 
     if artifact_type in DEFINITION_PATHS and artifact_id:
-        try:
-            definition = _get_definition(
-                token,
-                ws,
-                artifact_type,
-                artifact_id,
+        if not _strict_text(definition_token):
+            artifact["_definitionStatus"] = "token-unavailable"
+            _track_optional(
+                trackers["definitions"],
+                "unsupported",
+                "token-unavailable",
             )
-            _project_definition(artifact, definition)
-            code = (
-                "forward-compatible-parts-skipped"
-                if artifact.get("_definitionUnknownParts")
-                else (
-                    "artifact-metadata-truncated"
-                    if artifact.get("_artifactMetadataTruncated")
+        else:
+            try:
+                definition = _get_definition(
+                    definition_token,
+                    ws,
+                    artifact_type,
+                    artifact_id,
+                )
+                _project_definition(artifact, definition)
+                code = (
+                    "forward-compatible-parts-skipped"
+                    if artifact.get("_definitionUnknownParts")
                     else (
-                        "projection-truncated"
-                        if artifact.get("_definitionTruncated")
-                        else None
+                        "artifact-metadata-truncated"
+                        if artifact.get("_artifactMetadataTruncated")
+                        else (
+                            "projection-truncated"
+                            if artifact.get("_definitionTruncated")
+                            else None
+                        )
                     )
                 )
-            )
-            artifact["_definitionStatus"] = code or "complete"
-            _track_optional(trackers["definitions"], "success", code)
-        except Exception as error:
-            code = _definition_error_code(error)
-            artifact["_definitionStatus"] = code
-            if code in (
-                "endpoint-unsupported",
-                "read-write-permission-required",
-                "encrypted-label-blocked",
-            ):
-                _track_optional(
-                    trackers["definitions"],
-                    "unsupported",
-                    code,
-                )
-            else:
-                _track_optional(trackers["definitions"], "failed", code)
-                errors.append(f"definitions:{artifact_id}: {code}")
+                artifact["_definitionStatus"] = code or "complete"
+                _track_optional(trackers["definitions"], "success", code)
+            except SLICE_RETRY_ERRORS:
+                raise
+            except Exception as error:
+                code = _definition_error_code(error)
+                artifact["_definitionStatus"] = code
+                if code in (
+                    "endpoint-unsupported",
+                    "read-write-permission-required",
+                    "encrypted-label-blocked",
+                ):
+                    _track_optional(
+                        trackers["definitions"],
+                        "unsupported",
+                        code,
+                    )
+                else:
+                    _track_optional(trackers["definitions"], "failed", code)
+                    errors.append(f"definitions:{artifact_id}: {code}")
 
     if artifact_type == "KQLDatabase" and artifact_id:
         if not _strict_text(kusto_token):
@@ -4200,6 +4281,8 @@ def _enrich_artifact(
                 _collect_kql_schema(kusto_token, artifact)
                 artifact["_kqlSchemaStatus"] = "complete"
                 _track_optional(trackers["kqlSchema"], "success")
+            except SLICE_RETRY_ERRORS:
+                raise
             except Exception as error:
                 code = _safe_error_code(error, optional=True)
                 artifact["_kqlSchemaStatus"] = code
@@ -4229,6 +4312,8 @@ def _enrich_artifact(
                     "unsupported",
                     "token-unavailable",
                 )
+        except SLICE_RETRY_ERRORS:
+            raise
         except Exception as error:
             code = _safe_error_code(error, optional=True)
             artifact["_sqlSchemaStatus"] = code
@@ -4523,6 +4608,11 @@ def _storage_endpoint_ids(
                     f"{FABRIC}/workspaces/{ws}/lakehouses/{storage_id}",
                 )
                 ids.update(_metadata_endpoint_ids(detail))
+            except SLICE_RETRY_ERRORS:
+                raise
+            except urllib.error.HTTPError as error:
+                if error.code not in (400, 403, 404):
+                    raise
             except (TypeError, ValueError):
                 pass
     return ids
@@ -5190,8 +5280,8 @@ def _parse_sync_item_ids(value):
     item_ids = []
     seen = set()
     for value in parsed:
-        item_id = _normalized_id(value)
-        if not item_id or item_id in seen:
+        item_id = _item_id(value)
+        if item_id in seen:
             raise ValueError("sync item identifiers were invalid")
         seen.add(item_id)
         item_ids.append(item_id)
@@ -5225,19 +5315,24 @@ def sync_items(
     fabricToken: str,
     workspaceId: str,
     itemIds: str,
+    correlationId: str = "",
+    definitionToken: str = "",
     kustoToken: str = "",
     sqlToken: str = "",
     storageToken: str = "",
 ) -> dict:
     """Return resumable deep metadata for a validated workspace item batch."""
     ws = _workspace_id(workspaceId)
+    correlation_id = _item_id(correlationId) if correlationId else None
     requested_item_ids = _parse_sync_item_ids(itemIds)
     out = {
         "schemaVersion": 2,
         "syncMode": "enrichment",
+        "correlationId": correlation_id,
         "requestedItemIds": requested_item_ids,
         "completedItemIds": [],
         "remainingItemIds": [],
+        "itemFailures": {},
         "schema": {},
         "config": [],
         "jobs": [],
@@ -5298,6 +5393,7 @@ def sync_items(
                     artifact,
                     item_trackers,
                     item_errors,
+                    definition_token=definitionToken,
                     kusto_token=kustoToken,
                     sql_token=sqlToken,
                 )
@@ -5321,9 +5417,15 @@ def sync_items(
                     item_schema,
                 )
                 deadline.checkpoint()
-            except DeadlineExceeded:
+            except SLICE_RETRY_ERRORS:
                 out["remainingItemIds"] = requested_item_ids[index:]
                 break
+            except Exception as error:
+                code = _safe_error_code(error, optional=True)
+                item_schema = []
+                item_config = []
+                item_errors.append(f"enrichment:{item_id}: {code}")
+                out["itemFailures"][item_id] = code
 
             safe_jobs = []
             try:
@@ -5351,7 +5453,7 @@ def sync_items(
                     _track_optional(item_trackers["jobs"], "failed", code)
                     item_errors.append(f"jobs:{item_id}: {code}")
             except Exception as error:
-                if isinstance(error, DeadlineExceeded):
+                if isinstance(error, SLICE_RETRY_ERRORS):
                     out["remainingItemIds"] = requested_item_ids[index:]
                     break
                 code = _safe_error_code(error, optional=True)
@@ -5401,6 +5503,8 @@ def sync_items(
 def sync_all(
     fabricToken: str,
     workspaceId: str,
+    correlationId: str = "",
+    definitionToken: str = "",
     kustoToken: str = "",
     sqlToken: str = "",
     storageToken: str = "",
@@ -5408,6 +5512,7 @@ def sync_all(
 ) -> dict:
     """Return the v2 metadata-only Fabric Atlas synchronization envelope."""
     ws = _workspace_id(workspaceId)
+    correlation_id = _item_id(correlationId) if correlationId else None
     defer_enrichment = str(deferEnrichment).strip().casefold() in (
         "1",
         "true",
@@ -5415,6 +5520,7 @@ def sync_all(
     )
     out = {
         "schemaVersion": 2,
+        "correlationId": correlation_id,
         "syncMode": "base" if defer_enrichment else "complete",
         "workspace": None,
         "items": [],
@@ -5580,6 +5686,7 @@ def sync_all(
 
         if out["sections"].get("scanner", {}).get("status") == "complete":
             access_failed = False
+            access_failure_code = None
             for artifact in artifacts:
                 artifact_id = _artifact_id(artifact)
                 if artifact_id not in workspace_item_ids:
@@ -5592,6 +5699,7 @@ def sync_all(
                             artifact,
                             trackers,
                             out["errors"],
+                            definition_token=definitionToken,
                             kusto_token=kustoToken,
                             sql_token=sqlToken,
                         )
@@ -5599,6 +5707,15 @@ def sync_all(
                         artifact,
                         artifact_id in scanner_by_id,
                     )
+                    if (
+                        artifact_id in scanner_by_id
+                        and "users" not in artifact
+                    ):
+                        access_failed = True
+                        access_failure_code = (
+                            "scanner-user-information-unavailable"
+                        )
+                        continue
                     users = artifact.get("users") or []
                     if not isinstance(users, list):
                         raise ValueError(
@@ -5657,9 +5774,13 @@ def sync_all(
                 except Exception as error:
                     access_failed = True
                     code = _safe_error_code(error)
+                    access_failure_code = access_failure_code or code
                     out["errors"].append(f"access: {code}")
             if access_failed:
-                _set_section(out, "access", "failed", "invalid-response")
+                code = access_failure_code or "invalid-response"
+                _set_section(out, "access", "failed", code)
+                if code == "scanner-user-information-unavailable":
+                    out["errors"].append(f"access: {code}")
             else:
                 _set_section(out, "access", "complete")
             out["artifactMetadata"] = {

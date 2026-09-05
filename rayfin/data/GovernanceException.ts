@@ -1,5 +1,5 @@
 import { authenticated, date, entity, text, uuid } from '@microsoft/rayfin-core';
-import { SYNC_WRITER_EMAIL } from './sync-policy.js';
+import { SYNC_WRITER_SUBJECT } from './sync-policy.js';
 
 @entity()
 @authenticated('read')
@@ -8,14 +8,14 @@ import { SYNC_WRITER_EMAIL } from './sync-policy.js';
     claims.email
       .eq(item.authorEmail)
       .and(claims.sub.eq(item.authorId))
-      .and(claims.email.eq(SYNC_WRITER_EMAIL)),
+      .and(claims.sub.eq(SYNC_WRITER_SUBJECT)),
 })
 @authenticated('update', {
   policy: (claims, item) =>
     claims.email
       .eq(item.authorEmail)
       .and(claims.sub.eq(item.authorId))
-      .and(claims.email.eq(SYNC_WRITER_EMAIL)),
+      .and(claims.sub.eq(SYNC_WRITER_SUBJECT)),
   include: [
     'reason',
     'expiresAt',
@@ -26,7 +26,7 @@ import { SYNC_WRITER_EMAIL } from './sync-policy.js';
   ],
 })
 @authenticated('delete', {
-  policy: (claims) => claims.email.eq(SYNC_WRITER_EMAIL),
+  policy: (claims) => claims.sub.eq(SYNC_WRITER_SUBJECT),
 })
 export class GovernanceException {
   @uuid() id!: string;

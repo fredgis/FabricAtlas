@@ -6,12 +6,12 @@ import {
   ExternalLink,
   FolderTree,
   Moon,
-  RefreshCw,
   Settings2,
   ShieldCheck,
   Sparkles,
   Sun,
   Waypoints,
+  X,
 } from "lucide-react";
 import { useThemeContext } from "@/hooks/theme.context";
 import { ATLAS_CONFIG } from "../config";
@@ -74,6 +74,7 @@ export function FirstSyncView() {
     configured,
     canSync,
     sync,
+    cancelSync,
     syncing,
     syncError,
     syncProgress,
@@ -256,17 +257,20 @@ export function FirstSyncView() {
 
                 <button
                   type="button"
-                  onClick={() => void sync()}
-                  disabled={syncing || !configured || !canSync}
+                  onClick={() => {
+                    if (syncing) cancelSync();
+                    else void sync();
+                  }}
+                  disabled={!syncing && (!configured || !canSync)}
                   className="mt-l flex h-10 w-full items-center justify-center gap-s rounded-md bg-primary px-l text-300 font-semibold text-primary-foreground shadow-fabric-2 transition-colors hover:bg-primary-hover disabled:opacity-55"
                 >
                   {syncing ? (
-                    <RefreshCw className="icon-size-200 animate-spin" />
+                    <X className="icon-size-200" />
                   ) : (
                     <Waypoints className="icon-size-200" />
                   )}
                   {syncing
-                    ? "Synchronizing workspace"
+                    ? "Cancel synchronization"
                     : deploymentRefresh
                       ? "Sync this deployment"
                       : "Start first sync"}
