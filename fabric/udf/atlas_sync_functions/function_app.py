@@ -937,6 +937,17 @@ def _collect_atlas_object_edges(schema_by_item, extra_edges=None):
     edges = []
     seen = set()
     truncated = False
+    containment_parent_types = {
+        "KQL table",
+        "KQL external table",
+        "KQL materialized view",
+        "KQL function",
+        "Ontology entity",
+        "Graph node",
+        "Graph edge",
+        "Data Agent source",
+        "Data Agent selected element",
+    }
 
     def add(source, target, relation):
         nonlocal truncated
@@ -977,7 +988,13 @@ def _collect_atlas_object_edges(schema_by_item, extra_edges=None):
     for object_id, value in values_by_id.items():
         current = references[object_id]
         parent_id = _strict_text(value.get("parentObjectId"))
-        if parent_id:
+        parent_value = values_by_id.get(parent_id)
+        if (
+            parent_id
+            and isinstance(parent_value, dict)
+            and parent_value.get("objectType")
+            in containment_parent_types
+        ):
             add(
                 reference_for(parent_id),
                 current,
@@ -1537,11 +1554,9 @@ def _get_definition(token, ws, artifact_type, artifact_id):
     if not operation_id:
         raise DefinitionError("definition operation omitted its identifier")
     operation_id = _workspace_id(operation_id)
-    state_url = (
-        _fabric_url(location)
-        if location
-        else f"{FABRIC}/operations/{operation_id}"
-    )
+    # Ontology-family LROs can return an analysis.windows.net Location.
+    # Poll the canonical Fabric operations endpoint with the Fabric token.
+    state_url = f"{FABRIC}/operations/{operation_id}"
     deadline = _ACTIVE_DEADLINE.get() or _ExecutionDeadline()
     retry_after = _retry_after_seconds(headers) or 1
     for _ in range(30):
@@ -1554,26 +1569,15 @@ def _get_definition(token, ws, artifact_type, artifact_id):
             raise DefinitionError("definition operation state was invalid")
         operation_status = _strict_text(state.get("status"))
         if operation_status == "Succeeded":
-            result_location = _strict_text(
-                _header_value(state_headers, "Location")
+            return _get(
+                token,
+                f"{FABRIC}/operations/{operation_id}/result",
             )
-            result_url = (
-                _fabric_url(result_location)
-                if result_location
-                and result_location.rstrip("/").endswith("/result")
-                else f"{FABRIC}/operations/{operation_id}/result"
-            )
-            return _get(token, result_url)
         if operation_status == "Failed":
             raise DefinitionError("definition operation failed")
         if operation_status not in ("NotStarted", "Running"):
             raise DefinitionError("definition operation status was invalid")
         retry_after = _retry_after_seconds(state_headers) or 1
-        next_location = _strict_text(
-            _header_value(state_headers, "Location")
-        )
-        if next_location and not next_location.rstrip("/").endswith("/result"):
-            state_url = _fabric_url(next_location)
     raise DeadlineExceeded("definition operation did not complete")
 
 

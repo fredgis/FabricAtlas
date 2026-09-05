@@ -396,11 +396,11 @@ class LakehouseSchemaTests(unittest.TestCase):
         item_id = "11111111-1111-4111-8111-111111111111"
         schema = function_app._finalize_schema_object_ids(
             item_id,
-            "SQLDatabase",
+            "KQLDatabase",
             [
                 {
-                    "name": "dbo.Customers",
-                    "objectType": "SQL table",
+                    "name": "Events",
+                    "objectType": "KQL table",
                     "columns": [
                         {"name": f"Column{index}", "dataType": "nvarchar"}
                         for index in range(4)
@@ -2214,7 +2214,10 @@ class DefinitionMetadataTests(unittest.TestCase):
                     (
                         202,
                         {
-                            "Location": f"{function_app.FABRIC}/operations/{operation_id}",
+                            "Location": (
+                                "https://region.analysis.windows.net/"
+                                f"operations/{operation_id}"
+                            ),
                             "x-ms-operation-id": operation_id,
                             "Retry-After": "1",
                         },
@@ -2224,14 +2227,14 @@ class DefinitionMetadataTests(unittest.TestCase):
                         200,
                         {
                             "Location": (
-                                f"{function_app.FABRIC}/operations/"
+                                "https://region.analysis.windows.net/operations/"
                                 f"{operation_id}/result"
                             )
                         },
                         {"status": "Succeeded"},
                     ),
                 ],
-            ),
+            ) as request,
             mock.patch.object(
                 function_app,
                 "_get",
@@ -2247,6 +2250,10 @@ class DefinitionMetadataTests(unittest.TestCase):
             )
 
         self.assertEqual(result, response)
+        self.assertEqual(
+            request.call_args_list[1].args[1],
+            f"{function_app.FABRIC}/operations/{operation_id}",
+        )
         get.assert_called_once_with(
             "token",
             f"{function_app.FABRIC}/operations/{operation_id}/result",
