@@ -4,6 +4,18 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.2] - 2026-09-05
+
+### Changed
+
+- Replaced the README guided deployment, workspace overview, interactive lineage, object lineage and Asset Catalog screenshots with the current Fabric deployment.
+- Added Expand all and Collapse all controls to the deep-lineage table inspector.
+
+### Fixed
+
+- Selecting an object node owned by another Fabric item now switches the active item, clears stale object filters and rebuilds object lineage for the new item.
+- Item changes now reset stale object selection and drag state consistently across Map navigation paths.
+
 ## [1.11.1] - 2026-09-05
 
 ### Changed
