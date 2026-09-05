@@ -303,15 +303,23 @@ flowchart LR
   U["Fabric user"]
   APP["Fabric Atlas<br/>React + Rayfin"]
   AUTH["Brokered authentication"]
-  UDF["User Data Function<br/>sync_all"]
+  BASE["Base UDF slice<br/>sync_all · max 180 s"]
+  PLAN["Type-grouped item queue"]
+  ITEMS["Enrichment UDF slices<br/>sync_items · max 180 s each"]
+  MERGE["Validate and merge<br/>complete workspace result"]
   API["Fabric and Power BI APIs"]
-  DB[("Rayfin database<br/>Fabric SQL")]
+  DB[("Atomic Rayfin snapshot<br/>manifest written last")]
 
   U -->|"open in Fabric"| APP
   APP <-->|"brokered session"| AUTH
-  APP <-->|"delegated sync"| UDF
-  UDF <-->|"workspace metadata"| API
-  APP <-->|"validated snapshots"| DB
+  APP -->|"authoritative topology"| BASE
+  BASE <-->|"workspace metadata"| API
+  BASE -->|"items to enrich"| PLAN
+  PLAN -->|"next item type and batch"| ITEMS
+  ITEMS <-->|"KQL, SQL and definition metadata"| API
+  ITEMS -->|"completed IDs + remaining IDs"| PLAN
+  PLAN -->|"all items complete"| MERGE
+  MERGE -->|"validated snapshot"| DB
 
   classDef user fill:#742774,stroke:#a66dd4,color:#ffffff,stroke-width:2px;
   classDef app fill:#1677c8,stroke:#6fc7ff,color:#ffffff,stroke-width:2px;
@@ -321,12 +329,29 @@ flowchart LR
   classDef database fill:#9a6b00,stroke:#f2c94c,color:#ffffff,stroke-width:2px;
 
   class U user;
-  class APP app;
+  class APP,PLAN,MERGE app;
   class AUTH auth;
-  class UDF udf;
+  class BASE,ITEMS udf;
   class API api;
   class DB database;
 ```
+
+### How Atlas stays below the UDF timeout
+
+Microsoft Fabric limits one User Data Function invocation to 200 seconds. Atlas
+uses a 180-second budget for each invocation, leaving 20 seconds for projection,
+serialization and the platform response.
+
+The 180-second limit does not apply to the complete synchronization. Atlas first
+runs `sync_all` for the authoritative workspace topology, then invokes
+`sync_items` repeatedly for item batches grouped by Fabric type. Before a slice
+runs out of time, it returns both `completedItemIds` and `remainingItemIds`. The
+browser keeps the completed results and starts a fresh slice for the remaining
+items. Slow batches are split, and a slow individual item is retried alone.
+
+Only after every slice is complete does Atlas validate the merged result and
+write the Rayfin manifest. A complete synchronization can therefore run for
+several minutes without any individual UDF invocation exceeding 180 seconds.
 
 The browser cannot call Fabric management APIs directly. A published User Data
 Function performs the metadata scan server-side with the signed-in user's
