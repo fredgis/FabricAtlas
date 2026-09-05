@@ -264,7 +264,10 @@ Object mode expands a synchronized table into its columns and connected Fabric
 items. The inspector keeps ownership, impact and related metadata visible while
 objects are selected or rearranged. Selecting an object from another Fabric item
 switches the active item and rebuilds the object graph. Deep-lineage tables can
-be expanded or collapsed together.
+be expanded or collapsed together. Connected Fabric items are grouped into
+collapsible summary nodes, while Impact mode preserves the graph layout and only
+changes the highlighted dependency paths. Hold the left mouse button on the
+canvas background and drag to pan the complete graph.
 
 ![Fabric Atlas object lineage](docs/screenshots/object-lineage-v1111.png)
 
@@ -280,21 +283,21 @@ asset exposes its source, model context and additive effective access.
 Governance Radar, findings, snapshot changes, history, coverage and posture are
 grouped into one governance workspace with saved views and evidence links.
 
-![Fabric Atlas Governance Center](docs/screenshots/governance-center-v191.png)
+![Fabric Atlas Governance Center](docs/screenshots/governance-center-v1113.png)
 
 ### Access Review
 
 The review matrix combines inherited and direct permissions, then supports
 focused filtering, personal decisions and CSV export.
 
-![Fabric Atlas Access Review](docs/screenshots/access-review-v191.png)
+![Fabric Atlas Access Review](docs/screenshots/access-review-v1113.png)
 
 ### Impact reports
 
 An item or schema object can produce an exportable report with verified
 upstream, downstream and relationship evidence.
 
-![Fabric Atlas impact report](docs/screenshots/impact-report-v191.png)
+![Fabric Atlas impact report](docs/screenshots/impact-report-v1113.png)
 
 ## How it works
 
