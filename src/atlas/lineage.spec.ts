@@ -286,9 +286,16 @@ describe("staged layout", () => {
     expect(itemStage("DataPipeline")).toBe(0);
     expect(itemStage("Notebook")).toBe(1);
     expect(itemStage("Lakehouse")).toBe(2);
+    expect(itemStage("Eventhouse")).toBe(2);
     expect(itemStage("SQLEndpoint")).toBe(3);
+    expect(itemStage("KQLDatabase")).toBe(3);
     expect(itemStage("SemanticModel")).toBe(4);
+    expect(itemStage("Ontology")).toBe(4);
+    expect(itemStage("GraphModel")).toBe(4);
     expect(itemStage("Report")).toBe(5);
+    expect(itemStage("DataAgent")).toBe(5);
+    expect(itemStage("KQLQueryset")).toBe(5);
+    expect(itemStage("KQLDashboard")).toBe(5);
   });
 
   it("positions later lifecycle stages farther right", () => {
@@ -422,5 +429,92 @@ describe("normalizeLineageEdges", () => {
         broken: undefined,
       },
     ]);
+  });
+
+  it("orients supported IQ and KQL relations from source to consumer", () => {
+    const items = [
+      item("eventhouse", "Eventhouse"),
+      item("database", "KQLDatabase"),
+      item("lakehouse", "Lakehouse"),
+      item("ontology", "Ontology"),
+      item("graph", "GraphModel"),
+      item("agent-a", "DataAgent"),
+      item("agent-b", "DataAgent"),
+      item("queryset", "KQLQueryset"),
+      item("dashboard", "KQLDashboard"),
+    ];
+
+    expect(
+      normalizeLineageEdges(items, [
+        { source: "database", target: "eventhouse", relation: "contains" },
+        { source: "ontology", target: "lakehouse", relation: "source" },
+        { source: "graph", target: "lakehouse", relation: "source" },
+        { source: "agent-a", target: "ontology", relation: "semantic model" },
+        { source: "agent-b", target: "graph", relation: "source" },
+        { source: "queryset", target: "database", relation: "source" },
+        { source: "dashboard", target: "database", relation: "source" },
+      ]),
+    ).toEqual([
+      {
+        source: "eventhouse",
+        target: "database",
+        relation: "database",
+        broken: undefined,
+      },
+      {
+        source: "lakehouse",
+        target: "ontology",
+        relation: "binds ontology",
+        broken: undefined,
+      },
+      {
+        source: "lakehouse",
+        target: "graph",
+        relation: "maps graph",
+        broken: undefined,
+      },
+      {
+        source: "ontology",
+        target: "agent-a",
+        relation: "grounds",
+        broken: undefined,
+      },
+      {
+        source: "graph",
+        target: "agent-b",
+        relation: "grounds",
+        broken: undefined,
+      },
+      {
+        source: "database",
+        target: "queryset",
+        relation: "queries",
+        broken: undefined,
+      },
+      {
+        source: "database",
+        target: "dashboard",
+        relation: "visualizes",
+        broken: undefined,
+      },
+    ]);
+  });
+
+  it("keeps normalized IQ and KQL relations stable without adding edges", () => {
+    const items = [
+      item("lakehouse", "Lakehouse"),
+      item("ontology", "Ontology"),
+      item("agent", "DataAgent"),
+      item("unrelated", "Report"),
+    ];
+    const input = [
+      { source: "agent", target: "ontology", relation: "uses" },
+      { source: "ontology", target: "lakehouse", relation: "source" },
+    ];
+    const once = normalizeLineageEdges(items, input);
+
+    expect(normalizeLineageEdges(items, once)).toEqual(once);
+    expect(once).toHaveLength(input.length);
+    expect(once.some((edge) => edge.source === "unrelated")).toBe(false);
   });
 });

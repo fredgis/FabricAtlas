@@ -2,19 +2,36 @@ import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Boxes,
+  Bot,
+  Braces,
   ChevronDown,
   ChevronRight,
   Columns3,
   FileDown,
   FilterX,
+  Link2,
+  Network,
   Search,
   ShieldCheck,
   Sigma,
   Table2,
   Users,
+  Waypoints,
   X,
 } from "lucide-react";
 import { ImpactReportDialog } from "../components/ImpactReportDialog";
+import { MetadataObjectImpactDialog } from "../components/MetadataObjectImpactDialog";
+import {
+  ASSET_OBJECT_KINDS,
+  assetObjectKindLabel,
+  buildCatalogObjects,
+  isAssetObjectKind,
+  isMetadataAssetKind,
+  metadataObjectImpact,
+  metadataObjectKindLabel,
+  type AssetObjectKind,
+  type CatalogObject,
+} from "../catalog-objects";
 import {
   buildAccessReviewRows,
   selectAccessByItem,
@@ -29,28 +46,13 @@ import {
 import { useAtlas } from "../store";
 import { PrincipalAvatar, SectionLabel, TypeGlyph, cn } from "../ui";
 import {
-  schemaFor,
   typeMeta,
   type AccessLevel,
   type ItemType,
 } from "../model";
 
-type AssetKind = "table" | "column" | "measure" | "view";
-
-interface Asset {
-  id: string;
-  itemFabricId: string;
-  itemName: string;
-  itemType: ItemType;
-  kind: AssetKind;
-  name: string;
-  table?: string;
-  dataType?: string;
-  source?: string;
-  description?: string;
-  isHidden?: boolean;
-  expression?: string;
-}
+type AssetKind = AssetObjectKind;
+type Asset = CatalogObject;
 
 const KIND_META: Record<
   AssetKind,
@@ -86,6 +88,120 @@ const KIND_META: Record<
     tone: "border-object-measure/30 bg-object-measure/10 text-object-measure",
     selectedTone: "border-object-measure/50 bg-object-measure/10",
   },
+  kqlTable: {
+    label: "KQL table",
+    icon: Table2,
+    tone: "border-lineage-downstream/30 bg-lineage-downstream/10 text-lineage-downstream",
+    selectedTone: "border-lineage-downstream/50 bg-lineage-downstream/10",
+  },
+  kqlColumn: {
+    label: "KQL column",
+    icon: Columns3,
+    tone: "border-object-column/30 bg-object-column/10 text-object-column",
+    selectedTone: "border-object-column/50 bg-object-column/10",
+  },
+  kqlFunction: {
+    label: "KQL function",
+    icon: Braces,
+    tone: "border-primary/30 bg-primary/10 text-primary",
+    selectedTone: "border-primary/50 bg-primary/10",
+  },
+  kqlFunctionParameter: {
+    label: "KQL function parameter",
+    icon: Braces,
+    tone: "border-object-column/30 bg-object-column/10 text-object-column",
+    selectedTone: "border-object-column/50 bg-object-column/10",
+  },
+  kqlMaterializedView: {
+    label: "KQL materialized view",
+    icon: Table2,
+    tone: "border-lineage-upstream/30 bg-lineage-upstream/10 text-lineage-upstream",
+    selectedTone: "border-lineage-upstream/50 bg-lineage-upstream/10",
+  },
+  sqlTable: {
+    label: "SQL table",
+    icon: Table2,
+    tone: "border-object-source/30 bg-object-source/10 text-object-source",
+    selectedTone: "border-object-source/50 bg-object-source/10",
+  },
+  sqlView: {
+    label: "SQL view",
+    icon: Table2,
+    tone: "border-lineage-downstream/30 bg-lineage-downstream/10 text-lineage-downstream",
+    selectedTone: "border-lineage-downstream/50 bg-lineage-downstream/10",
+  },
+  sqlColumn: {
+    label: "SQL column",
+    icon: Columns3,
+    tone: "border-object-column/30 bg-object-column/10 text-object-column",
+    selectedTone: "border-object-column/50 bg-object-column/10",
+  },
+  ontologyEntity: {
+    label: "Ontology entity",
+    icon: Network,
+    tone: "border-primary/30 bg-primary/10 text-primary",
+    selectedTone: "border-primary/50 bg-primary/10",
+  },
+  ontologyProperty: {
+    label: "Ontology property",
+    icon: Columns3,
+    tone: "border-object-column/30 bg-object-column/10 text-object-column",
+    selectedTone: "border-object-column/50 bg-object-column/10",
+  },
+  ontologyTimeSeriesProperty: {
+    label: "Ontology time-series property",
+    icon: Columns3,
+    tone: "border-lineage-upstream/30 bg-lineage-upstream/10 text-lineage-upstream",
+    selectedTone: "border-lineage-upstream/50 bg-lineage-upstream/10",
+  },
+  ontologyRelationship: {
+    label: "Ontology relationship",
+    icon: Link2,
+    tone: "border-lineage-downstream/30 bg-lineage-downstream/10 text-lineage-downstream",
+    selectedTone: "border-lineage-downstream/50 bg-lineage-downstream/10",
+  },
+  ontologyContextualization: {
+    label: "Ontology contextualization",
+    icon: Link2,
+    tone: "border-status-warning/30 bg-status-warning/10 text-status-warning",
+    selectedTone: "border-status-warning/50 bg-status-warning/10",
+  },
+  graphNode: {
+    label: "Graph node type",
+    icon: Waypoints,
+    tone: "border-primary/30 bg-primary/10 text-primary",
+    selectedTone: "border-primary/50 bg-primary/10",
+  },
+  graphEdge: {
+    label: "Graph edge type",
+    icon: Link2,
+    tone: "border-lineage-downstream/30 bg-lineage-downstream/10 text-lineage-downstream",
+    selectedTone: "border-lineage-downstream/50 bg-lineage-downstream/10",
+  },
+  graphProperty: {
+    label: "Graph property",
+    icon: Columns3,
+    tone: "border-object-column/30 bg-object-column/10 text-object-column",
+    selectedTone: "border-object-column/50 bg-object-column/10",
+  },
+  graphSourceMapping: {
+    label: "Graph source mapping",
+    icon: Link2,
+    tone: "border-object-source/30 bg-object-source/10 text-object-source",
+    selectedTone: "border-object-source/50 bg-object-source/10",
+  },
+  dataAgentSource: {
+    label: "Data Agent source",
+    icon: Bot,
+    tone: "border-primary/30 bg-primary/10 text-primary",
+    selectedTone: "border-primary/50 bg-primary/10",
+  },
+  dataAgentElement: {
+    label: "Data Agent selected source element",
+    icon: Boxes,
+    tone: "border-object-source/30 bg-object-source/10 text-object-source",
+    selectedTone: "border-object-source/50 bg-object-source/10",
+  },
 };
 
 const SCHEMA_CATALOG_ITEM_TYPES = new Set<ItemType>([
@@ -98,6 +214,9 @@ const SCHEMA_CATALOG_ITEM_TYPES = new Set<ItemType>([
   "SemanticModel",
   "Datamart",
   "MirroredDatabase",
+  "Ontology",
+  "GraphModel",
+  "DataAgent",
 ]);
 
 const ACCESS_META: Record<
@@ -177,6 +296,33 @@ function safeGroupId(value: string) {
   return `asset-group-${value.replace(/[^a-zA-Z0-9_-]+/g, "-")}`;
 }
 
+function matchesAsset(
+  asset: Asset,
+  itemById: ReadonlyMap<string, { displayName: string; itemType: ItemType }>,
+  query: string,
+  kind: AssetKind | "all",
+): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  const item = itemById.get(asset.itemFabricId);
+  const itemMatches =
+    item?.displayName.toLowerCase().includes(normalizedQuery) ||
+    typeMeta(item?.itemType ?? asset.itemType)
+      .label.toLowerCase()
+      .includes(normalizedQuery);
+  return (
+    (kind === "all" || asset.kind === kind) &&
+    (!normalizedQuery ||
+      itemMatches ||
+      asset.name.toLowerCase().includes(normalizedQuery) ||
+      asset.itemName.toLowerCase().includes(normalizedQuery) ||
+      (asset.tableName ?? "").toLowerCase().includes(normalizedQuery) ||
+      (asset.parentName ?? "").toLowerCase().includes(normalizedQuery) ||
+      (asset.source ?? "").toLowerCase().includes(normalizedQuery) ||
+      (asset.sourceItemName ?? "").toLowerCase().includes(normalizedQuery) ||
+      (asset.description ?? "").toLowerCase().includes(normalizedQuery))
+  );
+}
+
 export function AssetCatalogView({
   focus,
   onStateChange,
@@ -185,7 +331,7 @@ export function AssetCatalogView({
   onStateChange?: (navigation: AtlasNavigation) => void;
 } = {}) {
   const { data } = useAtlas();
-  const { items, config, principals } = data;
+  const { items, principals } = data;
 
   const itemById = useMemo(
     () => new Map(items.map((item) => [item.fabricId, item])),
@@ -199,95 +345,29 @@ export function AssetCatalogView({
     [principals],
   );
 
-  const assets = useMemo<Asset[]>(() => {
-    const output: Asset[] = [];
-    const seen = new Set<string>();
-    const push = (asset: Asset) => {
-      if (!seen.has(asset.id)) {
-        seen.add(asset.id);
-        output.push(asset);
-      }
-    };
-    for (const item of items) {
-      const schema = schemaFor(data, item.fabricId);
-      if (schema) {
-        for (const table of schema) {
-          const tableKind: AssetKind = table.objectType
-            ?.toLowerCase()
-            .includes("view")
-            ? "view"
-            : "table";
-          push({
-            id: `${item.fabricId}::t::${table.name}`,
-            itemFabricId: item.fabricId,
-            itemName: item.displayName,
-            itemType: item.itemType,
-            kind: tableKind,
-            name: table.name,
-            dataType: table.objectType,
-            source: table.source,
-            description: table.description,
-            isHidden: table.isHidden,
-          });
-          for (const column of table.columns) {
-            push({
-              id: `${item.fabricId}::c::${table.name}::${column.name}`,
-              itemFabricId: item.fabricId,
-              itemName: item.displayName,
-              itemType: item.itemType,
-              kind: "column",
-              name: column.name,
-              table: table.name,
-              dataType: column.dataType,
-              description: column.description,
-              isHidden: column.isHidden,
-            });
-          }
-          for (const measure of table.measures) {
-            push({
-              id: `${item.fabricId}::m::${table.name}::${measure.name}`,
-              itemFabricId: item.fabricId,
-              itemName: item.displayName,
-              itemType: item.itemType,
-              kind: "measure",
-              name: measure.name,
-              table: table.name,
-              description: measure.description,
-              isHidden: measure.isHidden,
-              expression: measure.expr,
-            });
-          }
-        }
-      }
-      for (const entry of config.filter(
-        (candidate) =>
-          candidate.itemFabricId === item.fabricId &&
-          candidate.section === "Tables",
-      )) {
-        push({
-          id: `${item.fabricId}::t::${entry.label}`,
-          itemFabricId: item.fabricId,
-          itemName: item.displayName,
-          itemType: item.itemType,
-          kind: "table",
-          name: entry.label,
-        });
-      }
-    }
-    return output;
-  }, [data, items, config]);
-
-  const initialFocusedAsset = assets.find(
-    (asset) =>
-      (!focus?.itemId || asset.itemFabricId === focus.itemId) &&
-      (!focus?.objectName || asset.name === focus.objectName) &&
-      (!focus?.tableName || asset.table === focus.tableName) &&
-      (!focus?.objectKind || asset.kind === focus.objectKind),
+  const assets = useMemo<Asset[]>(
+    () => buildCatalogObjects(data, { includeConfigTables: true }),
+    [data],
   );
+
+  const initialFocusedAsset =
+    focus?.objectId || focus?.objectName
+      ? assets.find(
+          (asset) =>
+            (!focus.itemId || asset.itemFabricId === focus.itemId) &&
+            (!focus.objectId || asset.objectId === focus.objectId) &&
+            (!focus.objectName || asset.name === focus.objectName) &&
+            (!focus.tableName ||
+              asset.tableName === focus.tableName ||
+              asset.parentName === focus.tableName) &&
+            (!focus.objectKind || asset.kind === focus.objectKind),
+        )
+      : undefined;
   const [query, setQuery] = useState(focus?.query ?? "");
   const [kind, setKind] = useState<AssetKind | "all">(
-    typeof focus?.filters?.kind === "string"
-      ? (focus.filters.kind as AssetKind)
+    typeof focus?.filters?.kind === "string" &&
+      isAssetObjectKind(focus.filters.kind)
+      ? focus.filters.kind
       : "all",
   );
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
@@ -298,27 +378,7 @@ export function AssetCatalogView({
   );
 
   const filtered = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    return assets.filter(
-      (asset) => {
-        const item = itemById.get(asset.itemFabricId);
-        const itemMatches =
-          item?.displayName.toLowerCase().includes(normalizedQuery) ||
-          typeMeta(item?.itemType ?? asset.itemType)
-            .label.toLowerCase()
-            .includes(normalizedQuery);
-        return (
-          (kind === "all" || asset.kind === kind) &&
-          (!normalizedQuery ||
-            itemMatches ||
-            asset.name.toLowerCase().includes(normalizedQuery) ||
-            asset.itemName.toLowerCase().includes(normalizedQuery) ||
-            (asset.table ?? "").toLowerCase().includes(normalizedQuery) ||
-            (asset.source ?? "").toLowerCase().includes(normalizedQuery) ||
-            (asset.description ?? "").toLowerCase().includes(normalizedQuery))
-        );
-      },
-    );
+    return assets.filter((asset) => matchesAsset(asset, itemById, query, kind));
   }, [assets, itemById, query, kind]);
 
   const inventoryItems = useMemo(() => {
@@ -372,8 +432,9 @@ export function AssetCatalogView({
       focus: {
         requestId: "assets-view-state",
         itemId: selectedAsset?.itemFabricId,
-        tableName: selectedAsset?.table,
+        tableName: selectedAsset?.tableName ?? selectedAsset?.parentName,
         objectName: selectedAsset?.name,
+        objectId: selectedAsset?.objectId,
         objectKind: selectedAsset?.kind,
         query: query.trim() || undefined,
         filters: kind === "all" ? undefined : { kind },
@@ -406,13 +467,13 @@ export function AssetCatalogView({
     );
   }, [accessRows, selectedAsset]);
 
-  const counts = {
-    all: assets.length,
-    table: assets.filter((asset) => asset.kind === "table").length,
-    view: assets.filter((asset) => asset.kind === "view").length,
-    column: assets.filter((asset) => asset.kind === "column").length,
-    measure: assets.filter((asset) => asset.kind === "measure").length,
-  };
+  const counts = Object.fromEntries([
+    ["all", assets.length],
+    ...ASSET_OBJECT_KINDS.map((assetKind) => [
+      assetKind,
+      assets.filter((asset) => asset.kind === assetKind).length,
+    ]),
+  ]) as Record<AssetKind | "all", number>;
   const kinds: { key: AssetKind | "all"; label: string; count: number }[] = [
     { key: "all", label: "All", count: counts.all },
     { key: "table", label: "Tables", count: counts.table },
@@ -420,17 +481,24 @@ export function AssetCatalogView({
     { key: "column", label: "Columns", count: counts.column },
     { key: "measure", label: "Measures / KPIs", count: counts.measure },
   ];
+  const additionalKinds = ASSET_OBJECT_KINDS.filter(
+    (assetKind) =>
+      !["table", "view", "column", "measure"].includes(assetKind) &&
+      counts[assetKind] > 0,
+  );
 
   const selectedItem = selectedAsset
     ? itemById.get(selectedAsset.itemFabricId)
     : undefined;
   const selectedObject = selectedAsset
-    ? ({
+    ? (["table", "view", "column", "measure"].includes(selectedAsset.kind)
+      ? ({
         itemId: selectedAsset.itemFabricId,
-        kind: selectedAsset.kind,
+        kind: selectedAsset.kind as SchemaObjectRef["kind"],
         name: selectedAsset.name,
-        tableName: selectedAsset.table,
+        tableName: selectedAsset.tableName,
       } satisfies SchemaObjectRef)
+      : undefined)
     : undefined;
   const selectedDependencies = selectedObject
     ? {
@@ -443,11 +511,32 @@ export function AssetCatalogView({
           [],
       }
     : { upstream: [], downstream: [] };
+  const selectedMetadataImpact = selectedAsset?.metadataRef
+    ? metadataObjectImpact(data.objectEdges, selectedAsset.metadataRef)
+    : undefined;
   const hasActiveFilters = Boolean(query.trim() || kind !== "all");
 
   const resetFilters = () => {
     setQuery("");
     setKind("all");
+  };
+  const changeQuery = (nextQuery: string) => {
+    setQuery(nextQuery);
+    if (
+      requestedAsset &&
+      !matchesAsset(requestedAsset, itemById, nextQuery, kind)
+    ) {
+      setSelId("");
+    }
+  };
+  const changeKind = (nextKind: AssetKind | "all") => {
+    setKind(nextKind);
+    if (
+      requestedAsset &&
+      !matchesAsset(requestedAsset, itemById, query, nextKind)
+    ) {
+      setSelId("");
+    }
   };
 
   return (
@@ -459,7 +548,7 @@ export function AssetCatalogView({
             <div className="mt-xs flex flex-wrap items-baseline gap-s">
               <h1 className="text-600 font-bold leading-600">Asset Catalog</h1>
               <span className="text-300 text-muted-foreground">
-                Tables, columns, measures and effective access
+                Physical, semantic, ontology, graph, KQL and agent objects
               </span>
             </div>
           </div>
@@ -498,14 +587,14 @@ export function AssetCatalogView({
             <input
               id="asset-search"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search asset, table or parent item"
+              onChange={(event) => changeQuery(event.target.value)}
+              placeholder="Search object, source or parent item"
               className="h-9 w-full rounded-lg border border-input bg-card pl-xxxl pr-xxxl text-300 text-foreground placeholder:text-muted-foreground"
             />
             {query && (
               <button
                 type="button"
-                onClick={() => setQuery("")}
+                onClick={() => changeQuery("")}
                 aria-label="Clear asset search"
                 className="absolute right-s top-1/2 -translate-y-1/2 rounded-md p-xs text-muted-foreground hover:bg-accent hover:text-foreground"
               >
@@ -524,7 +613,7 @@ export function AssetCatalogView({
                 type="button"
                 key={key}
                 aria-pressed={kind === key}
-                onClick={() => setKind(key)}
+                onClick={() => changeKind(key)}
                 className={cn(
                   "inline-flex h-9 items-center gap-s rounded-lg border px-m text-[length:var(--text-200)] font-semibold transition-colors",
                   kind === key
@@ -543,6 +632,29 @@ export function AssetCatalogView({
                 </span>
               </button>
             ))}
+            {additionalKinds.length > 0 && (
+              <select
+                aria-label="Filter by discovered object kind"
+                value={
+                  kind !== "all" &&
+                  !["table", "view", "column", "measure"].includes(kind)
+                    ? kind
+                    : ""
+                }
+                onChange={(event) => {
+                  const next = event.target.value;
+                  changeKind(isAssetObjectKind(next) ? next : "all");
+                }}
+                className="h-9 max-w-64 rounded-lg border border-input bg-card px-m text-200 font-semibold text-muted-foreground"
+              >
+                <option value="">More object kinds</option>
+                {additionalKinds.map((assetKind) => (
+                  <option key={assetKind} value={assetKind}>
+                    {assetObjectKindLabel(assetKind)} ({counts[assetKind]})
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           {hasActiveFilters && (
@@ -680,8 +792,8 @@ export function AssetCatalogView({
                                   Item synchronized
                                 </div>
                                 <p className="mt-xs text-200 text-muted-foreground">
-                                  No tables, views, columns or measures were
-                                  exposed for this item in the latest sync.
+                                  No discoverable objects were exposed for this
+                                  item in the latest sync.
                                 </p>
                               </div>
                             </div>
@@ -708,7 +820,9 @@ export function AssetCatalogView({
                                   </span>
                                   <span className="block truncate text-200 text-muted-foreground">
                                     {meta.label}
-                                    {asset.table ? ` · ${asset.table}` : ""}
+                                    {asset.parentName
+                                      ? ` · ${asset.parentName}`
+                                      : ""}
                                   </span>
                                 </span>
                                 {asset.dataType && (
@@ -752,14 +866,16 @@ export function AssetCatalogView({
                         {selectedAsset.name}
                       </h2>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setImpactOpen(true)}
-                      className="inline-flex items-center gap-s rounded-lg border border-border bg-card px-m py-s text-200 font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
-                    >
-                      <FileDown className="icon-size-100" aria-hidden="true" />
-                      Impact
-                    </button>
+                    {(selectedObject || selectedAsset.metadataRef) && (
+                      <button
+                        type="button"
+                        onClick={() => setImpactOpen(true)}
+                        className="inline-flex items-center gap-s rounded-lg border border-border bg-card px-m py-s text-200 font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
+                      >
+                        <FileDown className="icon-size-100" aria-hidden="true" />
+                        Impact
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setSelId("")}
@@ -786,8 +902,8 @@ export function AssetCatalogView({
                       value={selectedAsset.dataType ?? "Not applicable"}
                     />
                     <MetadataCell
-                      label="Parent table"
-                      value={selectedAsset.table ?? "Root object"}
+                      label="Parent object"
+                      value={selectedAsset.parentName ?? "Root object"}
                     />
                     <MetadataCell
                       label="Parent item"
@@ -798,8 +914,24 @@ export function AssetCatalogView({
                       value={selectedAsset.source ?? "Source not recorded"}
                     />
                     <MetadataCell
+                      label="Source item"
+                      value={
+                        selectedAsset.sourceItemName ??
+                        selectedAsset.sourceItemId ??
+                        "Not recorded"
+                      }
+                    />
+                    <MetadataCell
                       label="Visibility"
-                      value={selectedAsset.isHidden == null ? "Not collected" : selectedAsset.isHidden ? "Hidden" : "Visible"}
+                      value={
+                        isMetadataAssetKind(selectedAsset.kind)
+                          ? "Not applicable"
+                          : selectedAsset.isHidden == null
+                            ? "Not collected"
+                            : selectedAsset.isHidden
+                              ? "Hidden"
+                              : "Visible"
+                      }
                     />
                   </div>
 
@@ -887,6 +1019,47 @@ export function AssetCatalogView({
                       ))}
                     </div>
                   )}
+
+                  {selectedMetadataImpact &&
+                    (selectedMetadataImpact.upstream.length > 0 ||
+                      selectedMetadataImpact.downstream.length > 0) && (
+                      <div className="mt-s grid gap-s sm:grid-cols-2">
+                        {[
+                          {
+                            title: "Verified sources",
+                            values: selectedMetadataImpact.upstream,
+                          },
+                          {
+                            title: "Verified consumers",
+                            values: selectedMetadataImpact.downstream,
+                          },
+                        ].map(({ title, values }) => (
+                          <section
+                            key={title}
+                            className="rounded-lg border border-border bg-secondary/55 p-m"
+                          >
+                            <h3 className="text-200 font-semibold">{title}</h3>
+                            <div className="mt-s space-y-xs">
+                              {values.map((object) => (
+                                <div
+                                  key={`${object.itemId}:${object.kind}:${object.id}`}
+                                  className="rounded-md bg-card px-s py-xs"
+                                >
+                                  <div className="truncate text-200 font-medium">
+                                    {object.name}
+                                  </div>
+                                  <div className="truncate text-100 text-muted-foreground">
+                                    {metadataObjectKindLabel(object.kind)} ·{" "}
+                                    {itemById.get(object.itemId)?.displayName ??
+                                      object.itemId}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </section>
+                        ))}
+                      </div>
+                    )}
 
                   <div className="mt-s flex items-center gap-m rounded-lg border border-border bg-secondary px-m py-m">
                     {selectedItem && (
@@ -1006,15 +1179,22 @@ export function AssetCatalogView({
                   Inspect an asset
                 </h2>
                 <p className="mt-xs text-300 text-muted-foreground">
-                  Expand an item group, then select a table, column or measure
-                  to review its context and effective access.
+                  Expand an item group, then select an object to review its
+                  context, provenance and effective access.
                 </p>
               </div>
             </motion.aside>
           )}
         </AnimatePresence>
       </div>
-      {selectedAsset && selectedObject && (
+      {selectedAsset?.metadataRef ? (
+        <MetadataObjectImpactDialog
+          data={data}
+          subject={selectedAsset.metadataRef}
+          open={impactOpen}
+          onClose={() => setImpactOpen(false)}
+        />
+      ) : selectedAsset && selectedObject ? (
         <ImpactReportDialog
           data={data}
           itemId={selectedAsset.itemFabricId}
@@ -1022,7 +1202,7 @@ export function AssetCatalogView({
           open={impactOpen}
           onClose={() => setImpactOpen(false)}
         />
-      )}
+      ) : null}
     </div>
   );
 }

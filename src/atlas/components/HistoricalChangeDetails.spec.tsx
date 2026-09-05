@@ -5,7 +5,11 @@ import {
   snapshotFromData,
   type HistoricalSnapshot,
 } from "../history";
-import { SAMPLE_DATA } from "../model";
+import {
+  metadataObjectLineageEdges,
+  parseOntologyMetadata,
+} from "../item-metadata";
+import { SAMPLE_DATA, type AtlasData } from "../model";
 import { HistoricalChangeDetails } from "./HistoricalChangeDetails";
 
 function snapshots(): {
@@ -125,5 +129,116 @@ describe("HistoricalChangeDetails", () => {
     ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry history" }));
     expect(loadHistorySnapshot).toHaveBeenCalledWith("old");
+  });
+
+  it("uses verified object edges from the selected historical snapshot", () => {
+    const ontology = parseOntologyMetadata({
+      entities: [
+        {
+          id: "device",
+          name: "Device",
+          properties: [
+            { id: "device-id", name: "Device ID", valueType: "String" },
+          ],
+        },
+      ],
+      relationships: [],
+      bindings: [
+        {
+          id: "device-binding",
+          entityId: "device",
+          bindingType: "table",
+          sourceItemId: "warehouse",
+          sourceObject: "Devices",
+          propertyBindings: [
+            { sourceColumn: "DeviceId", targetPropertyId: "device-id" },
+          ],
+        },
+      ],
+      contextualizations: [],
+    })!;
+    const base: AtlasData = {
+      workspace: {
+        fabricId: "workspace",
+        displayName: "Operations workspace",
+        capacity: "F2",
+        region: "West Europe",
+      },
+      items: [
+        {
+          fabricId: "warehouse",
+          displayName: "Operations warehouse",
+          itemType: "Warehouse",
+          health: "healthy",
+          endorsement: "none",
+          tags: [],
+        },
+        {
+          fabricId: "ontology",
+          displayName: "Operations ontology",
+          itemType: "Ontology",
+          health: "healthy",
+          endorsement: "none",
+          tags: [],
+        },
+      ],
+      edges: [],
+      principals: [],
+      grants: [],
+      jobs: [],
+      config: [],
+      comments: [],
+      syncRuns: [],
+      schema: {},
+      itemMetadata: { ontology },
+      objectEdges: metadataObjectLineageEdges("ontology", ontology),
+    };
+    const previous = snapshotFromData(
+      base,
+      "metadata-old",
+      "2026-09-04T12:00:00.000Z",
+    );
+    const currentData = structuredClone(base);
+    currentData.itemMetadata = {
+      ontology: {
+        ...ontology,
+        entities: [{ ...ontology.entities[0], properties: [] }],
+      },
+    };
+    currentData.objectEdges = [];
+    const current = snapshotFromData(
+      currentData,
+      "metadata-new",
+      "2026-09-05T12:00:00.000Z",
+    );
+    const change = compareSnapshots(previous, current).find(
+      (candidate) =>
+        candidate.type === "schema-object-removed" &&
+        candidate.objectName === "Device ID",
+    )!;
+
+    render(
+      <HistoricalChangeDetails
+        change={change}
+        previousSnapshotId="metadata-old"
+        currentSnapshotId="metadata-new"
+        snapshots={[previous, current]}
+        historyLoading={false}
+        failedSnapshotIds={new Set()}
+        loadHistorySnapshot={vi.fn(async () => undefined)}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Inspect change" }));
+    expect(screen.getByText(/Ontology property evidence/)).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open before impact report" }),
+    );
+    expect(
+      screen.getByRole("heading", { name: "Device ID" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Source field · Operations warehouse/),
+    ).toBeVisible();
   });
 });

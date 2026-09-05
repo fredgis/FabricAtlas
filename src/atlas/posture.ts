@@ -69,11 +69,13 @@ const SEVERITY_WEIGHT: Record<GovernanceSeverity, number> = {
 const SCHEMA_CAPABLE_TYPES = new Set<Item["itemType"]>([
   "Lakehouse",
   "Warehouse",
-  "Eventhouse",
   "KQLDatabase",
   "SQLEndpoint",
   "SQLDatabase",
   "SemanticModel",
+  "Ontology",
+  "GraphModel",
+  "DataAgent",
 ]);
 
 function clamp(value: number, minimum = 0, maximum = 100): number {

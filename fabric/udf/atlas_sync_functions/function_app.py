@@ -2,9 +2,15 @@ import contextlib
 import contextvars
 import datetime
 import email.utils
+import base64
+import binascii
+import hashlib
+import importlib
 import json
 import math
 import numbers
+import re
+import struct
 import time
 import uuid
 import urllib.request
@@ -25,6 +31,91 @@ MAX_BACKOFF_SECONDS = 8
 MAX_RESPONSE_BYTES = 25 * 1024 * 1024
 MAX_UPSTREAM_RESPONSE_BYTES = 25 * 1024 * 1024
 RESPONSE_READ_CHUNK_BYTES = 64 * 1024
+MAX_DEFINITION_PARTS = 500
+MAX_DEFINITION_DECODED_BYTES = 8 * 1024 * 1024
+MAX_DEFINITION_FACTS_PER_ITEM = 1000
+MAX_SCHEMA_OBJECTS_PER_ITEM = 1000
+MAX_SCHEMA_COLUMNS_PER_OBJECT = 500
+MAX_OBJECT_LINEAGE_EDGES = 1000
+MAX_SQL_CATALOG_ROWS = 50000
+MAX_SQL_RELATIONSHIP_ROWS = 5000
+MAX_SQL_TOKEN_CHARACTERS = 65536
+MAX_ARTIFACT_METADATA_ELEMENTS = 2048
+MAX_ARTIFACT_METADATA_COLLECTION = 512
+SQL_COPT_SS_ACCESS_TOKEN = 1256
+
+SQL_OBJECTS_QUERY = """
+SELECT TOP (50001)
+    schemas.name,
+    objects.name,
+    objects.type,
+    columns.name,
+    types.name,
+    columns.column_id
+FROM sys.objects AS objects
+INNER JOIN sys.schemas AS schemas
+    ON schemas.schema_id = objects.schema_id
+LEFT JOIN sys.columns AS columns
+    ON columns.object_id = objects.object_id
+LEFT JOIN sys.types AS types
+    ON types.user_type_id = columns.user_type_id
+WHERE objects.type IN ('U', 'V')
+  AND objects.is_ms_shipped = 0
+ORDER BY schemas.name, objects.name, columns.column_id;
+""".strip()
+
+SQL_PRIMARY_KEYS_QUERY = """
+SELECT TOP (5001)
+    schemas.name,
+    tables.name,
+    key_constraints.name,
+    columns.name,
+    index_columns.key_ordinal
+FROM sys.key_constraints AS key_constraints
+INNER JOIN sys.tables AS tables
+    ON tables.object_id = key_constraints.parent_object_id
+INNER JOIN sys.schemas AS schemas
+    ON schemas.schema_id = tables.schema_id
+INNER JOIN sys.index_columns AS index_columns
+    ON index_columns.object_id = tables.object_id
+   AND index_columns.index_id = key_constraints.unique_index_id
+INNER JOIN sys.columns AS columns
+    ON columns.object_id = index_columns.object_id
+   AND columns.column_id = index_columns.column_id
+WHERE key_constraints.type = 'PK'
+ORDER BY schemas.name, tables.name, key_constraints.name,
+         index_columns.key_ordinal;
+""".strip()
+
+SQL_FOREIGN_KEYS_QUERY = """
+SELECT TOP (5001)
+    foreign_keys.name,
+    source_schemas.name,
+    source_tables.name,
+    source_columns.name,
+    target_schemas.name,
+    target_tables.name,
+    target_columns.name,
+    foreign_key_columns.constraint_column_id
+FROM sys.foreign_keys AS foreign_keys
+INNER JOIN sys.foreign_key_columns AS foreign_key_columns
+    ON foreign_key_columns.constraint_object_id = foreign_keys.object_id
+INNER JOIN sys.tables AS source_tables
+    ON source_tables.object_id = foreign_key_columns.parent_object_id
+INNER JOIN sys.schemas AS source_schemas
+    ON source_schemas.schema_id = source_tables.schema_id
+INNER JOIN sys.columns AS source_columns
+    ON source_columns.object_id = foreign_key_columns.parent_object_id
+   AND source_columns.column_id = foreign_key_columns.parent_column_id
+INNER JOIN sys.tables AS target_tables
+    ON target_tables.object_id = foreign_key_columns.referenced_object_id
+INNER JOIN sys.schemas AS target_schemas
+    ON target_schemas.schema_id = target_tables.schema_id
+INNER JOIN sys.columns AS target_columns
+    ON target_columns.object_id = foreign_key_columns.referenced_object_id
+   AND target_columns.column_id = foreign_key_columns.referenced_column_id
+ORDER BY foreign_keys.name, foreign_key_columns.constraint_column_id;
+""".strip()
 
 
 class DeadlineExceeded(RuntimeError):
@@ -36,6 +127,26 @@ class ResponseSizeExceeded(RuntimeError):
 
 
 class ScannerError(RuntimeError):
+    pass
+
+
+class DefinitionError(RuntimeError):
+    pass
+
+
+class SqlRuntimeUnavailable(RuntimeError):
+    pass
+
+
+class SqlConnectionError(RuntimeError):
+    pass
+
+
+class SqlAuthorizationError(RuntimeError):
+    pass
+
+
+class SqlCatalogQueryError(RuntimeError):
     pass
 
 
@@ -156,11 +267,12 @@ def _read_response_bytes(response, deadline, attempt_expires_at):
     return bytes(payload)
 
 
-def _req(
+def _req_response(
     token,
     url,
     method="GET",
     body=None,
+    headers=None,
     deadline=None,
     per_request_timeout=REQUEST_TIMEOUT_SECONDS,
     max_attempts=MAX_REQUEST_ATTEMPTS,
@@ -172,6 +284,8 @@ def _req(
     req.add_header("Authorization", "Bearer " + token)
     if data is not None:
         req.add_header("Content-Type", "application/json")
+    for name, value in (headers or {}).items():
+        req.add_header(name, value)
     active_deadline = (
         deadline
         or _ACTIVE_DEADLINE.get()
@@ -188,7 +302,17 @@ def _req(
                     attempt_expires_at,
                 )
                 text = payload.decode("utf-8")
-                return json.loads(text) if text else {}
+                status = getattr(
+                    response,
+                    "status",
+                    getattr(response, "code", 200),
+                )
+                response_headers = getattr(response, "headers", {}) or {}
+                return (
+                    int(status),
+                    response_headers,
+                    json.loads(text) if text else {},
+                )
         except urllib.error.HTTPError as error:
             retryable = error.code == 429 or 500 <= error.code <= 599
             if not retryable or attempt + 1 >= max_attempts:
@@ -204,6 +328,32 @@ def _req(
             )
             active_deadline.sleep(delay, sleeper=sleeper)
     raise RuntimeError("request attempts exhausted")
+
+
+def _req(
+    token,
+    url,
+    method="GET",
+    body=None,
+    headers=None,
+    deadline=None,
+    per_request_timeout=REQUEST_TIMEOUT_SECONDS,
+    max_attempts=MAX_REQUEST_ATTEMPTS,
+    sleeper=None,
+    wall_clock=None,
+):
+    return _req_response(
+        token,
+        url,
+        method=method,
+        body=body,
+        headers=headers,
+        deadline=deadline,
+        per_request_timeout=per_request_timeout,
+        max_attempts=max_attempts,
+        sleeper=sleeper,
+        wall_clock=wall_clock,
+    )[2]
 
 
 def _get(token, url):
@@ -315,6 +465,9 @@ ART_KEYS = {
     "sqlDatabases": "SQLDatabase",
     "Eventhouse": "Eventhouse",
     "KQLDatabase": "KQLDatabase",
+    "Ontology": "Ontology",
+    "GraphModel": "GraphModel",
+    "DataAgent": "DataAgent",
     "UserDataFunction": "UserDataFunction",
     "SQLAnalyticsEndpoint": "SQLEndpoint",
     "MirroredDatabase": "MirroredDatabase",
@@ -342,6 +495,524 @@ def _normalized_id(value):
         return str(uuid.UUID(text))
     except ValueError:
         return text
+
+
+def _object_slug(value):
+    text = _strict_text(value)
+    if not text:
+        return None
+    return re.sub(r"[^a-z0-9]+", "-", text.casefold()).strip("-")
+
+
+def _fabric_object_id(item_id, object_kind, identifier):
+    normalized_item_id = _normalized_id(item_id)
+    kind = _object_slug(object_kind)
+    identity = (
+        _strict_text(str(identifier))
+        if identifier is not None
+        else None
+    )
+    if not normalized_item_id or not kind or not identity:
+        return None
+    result = (
+        "fabric-object://"
+        + urllib.parse.quote(normalized_item_id, safe="")
+        + "/"
+        + kind
+        + "/"
+        + urllib.parse.quote(identity, safe="")
+    )
+    if len(result) <= 240:
+        return result
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    return (
+        "fabric-object://"
+        + urllib.parse.quote(normalized_item_id, safe="")
+        + "/"
+        + kind
+        + "/sha256-"
+        + digest
+    )
+
+
+def _bounded_text(value, max_length=256):
+    text = _strict_text(value)
+    if not text:
+        return None
+    return text[:max_length]
+
+
+def _schema_object_kind(item_type, object_type):
+    item = _strict_text(item_type) or "item"
+    kind = _strict_text(object_type) or "object"
+    aliases = {
+        ("Lakehouse", "Table"): "lakehouse-table",
+        ("Lakehouse", "Managed"): "lakehouse-table",
+        ("Lakehouse", "External"): "lakehouse-table",
+        ("Warehouse", "Table"): "warehouse-table",
+        ("Warehouse", "View"): "warehouse-view",
+        ("SemanticModel", "Model table"): "semantic-model-table",
+        ("KQLDatabase", "KQL table"): "kql-table",
+        ("KQLDatabase", "KQL external table"): "kql-external-table",
+        ("KQLDatabase", "KQL materialized view"): (
+            "kql-materialized-view"
+        ),
+        ("KQLDatabase", "KQL function"): "kql-function",
+        ("SQLDatabase", "SQL table"): "sql-table",
+        ("SQLDatabase", "SQL view"): "sql-view",
+    }
+    return aliases.get((item, kind)) or _object_slug(kind) or "object"
+
+
+def _metadata_object_kind(object_type, fallback="table"):
+    value = (_strict_text(object_type) or "").casefold()
+    mappings = {
+        "table": "table",
+        "managed": "table",
+        "external": "table",
+        "model table": "table",
+        "kql table": "table",
+        "kql external table": "table",
+        "sql table": "table",
+        "view": "view",
+        "sql view": "view",
+        "column": "column",
+        "measure": "measure",
+        "kql function": "function",
+        "kql materialized view": "materializedView",
+        "ontology entity": "entityType",
+        "ontology property": "property",
+        "ontology time-series property": "timeSeriesProperty",
+        "ontology relationship": "relationshipType",
+        "graph node": "nodeType",
+        "graph edge": "edgeType",
+        "graph property": "property",
+        "data agent source": "dataSource",
+        "data agent selected element": "selectedElement",
+    }
+    return mappings.get(value, fallback)
+
+
+def _metadata_source_kind(value):
+    text = (_strict_text(value) or "").casefold()
+    if text.endswith("-column") or text.endswith("-field"):
+        return "column"
+    if text.endswith("-measure"):
+        return "measure"
+    if "function" in text:
+        return "function"
+    if "materialized-view" in text:
+        return "materializedView"
+    if text == "ontology-entity":
+        return "entityType"
+    if text == "ontology-property":
+        return "property"
+    if text == "ontology-relationship":
+        return "relationshipType"
+    if text == "graph-node":
+        return "nodeType"
+    if text == "graph-edge":
+        return "edgeType"
+    if "view" in text:
+        return "view"
+    return "table"
+
+
+def _finalize_schema_object_ids(item_id, item_type, schema):
+    result = []
+    for table in schema or []:
+        record = dict(table)
+        object_kind = _schema_object_kind(
+            item_type,
+            record.get("objectType"),
+        )
+        object_id = _strict_text(record.get("objectId")) or _fabric_object_id(
+            item_id,
+            object_kind,
+            record.get("name"),
+        )
+        if object_id:
+            record["objectId"] = object_id
+        columns = []
+        for column in record.get("columns") or []:
+            safe_column = dict(column)
+            column_kind = (
+                _object_slug(safe_column.get("objectType"))
+                or f"{object_kind}-column"
+            )
+            column_id = _strict_text(
+                safe_column.get("objectId")
+            ) or _fabric_object_id(
+                item_id,
+                column_kind,
+                f"{record.get('name')}/{safe_column.get('name')}",
+            )
+            if column_id:
+                safe_column["objectId"] = column_id
+            if object_id:
+                safe_column.setdefault("parentObjectId", object_id)
+            columns.append(safe_column)
+        record["columns"] = columns
+        measures = []
+        for measure in record.get("measures") or []:
+            safe_measure = dict(measure)
+            measure_id = _strict_text(
+                safe_measure.get("objectId")
+            ) or _fabric_object_id(
+                item_id,
+                "semantic-model-measure",
+                f"{record.get('name')}/{safe_measure.get('name')}",
+            )
+            if measure_id:
+                safe_measure["objectId"] = measure_id
+            if object_id:
+                safe_measure.setdefault("parentObjectId", object_id)
+            measures.append(safe_measure)
+        record["measures"] = measures
+        result.append(record)
+    return result
+
+
+def _object_edge_id(source_object_id, relation, target_object_id):
+    source = _strict_text(source_object_id)
+    label = _object_slug(relation)
+    target = _strict_text(target_object_id)
+    if not source or not label or not target:
+        return None
+    return (
+        "fabric-edge://"
+        + urllib.parse.quote(source, safe="")
+        + "/"
+        + label
+        + "/"
+        + urllib.parse.quote(target, safe="")
+    )
+
+
+def _metadata_object_ref(
+    item_id,
+    kind,
+    object_id,
+    name,
+    parent_id=None,
+    table_name=None,
+):
+    normalized_item_id = _normalized_id(item_id)
+    safe_kind = _strict_text(kind)
+    safe_id = _strict_text(object_id)
+    safe_name = _bounded_text(name)
+    if not normalized_item_id or not safe_kind or not safe_id or not safe_name:
+        return None
+    reference = {
+        "itemId": normalized_item_id,
+        "kind": safe_kind,
+        "id": safe_id,
+        "name": safe_name,
+    }
+    if _strict_text(parent_id):
+        reference["parentId"] = parent_id
+    if _bounded_text(table_name):
+        reference["tableName"] = _bounded_text(table_name)
+    return reference
+
+
+def _add_artifact_object_edge(artifact, source, target, relation):
+    relation = _bounded_text(relation)
+    if not source or not target or not relation:
+        return
+    edges = artifact.setdefault("_objectEdges", [])
+    if len(edges) >= MAX_OBJECT_LINEAGE_EDGES:
+        artifact["_objectEdgesTruncated"] = True
+        return
+    edges.append({
+        "source": source,
+        "target": target,
+        "relation": relation,
+        "confidence": "verified",
+    })
+
+
+def _schema_object_references(item_id, schema):
+    references = []
+    for table in schema or []:
+        for value in (
+            [table]
+            + list(table.get("columns") or [])
+            + list(table.get("measures") or [])
+        ):
+            object_id = _strict_text(value.get("objectId"))
+            name = _bounded_text(value.get("name"))
+            if not object_id or not name:
+                continue
+            reference = {
+                "id": object_id,
+                "itemId": _normalized_id(item_id),
+                "name": name,
+                "kind": _metadata_object_kind(
+                    value.get("objectType"),
+                    (
+                        "column"
+                        if value is not table
+                        else "table"
+                    ),
+                ),
+            }
+            parent_id = _strict_text(value.get("parentObjectId"))
+            if parent_id:
+                reference["parentId"] = parent_id
+            if value is not table:
+                reference["tableName"] = _strict_text(table.get("name"))
+            references.append(reference)
+    return references
+
+
+def _schema_object_edges(schema):
+    edges = []
+    seen = set()
+    for table in schema or []:
+        values = (
+            [table]
+            + list(table.get("columns") or [])
+            + list(table.get("measures") or [])
+        )
+        for value in values:
+            object_id = _strict_text(value.get("objectId"))
+            parent_id = _strict_text(value.get("parentObjectId"))
+            candidates = []
+            if parent_id and object_id:
+                candidates.append((parent_id, object_id, "contains", None))
+            source_id = _strict_text(value.get("sourceObjectId"))
+            target_id = _strict_text(value.get("targetObjectId"))
+            relation = _strict_text(value.get("relation"))
+            if source_id and target_id and relation:
+                candidates.append((
+                    source_id,
+                    target_id,
+                    relation,
+                    (
+                        object_id
+                        if value.get("objectType")
+                        == "Ontology relationship"
+                        else None
+                    ),
+                ))
+            for source, target, label, relation_object_id in candidates:
+                key = (source, target, label, relation_object_id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                edge = {
+                    "id": _object_edge_id(source, label, target),
+                    "source": source,
+                    "target": target,
+                    "relation": label,
+                }
+                if relation_object_id:
+                    edge["relationObjectId"] = relation_object_id
+                edges.append(edge)
+    return edges
+
+
+def _public_schema(schema):
+    result = []
+    for table in schema or []:
+        public_table = {
+            key: value
+            for key, value in table.items()
+            if key not in ("columns", "measures")
+        }
+        public_table["columns"] = [
+            dict(column)
+            for column in table.get("columns") or []
+        ]
+        public_table["measures"] = [
+            dict(measure)
+            for measure in table.get("measures") or []
+        ]
+        result.append(public_table)
+    return result
+
+
+def _collect_atlas_object_edges(schema_by_item, extra_edges=None):
+    references = {}
+    values_by_id = {}
+    table_by_object_id = {}
+    for item_id, schema in schema_by_item.items():
+        for table in schema or []:
+            table_id = _strict_text(table.get("objectId"))
+            if table_id:
+                table_by_object_id[table_id] = table
+            for value in (
+                [table]
+                + list(table.get("columns") or [])
+                + list(table.get("measures") or [])
+            ):
+                object_id = _strict_text(value.get("objectId"))
+                name = _strict_text(value.get("name"))
+                if not object_id or not name:
+                    continue
+                parent_id = _strict_text(value.get("parentObjectId"))
+                parent = table_by_object_id.get(parent_id)
+                fallback_kind = (
+                    "measure"
+                    if any(
+                        value is measure
+                        for measure in table.get("measures") or []
+                    )
+                    else (
+                        "column"
+                        if value is not table
+                        else "table"
+                    )
+                )
+                reference = {
+                    "itemId": _normalized_id(item_id),
+                    "kind": _metadata_object_kind(
+                        value.get("objectType"),
+                        fallback_kind,
+                    ),
+                    "id": object_id,
+                    "name": name,
+                }
+                if parent_id:
+                    reference["parentId"] = parent_id
+                parent_path = value.get("parentPath")
+                if isinstance(parent_path, list) and parent_path:
+                    reference["parentPath"] = [
+                        name
+                        for candidate in parent_path[:16]
+                        if (name := _bounded_text(candidate))
+                    ]
+                table_name = _bounded_text(
+                    value.get("tableName")
+                    or (
+                        (parent or table).get("name")
+                        if parent_id
+                        or reference["kind"]
+                        in ("table", "view", "materializedView")
+                        else None
+                    )
+                )
+                if table_name:
+                    reference["tableName"] = table_name
+                references[object_id] = reference
+                values_by_id[object_id] = value
+
+    def reference_for(object_id, value=None, source=False):
+        existing = references.get(object_id)
+        if existing:
+            return dict(existing)
+        if not value:
+            return None
+        item_id = _normalized_id(value.get("sourceItemId"))
+        name = _bounded_text(value.get("sourceObjectName"))
+        source_type = _strict_text(value.get("sourceObjectType"))
+        if not item_id or not object_id or not name:
+            return None
+        reference = {
+            "itemId": item_id,
+            "kind": (
+                _metadata_source_kind(source_type)
+                if source
+                else "selectedElement"
+            ),
+            "id": object_id,
+            "name": name,
+        }
+        parent_id = _strict_text(value.get("sourceParentObjectId"))
+        if parent_id:
+            reference["parentId"] = parent_id
+        parent_path = value.get("sourceParentPath")
+        if isinstance(parent_path, list) and parent_path:
+            reference["parentPath"] = [
+                name
+                for candidate in parent_path[:16]
+                if (name := _bounded_text(candidate))
+            ]
+        table_name = _bounded_text(value.get("sourceTableName"))
+        if table_name:
+            reference["tableName"] = table_name
+        return reference
+
+    edges = []
+    seen = set()
+    truncated = False
+
+    def add(source, target, relation):
+        nonlocal truncated
+        relation = _bounded_text(relation)
+        if not source or not target or not relation:
+            return
+        key = (
+            source["itemId"],
+            source["kind"],
+            source["id"],
+            target["itemId"],
+            target["kind"],
+            target["id"],
+            relation,
+        )
+        if key in seen:
+            return
+        if len(edges) >= MAX_OBJECT_LINEAGE_EDGES:
+            truncated = True
+            return
+        seen.add(key)
+        edges.append({
+            "source": source,
+            "target": target,
+            "relation": relation,
+            "confidence": "verified",
+        })
+
+    for edge in extra_edges or []:
+        if not isinstance(edge, dict):
+            continue
+        add(
+            edge.get("source"),
+            edge.get("target"),
+            edge.get("relation"),
+        )
+
+    for object_id, value in values_by_id.items():
+        current = references[object_id]
+        parent_id = _strict_text(value.get("parentObjectId"))
+        if parent_id:
+            add(
+                reference_for(parent_id),
+                current,
+                "contains",
+            )
+        source_id = _strict_text(value.get("sourceObjectId"))
+        target_id = _strict_text(value.get("targetObjectId"))
+        relation = _strict_text(value.get("relation"))
+        if not source_id or not target_id or not relation:
+            continue
+        if value.get("objectType") == "Ontology relationship":
+            add(
+                reference_for(source_id),
+                current,
+                "relationship source",
+            )
+            add(
+                current,
+                reference_for(target_id),
+                "relationship target",
+            )
+        else:
+            add(
+                reference_for(source_id, value, source=True),
+                reference_for(target_id, value),
+                relation,
+            )
+    return edges, truncated
+
+
+def _atlas_object_edges(schema_by_item, extra_edges=None):
+    return _collect_atlas_object_edges(
+        schema_by_item,
+        extra_edges=extra_edges,
+    )[0]
 
 
 def _artifact_id(value):
@@ -511,29 +1182,29 @@ def _metadata_for_item(artifact, scanner_matched):
     {labelId, displayName}, and tags [{id, displayName}] when supplied.
     """
     metadata = {"scannerMatched": scanner_matched}
-    if not scanner_matched:
-        return metadata
-    configured_by = _safe_text(artifact.get("configuredBy"))
-    modified_by = _safe_text(artifact.get("modifiedBy"))
-    modified = _safe_text(
-        artifact.get("modifiedDateTime")
-        or artifact.get("lastUpdatedDate")
-        or artifact.get("lastUpdatedTime")
-    )
-    if configured_by:
-        metadata["configuredBy"] = configured_by
-    if modified_by:
-        metadata["modifiedBy"] = modified_by
-    if modified:
-        metadata["modifiedDateTime"] = _normalize_timestamp(modified)
+    if scanner_matched:
+        configured_by = _safe_text(artifact.get("configuredBy"))
+        modified_by = _safe_text(artifact.get("modifiedBy"))
+        modified = _safe_text(
+            artifact.get("modifiedDateTime")
+            or artifact.get("lastUpdatedDate")
+            or artifact.get("lastUpdatedTime")
+        )
+        if configured_by:
+            metadata["configuredBy"] = configured_by
+        if modified_by:
+            metadata["modifiedBy"] = modified_by
+        if modified:
+            metadata["modifiedDateTime"] = _normalize_timestamp(modified)
 
     artifact_type = artifact.get("_type")
-    owner_available = artifact_type in (
+    owner_available = scanner_matched and artifact_type in (
         "SemanticModel",
         "Dataflow",
         "Datamart",
     ) or (
-        artifact_type == "Report"
+        scanner_matched
+        and artifact_type == "Report"
         and ("createdBy" in artifact or "createdById" in artifact)
     )
     metadata["ownerAvailable"] = owner_available
@@ -616,6 +1287,8 @@ def _safe_error_code(error, optional=False):
     if isinstance(error, DeadlineExceeded):
         return "deadline-exhausted"
     if isinstance(error, urllib.error.HTTPError):
+        if error.code == 423:
+            return "encrypted-label-blocked"
         if optional and error.code in (400, 404):
             return "endpoint-unsupported"
         if error.code in (401, 403):
@@ -629,7 +1302,33 @@ def _safe_error_code(error, optional=False):
         return "invalid-response"
     if isinstance(error, ScannerError):
         return "scanner-failed"
+    if isinstance(error, DefinitionError):
+        return "invalid-definition"
+    if isinstance(error, SqlRuntimeUnavailable):
+        return "tds-runtime-unavailable"
+    if isinstance(error, SqlConnectionError):
+        return "sql-connection-failed"
+    if isinstance(error, SqlAuthorizationError):
+        return "authorization-failed"
+    if isinstance(error, SqlCatalogQueryError):
+        return "sql-catalog-query-failed"
     return "upstream-failure"
+
+
+def _definition_error_code(error):
+    if isinstance(error, DeadlineExceeded):
+        return "deadline-exhausted"
+    if isinstance(error, urllib.error.HTTPError):
+        if error.code in (401, 403):
+            return "read-write-permission-required"
+        if error.code == 423:
+            return "encrypted-label-blocked"
+        if error.code in (400, 404):
+            return "endpoint-unsupported"
+        return _safe_error_code(error, optional=True)
+    if isinstance(error, (DefinitionError, ValueError, json.JSONDecodeError)):
+        return "invalid-definition"
+    return _safe_error_code(error, optional=True)
 
 
 def _set_section(out, name, status, code=None):
@@ -674,7 +1373,11 @@ def _finish_optional_section(out, name, tracker):
             out,
             name,
             "complete",
-            "partial-unsupported" if tracker["unsupported"] else None,
+            (
+                "partial-unsupported"
+                if tracker["unsupported"]
+                else (tracker["codes"][0] if tracker["codes"] else None)
+            ),
         )
     elif tracker["unsupported"]:
         _set_section(
@@ -714,6 +1417,17 @@ def _set_metadata_capabilities(out):
         "tags": tags,
         "ownership": ownership,
     }
+
+
+def _set_optional_capabilities(out):
+    for section_name, capability_name in (
+        ("definitions", "definitionEnrichment"),
+        ("kqlSchema", "kqlSchema"),
+        ("sqlSchema", "sqlSchema"),
+    ):
+        section = out["sections"].get(section_name)
+        if section:
+            out["capabilities"][capability_name] = dict(section)
 
 
 def _access_right(user):
@@ -758,10 +1472,2569 @@ DETAIL_PATHS = {
     "Lakehouse": "lakehouses",
     "Warehouse": "warehouses",
     "SQLDatabase": "sqlDatabases",
+    "Eventhouse": "eventhouses",
+    "KQLDatabase": "kqlDatabases",
+    "Ontology": "ontologies",
+    "GraphModel": "graphModels",
+    "DataAgent": "dataAgents",
+}
+
+DEFINITION_PATHS = {
+    "Ontology": "ontologies",
+    "GraphModel": "graphModels",
+    "DataAgent": "dataAgents",
 }
 
 
-def _enrich_artifact(token, ws, artifact, trackers, errors):
+def _merge_detail_metadata(artifact, detail):
+    if not isinstance(detail, dict):
+        raise ValueError("item properties response was not an object")
+    for key in (
+        "displayName",
+        "description",
+        "workspaceId",
+        "folderId",
+        "sensitivityLabel",
+        "tags",
+    ):
+        if key in detail and detail[key] is not None:
+            artifact[key] = detail[key]
+
+
+def _header_value(headers, name):
+    if not headers:
+        return None
+    value = headers.get(name)
+    if value is not None:
+        return value
+    expected = name.casefold()
+    for key, candidate in headers.items():
+        if str(key).casefold() == expected:
+            return candidate
+    return None
+
+
+def _get_definition(token, ws, artifact_type, artifact_id):
+    path = DEFINITION_PATHS[artifact_type]
+    status, headers, data = _req_response(
+        token,
+        f"{FABRIC}/workspaces/{ws}/{path}/{artifact_id}/getDefinition",
+        method="POST",
+    )
+    if status == 200:
+        return data
+    if status != 202:
+        raise DefinitionError("definition request returned an invalid status")
+
+    operation_id = _strict_text(
+        _header_value(headers, "x-ms-operation-id")
+    )
+    location = _strict_text(_header_value(headers, "Location"))
+    if not operation_id and location:
+        operation_id = _strict_text(
+            urllib.parse.urlparse(location).path.rstrip("/").rsplit("/", 1)[-1]
+        )
+    if not operation_id:
+        raise DefinitionError("definition operation omitted its identifier")
+    operation_id = _workspace_id(operation_id)
+    state_url = (
+        _fabric_url(location)
+        if location
+        else f"{FABRIC}/operations/{operation_id}"
+    )
+    deadline = _ACTIVE_DEADLINE.get() or _ExecutionDeadline()
+    retry_after = _retry_after_seconds(headers) or 1
+    for _ in range(30):
+        deadline.sleep(retry_after)
+        state_status, state_headers, state = _req_response(
+            token,
+            state_url,
+        )
+        if state_status != 200 or not isinstance(state, dict):
+            raise DefinitionError("definition operation state was invalid")
+        operation_status = _strict_text(state.get("status"))
+        if operation_status == "Succeeded":
+            result_location = _strict_text(
+                _header_value(state_headers, "Location")
+            )
+            result_url = (
+                _fabric_url(result_location)
+                if result_location
+                and result_location.rstrip("/").endswith("/result")
+                else f"{FABRIC}/operations/{operation_id}/result"
+            )
+            return _get(token, result_url)
+        if operation_status == "Failed":
+            raise DefinitionError("definition operation failed")
+        if operation_status not in ("NotStarted", "Running"):
+            raise DefinitionError("definition operation status was invalid")
+        retry_after = _retry_after_seconds(state_headers) or 1
+        next_location = _strict_text(
+            _header_value(state_headers, "Location")
+        )
+        if next_location and not next_location.rstrip("/").endswith("/result"):
+            state_url = _fabric_url(next_location)
+    raise DeadlineExceeded("definition operation did not complete")
+
+
+def _definition_parts(response):
+    if not isinstance(response, dict):
+        raise DefinitionError("definition response was not an object")
+    definition = response.get("definition")
+    if not isinstance(definition, dict):
+        raise DefinitionError("definition response omitted the definition")
+    parts = definition.get("parts")
+    if not isinstance(parts, list) or len(parts) > MAX_DEFINITION_PARTS:
+        raise DefinitionError("definition parts were invalid")
+    return parts
+
+
+def _decode_definition_json(part, decoded_total):
+    if not isinstance(part, dict):
+        raise DefinitionError("definition part was invalid")
+    path = _strict_text(part.get("path"))
+    payload = _strict_text(part.get("payload"))
+    if (
+        not path
+        or not payload
+        or part.get("payloadType") != "InlineBase64"
+    ):
+        raise DefinitionError("definition part metadata was invalid")
+    try:
+        decoded = base64.b64decode(payload, validate=True)
+    except (ValueError, binascii.Error) as error:
+        raise DefinitionError("definition part payload was malformed") from error
+    decoded_total[0] += len(decoded)
+    if decoded_total[0] > MAX_DEFINITION_DECODED_BYTES:
+        raise ResponseSizeExceeded(
+            "definition payload exceeded the safe decoded size limit"
+        )
+    try:
+        value = json.loads(decoded.decode("utf-8-sig"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise DefinitionError("definition part was not valid JSON") from error
+    if not isinstance(value, dict):
+        raise DefinitionError("definition JSON part was not an object")
+    return path, value
+
+
+def _explicit_ids(value, field_names):
+    found = set()
+    expected = {name.casefold() for name in field_names}
+
+    def visit(node):
+        if isinstance(node, dict):
+            for key, child in node.items():
+                if str(key).casefold() in expected:
+                    normalized = _normalized_id(child)
+                    if normalized:
+                        found.add(normalized)
+                elif isinstance(child, (dict, list)):
+                    visit(child)
+        elif isinstance(node, list):
+            for child in node:
+                if isinstance(child, (dict, list)):
+                    visit(child)
+
+    visit(value)
+    return found
+
+
+def _exact_scalar_id(value, field_names):
+    if not isinstance(value, dict):
+        return None
+    for name in field_names:
+        candidate = value.get(name)
+        normalized = _normalized_id(
+            str(candidate) if candidate is not None else None
+        )
+        if normalized:
+            return normalized
+    return None
+
+
+def _definition_identifier(value, fallback=None):
+    candidate = value if value is not None else fallback
+    if candidate is None:
+        return None
+    return _normalized_id(str(candidate))
+
+
+def _dedupe_metadata(values, key):
+    result = []
+    seen = set()
+    for value in values:
+        identity = key(value)
+        if not identity or identity in seen:
+            continue
+        seen.add(identity)
+        result.append(value)
+        if len(result) >= MAX_ARTIFACT_METADATA_COLLECTION:
+            break
+    return result
+
+
+def _add_definition_fact(artifact, section, label, value):
+    facts = artifact.setdefault("_definitionFacts", [])
+    if len(facts) >= MAX_DEFINITION_FACTS_PER_ITEM:
+        artifact["_definitionTruncated"] = True
+        return
+    if (
+        _strict_text(section)
+        and _strict_text(label)
+        and isinstance(value, (str, int, float, bool))
+        and str(value).strip()
+    ):
+        facts.append((str(section), str(label), str(value)))
+
+
+def _safe_property_records(values):
+    result = []
+    for value in (values or [])[:MAX_SCHEMA_COLUMNS_PER_OBJECT]:
+        if not isinstance(value, dict):
+            continue
+        name = _strict_text(value.get("name"))
+        if not name:
+            continue
+        record = {"name": name}
+        property_id = _definition_identifier(value.get("id"))
+        value_type = _strict_text(value.get("valueType") or value.get("type"))
+        if property_id:
+            record["id"] = property_id
+        if value_type:
+            record["valueType"] = value_type
+        result.append(record)
+    return result
+
+
+def _source_metadata(value):
+    if not isinstance(value, dict):
+        return None
+    item_id = _normalized_id(
+        value.get("itemId")
+        or value.get("artifactId")
+        or value.get("sourceItemId")
+    )
+    workspace_id = _normalized_id(
+        value.get("workspaceId") or value.get("sourceWorkspaceId")
+    )
+    source_object_id = _normalized_id(
+        value.get("sourceObjectId")
+        or value.get("tableId")
+        or value.get("objectId")
+    )
+    source_type = _strict_text(
+        value.get("sourceType") or value.get("type")
+    )
+    table_name = _strict_text(
+        value.get("sourceTableName")
+        or value.get("tableName")
+        or value.get("displayName")
+    )
+    schema_name = _strict_text(
+        value.get("sourceSchema") or value.get("schemaName")
+    )
+    if not any((item_id, source_type, table_name, schema_name)):
+        return None
+    return {
+        key: field
+        for key, field in {
+            "itemId": item_id,
+            "workspaceId": workspace_id,
+            "sourceType": source_type,
+            "schema": schema_name,
+            "table": table_name,
+            "sourceObjectId": source_object_id,
+        }.items()
+        if field
+    }
+
+
+def _source_summary(source):
+    values = [
+        source.get("sourceType"),
+        source.get("itemId"),
+        ".".join(
+            value
+            for value in (source.get("schema"), source.get("table"))
+            if value
+        ),
+    ]
+    return " | ".join(value for value in values if value)
+
+
+def _source_object_kind(source_type):
+    value = (_strict_text(source_type) or "").casefold()
+    if "warehouse" in value:
+        return "warehouse-table"
+    if "kusto" in value or "kql" in value:
+        return "kql-table"
+    if "semantic" in value or "dataset" in value:
+        return "semantic-model-table"
+    if "sql" in value:
+        return "sql-table"
+    return "table"
+
+
+def _source_object_identity(source):
+    if not isinstance(source, dict):
+        return None
+    return ".".join(
+        value
+        for value in (source.get("schema"), source.get("table"))
+        if _strict_text(value)
+    ) or _strict_text(source.get("itemId"))
+
+
+def _source_object_reference(source):
+    if not isinstance(source, dict):
+        return None
+    item_id = source.get("itemId")
+    identity = _source_object_identity(source)
+    object_kind = _source_object_kind(source.get("sourceType"))
+    return _metadata_object_ref(
+        item_id,
+        "table",
+        _fabric_object_id(item_id, object_kind, identity),
+        source.get("table") or identity,
+        table_name=source.get("table") or identity,
+    )
+
+
+def _source_column_reference(source, column_name):
+    parent = _source_object_reference(source)
+    name = _strict_text(column_name)
+    if not parent or not name:
+        return None
+    object_kind = _source_object_kind(source.get("sourceType"))
+    return _metadata_object_ref(
+        source.get("itemId"),
+        "column",
+        _fabric_object_id(
+            source.get("itemId"),
+            f"{object_kind}-column",
+            f"{_source_object_identity(source)}/{name}",
+        ),
+        name,
+        parent_id=parent["id"],
+        table_name=source.get("table") or _source_object_identity(source),
+    )
+
+
+def _project_ontology_definition(artifact, response):
+    entity_parts = []
+    binding_parts = []
+    relationship_parts = []
+    contextualization_parts = []
+    decoded_total = [0]
+    unknown = 0
+    for part in _definition_parts(response):
+        path = _strict_text(part.get("path"))
+        if not path:
+            raise DefinitionError("definition part path was invalid")
+        normalized_path = path.replace("\\", "/")
+        if normalized_path in (".platform", "definition.json"):
+            continue
+        if re.fullmatch(
+            r"EntityTypes/[^/]+/(Documents|ResourceLinks)/.+\.json",
+            normalized_path,
+            re.IGNORECASE,
+        ) or re.fullmatch(
+            r"EntityTypes/[^/]+/Overviews/definition\.json",
+            normalized_path,
+            re.IGNORECASE,
+        ):
+            continue
+        match = re.fullmatch(
+            r"EntityTypes/([^/]+)/definition\.json",
+            normalized_path,
+            re.IGNORECASE,
+        )
+        if match:
+            _, value = _decode_definition_json(part, decoded_total)
+            entity_parts.append((match.group(1), value))
+            artifact.setdefault("_graphModelItemIds", set()).update(
+                _explicit_ids(
+                    value,
+                    (
+                        "graphModelId",
+                        "graphModelItemId",
+                        "generatedGraphModelId",
+                        "generatedGraphModelItemId",
+                    ),
+                )
+            )
+            continue
+        match = re.fullmatch(
+            r"EntityTypes/([^/]+)/DataBindings/([^/]+)\.json",
+            normalized_path,
+            re.IGNORECASE,
+        )
+        if match:
+            _, value = _decode_definition_json(part, decoded_total)
+            binding_parts.append((match.group(1), match.group(2), value))
+            continue
+        match = re.fullmatch(
+            r"RelationshipTypes/([^/]+)/definition\.json",
+            normalized_path,
+            re.IGNORECASE,
+        )
+        if match:
+            _, value = _decode_definition_json(part, decoded_total)
+            relationship_parts.append((match.group(1), value))
+            continue
+        match = re.fullmatch(
+            r"RelationshipTypes/([^/]+)/Contextualizations/([^/]+)\.json",
+            normalized_path,
+            re.IGNORECASE,
+        )
+        if match:
+            _, value = _decode_definition_json(part, decoded_total)
+            contextualization_parts.append(
+                (match.group(1), match.group(2), value)
+            )
+            continue
+        unknown += 1
+
+    entity_names = {}
+    entity_object_ids = {}
+    entity_refs = {}
+    property_refs = {}
+    definition_schema = []
+    metadata_entities = []
+    metadata_bindings = []
+    metadata_relationships = []
+    metadata_contextualizations = []
+    for path_id, value in entity_parts:
+        entity_id = _definition_identifier(value.get("id"), path_id)
+        name = _strict_text(value.get("name")) or entity_id
+        entity_names[entity_id] = name
+        entity_object_id = _fabric_object_id(
+            artifact.get("id"),
+            "ontology-entity",
+            entity_id,
+        )
+        entity_object_ids[entity_id] = entity_object_id
+        properties = _safe_property_records(value.get("properties"))
+        timeseries = _safe_property_records(
+            value.get("timeseriesProperties")
+        )
+        property_metadata = [
+            {
+                "id": prop["id"],
+                "name": prop["name"],
+                "valueType": prop.get("valueType") or "Object",
+                "timeSeries": False,
+            }
+            for prop in properties
+            if prop.get("id")
+        ] + [
+            {
+                "id": prop["id"],
+                "name": prop["name"],
+                "valueType": prop.get("valueType") or "Object",
+                "timeSeries": True,
+            }
+            for prop in timeseries
+            if prop.get("id")
+        ]
+        property_ids = {
+            prop["id"]
+            for prop in property_metadata
+        }
+        key_property_ids = [
+            normalized
+            for candidate in value.get("entityIdParts") or []
+            if (
+                normalized := _definition_identifier(candidate)
+            ) in property_ids
+        ]
+        display_name_property_id = _definition_identifier(
+            value.get("displayNamePropertyId")
+        )
+        metadata_entity = {
+            "id": entity_id,
+            "name": name,
+            "keyPropertyIds": key_property_ids,
+            "properties": property_metadata,
+        }
+        namespace = _strict_text(value.get("namespace"))
+        if namespace:
+            metadata_entity["namespace"] = namespace
+        if display_name_property_id in property_ids:
+            metadata_entity[
+                "displayNamePropertyId"
+            ] = display_name_property_id
+        metadata_entities.append(metadata_entity)
+        definition_schema.append({
+            "_mergeKey": f"ontology-entity:{entity_id}",
+            "name": name,
+            "objectType": "Ontology entity",
+            "objectId": entity_object_id,
+            "source": "Fabric Ontology definition",
+            "columns": [
+                {
+                    "name": prop["name"],
+                    "dataType": prop.get("valueType") or "property",
+                    "objectType": "Ontology property",
+                    "objectId": _fabric_object_id(
+                        artifact.get("id"),
+                        "ontology-property",
+                        prop.get("id") or f"{entity_id}/{prop['name']}",
+                    ),
+                    "parentObjectId": entity_object_id,
+                }
+                for prop in properties
+            ] + [
+                {
+                    "name": prop["name"],
+                    "dataType": prop.get("valueType") or "property",
+                    "objectType": "Ontology time-series property",
+                    "objectId": _fabric_object_id(
+                        artifact.get("id"),
+                        "ontology-property",
+                        prop.get("id") or f"{entity_id}/{prop['name']}",
+                    ),
+                    "parentObjectId": entity_object_id,
+                }
+                for prop in timeseries
+            ],
+            "measures": [],
+        })
+        entity_refs[entity_id] = _metadata_object_ref(
+            artifact.get("id"),
+            "entityType",
+            entity_object_id,
+            name,
+        )
+        for prop in properties:
+            property_refs[(entity_id, prop.get("id"))] = (
+                _metadata_object_ref(
+                    artifact.get("id"),
+                    "property",
+                    _fabric_object_id(
+                        artifact.get("id"),
+                        "ontology-property",
+                        prop.get("id")
+                        or f"{entity_id}/{prop['name']}",
+                    ),
+                    prop["name"],
+                    parent_id=entity_object_id,
+                    table_name=name,
+                )
+            )
+        for prop in timeseries:
+            property_refs[(entity_id, prop.get("id"))] = (
+                _metadata_object_ref(
+                    artifact.get("id"),
+                    "timeSeriesProperty",
+                    _fabric_object_id(
+                        artifact.get("id"),
+                        "ontology-property",
+                        prop.get("id")
+                        or f"{entity_id}/{prop['name']}",
+                    ),
+                    prop["name"],
+                    parent_id=entity_object_id,
+                    table_name=name,
+                )
+            )
+        _add_definition_fact(
+            artifact,
+            "Ontology entity types",
+            name,
+            f"id {entity_id} | {len(properties)} properties | "
+            f"{len(timeseries)} time-series properties",
+        )
+        for prop in properties:
+            _add_definition_fact(
+                artifact,
+                "Ontology properties",
+                f"{name}.{prop['name']}",
+                prop.get("valueType") or "property",
+            )
+        for prop in timeseries:
+            _add_definition_fact(
+                artifact,
+                "Ontology time-series properties",
+                f"{name}.{prop['name']}",
+                prop.get("valueType") or "property",
+            )
+
+    for entity_id, binding_id, value in binding_parts:
+        entity_id = _definition_identifier(entity_id)
+        binding_id = _definition_identifier(value.get("id"), binding_id)
+        configuration = value.get("dataBindingConfiguration")
+        configuration = configuration if isinstance(configuration, dict) else {}
+        source = _source_metadata(
+            configuration.get("sourceTableProperties")
+        )
+        if source:
+            source_id = source.get("itemId")
+            if source_id:
+                artifact.setdefault("_definitionSourceIds", set()).add(
+                    source_id
+                )
+            property_bindings = configuration.get("propertyBindings")
+            safe_property_bindings = []
+            for property_binding in (
+                property_bindings
+                if isinstance(property_bindings, list)
+                else []
+            ):
+                if not isinstance(property_binding, dict):
+                    continue
+                source_column = _strict_text(
+                    property_binding.get("sourceColumnName")
+                    or property_binding.get("sourceColumn")
+                )
+                target_property_id = _definition_identifier(
+                    property_binding.get("targetPropertyId")
+                    or property_binding.get("propertyId")
+                )
+                if (
+                    source_column
+                    and (entity_id, target_property_id) in property_refs
+                ):
+                    safe_property_bindings.append({
+                        "sourceColumn": source_column,
+                        "targetPropertyId": target_property_id,
+                    })
+            count = (
+                len(safe_property_bindings)
+            )
+            label = f"{entity_names.get(entity_id, entity_id)}:{binding_id}"
+            _add_definition_fact(
+                artifact,
+                "Ontology data bindings",
+                label,
+                f"{_source_summary(source)} | {count} property bindings",
+            )
+            _add_artifact_object_edge(
+                artifact,
+                _source_object_reference(source),
+                entity_refs.get(entity_id),
+                "binds entity",
+            )
+            for property_binding in safe_property_bindings:
+                target_property_id = property_binding["targetPropertyId"]
+                _add_artifact_object_edge(
+                    artifact,
+                    _source_column_reference(
+                        source,
+                        property_binding["sourceColumn"],
+                    ),
+                    property_refs.get(
+                        (entity_id, target_property_id)
+                    ),
+                    "binds property",
+                )
+            if entity_id in entity_names and source.get("itemId") and source.get("table"):
+                metadata_binding = {
+                    "id": binding_id,
+                    "entityId": entity_id,
+                    "bindingType": _strict_text(
+                        configuration.get("dataBindingType")
+                        or configuration.get("bindingType")
+                    ) or "Table",
+                    "sourceItemId": source["itemId"],
+                    "sourceObject": source["table"],
+                    "propertyBindings": safe_property_bindings,
+                }
+                for target_key, source_key in (
+                    ("sourceWorkspaceId", "workspaceId"),
+                    ("sourceType", "sourceType"),
+                    ("sourceSchema", "schema"),
+                    ("sourceObjectId", "sourceObjectId"),
+                ):
+                    if source.get(source_key):
+                        metadata_binding[target_key] = source[source_key]
+                timestamp_column = _strict_text(
+                    configuration.get("timestampColumn")
+                    or configuration.get("timestampColumnName")
+                )
+                if timestamp_column:
+                    metadata_binding["timestampColumn"] = timestamp_column
+                metadata_bindings.append(metadata_binding)
+
+    relationship_names = {}
+    for relationship_id, value in relationship_parts:
+        relationship_id = _definition_identifier(
+            value.get("id"),
+            relationship_id,
+        )
+        name = _strict_text(value.get("name")) or relationship_id
+        relationship_names[relationship_id] = name
+        source = value.get("source")
+        target = value.get("target")
+        source_id = (
+            _definition_identifier(source.get("entityTypeId"))
+            if isinstance(source, dict) and source.get("entityTypeId") is not None
+            else None
+        )
+        target_id = (
+            _definition_identifier(target.get("entityTypeId"))
+            if isinstance(target, dict) and target.get("entityTypeId") is not None
+            else None
+        )
+        _add_definition_fact(
+            artifact,
+            "Ontology relationship types",
+            name,
+            f"{entity_names.get(source_id, source_id) or 'unknown'} -> "
+            f"{entity_names.get(target_id, target_id) or 'unknown'}",
+        )
+        definition_schema.append({
+            "_mergeKey": f"ontology-relationship:{relationship_id}",
+            "name": name,
+            "objectType": "Ontology relationship",
+            "objectId": _fabric_object_id(
+                artifact.get("id"),
+                "ontology-relationship",
+                relationship_id,
+            ),
+            "sourceObjectId": entity_object_ids.get(source_id)
+            or _fabric_object_id(
+                artifact.get("id"),
+                "ontology-entity",
+                source_id,
+            ),
+            "targetObjectId": entity_object_ids.get(target_id)
+            or _fabric_object_id(
+                artifact.get("id"),
+                "ontology-entity",
+                target_id,
+            ),
+            "relation": "ontology relationship",
+            "source": "Fabric Ontology definition",
+            "description": (
+                f"{entity_names.get(source_id, source_id) or 'unknown'} -> "
+                f"{entity_names.get(target_id, target_id) or 'unknown'}"
+            ),
+            "columns": [],
+            "measures": [],
+        })
+        if source_id in entity_names and target_id in entity_names:
+            metadata_relationships.append({
+                "id": relationship_id,
+                "name": name,
+                "sourceEntityId": source_id,
+                "targetEntityId": target_id,
+            })
+
+    for relationship_id, contextualization_id, value in contextualization_parts:
+        relationship_id = _definition_identifier(relationship_id)
+        contextualization_id = _definition_identifier(
+            value.get("id"),
+            contextualization_id,
+        )
+        source = _source_metadata(value.get("dataBindingTable"))
+        if source:
+            source_id = source.get("itemId")
+            if source_id:
+                artifact.setdefault("_definitionSourceIds", set()).add(
+                    source_id
+                )
+            _add_definition_fact(
+                artifact,
+                "Ontology contextualizations",
+                f"{relationship_id}:{contextualization_id}",
+                _source_summary(source),
+            )
+            relationship_ref = _metadata_object_ref(
+                artifact.get("id"),
+                "relationshipType",
+                _fabric_object_id(
+                    artifact.get("id"),
+                    "ontology-relationship",
+                    relationship_id,
+                ),
+                relationship_names.get(relationship_id)
+                or relationship_id,
+            )
+            _add_artifact_object_edge(
+                artifact,
+                _source_object_reference(source),
+                relationship_ref,
+                "contextualizes relationship",
+            )
+            relationship = next(
+                (
+                    candidate
+                    for candidate in metadata_relationships
+                    if candidate["id"] == relationship_id
+                ),
+                None,
+            )
+            if (
+                relationship
+                and source.get("itemId")
+                and source.get("table")
+            ):
+                source_key_bindings = []
+                target_key_bindings = []
+                for raw_values, output, entity_key in (
+                    (
+                        value.get("sourceKeyRefBindings")
+                        or value.get("sourceKeyBindings"),
+                        source_key_bindings,
+                        "sourceEntityId",
+                    ),
+                    (
+                        value.get("targetKeyRefBindings")
+                        or value.get("targetKeyBindings"),
+                        target_key_bindings,
+                        "targetEntityId",
+                    ),
+                ):
+                    for binding in (
+                        raw_values
+                        if isinstance(raw_values, list)
+                        else []
+                    ):
+                        if not isinstance(binding, dict):
+                            continue
+                        source_column = _strict_text(
+                            binding.get("sourceColumnName")
+                            or binding.get("sourceColumn")
+                        )
+                        target_property_id = _definition_identifier(
+                            binding.get("targetPropertyId")
+                            or binding.get("propertyId")
+                        )
+                        if (
+                            source_column
+                            and (
+                                relationship[entity_key],
+                                target_property_id,
+                            ) in property_refs
+                        ):
+                            output.append({
+                                "sourceColumn": source_column,
+                                "targetPropertyId": target_property_id,
+                            })
+                metadata_contextualization = {
+                    "id": contextualization_id,
+                    "relationshipId": relationship_id,
+                    "sourceItemId": source["itemId"],
+                    "sourceObject": source["table"],
+                    "sourceKeyBindings": source_key_bindings,
+                    "targetKeyBindings": target_key_bindings,
+                }
+                for target_key, source_key in (
+                    ("sourceWorkspaceId", "workspaceId"),
+                    ("sourceType", "sourceType"),
+                    ("sourceSchema", "schema"),
+                    ("sourceObjectId", "sourceObjectId"),
+                ):
+                    if source.get(source_key):
+                        metadata_contextualization[target_key] = source[
+                            source_key
+                        ]
+                metadata_contextualizations.append(
+                    metadata_contextualization
+                )
+    artifact["_definitionSchema"] = _merge_schema_tables(
+        definition_schema
+    )
+    metadata_entities = _dedupe_metadata(
+        metadata_entities,
+        lambda value: value.get("id"),
+    )
+    metadata_relationships = _dedupe_metadata(
+        metadata_relationships,
+        lambda value: value.get("id"),
+    )
+    metadata_bindings = _dedupe_metadata(
+        metadata_bindings,
+        lambda value: value.get("id"),
+    )
+    metadata_contextualizations = _dedupe_metadata(
+        metadata_contextualizations,
+        lambda value: value.get("id"),
+    )
+    artifact["_artifactMetadata"] = {
+        "kind": "ontology",
+        "entities": metadata_entities,
+        "relationships": metadata_relationships,
+        "bindings": metadata_bindings,
+        "contextualizations": metadata_contextualizations,
+    }
+    artifact["_definitionUnknownParts"] = unknown
+
+
+def _onelake_source(value):
+    if not isinstance(value, dict):
+        return None
+    source = _source_metadata(value)
+    properties = value.get("properties")
+    properties = properties if isinstance(properties, dict) else {}
+    path = _strict_text(properties.get("path"))
+    if path:
+        match = re.search(
+            r"abfss://([0-9a-f-]{36})@onelake\.dfs\.fabric\.microsoft\.com/"
+            r"([0-9a-f-]{36})/(Tables|Files)/(.*)$",
+            path,
+            re.IGNORECASE,
+        )
+        if match:
+            source = source or {}
+            source["workspaceId"] = _normalized_id(match.group(1))
+            source["itemId"] = _normalized_id(match.group(2))
+            source["sourceType"] = _strict_text(value.get("type"))
+            source["table"] = _strict_text(match.group(4))
+    return source
+
+
+def _safe_graph_properties(values):
+    result = []
+    for value in (values or [])[:MAX_SCHEMA_COLUMNS_PER_OBJECT]:
+        if not isinstance(value, dict):
+            continue
+        name = _strict_text(value.get("name"))
+        data_type = _strict_text(value.get("type"))
+        if name:
+            result.append((name, data_type or "property"))
+    return result
+
+
+def _project_graph_definition(artifact, response):
+    decoded_total = [0]
+    known = {}
+    unknown = 0
+    known_paths = {
+        "graphtype.json": "graphType",
+        "graphdefinition.json": "graphDefinition",
+        "datasources.json": "dataSources",
+    }
+    for part in _definition_parts(response):
+        path = _strict_text(part.get("path"))
+        if not path:
+            raise DefinitionError("definition part path was invalid")
+        lower_path = path.replace("\\", "/").casefold()
+        if lower_path in (".platform", "stylingconfiguration.json"):
+            continue
+        name = known_paths.get(lower_path)
+        if not name:
+            unknown += 1
+            continue
+        _, value = _decode_definition_json(part, decoded_total)
+        known[name] = value
+        artifact.setdefault("_ontologyItemIds", set()).update(
+            _explicit_ids(
+                value,
+                (
+                    "ontologyId",
+                    "ontologyItemId",
+                    "sourceOntologyId",
+                    "sourceOntologyItemId",
+                    "generatedFromOntologyId",
+                    "generatedFromOntologyItemId",
+                ),
+            )
+        )
+
+    graph_type = known.get("graphType", {})
+    definition_schema = []
+    schema_by_alias = {}
+    metadata_node_types = []
+    metadata_edge_types = []
+    metadata_mappings = []
+    ontology_ids = artifact.get("_ontologyItemIds") or set()
+    ontology_item_id = (
+        next(iter(ontology_ids)) if len(ontology_ids) == 1 else None
+    )
+    for node in graph_type.get("nodeTypes") or []:
+        if not isinstance(node, dict):
+            continue
+        alias = _strict_text(node.get("alias"))
+        if not alias:
+            continue
+        properties = _safe_graph_properties(node.get("properties"))
+        labels = [
+            label
+            for label in node.get("labels") or []
+            if _strict_text(label)
+        ]
+        _add_definition_fact(
+            artifact,
+            "Graph node types",
+            alias,
+            f"{', '.join(labels) or 'unlabeled'} | "
+            f"{len(properties)} properties",
+        )
+        for name, data_type in properties:
+            _add_definition_fact(
+                artifact,
+                "Graph node properties",
+                f"{alias}.{name}",
+                data_type,
+            )
+        schema_record = {
+            "_mergeKey": f"graph-node:{alias}",
+            "name": alias,
+            "objectType": "Graph node",
+            "objectId": _fabric_object_id(
+                artifact.get("id"),
+                "graph-node",
+                alias,
+            ),
+            "source": "Fabric GraphModel definition",
+            "description": ", ".join(labels) if labels else None,
+            "columns": [
+                {
+                    "name": name,
+                    "dataType": data_type,
+                    "objectType": "Graph property",
+                }
+                for name, data_type in properties
+            ],
+            "measures": [],
+        }
+        metadata_node_types.append({
+            "alias": alias,
+            "labels": labels,
+            "primaryKeyProperties": [
+                key
+                for key in node.get("primaryKeyProperties") or []
+                if _strict_text(key)
+            ],
+            "properties": [
+                {"name": name, "dataType": data_type}
+                for name, data_type in properties
+            ],
+        })
+        ontology_entity_id = _exact_scalar_id(
+            node,
+            (
+                "ontologyEntityTypeId",
+                "sourceOntologyEntityTypeId",
+                "entityTypeId",
+            ),
+        )
+        if ontology_item_id and ontology_entity_id:
+            schema_record.update({
+                "sourceObjectId": _fabric_object_id(
+                    ontology_item_id,
+                    "ontology-entity",
+                    ontology_entity_id,
+                ),
+                "targetObjectId": schema_record["objectId"],
+                "relation": "generated graph node",
+                "sourceItemId": ontology_item_id,
+                "sourceObjectName": ontology_entity_id,
+                "sourceObjectType": "ontology-entity",
+            })
+        definition_schema.append(schema_record)
+        schema_by_alias[("node", alias)] = schema_record
+    for edge in graph_type.get("edgeTypes") or []:
+        if not isinstance(edge, dict):
+            continue
+        alias = _strict_text(edge.get("alias"))
+        if not alias:
+            continue
+        source = edge.get("sourceNodeType")
+        target = edge.get("destinationNodeType")
+        source_alias = (
+            _strict_text(source.get("alias"))
+            if isinstance(source, dict)
+            else None
+        )
+        target_alias = (
+            _strict_text(target.get("alias"))
+            if isinstance(target, dict)
+            else None
+        )
+        _add_definition_fact(
+            artifact,
+            "Graph edge types",
+            alias,
+            f"{source_alias or 'unknown'} -> {target_alias or 'unknown'} | "
+            f"{len(_safe_graph_properties(edge.get('properties')))} properties",
+        )
+        properties = _safe_graph_properties(edge.get("properties"))
+        schema_record = {
+            "_mergeKey": f"graph-edge:{alias}",
+            "name": alias,
+            "objectType": "Graph edge",
+            "objectId": _fabric_object_id(
+                artifact.get("id"),
+                "graph-edge",
+                alias,
+            ),
+            "source": "Fabric GraphModel definition",
+            "description": (
+                f"{source_alias or 'unknown'} -> "
+                f"{target_alias or 'unknown'}"
+            ),
+            "columns": [
+                {
+                    "name": name,
+                    "dataType": data_type,
+                    "objectType": "Graph property",
+                }
+                for name, data_type in properties
+            ],
+            "measures": [],
+        }
+        if source_alias and target_alias:
+            metadata_edge_types.append({
+                "alias": alias,
+                "labels": [
+                    label
+                    for label in edge.get("labels") or []
+                    if _strict_text(label)
+                ],
+                "sourceNodeType": source_alias,
+                "destinationNodeType": target_alias,
+                "properties": [
+                    {"name": name, "dataType": data_type}
+                    for name, data_type in properties
+                ],
+            })
+        ontology_relationship_id = _exact_scalar_id(
+            edge,
+            (
+                "ontologyRelationshipTypeId",
+                "sourceOntologyRelationshipTypeId",
+                "relationshipTypeId",
+            ),
+        )
+        if ontology_item_id and ontology_relationship_id:
+            schema_record.update({
+                "sourceObjectId": _fabric_object_id(
+                    ontology_item_id,
+                    "ontology-relationship",
+                    ontology_relationship_id,
+                ),
+                "targetObjectId": schema_record["objectId"],
+                "relation": "generated graph edge",
+                "sourceItemId": ontology_item_id,
+                "sourceObjectName": ontology_relationship_id,
+                "sourceObjectType": "ontology-relationship",
+            })
+        definition_schema.append(schema_record)
+        schema_by_alias[("edge", alias)] = schema_record
+
+    source_names = {}
+    metadata_data_sources = []
+    for source_value in known.get("dataSources", {}).get("dataSources") or []:
+        if not isinstance(source_value, dict):
+            continue
+        name = _strict_text(source_value.get("name"))
+        source = _onelake_source(source_value)
+        if not name or not source:
+            continue
+        source_names[name] = source
+        source_id = source.get("itemId")
+        if source_id:
+            artifact.setdefault("_definitionSourceIds", set()).add(source_id)
+        _add_definition_fact(
+            artifact,
+            "Graph data sources",
+            name,
+            _source_summary(source),
+        )
+        if source.get("itemId") and source.get("table"):
+            metadata_source = {
+                "name": name,
+                "sourceItemId": source["itemId"],
+                "sourceObject": source["table"],
+            }
+            for target_key, source_key in (
+                ("sourceWorkspaceId", "workspaceId"),
+                ("sourceObjectId", "sourceObjectId"),
+                ("sourceType", "sourceType"),
+            ):
+                if source.get(source_key):
+                    metadata_source[target_key] = source[source_key]
+            metadata_data_sources.append(metadata_source)
+
+    graph_definition = known.get("graphDefinition", {})
+    for collection, section, alias_field in (
+        ("nodeTables", "Graph node mappings", "nodeTypeAlias"),
+        ("edgeTables", "Graph edge mappings", "edgeTypeAlias"),
+    ):
+        for mapping in graph_definition.get(collection) or []:
+            if not isinstance(mapping, dict):
+                continue
+            alias = _strict_text(mapping.get(alias_field))
+            data_source_name = _strict_text(mapping.get("dataSourceName"))
+            if not alias or not data_source_name:
+                continue
+            property_mappings = mapping.get("propertyMappings")
+            count = (
+                len(property_mappings)
+                if isinstance(property_mappings, list)
+                else 0
+            )
+            _add_definition_fact(
+                artifact,
+                section,
+                alias,
+                f"{data_source_name} | {count} property mappings",
+            )
+            kind = "node" if collection == "nodeTables" else "edge"
+            schema_record = schema_by_alias.get((kind, alias))
+            if schema_record:
+                schema_record["source"] = (
+                    "Fabric GraphModel definition | "
+                    f"{data_source_name}"
+                )
+                source = source_names.get(data_source_name)
+                target_kind = (
+                    "nodeType" if kind == "node" else "edgeType"
+                )
+                target_object_kind = (
+                    "graph-node" if kind == "node" else "graph-edge"
+                )
+                target_ref = _metadata_object_ref(
+                    artifact.get("id"),
+                    target_kind,
+                    schema_record.get("objectId")
+                    or _fabric_object_id(
+                        artifact.get("id"),
+                        target_object_kind,
+                        alias,
+                    ),
+                    alias,
+                )
+                _add_artifact_object_edge(
+                    artifact,
+                    _source_object_reference(source),
+                    target_ref,
+                    "maps node" if kind == "node" else "maps edge",
+                )
+                for property_mapping in (
+                    property_mappings
+                    if isinstance(property_mappings, list)
+                    else []
+                ):
+                    if not isinstance(property_mapping, dict):
+                        continue
+                    property_name = _strict_text(
+                        property_mapping.get("propertyName")
+                    )
+                    if not property_name:
+                        continue
+                    _add_artifact_object_edge(
+                        artifact,
+                        _source_column_reference(
+                            source,
+                            property_mapping.get("sourceColumn"),
+                        ),
+                        _metadata_object_ref(
+                            artifact.get("id"),
+                            "property",
+                            _fabric_object_id(
+                                artifact.get("id"),
+                                "graph-property",
+                                f"{alias}/{property_name}",
+                            ),
+                            property_name,
+                            parent_id=target_ref["id"]
+                            if target_ref
+                            else None,
+                            table_name=alias,
+                        ),
+                        "maps property",
+                    )
+                source = source_names.get(data_source_name)
+                property_names = {
+                    name
+                    for name, _ in _safe_graph_properties(
+                        next(
+                            (
+                                candidate.get("properties")
+                                for candidate in (
+                                    graph_type.get("nodeTypes")
+                                    if kind == "node"
+                                    else graph_type.get("edgeTypes")
+                                ) or []
+                                if isinstance(candidate, dict)
+                                and _strict_text(candidate.get("alias"))
+                                == alias
+                            ),
+                            [],
+                        )
+                    )
+                }
+                safe_mappings = []
+                for property_mapping in (
+                    property_mappings
+                    if isinstance(property_mappings, list)
+                    else []
+                ):
+                    if not isinstance(property_mapping, dict):
+                        continue
+                    property_name = _strict_text(
+                        property_mapping.get("propertyName")
+                    )
+                    source_column = _strict_text(
+                        property_mapping.get("sourceColumn")
+                    )
+                    if (
+                        property_name in property_names
+                        and source_column
+                    ):
+                        safe_mappings.append({
+                            "propertyName": property_name,
+                            "sourceColumn": source_column,
+                        })
+                mapping_id = _definition_identifier(
+                    mapping.get("id"),
+                    f"{kind}:{alias}",
+                )
+                if (
+                    mapping_id
+                    and source
+                    and source.get("itemId")
+                    and source.get("table")
+                ):
+                    metadata_mapping = {
+                        "id": mapping_id,
+                        "kind": kind,
+                        "typeAlias": alias,
+                        "dataSourceName": data_source_name,
+                        "sourceItemId": source["itemId"],
+                        "sourceObject": source["table"],
+                        "propertyMappings": safe_mappings,
+                    }
+                    for target_key, source_key in (
+                        ("sourceWorkspaceId", "workspaceId"),
+                        ("sourceObjectId", "sourceObjectId"),
+                    ):
+                        if source.get(source_key):
+                            metadata_mapping[target_key] = source[source_key]
+                    if kind == "edge":
+                        metadata_mapping["sourceNodeKeyColumns"] = [
+                            value
+                            for value in mapping.get(
+                                "sourceNodeKeyColumns"
+                            ) or []
+                            if _strict_text(value)
+                        ]
+                        metadata_mapping[
+                            "destinationNodeKeyColumns"
+                        ] = [
+                            value
+                            for value in mapping.get(
+                                "destinationNodeKeyColumns"
+                            ) or []
+                            if _strict_text(value)
+                        ]
+                    metadata_mappings.append(metadata_mapping)
+    artifact["_definitionSchema"] = _merge_schema_tables(
+        definition_schema
+    )
+    metadata_data_sources = _dedupe_metadata(
+        metadata_data_sources,
+        lambda value: value.get("name"),
+    )
+    metadata_node_types = _dedupe_metadata(
+        metadata_node_types,
+        lambda value: value.get("alias"),
+    )
+    metadata_edge_types = _dedupe_metadata(
+        metadata_edge_types,
+        lambda value: value.get("alias"),
+    )
+    metadata_mappings = _dedupe_metadata(
+        metadata_mappings,
+        lambda value: value.get("id"),
+    )
+    node_aliases = {
+        node["alias"]
+        for node in metadata_node_types
+    }
+    metadata_edge_types = [
+        edge
+        for edge in metadata_edge_types
+        if edge["sourceNodeType"] in node_aliases
+        and edge["destinationNodeType"] in node_aliases
+    ]
+    edge_aliases = {
+        edge["alias"]
+        for edge in metadata_edge_types
+    }
+    metadata_mappings = [
+        mapping
+        for mapping in metadata_mappings
+        if (
+            mapping["kind"] == "node"
+            and mapping["typeAlias"] in node_aliases
+        )
+        or (
+            mapping["kind"] == "edge"
+            and mapping["typeAlias"] in edge_aliases
+        )
+    ]
+    artifact["_artifactMetadata"] = {
+        "kind": "graphModel",
+        "dataSources": metadata_data_sources,
+        "nodeTypes": metadata_node_types,
+        "edgeTypes": metadata_edge_types,
+        "mappings": metadata_mappings,
+    }
+    artifact["_definitionUnknownParts"] = unknown
+
+
+def _data_agent_source_object_kind(source_type, element_type):
+    source = (_strict_text(source_type) or "").casefold()
+    element = (_strict_text(element_type) or "").casefold()
+    if source == "ontology":
+        if element in ("ontology.entity", "graph.nodetype"):
+            return "ontology-entity"
+        if element in ("ontology.relationship", "graph.edgetype"):
+            return "ontology-relationship"
+        if element in (
+            "ontology.property",
+            "ontology.timeseriesproperty",
+            "graph.property",
+        ):
+            return "ontology-property"
+    if source == "graph":
+        if element == "graph.nodetype":
+            return "graph-node"
+        if element == "graph.edgetype":
+            return "graph-edge"
+        if element == "graph.property":
+            return "graph-property"
+    mappings = {
+        "lakehouse_tables.table": "lakehouse-table",
+        "lakehouse_tables.column": "lakehouse-table-column",
+        "warehouse_tables.table": "warehouse-table",
+        "warehouse_tables.column": "warehouse-table-column",
+        "kusto.table": "kql-table",
+        "kusto.column": "kql-table-column",
+        "kusto.function": "kql-function",
+        "kusto.materializedview": "kql-materialized-view",
+        "semantic_model.table": "semantic-model-table",
+        "semantic_model.column": "semantic-model-table-column",
+        "semantic_model.measure": "semantic-model-measure",
+        "mirrored_database.table": "table",
+        "mirrored_database.column": "table-column",
+        "graph.nodetype": "graph-node",
+        "graph.edgetype": "graph-edge",
+        "graph.property": "graph-property",
+    }
+    return mappings.get(element)
+
+
+def _source_element_identity(
+    source_type,
+    element_type,
+    element_id,
+    display_name,
+    parent_identity,
+):
+    source = (_strict_text(source_type) or "").casefold()
+    element = (_strict_text(element_type) or "").casefold()
+    if source in ("ontology", "graph") and element_id:
+        return element_id
+    if element.endswith(".table"):
+        return (
+            f"{parent_identity}.{display_name}"
+            if parent_identity
+            else display_name
+        )
+    if (
+        element.endswith(".column")
+        or element.endswith(".measure")
+    ) and parent_identity:
+        return f"{parent_identity}/{display_name}"
+    return "/".join(
+        value for value in (parent_identity, display_name) if value
+    )
+
+
+def _data_agent_group_identity(element_type, display_name, parent_identity):
+    element = (_strict_text(element_type) or "").casefold()
+    if element.endswith(".schema"):
+        return ".".join(
+            value for value in (parent_identity, display_name) if value
+        )
+    return parent_identity
+
+
+def _selected_element_facts(
+    artifact,
+    source_name,
+    elements,
+    source_id=None,
+    source_type=None,
+    target_object_id=None,
+    parent_display="",
+    parent_identity="",
+    parent_source_kind=None,
+    parent_source_object_id=None,
+    parent_target_object_id=None,
+    table_name=None,
+    parent_path=None,
+    selected_elements=None,
+    metadata_elements=None,
+    metadata_parent_id=None,
+    metadata_parent_name=None,
+    metadata_budget=None,
+    state=None,
+):
+    for element in elements or []:
+        if not isinstance(element, dict):
+            continue
+        display_name = _bounded_text(
+            element.get("display_name") or element.get("displayName")
+        )
+        element_type = _strict_text(element.get("type"))
+        element_data_type = _strict_text(
+            element.get("data_type") or element.get("dataType")
+        )
+        selected = element.get("is_selected")
+        if display_name:
+            display_path = " / ".join(
+                value for value in (parent_display, display_name) if value
+            )
+            element_id = _definition_identifier(element.get("id"))
+            source_identity = _source_element_identity(
+                source_type,
+                element_type,
+                element_id,
+                display_name,
+                parent_identity,
+            )
+            source_object_type = _data_agent_source_object_kind(
+                source_type,
+                element_type,
+            )
+            _add_definition_fact(
+                artifact,
+                "Data agent selected elements",
+                f"{source_name}:{display_path}",
+                f"{element_type or 'element'} | selected "
+                f"{'yes' if selected is True else 'no'}",
+            )
+            next_parent_identity = source_identity
+            next_parent_source_kind = source_object_type
+            next_parent_source_object_id = (
+                _fabric_object_id(
+                    source_id,
+                    source_object_type,
+                    source_identity,
+                )
+                if source_object_type
+                else parent_source_object_id
+            )
+            next_table_name = table_name
+            if (
+                source_object_type
+                and _metadata_source_kind(source_object_type)
+                in ("table", "view", "materializedView")
+            ):
+                next_table_name = source_identity
+            next_parent_target_id = parent_target_object_id
+            next_parent_path = list(parent_path or [])
+            next_metadata_elements = metadata_elements
+            next_metadata_parent_id = metadata_parent_id
+            next_metadata_parent_name = metadata_parent_name
+            if (
+                selected is True
+                and source_object_type
+                and selected_elements is not None
+            ):
+                if metadata_budget is not None:
+                    metadata_budget["count"] += 1
+                    if (
+                        metadata_budget["count"]
+                        > MAX_ARTIFACT_METADATA_ELEMENTS
+                    ):
+                        artifact["_artifactMetadataTruncated"] = True
+                        return
+                selected_object_id = _fabric_object_id(
+                    artifact.get("id"),
+                    "data-agent-selected-element",
+                    (
+                        f"{source_id or source_name}/"
+                        f"{element_id or source_identity}"
+                    ),
+                )
+                selected_elements.append({
+                    "name": display_name,
+                    "dataType": element_data_type
+                    or element_type
+                    or "element",
+                    "objectType": "Data Agent selected element",
+                    "objectId": selected_object_id,
+                    "parentObjectId": (
+                        parent_target_object_id or target_object_id
+                    ),
+                    "parentPath": list(next_parent_path),
+                    "tableName": next_table_name,
+                    "sourceObjectId": _fabric_object_id(
+                        source_id,
+                        source_object_type,
+                        source_identity,
+                    ),
+                    "sourceParentObjectId": parent_source_object_id,
+                    "sourceParentPath": list(next_parent_path),
+                    "sourceTableName": next_table_name,
+                    "targetObjectId": selected_object_id,
+                    "relation": "selected by data agent",
+                    "sourceItemId": source_id,
+                    "sourceObjectName": display_name,
+                    "sourceObjectType": source_object_type,
+                })
+                if metadata_elements is not None and element_id:
+                    metadata_element = {
+                        "id": element_id,
+                        "displayName": display_name,
+                        "elementType": element_type,
+                        "selected": True,
+                        "sourceArtifactId": source_id,
+                        "parentPath": list(next_parent_path),
+                        "children": [],
+                    }
+                    if element_data_type:
+                        metadata_element["dataType"] = element_data_type
+                    if metadata_parent_id:
+                        metadata_element["parentId"] = metadata_parent_id
+                    if metadata_parent_name:
+                        metadata_element["parentName"] = metadata_parent_name
+                    index_state = _strict_text(
+                        element.get("index_state")
+                        or element.get("indexState")
+                    )
+                    if index_state:
+                        metadata_element["indexState"] = index_state
+                    if state:
+                        metadata_element["state"] = state
+                    metadata_elements.append(metadata_element)
+                    next_metadata_elements = metadata_element["children"]
+                    next_metadata_parent_id = element_id
+                    next_metadata_parent_name = display_name
+                next_parent_target_id = selected_object_id
+                next_parent_path.append(display_name)
+            elif not source_object_type:
+                next_parent_identity = _data_agent_group_identity(
+                    element_type,
+                    display_name,
+                    parent_identity,
+                )
+                next_parent_source_kind = parent_source_kind
+                next_parent_source_object_id = parent_source_object_id
+            children = element.get("children")
+            if isinstance(children, list):
+                _selected_element_facts(
+                    artifact,
+                    source_name,
+                    children,
+                    source_id=source_id,
+                    source_type=source_type,
+                    target_object_id=target_object_id,
+                    parent_display=display_path,
+                    parent_identity=next_parent_identity,
+                    parent_source_kind=next_parent_source_kind,
+                    parent_source_object_id=next_parent_source_object_id,
+                    parent_target_object_id=next_parent_target_id,
+                    table_name=next_table_name,
+                    parent_path=next_parent_path,
+                    selected_elements=selected_elements,
+                    metadata_elements=next_metadata_elements,
+                    metadata_parent_id=next_metadata_parent_id,
+                    metadata_parent_name=next_metadata_parent_name,
+                    metadata_budget=metadata_budget,
+                    state=state,
+                )
+
+
+def _flatten_data_agent_elements(elements):
+    flattened = []
+    for element in elements or []:
+        if not isinstance(element, dict):
+            continue
+        flattened.append(element)
+        flattened.extend(
+            _flatten_data_agent_elements(element.get("children"))
+        )
+    return flattened
+
+
+def _project_data_agent_definition(artifact, response):
+    decoded_total = [0]
+    unknown = 0
+    stages = set()
+    published_description = None
+    definition_schema = []
+    metadata_sources = {}
+    metadata_source_order = []
+    for part in _definition_parts(response):
+        path = _strict_text(part.get("path"))
+        if not path:
+            raise DefinitionError("definition part path was invalid")
+        normalized_path = path.replace("\\", "/")
+        lower_path = normalized_path.casefold()
+        if lower_path in (
+            ".platform",
+            "dataagentv1.json",
+            "files/config/data_agent.json",
+        ):
+            continue
+        if lower_path.endswith("/fewshots.json"):
+            continue
+        if lower_path == "files/config/publish_info.json":
+            _, value = _decode_definition_json(part, decoded_total)
+            published_description = _strict_text(value.get("description"))
+            continue
+        stage_match = re.fullmatch(
+            r"Files/Config/(draft|published)/stage_config\.json",
+            normalized_path,
+            re.IGNORECASE,
+        )
+        if stage_match:
+            stages.add(stage_match.group(1).casefold())
+            continue
+        source_match = re.fullmatch(
+            r"Files/Config/(draft|published)/[^/]+/datasource\.json",
+            normalized_path,
+            re.IGNORECASE,
+        )
+        if source_match:
+            stage = source_match.group(1).casefold()
+            stages.add(stage)
+            _, value = _decode_definition_json(part, decoded_total)
+            source_id = _normalized_id(value.get("artifactId"))
+            source_name = _bounded_text(value.get("displayName")) or (
+                source_id or "source"
+            )
+            source_type = _strict_text(value.get("type")) or "unknown"
+            if source_id:
+                artifact.setdefault("_definitionSourceIds", set()).add(
+                    source_id
+                )
+            _add_definition_fact(
+                artifact,
+                "Data agent sources",
+                f"{stage}:{source_name}",
+                f"{source_type} | {source_id or 'external source'}",
+            )
+            agent_source_object_id = _fabric_object_id(
+                artifact.get("id"),
+                "data-agent-source",
+                f"{stage}/{source_id or source_name}",
+            )
+            elements = value.get("elements")
+            selected_elements = []
+            metadata_elements = []
+            metadata_budget = {"count": 0}
+            if isinstance(elements, list):
+                _selected_element_facts(
+                    artifact,
+                    f"{stage}:{source_name}",
+                    elements,
+                    source_id=source_id,
+                    source_type=source_type,
+                    target_object_id=agent_source_object_id,
+                    selected_elements=selected_elements,
+                    metadata_elements=metadata_elements,
+                    metadata_budget=metadata_budget,
+                    state=stage,
+                )
+            definition_schema.append({
+                "_mergeKey": (
+                    f"data-agent-source:{stage}:"
+                    f"{source_id or source_name}"
+                ),
+                "name": f"{stage}:{source_name}",
+                "objectType": "Data Agent source",
+                "objectId": agent_source_object_id,
+                "source": "Fabric DataAgent definition",
+                "description": (
+                    f"{source_type} | {source_id or 'external source'}"
+                ),
+                "columns": selected_elements,
+                "measures": [],
+            })
+            if source_id:
+                metadata_source = {
+                    "artifactId": source_id,
+                    "displayName": source_name,
+                    "sourceType": source_type,
+                    "elements": metadata_elements,
+                    "selectedElements": [
+                        {
+                            key: field
+                            for key, field in {
+                                "id": element.get("id"),
+                                "displayName": element.get("displayName"),
+                                "elementType": element.get("elementType"),
+                                "sourceArtifactId": element.get(
+                                    "sourceArtifactId"
+                                ),
+                                "dataType": element.get("dataType"),
+                                "parentId": element.get("parentId"),
+                                "parentName": element.get("parentName"),
+                                "parentPath": element.get("parentPath"),
+                                "state": element.get("state"),
+                                "indexState": element.get("indexState"),
+                            }.items()
+                            if field is not None
+                        }
+                        for element in _flatten_data_agent_elements(
+                            metadata_elements
+                        )
+                    ],
+                    "_stage": stage,
+                }
+                workspace_id = _normalized_id(value.get("workspaceId"))
+                if workspace_id:
+                    metadata_source["workspaceId"] = workspace_id
+                existing = metadata_sources.get(source_id)
+                if existing is None:
+                    metadata_source_order.append(source_id)
+                if (
+                    existing is None
+                    or existing.get("_stage") != "published"
+                    and stage == "published"
+                ):
+                    metadata_sources[source_id] = metadata_source
+            continue
+        unknown += 1
+    _add_definition_fact(
+        artifact,
+        "Data agent",
+        "State",
+        "published" if "published" in stages else "draft",
+    )
+    if published_description:
+        _add_definition_fact(
+            artifact,
+            "Data agent",
+            "Published description",
+            published_description,
+        )
+    artifact["_definitionSchema"] = _merge_schema_tables(
+        definition_schema
+    )
+    artifact["_artifactMetadata"] = {
+        "kind": "dataAgent",
+        "sources": [
+            {
+                key: value
+                for key, value in metadata_sources[source_id].items()
+                if key != "_stage"
+            }
+            for source_id in metadata_source_order
+        ],
+    }
+    artifact["_definitionUnknownParts"] = unknown
+
+
+def _project_definition(artifact, response):
+    artifact_type = artifact.get("_type")
+    if artifact_type == "Ontology":
+        _project_ontology_definition(artifact, response)
+    elif artifact_type == "GraphModel":
+        _project_graph_definition(artifact, response)
+    elif artifact_type == "DataAgent":
+        _project_data_agent_definition(artifact, response)
+    else:
+        raise DefinitionError("definition type was unsupported")
+
+
+def _kusto_url(value):
+    text = _strict_text(value)
+    if not text:
+        raise ValueError("KQL query service URI was missing")
+    parsed = urllib.parse.urlparse(text)
+    host = (parsed.hostname or "").casefold()
+    if (
+        parsed.scheme != "https"
+        or (
+            not host.endswith(".kusto.fabric.microsoft.com")
+            and not host.endswith(".kusto.windows.net")
+        )
+    ):
+        raise ValueError("KQL query service URI used an unexpected origin")
+    return text.rstrip("/") + "/v1/rest/mgmt"
+
+
+def _json_documents(value):
+    documents = []
+    if isinstance(value, dict):
+        if isinstance(value.get("Databases"), dict):
+            documents.append(value)
+        for table in value.get("Tables") or []:
+            if not isinstance(table, dict):
+                continue
+            for row in table.get("Rows") or []:
+                if not isinstance(row, list):
+                    continue
+                for cell in row:
+                    if not isinstance(cell, str):
+                        continue
+                    try:
+                        parsed = json.loads(cell)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(parsed, dict):
+                        documents.extend(_json_documents(parsed))
+    return documents
+
+
+def _kusto_entities(database, name):
+    values = database.get(name)
+    if isinstance(values, dict):
+        return [
+            (key, value)
+            for key, value in values.items()
+            if isinstance(value, dict)
+        ]
+    if isinstance(values, list):
+        return [
+            (_strict_text(value.get("Name")) or "", value)
+            for value in values
+            if isinstance(value, dict)
+        ]
+    return []
+
+
+def _kusto_schema(response, database_name):
+    documents = _json_documents(response)
+    if not documents:
+        raise ValueError("KQL schema response omitted database metadata")
+    databases = documents[0]["Databases"]
+    database = next(
+        (
+            value
+            for key, value in databases.items()
+            if str(key).casefold() == database_name.casefold()
+            and isinstance(value, dict)
+        ),
+        None,
+    )
+    if database is None and len(databases) == 1:
+        database = next(iter(databases.values()))
+    if not isinstance(database, dict):
+        raise ValueError("KQL schema response omitted the requested database")
+
+    tables = []
+    for collection, object_type in (
+        ("Tables", "KQL table"),
+        ("ExternalTables", "KQL external table"),
+        ("MaterializedViews", "KQL materialized view"),
+    ):
+        for key, value in _kusto_entities(database, collection):
+            if len(tables) >= MAX_SCHEMA_OBJECTS_PER_ITEM:
+                break
+            name = _strict_text(value.get("Name")) or _strict_text(key)
+            schema = value.get("Schema")
+            schema = schema if isinstance(schema, dict) else value
+            ordered_columns = schema.get("OrderedColumns")
+            columns = []
+            for column in (
+                ordered_columns if isinstance(ordered_columns, list) else []
+            )[:MAX_SCHEMA_COLUMNS_PER_OBJECT]:
+                if not isinstance(column, dict):
+                    continue
+                column_name = _strict_text(column.get("Name"))
+                if not column_name:
+                    continue
+                columns.append({
+                    "name": column_name,
+                    "dataType": _strict_text(
+                        column.get("CslType") or column.get("Type")
+                    ) or "column",
+                })
+            if name:
+                tables.append({
+                    "_mergeKey": f"{collection}:{name}",
+                    "name": name,
+                    "objectType": object_type,
+                    "source": "Kusto read-only management API",
+                    "columns": columns,
+                    "measures": [],
+                })
+    functions = []
+    for key, value in _kusto_entities(
+        database,
+        "Functions",
+    )[:MAX_SCHEMA_OBJECTS_PER_ITEM]:
+        name = _strict_text(value.get("Name")) or _strict_text(key)
+        if not name:
+            continue
+        parameters = []
+        raw_parameters = (
+            value.get("Parameters")
+            or value.get("InputParameters")
+            or []
+        )
+        for parameter in (
+            raw_parameters if isinstance(raw_parameters, list) else []
+        )[:MAX_ARTIFACT_METADATA_COLLECTION]:
+            if not isinstance(parameter, dict):
+                continue
+            parameter_name = _strict_text(
+                parameter.get("Name") or parameter.get("name")
+            )
+            data_type = _strict_text(
+                parameter.get("CslType")
+                or parameter.get("Type")
+                or parameter.get("dataType")
+            )
+            if parameter_name and data_type:
+                parameters.append({
+                    "name": parameter_name,
+                    "dataType": data_type,
+                })
+        metadata = {"name": name, "parameters": parameters}
+        for output_key, source_keys in (
+            ("folder", ("Folder", "folder")),
+            ("description", ("DocString", "Description", "description")),
+            ("returnType", ("ReturnType", "returnType")),
+        ):
+            candidate = next(
+                (
+                    _bounded_text(
+                        value.get(source_key),
+                        512 if output_key == "description" else 256,
+                    )
+                    for source_key in source_keys
+                    if _strict_text(value.get(source_key))
+                ),
+                None,
+            )
+            if candidate:
+                metadata[output_key] = candidate
+        functions.append(metadata)
+
+    materialized_views = []
+    for key, value in _kusto_entities(
+        database,
+        "MaterializedViews",
+    )[:MAX_SCHEMA_OBJECTS_PER_ITEM]:
+        name = _strict_text(value.get("Name")) or _strict_text(key)
+        if not name:
+            continue
+        schema = value.get("Schema")
+        schema = schema if isinstance(schema, dict) else value
+        columns = []
+        for column in (
+            schema.get("OrderedColumns")
+            if isinstance(schema.get("OrderedColumns"), list)
+            else []
+        )[:MAX_SCHEMA_COLUMNS_PER_OBJECT]:
+            if not isinstance(column, dict):
+                continue
+            column_name = _strict_text(column.get("Name"))
+            data_type = _strict_text(
+                column.get("CslType") or column.get("Type")
+            )
+            if column_name and data_type:
+                columns.append({
+                    "name": column_name,
+                    "dataType": data_type,
+                })
+        metadata = {"name": name, "columns": columns}
+        source_table = _strict_text(
+            value.get("SourceTable")
+            or value.get("SourceTableName")
+        )
+        description = _bounded_text(
+            value.get("DocString")
+            or value.get("Description"),
+            512,
+        )
+        if source_table:
+            metadata["sourceTable"] = source_table
+        if description:
+            metadata["description"] = description
+        materialized_views.append(metadata)
+
+    for function in functions:
+        if len(tables) >= MAX_SCHEMA_OBJECTS_PER_ITEM:
+            break
+        tables.append({
+                "_mergeKey": f"Functions:{function['name']}",
+                "name": function["name"],
+                "objectType": "KQL function",
+                "source": "Kusto read-only management API",
+                "columns": [],
+                "measures": [],
+            })
+    functions = _dedupe_metadata(
+        functions,
+        lambda value: value.get("name"),
+    )
+    materialized_views = _dedupe_metadata(
+        materialized_views,
+        lambda value: value.get("name"),
+    )
+    return (
+        _merge_schema_tables(tables),
+        sorted(functions, key=lambda value: value["name"].casefold()),
+        sorted(
+            materialized_views,
+            key=lambda value: value["name"].casefold(),
+        ),
+    )
+
+
+def _collect_kql_schema(token, artifact):
+    detail = artifact.get("_detail")
+    detail = detail if isinstance(detail, dict) else {}
+    properties = detail.get("properties")
+    properties = properties if isinstance(properties, dict) else {}
+    database_name = (
+        _strict_text(properties.get("databaseName"))
+        or _strict_text(detail.get("displayName"))
+        or _strict_text(artifact.get("displayName"))
+    )
+    query_service_uri = _strict_text(properties.get("queryServiceUri"))
+    if not database_name or not query_service_uri:
+        raise ValueError("KQL database identity was incomplete")
+    escaped_name = database_name.replace("'", "''")
+    response = _req(
+        token,
+        _kusto_url(query_service_uri),
+        method="POST",
+        body={
+            "db": database_name,
+            "csl": (
+                f".show database ['{escaped_name}'] schema as json "
+                "with(Tables=True,ExternalTables=True,"
+                "MaterializedViews=True,Functions=True)"
+            ),
+        },
+        headers={
+            "Accept": "application/json",
+            "x-ms-readonly": "true",
+            "x-ms-app": "Fabric Atlas",
+        },
+    )
+    schema, functions, materialized_views = _kusto_schema(
+        response,
+        database_name,
+    )
+    artifact["_kqlSchema"] = schema
+    artifact["_kqlFunctions"] = functions
+    artifact["_kqlMaterializedViews"] = materialized_views
+    artifact["_artifactMetadata"] = {
+        "kind": "kql",
+        "functions": functions,
+        "materializedViews": materialized_views,
+    }
+
+
+def _sql_endpoint(value):
+    text = _strict_text(value)
+    if not text or any(
+        character in text
+        for character in ("\x00", "\r", "\n", ";", "{", "}")
+    ):
+        raise ValueError("SQL server endpoint was invalid")
+    if "://" in text:
+        parsed = urllib.parse.urlparse(text)
+        if (
+            parsed.scheme.casefold() != "https"
+            or parsed.username
+            or parsed.password
+            or parsed.path not in ("", "/")
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("SQL server endpoint was invalid")
+        host = parsed.hostname
+        try:
+            port = parsed.port or 1433
+        except ValueError as error:
+            raise ValueError("SQL server endpoint port was invalid") from error
+    else:
+        endpoint = text[4:] if text.casefold().startswith("tcp:") else text
+        if endpoint.count(",") > 1:
+            raise ValueError("SQL server endpoint was invalid")
+        host, separator, raw_port = endpoint.rpartition(",")
+        if not separator:
+            host = endpoint
+            raw_port = "1433"
+        try:
+            port = int(raw_port)
+        except ValueError as error:
+            raise ValueError("SQL server endpoint port was invalid") from error
+    host = _strict_text(host)
+    labels = host.casefold().split(".") if host else []
+    if (
+        not host
+        or not re.fullmatch(r"[A-Za-z0-9.-]+", host)
+        or any(
+            not re.fullmatch(
+                r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?",
+                label,
+            )
+            for label in labels
+        )
+        or not host.casefold().endswith(".database.fabric.microsoft.com")
+        or host.casefold() == "database.fabric.microsoft.com"
+        or port != 1433
+    ):
+        raise ValueError("SQL server endpoint used an unexpected origin")
+    return host.casefold(), port
+
+
+def _sql_database_name(value):
+    text = _strict_text(value)
+    if (
+        not text
+        or len(text) > 128
+        or any(
+            character in text
+            for character in ("\x00", "\r", "\n", ";", "{", "}")
+        )
+    ):
+        raise ValueError("SQL database name was invalid")
+    return text
+
+
+def _pack_sql_access_token(token):
+    text = _strict_text(token)
+    if (
+        not text
+        or len(text) < 32
+        or len(text) > MAX_SQL_TOKEN_CHARACTERS
+        or any(ord(character) < 32 for character in text)
+    ):
+        raise ValueError("SQL access token was invalid")
+    token_bytes = text.encode("utf-16le")
+    return struct.pack(
+        f"<I{len(token_bytes)}s",
+        len(token_bytes),
+        token_bytes,
+    )
+
+
+def _sql_timeout_seconds(deadline):
+    remaining = deadline.remaining()
+    if remaining < 1:
+        raise DeadlineExceeded("execution deadline exhausted")
+    return max(
+        1,
+        min(REQUEST_TIMEOUT_SECONDS, int(math.floor(remaining))),
+    )
+
+
+def _load_mssql_driver():
+    try:
+        return importlib.import_module("mssql_python")
+    except (ImportError, ModuleNotFoundError, OSError) as error:
+        raise SqlRuntimeUnavailable(
+            "mssql-python runtime was unavailable"
+        ) from error
+
+
+def _sql_connect(driver, connection_string, token, timeout):
+    try:
+        return driver.connect(
+            connection_string,
+            autocommit=True,
+            attrs_before={
+                SQL_COPT_SS_ACCESS_TOKEN: _pack_sql_access_token(token),
+            },
+            timeout=timeout,
+        )
+    except (ImportError, ModuleNotFoundError, OSError) as error:
+        raise SqlRuntimeUnavailable(
+            "mssql-python native runtime was unavailable"
+        ) from error
+    except Exception as error:
+        message = str(error).casefold()
+        if (
+            "28000" in message
+            or "18456" in message
+            or "login failed" in message
+            or "authentication" in message
+        ):
+            raise SqlAuthorizationError(
+                "SQL authentication failed"
+            ) from error
+        raise SqlConnectionError("SQL connection failed") from error
+
+
+def _sql_fetch_rows(connection, query, limit, deadline):
+    cursor = None
+    active_error = None
+    try:
+        connection.timeout = _sql_timeout_seconds(deadline)
+        cursor = connection.cursor()
+        cursor.execute(query)
+        rows = list(cursor.fetchmany(limit + 1))
+        if len(rows) > limit:
+            raise ResponseSizeExceeded(
+                "SQL catalog response exceeded the safe row limit"
+            )
+        return rows
+    except (DeadlineExceeded, ResponseSizeExceeded) as error:
+        active_error = error
+        raise
+    except Exception as error:
+        active_error = error
+        raise SqlCatalogQueryError(
+            "SQL catalog query failed"
+        ) from error
+    finally:
+        if cursor is not None:
+            try:
+                cursor.close()
+            except Exception as error:
+                if active_error is None:
+                    raise SqlCatalogQueryError(
+                        "SQL catalog cursor cleanup failed"
+                    ) from error
+
+
+def _sql_catalog_projection(object_rows, primary_key_rows, foreign_key_rows):
+    def row_values(row, minimum):
+        if isinstance(row, (str, bytes, bytearray, dict)):
+            raise ValueError("SQL catalog row was invalid")
+        try:
+            if len(row) < minimum:
+                raise ValueError("SQL catalog row was invalid")
+            return [row[index] for index in range(minimum)]
+        except (TypeError, IndexError) as error:
+            raise ValueError("SQL catalog row was invalid") from error
+
+    def ordinal(value):
+        return (
+            int(value)
+            if isinstance(value, numbers.Integral)
+            and not isinstance(value, bool)
+            else 0
+        )
+
+    objects = {}
+    order = []
+    for row in object_rows:
+        values = row_values(row, 6)
+        schema_name = _strict_text(values[0])
+        object_name = _strict_text(values[1])
+        object_code = _strict_text(values[2])
+        if (
+            not schema_name
+            or not object_name
+            or object_code not in ("U", "V")
+        ):
+            raise ValueError("SQL catalog object identity was invalid")
+        key = (schema_name.casefold(), object_name.casefold(), object_code)
+        if key not in objects:
+            if len(objects) >= MAX_SCHEMA_OBJECTS_PER_ITEM:
+                raise ResponseSizeExceeded(
+                    "SQL catalog exceeded the safe object limit"
+                )
+            objects[key] = {
+                "schema": schema_name,
+                "name": object_name,
+                "objectType": (
+                    "SQL table" if object_code == "U" else "SQL view"
+                ),
+                "columns": [],
+            }
+            order.append(key)
+        column_name = _strict_text(values[3])
+        if column_name:
+            columns = objects[key]["columns"]
+            if len(columns) >= MAX_SCHEMA_COLUMNS_PER_OBJECT:
+                raise ResponseSizeExceeded(
+                    "SQL catalog exceeded the safe column limit"
+                )
+            columns.append({
+                "name": column_name,
+                "dataType": _strict_text(values[4]) or "column",
+            })
+
+    primary_keys = {}
+    for row in primary_key_rows:
+        values = row_values(row, 5)
+        schema_name = _strict_text(values[0])
+        table_name = _strict_text(values[1])
+        key_name = _strict_text(values[2])
+        column_name = _strict_text(values[3])
+        if all((schema_name, table_name, key_name, column_name)):
+            key = (schema_name, table_name, key_name)
+            primary_keys.setdefault(key, []).append(
+                (ordinal(values[4]), column_name)
+            )
+
+    foreign_keys = {}
+    for row in foreign_key_rows:
+        raw_values = row_values(row, 8)
+        values = [_strict_text(value) for value in raw_values[:7]]
+        if all(values):
+            key = tuple(values[:3] + values[4:6])
+            foreign_keys.setdefault(key, []).append(
+                (ordinal(raw_values[7]), values[3], values[6])
+            )
+
+    facts = []
+    for (schema_name, table_name, key_name), columns in primary_keys.items():
+        ordered = [
+            name
+            for _, name in sorted(columns, key=lambda value: value[0])
+        ]
+        facts.append((
+            "Primary key",
+            f"{schema_name}.{table_name}",
+            f"{key_name}: {', '.join(ordered)}",
+        ))
+    for key, columns in foreign_keys.items():
+        key_name, source_schema, source_table, target_schema, target_table = key
+        ordered = sorted(columns, key=lambda value: value[0])
+        source_columns = ", ".join(value[1] for value in ordered)
+        target_columns = ", ".join(value[2] for value in ordered)
+        facts.append((
+            "Foreign key",
+            key_name,
+            (
+                f"{source_schema}.{source_table}({source_columns}) -> "
+                f"{target_schema}.{target_table}({target_columns})"
+            ),
+        ))
+
+    schema = _schema_objects(
+        [objects[key] for key in order],
+        "SQL table",
+        "Fabric SQL system catalog",
+    )
+    return schema, facts
+
+
+def _collect_sql_schema(token, artifact):
+    detail = artifact.get("_detail")
+    detail = detail if isinstance(detail, dict) else {}
+    properties = detail.get("properties")
+    properties = properties if isinstance(properties, dict) else {}
+    host, port = _sql_endpoint(properties.get("serverFqdn"))
+    database_name = _sql_database_name(properties.get("databaseName"))
+    deadline = _ACTIVE_DEADLINE.get() or _ExecutionDeadline()
+    timeout = _sql_timeout_seconds(deadline)
+    connection_string = (
+        f"Server=tcp:{host},{port};"
+        f"Database={database_name};"
+        "Encrypt=yes;"
+        "TrustServerCertificate=no;"
+        "ApplicationIntent=ReadOnly;"
+    )
+    driver = _load_mssql_driver()
+    connection = _sql_connect(
+        driver,
+        connection_string,
+        token,
+        timeout,
+    )
+    active_error = None
+    try:
+        object_rows = _sql_fetch_rows(
+            connection,
+            SQL_OBJECTS_QUERY,
+            MAX_SQL_CATALOG_ROWS,
+            deadline,
+        )
+        primary_key_rows = _sql_fetch_rows(
+            connection,
+            SQL_PRIMARY_KEYS_QUERY,
+            MAX_SQL_RELATIONSHIP_ROWS,
+            deadline,
+        )
+        foreign_key_rows = _sql_fetch_rows(
+            connection,
+            SQL_FOREIGN_KEYS_QUERY,
+            MAX_SQL_RELATIONSHIP_ROWS,
+            deadline,
+        )
+    except Exception as error:
+        active_error = error
+        raise
+    finally:
+        try:
+            connection.close()
+        except Exception as error:
+            if active_error is None:
+                raise SqlConnectionError(
+                    "SQL connection cleanup failed"
+                ) from error
+    schema, facts = _sql_catalog_projection(
+        object_rows,
+        primary_key_rows,
+        foreign_key_rows,
+    )
+    artifact["_sqlSchema"] = schema
+    artifact["_sqlMetadataFacts"] = facts
+
+
+def _sql_metadata_for_item(sql_metadata, item_id):
+    if sql_metadata is None:
+        return None
+    if not isinstance(sql_metadata, dict):
+        raise ValueError("sqlMetadata must be an object")
+    value = sql_metadata.get(item_id)
+    if value is None:
+        for key, candidate in sql_metadata.items():
+            if _normalized_id(key) == item_id:
+                value = candidate
+                break
+    return value
+
+
+def _sql_metadata_projection(value):
+    if not isinstance(value, dict):
+        raise ValueError("SQL metadata item was not an object")
+    tables = _schema_objects(
+        value.get("tables") if isinstance(value.get("tables"), list) else [],
+        "SQL table",
+        "Pre-collected SQL system catalog metadata",
+    )
+    views = _schema_objects(
+        value.get("views") if isinstance(value.get("views"), list) else [],
+        "SQL view",
+        "Pre-collected SQL system catalog metadata",
+    )
+    facts = []
+    for collection, label in (
+        (value.get("tables"), "Primary key"),
+        (value.get("foreignKeys"), "Foreign key"),
+    ):
+        if not isinstance(collection, list):
+            continue
+        for entry in collection[:MAX_DEFINITION_FACTS_PER_ITEM]:
+            if not isinstance(entry, dict):
+                continue
+            name = _qualified_object_name(entry)
+            if label == "Primary key":
+                columns = entry.get("primaryKey")
+                if not isinstance(columns, list):
+                    continue
+                safe_columns = [
+                    column for column in columns if _strict_text(column)
+                ]
+                if name and safe_columns:
+                    facts.append((label, name, ", ".join(safe_columns)))
+            else:
+                source = _strict_text(entry.get("sourceTable"))
+                target = _strict_text(entry.get("targetTable"))
+                if source and target:
+                    facts.append((
+                        label,
+                        _strict_text(entry.get("name")) or f"{source}->{target}",
+                        f"{source} -> {target}",
+                    ))
+    return _merge_schema_tables(tables, views), facts
+
+
+def _enrich_artifact(
+    token,
+    ws,
+    artifact,
+    trackers,
+    errors,
+    kusto_token="",
+    sql_token="",
+    sql_metadata=None,
+):
     artifact_type = artifact.get("_type")
     artifact_id = artifact.get("id")
     detail_path = DETAIL_PATHS.get(artifact_type)
@@ -772,6 +4045,7 @@ def _enrich_artifact(token, ws, artifact, trackers, errors):
                 token,
                 f"{FABRIC}/workspaces/{ws}/{detail_path}/{artifact_id}",
             )
+            _merge_detail_metadata(artifact, artifact["_detail"])
             _track_optional(trackers["itemDetails"], "success")
         except urllib.error.HTTPError as error:
             code = _safe_error_code(error, optional=True)
@@ -880,6 +4154,112 @@ def _enrich_artifact(token, ws, artifact, trackers, errors):
                 _track_optional(trackers["reportPages"], "failed", code)
                 errors.append(f"reportPages: {code}")
 
+    if artifact_type in DEFINITION_PATHS and artifact_id:
+        try:
+            definition = _get_definition(
+                token,
+                ws,
+                artifact_type,
+                artifact_id,
+            )
+            _project_definition(artifact, definition)
+            code = (
+                "forward-compatible-parts-skipped"
+                if artifact.get("_definitionUnknownParts")
+                else (
+                    "artifact-metadata-truncated"
+                    if artifact.get("_artifactMetadataTruncated")
+                    else (
+                        "projection-truncated"
+                        if artifact.get("_definitionTruncated")
+                        else None
+                    )
+                )
+            )
+            artifact["_definitionStatus"] = code or "complete"
+            _track_optional(trackers["definitions"], "success", code)
+        except Exception as error:
+            code = _definition_error_code(error)
+            artifact["_definitionStatus"] = code
+            if code in (
+                "endpoint-unsupported",
+                "read-write-permission-required",
+                "encrypted-label-blocked",
+            ):
+                _track_optional(
+                    trackers["definitions"],
+                    "unsupported",
+                    code,
+                )
+            else:
+                _track_optional(trackers["definitions"], "failed", code)
+                errors.append(f"definitions:{artifact_id}: {code}")
+
+    if artifact_type == "KQLDatabase" and artifact_id:
+        if not _strict_text(kusto_token):
+            artifact["_kqlSchemaStatus"] = "token-unavailable"
+            _track_optional(
+                trackers["kqlSchema"],
+                "unsupported",
+                "token-unavailable",
+            )
+        else:
+            try:
+                _collect_kql_schema(kusto_token, artifact)
+                artifact["_kqlSchemaStatus"] = "complete"
+                _track_optional(trackers["kqlSchema"], "success")
+            except Exception as error:
+                code = _safe_error_code(error, optional=True)
+                artifact["_kqlSchemaStatus"] = code
+                if code in (
+                    "authorization-failed",
+                    "endpoint-unsupported",
+                ):
+                    _track_optional(
+                        trackers["kqlSchema"],
+                        "unsupported",
+                        code,
+                    )
+                else:
+                    _track_optional(trackers["kqlSchema"], "failed", code)
+                    errors.append(f"kqlSchema:{artifact_id}: {code}")
+
+    if artifact_type == "SQLDatabase" and artifact_id:
+        try:
+            supplied = _sql_metadata_for_item(sql_metadata, artifact_id)
+            if _strict_text(sql_token):
+                _collect_sql_schema(sql_token, artifact)
+                artifact["_sqlSchemaStatus"] = "complete"
+                _track_optional(trackers["sqlSchema"], "success")
+            elif supplied is not None:
+                schema, facts = _sql_metadata_projection(supplied)
+                artifact["_sqlSchema"] = schema
+                artifact["_sqlMetadataFacts"] = facts
+                artifact["_sqlSchemaStatus"] = "complete"
+                _track_optional(trackers["sqlSchema"], "success")
+            else:
+                artifact["_sqlSchemaStatus"] = "token-unavailable"
+                _track_optional(
+                    trackers["sqlSchema"],
+                    "unsupported",
+                    "token-unavailable",
+                )
+        except Exception as error:
+            code = _safe_error_code(error, optional=True)
+            artifact["_sqlSchemaStatus"] = code
+            if code in (
+                "authorization-failed",
+                "tds-runtime-unavailable",
+            ):
+                _track_optional(
+                    trackers["sqlSchema"],
+                    "unsupported",
+                    code,
+                )
+            else:
+                _track_optional(trackers["sqlSchema"], "failed", code)
+                errors.append(f"sqlSchema:{artifact_id}: {code}")
+
 
 def _merge_schema_tables(*groups):
     """Deduplicate table names case-insensitively and retain all real columns."""
@@ -890,12 +4270,18 @@ def _merge_schema_tables(*groups):
             name = _strict_text(table.get("name"))
             if not name:
                 continue
-            key = name.casefold()
-            if key not in merged:
+            explicit_key = _strict_text(table.get("_mergeKey"))
+            key = (
+                f"@{explicit_key.casefold()}"
+                if explicit_key
+                else name.casefold()
+            )
+            if key not in merged and not explicit_key:
                 leaf = key.rsplit(".", 1)[-1]
                 leaf_matches = [
                     existing
                     for existing in order
+                    if not existing.startswith("@")
                     if existing.rsplit(".", 1)[-1] == leaf
                     and ("." not in key or "." not in existing)
                 ]
@@ -905,6 +4291,26 @@ def _merge_schema_tables(*groups):
                 merged[key] = {
                     "name": name,
                     "objectType": _strict_text(table.get("objectType")),
+                    "objectId": _strict_text(table.get("objectId")),
+                    "parentObjectId": _strict_text(
+                        table.get("parentObjectId")
+                    ),
+                    "sourceObjectId": _strict_text(
+                        table.get("sourceObjectId")
+                    ),
+                    "targetObjectId": _strict_text(
+                        table.get("targetObjectId")
+                    ),
+                    "relation": _strict_text(table.get("relation")),
+                    "sourceItemId": _normalized_id(
+                        table.get("sourceItemId")
+                    ),
+                    "sourceObjectName": _strict_text(
+                        table.get("sourceObjectName")
+                    ),
+                    "sourceObjectType": _strict_text(
+                        table.get("sourceObjectType")
+                    ),
                     "source": _strict_text(table.get("source")),
                     "description": _strict_text(table.get("description")),
                     "isHidden": (
@@ -922,6 +4328,18 @@ def _merge_schema_tables(*groups):
             target = merged[key]
             if not target.get("objectType") and table.get("objectType"):
                 target["objectType"] = table.get("objectType")
+            for field in (
+                "objectId",
+                "parentObjectId",
+                "sourceObjectId",
+                "targetObjectId",
+                "relation",
+                "sourceItemId",
+                "sourceObjectName",
+                "sourceObjectType",
+            ):
+                if not target.get(field) and table.get(field):
+                    target[field] = table.get(field)
             if table.get("source"):
                 sources = [
                     value.strip()
@@ -947,6 +4365,55 @@ def _merge_schema_tables(*groups):
                         "dataType": _strict_text(
                             column.get("dataType") or column.get("type")
                         ) or "column",
+                        "objectType": _strict_text(
+                            column.get("objectType")
+                        ),
+                        "objectId": _strict_text(
+                            column.get("objectId")
+                        ),
+                        "parentObjectId": _strict_text(
+                            column.get("parentObjectId")
+                        ),
+                        "sourceObjectId": _strict_text(
+                            column.get("sourceObjectId")
+                        ),
+                        "targetObjectId": _strict_text(
+                            column.get("targetObjectId")
+                        ),
+                        "relation": _strict_text(
+                            column.get("relation")
+                        ),
+                        "sourceItemId": _normalized_id(
+                            column.get("sourceItemId")
+                        ),
+                        "sourceObjectName": _strict_text(
+                            column.get("sourceObjectName")
+                        ),
+                        "sourceObjectType": _strict_text(
+                            column.get("sourceObjectType")
+                        ),
+                        "sourceParentObjectId": _strict_text(
+                            column.get("sourceParentObjectId")
+                        ),
+                        "sourceParentPath": (
+                            list(column.get("sourceParentPath"))
+                            if isinstance(
+                                column.get("sourceParentPath"),
+                                list,
+                            )
+                            else None
+                        ),
+                        "sourceTableName": _strict_text(
+                            column.get("sourceTableName")
+                        ),
+                        "parentPath": (
+                            list(column.get("parentPath"))
+                            if isinstance(column.get("parentPath"), list)
+                            else None
+                        ),
+                        "tableName": _strict_text(
+                            column.get("tableName")
+                        ),
                         "description": _strict_text(
                             column.get("description")
                         ),
@@ -968,6 +4435,15 @@ def _merge_schema_tables(*groups):
                         "name": measure_name,
                         "expression": _strict_text(
                             measure.get("expression")
+                        ),
+                        "objectType": _strict_text(
+                            measure.get("objectType")
+                        ),
+                        "objectId": _strict_text(
+                            measure.get("objectId")
+                        ),
+                        "parentObjectId": _strict_text(
+                            measure.get("parentObjectId")
                         ),
                         "description": _strict_text(
                             measure.get("description")
@@ -1163,6 +4639,7 @@ def _schema_objects(values, object_type, source, include_measures=False):
                 "dataType": _strict_text(
                     column.get("dataType") or column.get("type")
                 ) or "column",
+                "objectType": _strict_text(column.get("objectType")),
                 "description": _strict_text(column.get("description")),
                 "isHidden": (
                     column.get("isHidden")
@@ -1182,6 +4659,9 @@ def _schema_objects(values, object_type, source, include_measures=False):
                     "name": measure_name,
                     "expression": _strict_text(
                         measure.get("expression")
+                    ),
+                    "objectType": _strict_text(
+                        measure.get("objectType")
                     ),
                     "description": _strict_text(
                         measure.get("description")
@@ -1332,12 +4812,69 @@ def _item_config(token, ws, a, typ, item_schema=None):
         )
     elif typ == "SQLDatabase":
         add("SQL database", "Database name", properties.get("databaseName"))
+        add("SQL database", "Server", properties.get("serverFqdn"))
         add("SQL database", "Collation", properties.get("collation"))
         add(
             "SQL database",
             "Backup retention days",
             properties.get("backupRetentionDays"),
         )
+        add(
+            "Metadata capability",
+            "SQL schema",
+            a.get("_sqlSchemaStatus"),
+        )
+        for section, label, value in a.get("_sqlMetadataFacts") or []:
+            add(f"SQL {section}s", label, value)
+    elif typ == "Eventhouse":
+        add(
+            "Eventhouse",
+            "Query service URI",
+            properties.get("queryServiceUri"),
+        )
+        database_ids = properties.get("databasesItemIds")
+        if isinstance(database_ids, list):
+            add("Eventhouse", "KQL databases", len(database_ids))
+    elif typ == "KQLDatabase":
+        add(
+            "KQL database",
+            "Parent Eventhouse item ID",
+            properties.get("parentEventhouseItemId"),
+        )
+        add(
+            "KQL database",
+            "Query service URI",
+            properties.get("queryServiceUri"),
+        )
+        add(
+            "KQL database",
+            "Database identity",
+            properties.get("databaseName")
+            or detail.get("displayName")
+            or a.get("displayName"),
+        )
+        add(
+            "KQL database",
+            "Database type",
+            properties.get("databaseType"),
+        )
+        add(
+            "Metadata capability",
+            "KQL schema",
+            a.get("_kqlSchemaStatus"),
+        )
+        for function in a.get("_kqlFunctions") or []:
+            add(
+                "KQL stored functions",
+                function.get("name"),
+                "Stored function",
+            )
+        for view in a.get("_kqlMaterializedViews") or []:
+            add(
+                "KQL materialized views",
+                view.get("name"),
+                "Materialized view",
+            )
     elif typ == "Report":
         add("Report", "Type", a.get("reportType"))
         add("Report", "Semantic model", a.get("datasetId"))
@@ -1366,14 +4903,24 @@ def _item_config(token, ws, a, typ, item_schema=None):
 
     if typ in ("Warehouse", "SQLDatabase"):
         native_inventory = any(
-            "admin scanner" in str(table.get("source") or "").lower()
+            (
+                "admin scanner" in str(table.get("source") or "").lower()
+                or "system catalog" in str(table.get("source") or "").lower()
+            )
             for table in (item_schema or [])
         )
         if native_inventory:
+            sources = " + ".join(
+                sorted({
+                    str(table.get("source"))
+                    for table in (item_schema or [])
+                    if table.get("source")
+                })
+            )
             add(
                 "Inventory",
                 "Coverage",
-                "Tables/views and columns returned by the Power BI admin scanner.",
+                f"Tables/views and columns returned by {sources}.",
             )
         elif item_schema:
             add(
@@ -1387,6 +4934,33 @@ def _item_config(token, ws, a, typ, item_schema=None):
                 "Coverage",
                 "Fabric REST exposes item properties only; complete tables, views and columns require SQL connectivity.",
             )
+
+    if typ in DEFINITION_PATHS:
+        add(
+            "Metadata capability",
+            "Definition enrichment",
+            a.get("_definitionStatus"),
+        )
+        if a.get("_definitionUnknownParts"):
+            add(
+                "Metadata capability",
+                "Forward-compatible definition parts skipped",
+                a.get("_definitionUnknownParts"),
+            )
+        if a.get("_definitionTruncated"):
+            add(
+                "Metadata capability",
+                "Definition projection",
+                "Truncated at the safe metadata fact limit",
+            )
+        if a.get("_artifactMetadataTruncated"):
+            add(
+                "Metadata capability",
+                "Artifact metadata projection",
+                "Truncated at the safe selected-element limit",
+            )
+        for section, label, value in a.get("_definitionFacts") or []:
+            add(section, label, value)
 
     for table in item_schema or []:
         add(
@@ -1427,15 +5001,23 @@ def _item_schema(token, ws, a, typ):
     elif typ in ("Warehouse", "SQLDatabase"):
         tables = _schema_objects(
             a.get("tables"),
-            "Table",
+            "SQL table" if typ == "SQLDatabase" else "Table",
             "Power BI admin scanner",
         )
         views = _schema_objects(
             a.get("views"),
-            "View",
+            "SQL view" if typ == "SQLDatabase" else "View",
             "Power BI admin scanner",
         )
-        return _merge_schema_tables(tables, views)
+        return _merge_schema_tables(
+            tables,
+            views,
+            a.get("_sqlSchema") if typ == "SQLDatabase" else [],
+        )
+    elif typ == "KQLDatabase":
+        return _merge_schema_tables(a.get("_kqlSchema"))
+    elif typ in DEFINITION_PATHS:
+        return _merge_schema_tables(a.get("_definitionSchema"))
     return []
 
 
@@ -1454,6 +5036,11 @@ def _official_lineage(artifacts, workspace_item_ids, workspace_id):
     edges = []
     seen = set()
     normalized_workspace_id = _normalized_id(workspace_id)
+    item_types = {
+        _artifact_id(artifact): artifact.get("_type")
+        for artifact in artifacts
+        if _artifact_id(artifact)
+    }
 
     def add(source, target, relation):
         source_id = _normalized_id(source)
@@ -1532,6 +5119,33 @@ def _official_lineage(artifacts, workspace_item_ids, workspace_id):
             for tile in _lineage_collection(artifact, "tiles"):
                 add(tile.get("reportId"), artifact_id, "dashboard report")
                 add(tile.get("datasetId"), artifact_id, "dashboard dataset")
+        if artifact.get("_type") == "KQLDatabase":
+            detail = artifact.get("_detail")
+            detail = detail if isinstance(detail, dict) else {}
+            properties = detail.get("properties")
+            properties = properties if isinstance(properties, dict) else {}
+            add(
+                properties.get("parentEventhouseItemId"),
+                artifact_id,
+                "KQL database",
+            )
+        for source_id in artifact.get("_definitionSourceIds") or set():
+            relation = {
+                "Ontology": "ontology binding",
+                "GraphModel": "graph source",
+                "DataAgent": (
+                    "ontology"
+                    if item_types.get(_normalized_id(source_id)) == "Ontology"
+                    else "data agent source"
+                ),
+            }.get(artifact.get("_type"), "metadata source")
+            add(source_id, artifact_id, relation)
+        if artifact.get("_type") == "GraphModel":
+            for ontology_id in artifact.get("_ontologyItemIds") or set():
+                add(ontology_id, artifact_id, "generated graph")
+        if artifact.get("_type") == "Ontology":
+            for graph_model_id in artifact.get("_graphModelItemIds") or set():
+                add(artifact_id, graph_model_id, "generated graph")
     return edges
 
 
@@ -1557,7 +5171,14 @@ def _guard_response_size(value, max_bytes=MAX_RESPONSE_BYTES):
 
 
 @udf.function()
-def sync_all(fabricToken: str, workspaceId: str) -> dict:
+def sync_all(
+    fabricToken: str,
+    workspaceId: str,
+    kustoToken: str = "",
+    sqlToken: str = "",
+    storageToken: str = "",
+    sqlMetadata: dict = None,
+) -> dict:
     """Return the v2 metadata-only Fabric Atlas synchronization envelope."""
     ws = _workspace_id(workspaceId)
     out = {
@@ -1567,10 +5188,12 @@ def sync_all(fabricToken: str, workspaceId: str) -> dict:
         "roleAssignments": [],
         "access": [],
         "lineage": [],
+        "objectEdges": [],
         "config": [],
         "schema": {},
         "jobs": [],
         "itemMetadata": {},
+        "artifactMetadata": {},
         "capabilities": {},
         "sections": {
             name: {"status": "failed", "code": "not-run"}
@@ -1593,6 +5216,9 @@ def sync_all(fabricToken: str, workspaceId: str) -> dict:
         "lakehouseTables": _new_optional_tracker(),
         "reportPages": _new_optional_tracker(),
         "jobs": _new_optional_tracker(),
+        "definitions": _new_optional_tracker(),
+        "kqlSchema": _new_optional_tracker(),
+        "sqlSchema": _new_optional_tracker(),
     }
 
     with _deadline_scope(deadline):
@@ -1740,6 +5366,13 @@ def sync_all(fabricToken: str, workspaceId: str) -> dict:
                         artifact,
                         trackers,
                         out["errors"],
+                        kusto_token=kustoToken,
+                        sql_token=sqlToken,
+                        sql_metadata=sqlMetadata,
+                    )
+                    out["itemMetadata"][artifact_id] = _metadata_for_item(
+                        artifact,
+                        artifact_id in scanner_by_id,
                     )
                     users = artifact.get("users") or []
                     if not isinstance(users, list):
@@ -1804,6 +5437,18 @@ def sync_all(fabricToken: str, workspaceId: str) -> dict:
                 _set_section(out, "access", "failed", "invalid-response")
             else:
                 _set_section(out, "access", "complete")
+            out["artifactMetadata"] = {
+                artifact_id: artifact["_artifactMetadata"]
+                for artifact in artifacts
+                if (
+                    (artifact_id := _artifact_id(artifact))
+                    in workspace_item_ids
+                    and isinstance(
+                        artifact.get("_artifactMetadata"),
+                        dict,
+                    )
+                )
+            }
             try:
                 out["lineage"] = _official_lineage(
                     artifacts,
@@ -1849,10 +5494,55 @@ def sync_all(fabricToken: str, workspaceId: str) -> dict:
                 out["errors"].append(
                     f"schema: {_safe_error_code(error)}"
                 )
-            out["schema"] = {
+            artifact_types = {
+                _artifact_id(artifact): artifact.get("_type")
+                for artifact in artifacts
+                if _artifact_id(artifact)
+            }
+            all_schema = {
+                item_id: _finalize_schema_object_ids(
+                    item_id,
+                    artifact_types.get(item_id),
+                    tables,
+                )
+                for item_id, tables in all_schema.items()
+            }
+            workspace_schema = {
                 item_id: tables
                 for item_id, tables in all_schema.items()
                 if item_id in workspace_item_ids
+            }
+            extra_object_edges = [
+                edge
+                for artifact in artifacts
+                if _artifact_id(artifact) in workspace_item_ids
+                for edge in artifact.get("_objectEdges") or []
+            ]
+            object_edges, object_edges_truncated = (
+                _collect_atlas_object_edges(
+                    workspace_schema,
+                    extra_edges=extra_object_edges,
+                )
+            )
+            object_edges_truncated = (
+                object_edges_truncated
+                or any(
+                    artifact.get("_objectEdgesTruncated")
+                    for artifact in artifacts
+                )
+            )
+            out["objectEdges"] = object_edges
+            out["capabilities"]["objectLineage"] = {
+                "status": "complete",
+                **(
+                    {"code": "truncated"}
+                    if object_edges_truncated
+                    else {}
+                ),
+            }
+            out["schema"] = {
+                item_id: _public_schema(tables)
+                for item_id, tables in workspace_schema.items()
             }
             if schema_failed:
                 _set_section(
@@ -1897,6 +5587,10 @@ def sync_all(fabricToken: str, workspaceId: str) -> dict:
                 "code",
                 "scanner-failed",
             )
+            out["capabilities"]["objectLineage"] = {
+                "status": "failed",
+                "code": scanner_code,
+            }
             for name in ("access", "lineage", "schema", "config"):
                 _set_section(out, name, "failed", scanner_code)
                 out["errors"].append(f"{name}: {scanner_code}")
@@ -1933,6 +5627,7 @@ def sync_all(fabricToken: str, workspaceId: str) -> dict:
 
     for name, tracker in trackers.items():
         _finish_optional_section(out, name, tracker)
+    _set_optional_capabilities(out)
     out["syncedAt"] = (
         datetime.datetime.now(datetime.timezone.utc)
         .isoformat(timespec="milliseconds")

@@ -8,9 +8,15 @@ import {
   type AtlasChange,
   type HistoricalSnapshot,
 } from "../history";
+import {
+  assetObjectKindLabel,
+  findCatalogObject,
+  type CatalogObject,
+} from "../catalog-objects";
 import type { SchemaObjectRef } from "../lineage";
 import { cn } from "../ui";
 import { ImpactReportDialog } from "./ImpactReportDialog";
+import { MetadataObjectImpactDialog } from "./MetadataObjectImpactDialog";
 
 type EvidenceSide = "before" | "after";
 
@@ -31,29 +37,33 @@ function subjectExists(
     return false;
   }
   if (!change.objectType || !change.objectName) return true;
-  const tables = snapshot.catalog.schema?.[change.itemFabricId] ?? [];
-  if (change.objectType === "table" || change.objectType === "view") {
-    return tables.some(
-      (table) =>
-        table.name === change.objectName &&
-        (change.objectType !== "view" ||
-          table.objectType?.toLowerCase() === "view"),
-    );
-  }
-  const table = tables.find((candidate) => candidate.name === change.tableName);
-  if (!table) return false;
-  return change.objectType === "column"
-    ? table.columns.some((column) => column.name === change.objectName)
-    : table.measures.some((measure) => measure.name === change.objectName);
+  return Boolean(subjectObject(snapshot, change));
+}
+
+function subjectObject(
+  snapshot: HistoricalSnapshot,
+  change: AtlasChange,
+): CatalogObject | undefined {
+  if (!change.itemFabricId || !change.objectType) return undefined;
+  return findCatalogObject(snapshot.catalog, {
+    itemId: change.itemFabricId,
+    kind: change.objectType,
+    objectId: change.objectId,
+    name: change.objectName,
+    tableName: change.tableName,
+  });
 }
 
 function objectReference(change: AtlasChange): SchemaObjectRef | undefined {
   if (!change.itemFabricId || !change.objectType || !change.objectName) {
     return undefined;
   }
+  if (!["table", "view", "column", "measure"].includes(change.objectType)) {
+    return undefined;
+  }
   return {
     itemId: change.itemFabricId,
-    kind: change.objectType,
+    kind: change.objectType as SchemaObjectRef["kind"],
     name: change.objectName,
     tableName: change.tableName,
   };
@@ -117,11 +127,15 @@ export function HistoricalChangeDetails({
     (candidate) => candidate.snapshotId === snapshotId,
   );
   const hasSubject = snapshot ? subjectExists(snapshot, change) : false;
+  const selectedSubject = snapshot
+    ? subjectObject(snapshot, change)
+    : undefined;
   const historicalData = useMemo(
     () => (snapshot ? snapshotDataForInspection(snapshot) : undefined),
     [snapshot],
   );
   const object = objectReference(change);
+  const metadataObject = selectedSubject?.metadataRef;
   const hasBefore = change.before !== undefined;
   const hasAfter = change.after !== undefined;
 
@@ -158,7 +172,9 @@ export function HistoricalChangeDetails({
                     {change.label}
                   </Dialog.Title>
                   <Dialog.Description className="mt-xs text-200 text-muted-foreground">
-                    Full before and after evidence from validated snapshots.
+                    {change.objectType
+                      ? `${assetObjectKindLabel(change.objectType)} evidence from validated snapshots.`
+                      : "Full before and after evidence from validated snapshots."}
                   </Dialog.Description>
                 </div>
                 <Dialog.Close asChild>
@@ -300,7 +316,17 @@ export function HistoricalChangeDetails({
           </div>
         </Dialog.Portal>
       </Dialog.Root>
-      {historicalData && change.itemFabricId && hasSubject && (
+      {historicalData &&
+      change.itemFabricId &&
+      hasSubject &&
+      metadataObject ? (
+        <MetadataObjectImpactDialog
+          data={historicalData}
+          subject={metadataObject}
+          open={impactOpen}
+          onClose={() => setImpactOpen(false)}
+        />
+      ) : historicalData && change.itemFabricId && hasSubject ? (
         <ImpactReportDialog
           data={historicalData}
           itemId={change.itemFabricId}
@@ -308,7 +334,7 @@ export function HistoricalChangeDetails({
           open={impactOpen}
           onClose={() => setImpactOpen(false)}
         />
-      )}
+      ) : null}
     </>
   );
 }

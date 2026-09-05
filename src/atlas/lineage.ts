@@ -117,8 +117,13 @@ const ITEM_STAGE: Partial<Record<ItemType, number>> = {
   SQLEndpoint: 3,
   KQLDatabase: 3,
   SemanticModel: 4,
+  Ontology: 4,
+  GraphModel: 4,
   Report: 5,
   Dashboard: 5,
+  DataAgent: 5,
+  KQLQueryset: 5,
+  KQLDashboard: 5,
 };
 
 const AUTHORITATIVE_DIRECTION_RELATIONS = new Set([
@@ -554,8 +559,46 @@ export function getSchemaObjectImpactReport(
 
 export const buildSchemaObjectImpactReport = getSchemaObjectImpactReport;
 
-export function itemStage(type: ItemType): number {
-  return ITEM_STAGE[type] ?? 0;
+export function itemStage(type: ItemType | string | null | undefined): number {
+  return type ? ITEM_STAGE[type as ItemType] ?? 0 : 0;
+}
+
+const MODEL_INPUT_TYPES = new Set<ItemType>([
+  "Lakehouse",
+  "Warehouse",
+  "Eventhouse",
+  "KQLDatabase",
+  "SQLEndpoint",
+  "SQLDatabase",
+  "Datamart",
+  "MirroredDatabase",
+  "SemanticModel",
+]);
+
+function isPreferredSourceConsumerPair(source: Item, target: Item): boolean {
+  if (
+    source.itemType === "Eventhouse" &&
+    target.itemType === "KQLDatabase"
+  ) {
+    return true;
+  }
+  if (
+    MODEL_INPUT_TYPES.has(source.itemType) &&
+    (target.itemType === "Ontology" || target.itemType === "GraphModel")
+  ) {
+    return true;
+  }
+  if (
+    (source.itemType === "Ontology" || source.itemType === "GraphModel") &&
+    target.itemType === "DataAgent"
+  ) {
+    return true;
+  }
+  return (
+    source.itemType === "KQLDatabase" &&
+    (target.itemType === "KQLQueryset" ||
+      target.itemType === "KQLDashboard")
+  );
 }
 
 function normalizedRelation(source: Item, target: Item, relation: string): string {
@@ -589,6 +632,36 @@ function normalizedRelation(source: Item, target: Item, relation: string): strin
   ) {
     return "database";
   }
+  if (
+    MODEL_INPUT_TYPES.has(source.itemType) &&
+    target.itemType === "Ontology"
+  ) {
+    return "binds ontology";
+  }
+  if (
+    MODEL_INPUT_TYPES.has(source.itemType) &&
+    target.itemType === "GraphModel"
+  ) {
+    return "maps graph";
+  }
+  if (
+    (source.itemType === "Ontology" || source.itemType === "GraphModel") &&
+    target.itemType === "DataAgent"
+  ) {
+    return "grounds";
+  }
+  if (
+    source.itemType === "KQLDatabase" &&
+    target.itemType === "KQLQueryset"
+  ) {
+    return "queries";
+  }
+  if (
+    source.itemType === "KQLDatabase" &&
+    target.itemType === "KQLDashboard"
+  ) {
+    return "visualizes";
+  }
   return relation || "depends on";
 }
 
@@ -605,14 +678,23 @@ export function normalizeLineageEdges(items: Item[], edges: Edge[]): Edge[] {
     const authoritativeDirection = AUTHORITATIVE_DIRECTION_RELATIONS.has(
       edge.relation.trim().toLowerCase(),
     );
+    const preferredDirection = isPreferredSourceConsumerPair(source, target);
+    const preferredReverseDirection = isPreferredSourceConsumerPair(
+      target,
+      source,
+    );
     const reverseByStage =
+      !preferredDirection &&
+      !preferredReverseDirection &&
       !authoritativeDirection &&
       itemStage(source.itemType) > itemStage(target.itemType);
     const reversePipeline =
+      !preferredDirection &&
+      !preferredReverseDirection &&
       !authoritativeDirection &&
       source.itemType === "Notebook" &&
       target.itemType === "DataPipeline";
-    if (reverseByStage || reversePipeline) {
+    if (preferredReverseDirection || reverseByStage || reversePipeline) {
       [source, target] = [target, source];
     }
 

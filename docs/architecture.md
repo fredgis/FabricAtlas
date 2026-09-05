@@ -78,14 +78,17 @@ or delete action.
 
 ## Sync
 
-The Sync button calls `runFabricSync` (`src/atlas/backend.ts`). When deployed, the browser invokes
-the published `sync_all` Fabric User Data Function. That server-side function reads Fabric and
-Power BI metadata APIs with the user's delegated token. The app maps the response, writes it through
-the Rayfin Data API, and records a `SyncRun`.
+The Sync button calls `runFabricSync` (`src/atlas/backend.ts`). When deployed,
+the browser invokes the published `sync_all` Fabric User Data Function. The
+required Fabric/Power BI token is accompanied by optional Kusto, Azure SQL and
+OneLake tokens acquired for the same signed-in identity. Each token is used
+only by its matching metadata collector. The app maps the response, writes it
+through the Rayfin Data API, and records a `SyncRun`.
 
 Contract version 2 separates required sections from optional enrichment and
-records metadata capabilities for ownership, sensitivity, endorsement and
-tags. Required-section failure rejects the refresh. Optional endpoint failures
+records metadata capabilities for ownership, sensitivity, endorsement, tags,
+KQL schema, SQL schema and item definitions. Required-section failure rejects
+the refresh. Optional token, permission, encrypted-label or endpoint failures
 remain visible as evidence but do not invalidate otherwise authoritative
 metadata. Valid empty workspaces are accepted.
 
@@ -130,7 +133,8 @@ the new snapshot together before background reconciliation.
 
 The MSAL account used for Sync must match the current Rayfin user and tenant.
 Tokens use session storage so switching Fabric users cannot silently reuse the
-first account from a persistent browser cache.
+first account from a persistent browser cache. Optional audience acquisition
+fails closed and never substitutes data from another identity.
 
 ## Governance history
 
@@ -216,7 +220,19 @@ clear actions append events instead of deleting earlier decisions.
 indexed lineage into departure/removal packs. It blocks ownership claims for
 ambiguous principals and recommends only resolved internal user successors.
 
-## DAX object lineage
+## Object lineage
+
+Verified object edges are stored beside schema chunks as hidden `ConfigEntry`
+rows. The generic contract identifies item and object, uses stable IDs and
+accepts only `confidence: verified`. It covers physical object-to-ontology
+bindings, entity relationships, Graph Model mappings and selected source
+objects feeding Data Agents. Historical impact loads the edges from the
+selected snapshot.
+
+Atlas does not read Ontology or Graph Model instances. Those are business data,
+not workspace metadata.
+
+### DAX object lineage
 
 `src/atlas/dax-refs.ts` strips strings and comments before extracting qualified
 columns and measures. `src/atlas/schema-lineage.ts` emits dependencies only
@@ -236,6 +252,16 @@ resolves.
 - Warehouse and SQL Database objects use scanner metadata, with a clearly
   labelled downstream model subset when complete SQL catalog access is not
   available.
+- KQL Database tables and columns come from one database-wide read-only schema
+  command. Function and materialized-view bodies are not retained.
+- SQL Database tables, views and columns come from one constant `sys.*`
+  metadata query. Atlas does not select table rows or retain module definitions.
+- Ontology definitions are reduced to entities, properties, source bindings,
+  relationships and contextualizations.
+- Graph Model definitions are reduced to node/edge types and source/property
+  mappings; filter values and instances are discarded.
+- Data Agent definitions retain publication state, source references and
+  selected element trees. Instructions, few-shots and answers are discarded.
 - Semantic Models include tables, columns, measures, descriptions, hidden
   flags and measure expressions. Dataset expressions are requested only because
   the scanner requires that option for measure DAX.

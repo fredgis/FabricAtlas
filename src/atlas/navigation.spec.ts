@@ -45,6 +45,33 @@ describe("Atlas navigation", () => {
     });
   });
 
+  it("maps discovered metadata objects to their exact catalog identity", () => {
+    expect(
+      navigationForSearch(
+        result(
+          {
+            kind: "item",
+            itemId: "ontology",
+            tableName: "Device",
+            objectName: "Device ID",
+            objectId: "device/device-id",
+            objectKind: "ontologyProperty",
+          },
+          "Device ID",
+        ),
+      ),
+    ).toMatchObject({
+      tab: "assets",
+      focus: {
+        itemId: "ontology",
+        tableName: "Device",
+        objectName: "Device ID",
+        objectId: "device/device-id",
+        objectKind: "ontologyProperty",
+      },
+    });
+  });
+
   it("opens comments in Workspace Hub notes", () => {
     expect(
       navigationForSearch(

@@ -5,6 +5,10 @@ import {
   searchAtlas,
   searchIndex,
 } from "./search";
+import {
+  parseKqlDatabaseMetadata,
+  parseOntologyMetadata,
+} from "./item-metadata";
 import type { AtlasData } from "./model";
 
 function data(): AtlasData {
@@ -186,5 +190,68 @@ describe("global search", () => {
     expect(kinds).not.toEqual(
       expect.arrayContaining(["table", "view", "column", "measure"]),
     );
+  });
+
+  it("indexes new object kinds with exact Asset Catalog targets", () => {
+    const value = data();
+    value.items.push(
+      {
+        fabricId: "ontology",
+        displayName: "Operations ontology",
+        itemType: "Ontology",
+        health: "healthy",
+        endorsement: "none",
+        tags: [],
+      },
+      {
+        fabricId: "telemetry",
+        displayName: "Telemetry database",
+        itemType: "KQLDatabase",
+        health: "healthy",
+        endorsement: "none",
+        tags: [],
+      },
+    );
+    value.itemMetadata = {
+      ontology: parseOntologyMetadata({
+        entities: [
+          {
+            id: "device",
+            name: "Device",
+            properties: [
+              { id: "device-id", name: "Device ID", valueType: "String" },
+            ],
+          },
+        ],
+        relationships: [],
+        bindings: [],
+        contextualizations: [],
+      })!,
+      telemetry: parseKqlDatabaseMetadata({
+        functions: [
+          {
+            name: "RecentDevices",
+            parameters: [{ name: "window", type: "timespan" }],
+          },
+        ],
+        materializedViews: [],
+      })!,
+    };
+
+    expect(searchAtlas(value, "Device ID")[0]).toMatchObject({
+      target: {
+        itemId: "ontology",
+        objectId: "device/device-id",
+        objectKind: "ontologyProperty",
+        tableName: "Device",
+      },
+    });
+    expect(searchAtlas(value, "RecentDevices")[0]).toMatchObject({
+      target: {
+        itemId: "telemetry",
+        objectId: "RecentDevices",
+        objectKind: "kqlFunction",
+      },
+    });
   });
 });

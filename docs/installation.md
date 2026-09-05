@@ -113,12 +113,17 @@ appId=$(az ad app create --display-name "Fabric Atlas Sync" --sign-in-audience A
 #    UserDataFunction.Execute.All, Workspace.Read.All, Item.Read.All,
 #    Lakehouse.Read.All, Warehouse.Read.All, SQLDatabase.Read.All,
 #    Report.Read.All, Dataset.Read.All, Tenant.Read.All
+#    Optional Ontology, Graph Model and Data Agent definition discovery
+#    additionally requires Item.ReadWrite.All.
 #    (add each with: az ad app permission add --id $appId --api 00000009-0000-0000-c000-000000000000
 #     --api-permissions <scope-id>=Scope), then grant admin consent:
+#
+# 3. Add delegated user_impersonation permissions for Azure Data Explorer
+#    and Azure SQL Database to enable KQL and SQL system-catalog discovery.
 az ad sp create --id $appId
 az ad app permission admin-consent --id $appId
 
-# 3. Register the SPA redirect URIs (your app origin + localhost) via Microsoft Graph:
+# 4. Register the SPA redirect URIs (your app origin + localhost) via Microsoft Graph:
 #    PATCH https://graph.microsoft.com/v1.0/applications/<object-id>
 #    body: { "spa": { "redirectUris": [ "https://<app>.fabricapps.net", "http://localhost:5173" ] } }
 ```
@@ -161,6 +166,17 @@ content after a database configuration failure.
 Only this configured account can run the first synchronization or publish later
 snapshots. Other authenticated users see the account on the guided sync screen
 so they know who to contact.
+
+Deep discovery is capability-based. Without Kusto or Azure SQL delegated
+consent, those items remain visible and Atlas reports their deep schema as
+unavailable. Ontology, Graph Model and Data Agent definitions require
+`Item.ReadWrite.All` and read/write permission on the item because that is the
+current Fabric API contract. Encrypted sensitivity labels can block Ontology
+definition retrieval.
+
+Atlas uses these permissions only for read operations. It never calls
+definition update/delete APIs, never elevates the signed-in user and never
+stores rows, prompts, few-shots or graph instances.
 
 Sensitivity downgrade alerts are tenant-specific. Optionally map Purview label
 IDs or normalized aliases to numeric ranks in

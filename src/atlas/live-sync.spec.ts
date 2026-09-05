@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   accountMatchesIdentity,
+  buildSyncRequestBody,
   mapSyncToAtlas,
   normalizeFabricTimestamp,
   parseSyncResponseText,
@@ -30,6 +31,21 @@ function completeSync(): RawSync {
 describe("validateRawSync", () => {
   it("accepts a complete authoritative result", () => {
     expect(() => validateRawSync(completeSync(), workspaceId)).not.toThrow();
+  });
+
+  describe("sync request metadata tokens", () => {
+    it("passes available audience tokens without manufacturing missing values", () => {
+      expect(
+        buildSyncRequestBody(workspaceId, {
+          fabricToken: "fabric-token",
+          kustoToken: "kusto-token",
+        }),
+      ).toEqual({
+        workspaceId,
+        fabricToken: "fabric-token",
+        kustoToken: "kusto-token",
+      });
+    });
   });
 
   describe("sync response parsing", () => {
@@ -90,6 +106,7 @@ describe("validateRawSync", () => {
       sensitivity: { status: "complete" },
       tags: { status: "complete" },
       ownership: { status: "complete", code: "type-specific" },
+      kqlSchema: { status: "failed", code: "kusto-token-unavailable" },
     };
     raw.itemMetadata = {
       "item-1": { scannerMatched: true },
@@ -265,6 +282,7 @@ describe("validateRawSync", () => {
       sensitivity: { status: "complete" },
       tags: { status: "complete" },
       ownership: { status: "complete", code: "type-specific" },
+      kqlSchema: { status: "failed", code: "kusto-token-unavailable" },
     };
     raw.syncedAt = "2026-08-30T09:00:00";
     raw.itemMetadata = {
@@ -315,6 +333,10 @@ describe("validateRawSync", () => {
         metadataOwnership: {
           status: "complete",
           code: "type-specific",
+        },
+        metadataKqlSchema: {
+          status: "failed",
+          code: "kusto-token-unavailable",
         },
       },
     });

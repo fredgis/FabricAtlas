@@ -25,7 +25,19 @@ import {
 } from "lucide-react";
 import * as Tabs from "@radix-ui/react-tabs";
 import { ImpactReportDialog } from "../components/ImpactReportDialog";
+import { MetadataObjectImpactDialog } from "../components/MetadataObjectImpactDialog";
 import { ResizableInspector } from "../components/ResizableInspector";
+import {
+  metadataObjectKindLabel,
+  verifiedMetadataEdgesForItem,
+} from "../catalog-objects";
+import {
+  buildMetadataObjectGraph,
+  MAX_VISIBLE_OBJECT_EDGES,
+  type ObjectGraph,
+  type ObjectGraphEdge as ObjectEdge,
+  type ObjectGraphNode as ObjectNode,
+} from "../metadata-object-graph";
 import { useDisplayPreference } from "../display-preferences";
 import {
   buildAccessReviewRows,
@@ -56,6 +68,9 @@ import {
   type Item,
   type ModelTableSchema,
 } from "../model";
+import type {
+  MetadataObjectKind,
+} from "../item-metadata";
 import {
   LINEAGE_STAGE_LABELS,
   buildStagedLayout,
@@ -82,24 +97,6 @@ type InspectorTab = "summary" | "schema" | "access" | "runs";
 interface Point {
   x: number;
   y: number;
-}
-
-interface ObjectNode extends Point {
-  id: string;
-  label: string;
-  subtitle: string;
-  code: string;
-  color: string;
-  table?: string;
-  itemId?: string;
-  kind: "source" | "table" | "field" | "owner" | "consumer";
-}
-
-interface ObjectEdge {
-  source: string;
-  target: string;
-  relation: string;
-  structural?: boolean;
 }
 
 interface ObjectLineageIndex {
@@ -238,9 +235,17 @@ function objectGraph(
   itemById: Map<string, Item>,
   lineageIndex: LineageIndex,
   tableName: string,
-): { nodes: ObjectNode[]; edges: ObjectEdge[]; width: number; height: number; table?: string } {
+): ObjectGraph {
   if (!selected || selectedSchema.length === 0) {
-    return { nodes: [], edges: [], width: 1080, height: 520 };
+    return {
+      nodes: [],
+      edges: [],
+      width: 1080,
+      height: 520,
+      stageLabels: ["Source objects", "Model tables", "Fields", "Consumers"],
+      verifiedMetadata: false,
+      truncated: false,
+    };
   }
 
   const table = selectedSchema.find((entry) => entry.name === tableName) ?? selectedSchema[0];
@@ -380,6 +385,9 @@ function objectGraph(
       fields.length * OBJECT_ROW_GAP + 204,
     ),
     table: table.name,
+    stageLabels: ["Source objects", "Model tables", "Fields", "Consumers"],
+    verifiedMetadata: false,
+    truncated: false,
   };
 }
 
@@ -446,6 +454,12 @@ export function MapView() {
     (searchParam("health") as Health | "all") || "all",
   );
   const [tableName, setTableName] = useState(searchParam("table"));
+  const [sourceItemFilter, setSourceItemFilter] = useState(
+    searchParam("source") || "all",
+  );
+  const [objectKindFilter, setObjectKindFilter] = useState<
+    MetadataObjectKind | "all"
+  >((searchParam("objectKind") as MetadataObjectKind | "all") || "all");
   const [tab, setTab] = useState<InspectorTab>(initialInspectorTab);
   const [openTables, setOpenTables] = useState<Set<string>>(new Set());
   const [drag, setDrag] = useState<Record<string, Point>>({});
@@ -600,18 +614,103 @@ export function MapView() {
     });
     return { width, height };
   }, [drag, layout.height, layout.width]);
+  const selectedMetadataEdges = useMemo(
+    () => verifiedMetadataEdgesForItem(data.objectEdges, activeId),
+    [activeId, data.objectEdges],
+  );
+  const metadataSourceOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          selectedMetadataEdges
+            .flatMap((edge) => [edge.source.itemId, edge.target.itemId])
+            .filter((itemId) => itemId !== activeId),
+        ),
+      ].sort((left, right) =>
+        (itemById.get(left)?.displayName ?? left).localeCompare(
+          itemById.get(right)?.displayName ?? right,
+        ),
+      ),
+    [activeId, itemById, selectedMetadataEdges],
+  );
+  const metadataTableOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          selectedMetadataEdges.flatMap((edge) =>
+            [edge.source.tableName, edge.target.tableName].filter(
+              (value): value is string => Boolean(value),
+            ),
+          ),
+        ),
+      ].sort(),
+    [selectedMetadataEdges],
+  );
+  const metadataKindOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          selectedMetadataEdges.flatMap((edge) => [
+            edge.source.kind,
+            edge.target.kind,
+          ]),
+        ),
+      ].sort((left, right) =>
+        metadataObjectKindLabel(left).localeCompare(
+          metadataObjectKindLabel(right),
+        ),
+      ),
+    [selectedMetadataEdges],
+  );
+  const resolvedSourceFilter = metadataSourceOptions.includes(sourceItemFilter)
+    ? sourceItemFilter
+    : "all";
+  const resolvedTableFilter = metadataTableOptions.includes(tableName)
+    ? tableName
+    : "all";
+  const resolvedObjectKindFilter = metadataKindOptions.includes(
+    objectKindFilter as MetadataObjectKind,
+  )
+    ? objectKindFilter
+    : "all";
   const objects = useMemo(
     () =>
-      objectGraph(
-        data,
-        selected,
-        schema,
-        upstream,
-        itemById,
-        lineageIndex,
-        tableName,
-      ),
-    [data, itemById, lineageIndex, schema, selected, tableName, upstream],
+      selectedMetadataEdges.length > 0
+        ? buildMetadataObjectGraph(
+            selectedMetadataEdges,
+            activeId,
+            itemById,
+            {
+              query,
+              sourceItemId: resolvedSourceFilter,
+              tableName: resolvedTableFilter,
+              objectKind: resolvedObjectKindFilter,
+            },
+          )
+        : objectGraph(
+            data,
+            selected,
+            schema,
+            upstream,
+            itemById,
+            lineageIndex,
+            tableName,
+          ),
+    [
+      activeId,
+      data,
+      itemById,
+      lineageIndex,
+      query,
+      resolvedObjectKindFilter,
+      resolvedSourceFilter,
+      resolvedTableFilter,
+      schema,
+      selected,
+      selectedMetadataEdges,
+      tableName,
+      upstream,
+    ],
   );
   const objectLineageIndex = useMemo(
     () => createObjectLineageIndex(objects.edges),
@@ -631,6 +730,8 @@ export function MapView() {
   const activeObject = objectNodeById.get(activeObjectId);
   const reportItemId =
     mode === "objects" ? activeObject?.itemId ?? activeId : activeId;
+  const metadataReportObject =
+    mode === "objects" ? activeObject?.metadataRef : undefined;
   const reportObject: SchemaObjectRef | undefined =
     mode === "objects" && activeObject?.kind === "table"
       ? {
@@ -692,10 +793,31 @@ export function MapView() {
     else url.searchParams.delete("impact");
     if (mode === "objects" && objects.table) url.searchParams.set("table", objects.table);
     else url.searchParams.delete("table");
+    if (mode === "objects" && resolvedSourceFilter !== "all") {
+      url.searchParams.set("source", resolvedSourceFilter);
+    } else {
+      url.searchParams.delete("source");
+    }
+    if (mode === "objects" && resolvedObjectKindFilter !== "all") {
+      url.searchParams.set("objectKind", resolvedObjectKindFilter);
+    } else {
+      url.searchParams.delete("objectKind");
+    }
     if (tab !== "summary") url.searchParams.set("inspector", tab);
     else url.searchParams.delete("inspector");
     window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
-  }, [activeId, healthFilter, impactMode, mode, objects.table, query, tab, typeFilter]);
+  }, [
+    activeId,
+    healthFilter,
+    impactMode,
+    mode,
+    objects.table,
+    query,
+    resolvedObjectKindFilter,
+    resolvedSourceFilter,
+    tab,
+    typeFilter,
+  ]);
 
   const nodeDown = (event: RPE<HTMLButtonElement>, id: string) => {
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -758,6 +880,9 @@ export function MapView() {
       setSelectedItemIds(new Set([id]));
       setSelId(id);
     }
+    setSelectedObjectId("");
+    setSelectedObjectIds(new Set());
+    setObjectDrag({});
     setTab("summary");
   };
 
@@ -787,13 +912,36 @@ export function MapView() {
     setFocusId(nextId);
     setSelectedItemIds(new Set(nextId ? [nextId] : []));
     setDrag({});
+    setSelectedObjectId("");
+    setSelectedObjectIds(new Set());
+    setObjectDrag({});
   };
 
   const changeObjectTable = (nextTable: string) => {
     setTableName(nextTable);
+    if (selectedMetadataEdges.length > 0) {
+      setSelectedObjectId("");
+      setSelectedObjectIds(new Set());
+      setObjectDrag({});
+      return;
+    }
     const nextId = `table:${nextTable}`;
     setSelectedObjectId(nextId);
     setSelectedObjectIds(new Set([nextId]));
+    setObjectDrag({});
+  };
+
+  const changeObjectSource = (nextSource: string) => {
+    setSourceItemFilter(nextSource);
+    setSelectedObjectId("");
+    setSelectedObjectIds(new Set());
+    setObjectDrag({});
+  };
+
+  const changeObjectKind = (nextKind: MetadataObjectKind | "all") => {
+    setObjectKindFilter(nextKind);
+    setSelectedObjectId("");
+    setSelectedObjectIds(new Set());
     setObjectDrag({});
   };
 
@@ -807,6 +955,7 @@ export function MapView() {
     );
     setSelectedObjectId(next?.id ?? "");
     setSelectedObjectIds(new Set(next ? [next.id] : []));
+    setObjectDrag({});
   };
 
   const objectNodeDown = (
@@ -1063,19 +1212,73 @@ export function MapView() {
             </select>
           </>
         ) : (
-          schema.length > 0 && (
-            <select
-              aria-label="Select object lineage table"
-              value={objects.table ?? ""}
-              onChange={(event) => changeObjectTable(event.target.value)}
-              className="max-w-[220px] rounded-lg border border-input bg-card px-m text-muted-foreground outline-none"
-            >
-              {schema.map((entry) => (
-                <option key={entry.name} value={entry.name}>
-                  {entry.name}
-                </option>
-              ))}
-            </select>
+          selectedMetadataEdges.length > 0 ? (
+            <>
+              {metadataSourceOptions.length > 0 && (
+                <select
+                  aria-label="Filter object lineage by source item"
+                  value={resolvedSourceFilter}
+                  onChange={(event) =>
+                    changeObjectSource(event.target.value)
+                  }
+                  className="max-w-[220px] rounded-lg border border-input bg-card px-m text-muted-foreground outline-none"
+                >
+                  <option value="all">All source items</option>
+                  {metadataSourceOptions.map((itemId) => (
+                    <option key={itemId} value={itemId}>
+                      {itemById.get(itemId)?.displayName ?? itemId}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {metadataTableOptions.length > 0 && (
+                <select
+                  aria-label="Select object lineage table"
+                  value={resolvedTableFilter}
+                  onChange={(event) => changeObjectTable(event.target.value)}
+                  className="max-w-[220px] rounded-lg border border-input bg-card px-m text-muted-foreground outline-none"
+                >
+                  <option value="all">All source objects</option>
+                  {metadataTableOptions.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <select
+                aria-label="Filter object lineage by object kind"
+                value={resolvedObjectKindFilter}
+                onChange={(event) =>
+                  changeObjectKind(
+                    event.target.value as MetadataObjectKind | "all",
+                  )
+                }
+                className="max-w-[220px] rounded-lg border border-input bg-card px-m text-muted-foreground outline-none"
+              >
+                <option value="all">All object kinds</option>
+                {metadataKindOptions.map((objectKind) => (
+                  <option key={objectKind} value={objectKind}>
+                    {metadataObjectKindLabel(objectKind)}
+                  </option>
+                ))}
+              </select>
+            </>
+          ) : (
+            schema.length > 0 && (
+              <select
+                aria-label="Select object lineage table"
+                value={objects.table ?? ""}
+                onChange={(event) => changeObjectTable(event.target.value)}
+                className="max-w-[220px] rounded-lg border border-input bg-card px-m text-muted-foreground outline-none"
+              >
+                {schema.map((entry) => (
+                  <option key={entry.name} value={entry.name}>
+                    {entry.name}
+                  </option>
+                ))}
+              </select>
+            )
           )
         )}
         {mode === "items" && <button
@@ -1142,8 +1345,12 @@ export function MapView() {
         >
           {mode === "objects" && (
             <div className="sticky left-[16px] top-[12px] z-20 max-w-[500px] rounded-lg border border-border bg-card px-[10px] py-[7px] text-[11px] text-muted-foreground shadow-fabric-4">
-              Object metadata is exact; field-to-report usage remains item-level because
-              Fabric does not expose visual field bindings through the current APIs.
+              {objects.verifiedMetadata
+                ? "Verified object metadata is shown from the selected item snapshot."
+                : "Object metadata is exact; field-to-report usage remains item-level because Fabric does not expose visual field bindings through the current APIs."}
+              {objects.truncated
+                ? ` The view is limited to ${MAX_VISIBLE_OBJECT_EDGES} edges. Narrow the source, object or kind filter for the remaining relationships.`
+                : ""}
             </div>
           )}
           <div style={{ width: graph.width * zoom, height: graph.height * zoom }}>
@@ -1370,12 +1577,11 @@ export function MapView() {
                   <div
                     className="pointer-events-none absolute inset-x-0 top-[9px] grid"
                     style={{
-                      gridTemplateColumns: "306px 330px 340px 300px",
+                      gridTemplateColumns: `repeat(${objects.stageLabels.length}, 282px)`,
                       paddingLeft: 24,
                     }}
                   >
-                    {["Source objects", "Model tables", "Fields", "Consumers"].map(
-                      (label) => (
+                    {objects.stageLabels.map((label) => (
                         <div
                           key={label}
                           className="flex items-center gap-[7px] pr-[18px] text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground"
@@ -1383,8 +1589,7 @@ export function MapView() {
                           <span>{label}</span>
                           <span className="h-px flex-1 bg-border" />
                         </div>
-                      ),
-                    )}
+                      ))}
                   </div>
                   <svg
                     className="pointer-events-none absolute inset-0 overflow-visible"
@@ -1755,6 +1960,30 @@ export function MapView() {
               <div className="min-h-[300px] flex-1 overflow-auto p-[16px]">
                 {tab === "summary" && (
                   <div className="flex flex-col gap-[14px]">
+                    {mode === "objects" && activeObject && (
+                      <Card className="p-[12px]">
+                        <SectionLabel>Selected object</SectionLabel>
+                        <div className="mt-[7px] break-words text-[13px] font-semibold">
+                          {activeObject.label}
+                        </div>
+                        <div className="mt-[3px] break-words text-[10px] text-muted-foreground">
+                          {activeObject.metadataRef
+                            ? metadataObjectKindLabel(
+                                activeObject.metadataRef.kind,
+                              )
+                            : activeObject.subtitle}
+                          {activeObject.table
+                            ? ` · ${activeObject.table}`
+                            : ""}
+                        </div>
+                        {activeObject.metadataRef && (
+                          <div className="mt-[8px] rounded-lg bg-secondary px-[9px] py-[7px] text-[10px] text-muted-foreground">
+                            Verified source-to-consumer object lineage from the
+                            active snapshot.
+                          </div>
+                        )}
+                      </Card>
+                    )}
                     {selected.description && (
                       <p className="text-[12px] leading-[1.5] text-muted-foreground">{selected.description}</p>
                     )}
@@ -1826,6 +2055,9 @@ export function MapView() {
                               type="button"
                               onClick={() => {
                                 setSelId(item.fabricId);
+                                setSelectedObjectId("");
+                                setSelectedObjectIds(new Set());
+                                setObjectDrag({});
                                 setTab("summary");
                               }}
                               className="atlas-row flex items-center gap-[8px] rounded-lg px-[7px] text-left hover:bg-accent"
@@ -2019,7 +2251,14 @@ export function MapView() {
           </Tabs.Root>
         </ResizableInspector>
       </div>
-      {reportItemId && (
+      {metadataReportObject ? (
+        <MetadataObjectImpactDialog
+          data={data}
+          subject={metadataReportObject}
+          open={impactReportOpen}
+          onClose={() => setImpactReportOpen(false)}
+        />
+      ) : reportItemId ? (
         <ImpactReportDialog
           data={data}
           itemId={reportItemId}
@@ -2027,7 +2266,7 @@ export function MapView() {
           open={impactReportOpen}
           onClose={() => setImpactReportOpen(false)}
         />
-      )}
+      ) : null}
     </div>
   );
 }

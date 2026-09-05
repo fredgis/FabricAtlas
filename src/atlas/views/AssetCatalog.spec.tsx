@@ -93,7 +93,7 @@ describe("AssetCatalogView", () => {
     fireEvent.click(group!);
     expect(screen.getByText("Item synchronized")).toBeInTheDocument();
     expect(
-      screen.getByText(/No tables, views, columns or measures were exposed/),
+      screen.getByText(/No discoverable objects were exposed/),
     ).toBeInTheDocument();
   });
 

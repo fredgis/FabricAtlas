@@ -6,6 +6,17 @@
 import { ATLAS_CONFIG, getUdfUrl } from "./config";
 import { normalizeLineageEdges } from "./lineage";
 import {
+  MAX_OBJECT_LINEAGE_EDGES,
+  itemMetadataFromSchema,
+  metadataItemLineageEdges,
+  metadataObjectLineageEdges,
+  parseFabricItemMetadata,
+  parseObjectLineagePayload,
+  projectItemMetadataToSchema,
+  type FabricItemMetadata,
+  type MetadataObjectLineageEdge,
+} from "./item-metadata";
+import {
   type AtlasData,
   type Item,
   type ItemType,
@@ -122,19 +133,28 @@ export function selectMsalAccount(
   );
 }
 
-function tokenForIdentity(result: MsalResult, identity: SyncIdentity): string {
+function tokenForIdentity(
+  result: MsalResult,
+  identity: SyncIdentity,
+  purpose: string,
+): string {
   if (
     !result.account ||
     !selectMsalAccount([result.account], identity, ATLAS_CONFIG.tenantId)
   ) {
     throw new Error(
-      "The Power BI sign-in did not match the current Fabric user. The previous snapshot was preserved.",
+      `The ${purpose} sign-in did not match the current Fabric user. The previous snapshot was preserved.`,
     );
   }
   return result.accessToken;
 }
 
-async function acquireToken(identity: SyncIdentity): Promise<string> {
+async function acquireToken(
+  identity: SyncIdentity,
+  scopes: string[],
+  purpose: string,
+  allowPopup: boolean,
+): Promise<string> {
   if (!identity.id && !identity.email) {
     throw new Error(
       "The current Fabric user could not be identified. The previous snapshot was preserved.",
@@ -162,7 +182,6 @@ async function acquireToken(identity: SyncIdentity): Promise<string> {
     msalInitPromise = null;
     throw error;
   }
-  const scopes = [ATLAS_CONFIG.scope];
   const account = selectMsalAccount(
     msalApp!.getAllAccounts(),
     identity,
@@ -172,8 +191,9 @@ async function acquireToken(identity: SyncIdentity): Promise<string> {
     const res = account
       ? await msalApp!.acquireTokenSilent({ scopes, account })
       : await msalApp!.ssoSilent({ scopes, loginHint: identity.email });
-    return tokenForIdentity(res, identity);
-  } catch {
+    return tokenForIdentity(res, identity, purpose);
+  } catch (error) {
+    if (!allowPopup) throw error;
     // Silent SSO can be blocked inside the Fabric iframe (3rd-party cookies);
     // force an explicit account choice rather than reusing another user's cache.
     const res = await msalApp!.acquireTokenPopup({
@@ -181,8 +201,71 @@ async function acquireToken(identity: SyncIdentity): Promise<string> {
       loginHint: identity.email,
       prompt: "select_account",
     });
-    return tokenForIdentity(res, identity);
+    return tokenForIdentity(res, identity, purpose);
   }
+}
+
+const OPTIONAL_METADATA_TOKEN_SCOPES = {
+  kustoToken: {
+    scope: "https://kusto.kusto.windows.net/.default",
+    purpose: "KQL metadata",
+  },
+  sqlToken: {
+    scope: "https://database.windows.net/.default",
+    purpose: "SQL metadata",
+  },
+  storageToken: {
+    scope: "https://storage.azure.com/.default",
+    purpose: "OneLake metadata",
+  },
+} as const;
+
+export interface SyncRequestTokens {
+  fabricToken: string;
+  kustoToken?: string;
+  sqlToken?: string;
+  storageToken?: string;
+}
+
+export function buildSyncRequestBody(
+  workspaceId: string,
+  tokens: SyncRequestTokens,
+): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries({ workspaceId, ...tokens }).filter(
+      (entry): entry is [string, string] =>
+        typeof entry[1] === "string" && entry[1].length > 0,
+    ),
+  );
+}
+
+async function acquireOptionalMetadataTokens(
+  identity: SyncIdentity,
+): Promise<Omit<SyncRequestTokens, "fabricToken">> {
+  const tokens: Omit<SyncRequestTokens, "fabricToken"> = {};
+  for (const [name, request] of Object.entries(
+    OPTIONAL_METADATA_TOKEN_SCOPES,
+  ) as Array<
+    [
+      keyof Omit<SyncRequestTokens, "fabricToken">,
+      (typeof OPTIONAL_METADATA_TOKEN_SCOPES)[keyof typeof OPTIONAL_METADATA_TOKEN_SCOPES],
+    ]
+  >) {
+    try {
+      tokens[name] = await acquireToken(
+        identity,
+        [request.scope],
+        request.purpose,
+        false,
+      );
+    } catch (error) {
+      console.warn(
+        `[atlas] ${request.purpose} token unavailable`,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+  return tokens;
 }
 
 /* ----------------------------- UDF invoke ------------------------------ */
@@ -213,7 +296,7 @@ export interface RawSync {
     }
   >;
   capabilities?: Record<
-    "endorsement" | "sensitivity" | "tags" | "ownership",
+    string,
     {
       status?: "complete" | "unsupported" | "failed";
       code?: string;
@@ -245,8 +328,12 @@ export interface RawSync {
         id?: string;
         displayName?: string;
       }>;
+      artifactMetadata?: unknown;
     }
   >;
+  artifactMetadata?: Record<string, unknown>;
+  objectEdges?: unknown;
+  objectLineage?: unknown;
   syncedAt?: string;
   schema?: Record<
     string,
@@ -260,6 +347,7 @@ export interface RawSync {
       columns?: Array<{
         name?: string;
         dataType?: string;
+        objectType?: string;
         description?: string;
         isHidden?: boolean;
       }>;
@@ -270,6 +358,7 @@ export interface RawSync {
         description?: string;
         isHidden?: boolean;
       }>;
+      metadata?: unknown;
     }>
   >;
   errors?: string[];
@@ -678,6 +767,36 @@ export function validateRawSync(
     raw.itemMetadata,
     new Set(itemIds.filter((id): id is string => !!id)),
   );
+  const itemTypeById = new Map(
+    raw.items.map((item) => [
+      realText(item.id) ?? "",
+      realText(item.type) ?? "",
+    ]),
+  );
+  if (raw.artifactMetadata != null) {
+    if (!isRecord(raw.artifactMetadata)) {
+      throw new Error(
+        "The sync result contained invalid artifact metadata. The previous snapshot was preserved.",
+      );
+    }
+    for (const [itemId, metadata] of Object.entries(raw.artifactMetadata)) {
+      const itemType = itemTypeById.get(itemId);
+      if (!itemType || !parseFabricItemMetadata(itemType, metadata)) {
+        throw new Error(
+          "The sync result contained invalid artifact metadata. The previous snapshot was preserved.",
+        );
+      }
+    }
+  }
+  const rawObjectLineage = raw.objectEdges ?? raw.objectLineage;
+  if (
+    rawObjectLineage != null &&
+    !parseObjectLineagePayload(rawObjectLineage)
+  ) {
+    throw new Error(
+      "The sync result contained invalid object lineage. The previous snapshot was preserved.",
+    );
+  }
   if (
     raw.schemaVersion === 2 &&
     (!raw.itemMetadata ||
@@ -728,6 +847,7 @@ export function validateRawSync(
             !isRecord(column) ||
             !realText(column.name) ||
             !optionalText(column.dataType) ||
+            !optionalText(column.objectType) ||
             !optionalText(column.description) ||
             (column.isHidden != null &&
               typeof column.isHidden !== "boolean"),
@@ -773,14 +893,25 @@ export async function invokeSyncAll(
     );
   }
   const url = retargetToSyncAll(raw);
-  const token = await acquireToken(identity);
+  const fabricToken = await acquireToken(
+    identity,
+    [ATLAS_CONFIG.scope],
+    "Power BI",
+    true,
+  );
+  const metadataTokens = await acquireOptionalMetadataTokens(identity);
   const resp = await fetch(url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${fabricToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ fabricToken: token, workspaceId }),
+    body: JSON.stringify(
+      buildSyncRequestBody(workspaceId, {
+        fabricToken,
+        ...metadataTokens,
+      }),
+    ),
   });
   if (!resp.ok) {
     console.warn("[atlas] UDF invocation failed", resp.status);
@@ -1090,7 +1221,7 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
     }
   }
 
-  // Real lineage is computed server-side from Fabric and Power BI identifiers.
+  // Real lineage is computed from Fabric identifiers and sanitized definitions.
   // An absent edge is safer than inferring a relationship from display names.
   const edges: Edge[] = [];
   if (Array.isArray(raw.lineage) && raw.lineage.length) {
@@ -1111,8 +1242,10 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
     }));
 
   const schema: Record<string, ModelTableSchema[]> = {};
+  const itemsById = new Map(items.map((item) => [item.fabricId, item]));
   for (const [id, tables] of Object.entries(raw.schema ?? {})) {
     if (!itemIds.has(id) || !Array.isArray(tables)) continue;
+    const item = itemsById.get(id);
     schema[id] = tables.map((t) => ({
       name: String(t.name ?? ""),
       rows: finiteRowCount(t.rows),
@@ -1123,6 +1256,7 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
       columns: (t.columns ?? []).map((c) => ({
         name: String(c.name ?? ""),
         dataType: String(c.dataType ?? "column"),
+        objectType: c.objectType,
         description: c.description,
         isHidden: c.isHidden,
       })),
@@ -1132,8 +1266,79 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
         description: m.description,
         isHidden: m.isHidden,
       })),
+      metadata:
+        item && t.metadata != null
+          ? parseFabricItemMetadata(item.itemType, t.metadata)
+          : undefined,
     }));
   }
+
+  const itemMetadata: Record<string, FabricItemMetadata> = {};
+  const derivedObjectEdges: MetadataObjectLineageEdge[] = [];
+  for (const item of items) {
+    const nestedMetadata =
+      raw.itemMetadata?.[item.fabricId]?.artifactMetadata;
+    const rawMetadata =
+      raw.artifactMetadata?.[item.fabricId] ?? nestedMetadata;
+    const metadata =
+      rawMetadata != null
+        ? parseFabricItemMetadata(item.itemType, rawMetadata)
+        : itemMetadataFromSchema(item.itemType, schema[item.fabricId]);
+    if (!metadata) continue;
+    itemMetadata[item.fabricId] = metadata;
+    const existing = schema[item.fabricId] ?? [];
+    const merged = new Map(
+      existing.map((table) => [
+        `${table.name}\u0000${table.objectType ?? ""}`,
+        table,
+      ]),
+    );
+    for (const table of projectItemMetadataToSchema(metadata)) {
+      merged.set(`${table.name}\u0000${table.objectType ?? ""}`, table);
+    }
+    schema[item.fabricId] = [...merged.values()];
+    edges.push(
+      ...metadataItemLineageEdges(item.fabricId, metadata).filter(
+        (edge) => itemIds.has(edge.source) && itemIds.has(edge.target),
+      ),
+    );
+    derivedObjectEdges.push(
+      ...metadataObjectLineageEdges(item.fabricId, metadata),
+    );
+  }
+  const suppliedObjectEdges =
+    parseObjectLineagePayload(raw.objectEdges ?? raw.objectLineage)
+      ?.objectEdges ?? [];
+  const allObjectEdges = [...suppliedObjectEdges, ...derivedObjectEdges]
+    .sort((left, right) =>
+      [
+        left.source.itemId,
+        left.source.kind,
+        left.source.id,
+        left.target.itemId,
+        left.target.kind,
+        left.target.id,
+        left.relation,
+      ]
+        .join("\u0000")
+        .localeCompare(
+          [
+            right.source.itemId,
+            right.source.kind,
+            right.source.id,
+            right.target.itemId,
+            right.target.kind,
+            right.target.id,
+            right.relation,
+          ].join("\u0000"),
+        ),
+    )
+    .filter(
+      (edge, index, values) =>
+        index === 0 ||
+        JSON.stringify(edge) !== JSON.stringify(values[index - 1]),
+    );
+  const objectEdges = allObjectEdges.slice(0, MAX_OBJECT_LINEAGE_EDGES);
 
   const ws = (raw.workspace ?? {}) as Record<string, unknown>;
   const workspace: WorkspaceInfo = {
@@ -1150,6 +1355,14 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
           status,
         ]),
       ),
+      ...(allObjectEdges.length > objectEdges.length
+        ? {
+            metadataObjectLineage: {
+              status: "failed" as const,
+              code: "object-edge-limit",
+            },
+          }
+        : {}),
     },
   };
 
@@ -1162,6 +1375,8 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
     jobs,
     config,
     schema,
+    itemMetadata,
+    objectEdges,
     comments: [],
     syncRuns: [],
   };

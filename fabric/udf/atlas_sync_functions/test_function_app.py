@@ -1,8 +1,10 @@
+import base64
 import datetime
 import importlib.util
 import io
 import json
 import pathlib
+import struct
 import sys
 import types
 import unittest
@@ -29,9 +31,11 @@ spec.loader.exec_module(function_app)
 
 
 class _Response:
-    def __init__(self, value):
+    def __init__(self, value, status=200, headers=None):
         self.payload = json.dumps(value).encode("utf-8")
         self.offset = 0
+        self.status = status
+        self.headers = headers or {}
 
     def __enter__(self):
         return self
@@ -64,6 +68,57 @@ class _Clock:
         self.value += seconds
 
 
+class _SqlCursor:
+    def __init__(self, rows, execute_error=None):
+        self.rows = rows
+        self.execute_error = execute_error
+        self.executed = []
+        self.closed = False
+
+    def execute(self, query):
+        self.executed.append(query)
+        if self.execute_error:
+            raise self.execute_error
+        return self
+
+    def fetchmany(self, size):
+        return self.rows[:size]
+
+    def close(self):
+        self.closed = True
+
+
+class _SqlConnection:
+    def __init__(self, row_sets, execute_error=None):
+        self.row_sets = list(row_sets)
+        self.execute_error = execute_error
+        self.cursors = []
+        self.timeout = 0
+        self.closed = False
+
+    def cursor(self):
+        rows = self.row_sets.pop(0) if self.row_sets else []
+        cursor = _SqlCursor(rows, execute_error=self.execute_error)
+        self.cursors.append(cursor)
+        return cursor
+
+    def close(self):
+        self.closed = True
+
+
+class _SqlDriver:
+    def __init__(self, connection=None, connect_error=None):
+        self.connection = connection
+        self.connect_error = connect_error
+        self.calls = []
+
+    def connect(self, connection_string, **kwargs):
+        self.calls.append((connection_string, kwargs))
+        if self.connect_error:
+            raise self.connect_error
+        return self.connection
+
+
 def _http_error(code, retry_after=None):
     headers = {}
     if retry_after is not None:
@@ -75,6 +130,17 @@ def _http_error(code, retry_after=None):
         headers,
         io.BytesIO(),
     )
+
+
+def _definition_part(path, value):
+    payload = base64.b64encode(
+        json.dumps(value).encode("utf-8")
+    ).decode("ascii")
+    return {
+        "path": path,
+        "payload": payload,
+        "payloadType": "InlineBase64",
+    }
 
 
 class LakehouseSchemaTests(unittest.TestCase):
@@ -202,6 +268,161 @@ class LakehouseSchemaTests(unittest.TestCase):
         self.assertEqual(
             [column["name"] for column in merged[0]["columns"]],
             ["order_id", "amount"],
+        )
+
+    def test_schema_discriminators_are_optional_and_preserved(self):
+        legacy = function_app._merge_schema_tables([
+            {
+                "name": "Legacy",
+                "columns": [{"name": "Id", "dataType": "string"}],
+                "measures": [],
+            }
+        ])
+        enriched = function_app._merge_schema_tables([
+            {
+                "_mergeKey": "ontology-entity:101",
+                "name": "Equipment",
+                "objectType": "Ontology entity",
+                "columns": [
+                    {
+                        "name": "Temperature",
+                        "dataType": "Double",
+                        "objectType": "Ontology time-series property",
+                    }
+                ],
+                "measures": [],
+            }
+        ])
+
+        self.assertNotIn("objectType", legacy[0])
+        self.assertNotIn("objectType", legacy[0]["columns"][0])
+        self.assertEqual(
+            enriched[0]["objectType"],
+            "Ontology entity",
+        )
+        self.assertEqual(
+            enriched[0]["columns"][0]["objectType"],
+            "Ontology time-series property",
+        )
+
+    def test_object_reference_helpers_use_stable_source_to_consumer_ids(self):
+        item_id = "11111111-1111-4111-8111-111111111111"
+        schema = function_app._finalize_schema_object_ids(
+            item_id,
+            "KQLDatabase",
+            [
+                {
+                    "name": "Events",
+                    "objectType": "KQL table",
+                    "columns": [
+                        {
+                            "name": "Timestamp",
+                            "dataType": "datetime",
+                        }
+                    ],
+                    "measures": [],
+                }
+            ],
+        )
+
+        references = function_app._schema_object_references(
+            item_id,
+            schema,
+        )
+        edges = function_app._schema_object_edges(schema)
+        atlas_edges = function_app._atlas_object_edges(
+            {item_id: schema}
+        )
+
+        self.assertEqual(
+            references[0]["id"],
+            function_app._fabric_object_id(
+                item_id,
+                "kql-table",
+                "Events",
+            ),
+        )
+        self.assertEqual(references[1]["parentId"], references[0]["id"])
+        self.assertEqual(references[0]["kind"], "table")
+        self.assertEqual(references[1]["kind"], "column")
+        self.assertEqual(
+            edges,
+            [
+                {
+                    "id": function_app._object_edge_id(
+                        references[0]["id"],
+                        "contains",
+                        references[1]["id"],
+                    ),
+                    "source": references[0]["id"],
+                    "target": references[1]["id"],
+                    "relation": "contains",
+                }
+            ],
+        )
+        self.assertEqual(
+            atlas_edges,
+            [
+                {
+                    "source": {
+                        "itemId": item_id,
+                        "kind": "table",
+                        "id": references[0]["id"],
+                        "name": "Events",
+                        "tableName": "Events",
+                    },
+                    "target": {
+                        "itemId": item_id,
+                        "kind": "column",
+                        "id": references[1]["id"],
+                        "name": "Timestamp",
+                        "parentId": references[0]["id"],
+                        "tableName": "Events",
+                    },
+                    "relation": "contains",
+                    "confidence": "verified",
+                }
+            ],
+        )
+        public_schema = function_app._public_schema(schema)
+        self.assertEqual(public_schema[0]["objectId"], references[0]["id"])
+        self.assertEqual(
+            public_schema[0]["columns"][0]["parentObjectId"],
+            references[0]["id"],
+        )
+        self.assertEqual(public_schema[0]["objectType"], "KQL table")
+
+    def test_generalized_object_edges_are_bounded(self):
+        item_id = "11111111-1111-4111-8111-111111111111"
+        schema = function_app._finalize_schema_object_ids(
+            item_id,
+            "SQLDatabase",
+            [
+                {
+                    "name": "dbo.Customers",
+                    "objectType": "SQL table",
+                    "columns": [
+                        {"name": f"Column{index}", "dataType": "nvarchar"}
+                        for index in range(4)
+                    ],
+                    "measures": [],
+                }
+            ],
+        )
+
+        with mock.patch.object(
+            function_app,
+            "MAX_OBJECT_LINEAGE_EDGES",
+            2,
+        ):
+            edges, truncated = function_app._collect_atlas_object_edges(
+                {item_id: schema}
+            )
+
+        self.assertEqual(len(edges), 2)
+        self.assertTrue(truncated)
+        self.assertTrue(
+            all(edge["confidence"] == "verified" for edge in edges)
         )
 
     def test_lakehouse_table_api_paginates(self):
@@ -792,6 +1013,28 @@ class MetadataBoundaryTests(unittest.TestCase):
             },
         )
 
+    def test_type_specific_detail_adds_supported_sensitivity_and_tags(self):
+        artifact = {"id": "kql", "_type": "KQLDatabase"}
+        function_app._merge_detail_metadata(
+            artifact,
+            {
+                "id": "kql",
+                "sensitivityLabel": {"id": "label-id"},
+                "tags": [{"id": "tag-id", "displayName": "telemetry"}],
+            },
+        )
+
+        metadata = function_app._metadata_for_item(artifact, False)
+
+        self.assertEqual(
+            metadata["sensitivity"],
+            {"labelId": "label-id"},
+        )
+        self.assertEqual(
+            metadata["tags"],
+            [{"id": "tag-id", "displayName": "telemetry"}],
+        )
+
     def test_response_size_guard_fails_closed(self):
         with self.assertRaises(function_app.ResponseSizeExceeded):
             function_app._guard_response_size(
@@ -805,6 +1048,1907 @@ class MetadataBoundaryTests(unittest.TestCase):
             function_app._guard_response_size(payload, max_bytes=100),
             payload,
         )
+
+
+class DefinitionMetadataTests(unittest.TestCase):
+    source_id = "11111111-1111-4111-8111-111111111111"
+    ontology_id = "22222222-2222-4222-8222-222222222222"
+    graph_id = "33333333-3333-4333-8333-333333333333"
+    agent_id = "44444444-4444-4444-8444-444444444444"
+
+    def test_ontology_projects_safe_metadata_and_binding_lineage(self):
+        artifact = {"id": self.ontology_id, "_type": "Ontology"}
+        response = {
+            "definition": {
+                "parts": [
+                    _definition_part(
+                        "EntityTypes/101/definition.json",
+                        {
+                            "id": "101",
+                            "name": "Equipment",
+                            "properties": [
+                                {
+                                    "id": "201",
+                                    "name": "Name",
+                                    "valueType": "String",
+                                }
+                            ],
+                            "timeseriesProperties": [
+                                {
+                                    "id": "202",
+                                    "name": "Temperature",
+                                    "valueType": "Double",
+                                }
+                            ],
+                        },
+                    ),
+                    _definition_part(
+                        "EntityTypes/101/DataBindings/binding.json",
+                        {
+                            "dataBindingConfiguration": {
+                                "sourceTableProperties": {
+                                    "sourceType": "LakehouseTable",
+                                    "workspaceId": "workspace",
+                                    "itemId": self.source_id,
+                                    "sourceSchema": "dbo",
+                                    "sourceTableName": "equipment",
+                                    "businessRows": [
+                                        {"customer": "must-not-leak"}
+                                    ],
+                                },
+                                "propertyBindings": [
+                                    {
+                                        "sourceColumnName": "Name",
+                                        "targetPropertyId": "201",
+                                    }
+                                ],
+                            }
+                        },
+                    ),
+                    _definition_part(
+                        "RelationshipTypes/301/definition.json",
+                        {
+                            "id": "301",
+                            "name": "contains",
+                            "source": {"entityTypeId": "101"},
+                            "target": {"entityTypeId": "101"},
+                        },
+                    ),
+                    _definition_part(
+                        "RelationshipTypes/301/Contextualizations/context.json",
+                        {
+                            "dataBindingTable": {
+                                "sourceType": "LakehouseTable",
+                                "itemId": self.source_id,
+                                "sourceSchema": "dbo",
+                                "sourceTableName": "relationships",
+                            },
+                            "sourceKeyRefBindings": [
+                                {"sourceColumnName": "secret-key-value"}
+                            ],
+                        },
+                    ),
+                    _definition_part(
+                        "EntityTypes/101/Documents/document.json",
+                        {
+                            "displayText": "Internal document",
+                            "url": "https://secret.example/document",
+                        },
+                    ),
+                    _definition_part(
+                        "Future/part.json",
+                        {"secret": "future-payload-must-not-leak"},
+                    ),
+                ]
+            }
+        }
+
+        function_app._project_definition(artifact, response)
+        config = function_app._item_config(
+            "token",
+            "workspace",
+            artifact,
+            "Ontology",
+            [],
+        )
+        serialized = json.dumps(config)
+
+        self.assertIn("Ontology entity types", serialized)
+        self.assertIn("Ontology properties", serialized)
+        self.assertIn("Ontology time-series properties", serialized)
+        self.assertIn("Ontology data bindings", serialized)
+        self.assertIn("Ontology relationship types", serialized)
+        self.assertIn("Ontology contextualizations", serialized)
+        self.assertEqual(artifact["_definitionUnknownParts"], 1)
+        self.assertNotIn("must-not-leak", serialized)
+        self.assertNotIn("secret-key-value", serialized)
+        self.assertNotIn("secret.example", serialized)
+        self.assertNotIn("future-payload", serialized)
+        metadata = artifact["_artifactMetadata"]
+        self.assertEqual(metadata["kind"], "ontology")
+        self.assertEqual(metadata["entities"][0]["id"], "101")
+        self.assertEqual(
+            metadata["entities"][0]["properties"],
+            [
+                {
+                    "id": "201",
+                    "name": "Name",
+                    "valueType": "String",
+                    "timeSeries": False,
+                },
+                {
+                    "id": "202",
+                    "name": "Temperature",
+                    "valueType": "Double",
+                    "timeSeries": True,
+                },
+            ],
+        )
+        self.assertEqual(
+            metadata["bindings"][0]["sourceItemId"],
+            self.source_id,
+        )
+        self.assertEqual(
+            metadata["relationships"][0],
+            {
+                "id": "301",
+                "name": "contains",
+                "sourceEntityId": "101",
+                "targetEntityId": "101",
+            },
+        )
+        metadata_serialized = json.dumps(metadata)
+        for secret in (
+            "must-not-leak",
+            "secret-key-value",
+            "secret.example",
+            "future-payload",
+            "Documents",
+            "ResourceLinks",
+        ):
+            self.assertNotIn(secret, metadata_serialized)
+        self.assertTrue(
+            any(
+                edge["source"]["kind"] == "table"
+                and edge["target"]["kind"] == "entityType"
+                and edge["relation"] == "binds entity"
+                for edge in artifact["_objectEdges"]
+            )
+        )
+        self.assertTrue(
+            any(
+                edge["source"]["kind"] == "column"
+                and edge["target"]["kind"] == "property"
+                and edge["relation"] == "binds property"
+                for edge in artifact["_objectEdges"]
+            )
+        )
+        schema = artifact["_definitionSchema"]
+        self.assertEqual(
+            [value["objectType"] for value in schema],
+            ["Ontology entity", "Ontology relationship"],
+        )
+        self.assertEqual(
+            [column["objectType"] for column in schema[0]["columns"]],
+            ["Ontology property", "Ontology time-series property"],
+        )
+        self.assertEqual(
+            schema[0]["columns"][0]["parentObjectId"],
+            schema[0]["objectId"],
+        )
+        self.assertEqual(
+            schema[1]["sourceObjectId"],
+            schema[0]["objectId"],
+        )
+        self.assertEqual(
+            schema[1]["targetObjectId"],
+            schema[0]["objectId"],
+        )
+        object_edges = function_app._schema_object_edges(schema)
+        self.assertTrue(
+            any(
+                edge["relation"] == "ontology relationship"
+                and edge["relationObjectId"] == schema[1]["objectId"]
+                for edge in object_edges
+            )
+        )
+        atlas_edges = function_app._atlas_object_edges(
+            {self.ontology_id: schema},
+            extra_edges=artifact["_objectEdges"],
+        )
+        self.assertTrue(
+            any(
+                edge["source"]["kind"] == "entityType"
+                and edge["target"]["kind"] == "relationshipType"
+                and edge["relation"] == "relationship source"
+                and edge["confidence"] == "verified"
+                for edge in atlas_edges
+            )
+        )
+        self.assertTrue(
+            any(
+                edge["source"]["itemId"] == self.source_id
+                and edge["target"]["itemId"] == self.ontology_id
+                and edge["relation"] == "binds entity"
+                for edge in atlas_edges
+            )
+        )
+        self.assertTrue(
+            any(
+                edge["source"]["kind"] == "relationshipType"
+                and edge["target"]["kind"] == "entityType"
+                and edge["relation"] == "relationship target"
+                for edge in atlas_edges
+            )
+        )
+
+        lineage = function_app._official_lineage(
+            [
+                {"id": self.source_id, "_type": "Lakehouse"},
+                artifact,
+            ],
+            {self.source_id, self.ontology_id},
+            "workspace",
+        )
+        self.assertIn(
+            {
+                "source": self.source_id,
+                "target": self.ontology_id,
+                "relation": "ontology binding",
+            },
+            lineage,
+        )
+
+    def test_ontology_entity_id_falls_back_to_definition_path(self):
+        artifact = {"id": self.ontology_id, "_type": "Ontology"}
+        function_app._project_definition(
+            artifact,
+            {
+                "definition": {
+                    "parts": [
+                        _definition_part(
+                            "EntityTypes/101/definition.json",
+                            {"name": "Equipment"},
+                        ),
+                        _definition_part(
+                            "EntityTypes/101/DataBindings/binding.json",
+                            {
+                                "dataBindingConfiguration": {
+                                    "sourceTableProperties": {
+                                        "itemId": self.source_id,
+                                    }
+                                }
+                            },
+                        ),
+                    ]
+                }
+            },
+        )
+
+        serialized = json.dumps(artifact["_definitionFacts"])
+        self.assertIn("id 101", serialized)
+        self.assertIn("Equipment:binding", serialized)
+        self.assertNotIn("id None", serialized)
+
+    def test_ontology_ids_are_canonical_across_graph_mappings(self):
+        entity_id = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"
+        ontology = {"id": self.ontology_id, "_type": "Ontology"}
+        graph = {"id": self.graph_id, "_type": "GraphModel"}
+        function_app._project_definition(
+            ontology,
+            {
+                "definition": {
+                    "parts": [
+                        _definition_part(
+                            f"EntityTypes/{entity_id}/definition.json",
+                            {
+                                "id": entity_id,
+                                "name": "Equipment",
+                            },
+                        )
+                    ]
+                }
+            },
+        )
+        function_app._project_definition(
+            graph,
+            {
+                "definition": {
+                    "parts": [
+                        _definition_part(
+                            "graphType.json",
+                            {
+                                "ontologyItemId": self.ontology_id,
+                                "nodeTypes": [
+                                    {
+                                        "alias": "EquipmentNode",
+                                        "ontologyEntityTypeId": entity_id.lower(),
+                                        "properties": [],
+                                    }
+                                ],
+                                "edgeTypes": [],
+                            },
+                        ),
+                        _definition_part(
+                            "dataSources.json",
+                            {"dataSources": []},
+                        ),
+                        _definition_part(
+                            "graphDefinition.json",
+                            {"nodeTables": [], "edgeTables": []},
+                        ),
+                    ]
+                }
+            },
+        )
+
+        ontology_object_id = ontology["_definitionSchema"][0]["objectId"]
+        graph_source_id = graph["_definitionSchema"][0]["sourceObjectId"]
+        self.assertEqual(ontology_object_id, graph_source_id)
+
+    def test_graph_projects_types_and_mappings_without_filter_values(self):
+        artifact = {"id": self.graph_id, "_type": "GraphModel"}
+        one_lake_path = (
+            f"abfss://{self.source_id}@onelake.dfs.fabric.microsoft.com/"
+            "55555555-5555-4555-8555-555555555555/Tables/Customers"
+        )
+        response = {
+            "definition": {
+                "parts": [
+                    _definition_part(
+                        "graphType.json",
+                        {
+                            "ontologyItemId": self.ontology_id,
+                            "nodeTypes": [
+                                {
+                                    "alias": "Customer",
+                                    "ontologyEntityTypeId": "101",
+                                    "labels": ["Customer"],
+                                    "properties": [
+                                        {"name": "Id", "type": "STRING"}
+                                    ],
+                                }
+                            ],
+                            "edgeTypes": [
+                                {
+                                    "alias": "Purchased",
+                                    "ontologyRelationshipTypeId": "301",
+                                    "sourceNodeType": {"alias": "Customer"},
+                                    "destinationNodeType": {"alias": "Customer"},
+                                    "properties": [],
+                                }
+                            ],
+                        },
+                    ),
+                    _definition_part(
+                        "dataSources.json",
+                        {
+                            "dataSources": [
+                                {
+                                    "name": "Customers",
+                                    "type": "DeltaTable",
+                                    "properties": {"path": one_lake_path},
+                                }
+                            ]
+                        },
+                    ),
+                    _definition_part(
+                        "graphDefinition.json",
+                        {
+                            "nodeTables": [
+                                {
+                                    "nodeTypeAlias": "Customer",
+                                    "dataSourceName": "Customers",
+                                    "propertyMappings": [
+                                        {
+                                            "propertyName": "Id",
+                                            "sourceColumn": "CustomerId",
+                                        }
+                                    ],
+                                    "filter": {
+                                        "columnName": "Region",
+                                        "operator": "Equal",
+                                        "value": "secret-filter-literal",
+                                    },
+                                }
+                            ],
+                            "edgeTables": [],
+                        },
+                    ),
+                    _definition_part(
+                        "graphInstances.json",
+                        {"instances": [{"name": "secret-instance"}]},
+                    ),
+                ]
+            }
+        }
+
+        function_app._project_definition(artifact, response)
+        serialized = json.dumps(
+            function_app._item_config(
+                "token",
+                "workspace",
+                artifact,
+                "GraphModel",
+                [],
+            )
+        )
+
+        self.assertIn("Graph node types", serialized)
+        self.assertIn("Graph edge types", serialized)
+        self.assertIn("Graph data sources", serialized)
+        self.assertIn("Graph node mappings", serialized)
+        self.assertNotIn("secret-filter-literal", serialized)
+        self.assertNotIn("secret-instance", serialized)
+        metadata = artifact["_artifactMetadata"]
+        self.assertEqual(metadata["kind"], "graphModel")
+        self.assertEqual(metadata["nodeTypes"][0]["alias"], "Customer")
+        self.assertEqual(metadata["edgeTypes"][0]["alias"], "Purchased")
+        self.assertEqual(
+            metadata["dataSources"][0]["sourceItemId"],
+            "55555555-5555-4555-8555-555555555555",
+        )
+        self.assertEqual(metadata["mappings"][0]["kind"], "node")
+        metadata_serialized = json.dumps(metadata)
+        self.assertNotIn("filter", metadata_serialized.casefold())
+        self.assertNotIn("instances", metadata_serialized.casefold())
+        self.assertNotIn("secret-filter-literal", metadata_serialized)
+        self.assertNotIn("secret-instance", metadata_serialized)
+        self.assertEqual(
+            [
+                (value["name"], value["objectType"])
+                for value in artifact["_definitionSchema"]
+            ],
+            [
+                ("Customer", "Graph node"),
+                ("Purchased", "Graph edge"),
+            ],
+        )
+        self.assertEqual(
+            artifact["_definitionSchema"][0]["columns"][0]["objectType"],
+            "Graph property",
+        )
+        graph_schema = artifact["_definitionSchema"]
+        self.assertEqual(
+            graph_schema[0]["sourceObjectId"],
+            function_app._fabric_object_id(
+                self.ontology_id,
+                "ontology-entity",
+                "101",
+            ),
+        )
+        self.assertEqual(
+            graph_schema[1]["sourceObjectId"],
+            function_app._fabric_object_id(
+                self.ontology_id,
+                "ontology-relationship",
+                "301",
+            ),
+        )
+        self.assertEqual(
+            [edge["relation"] for edge in function_app._schema_object_edges(
+                graph_schema
+            )],
+            ["generated graph node", "generated graph edge"],
+        )
+        atlas_edges = function_app._atlas_object_edges({
+            self.graph_id: graph_schema,
+        }, extra_edges=artifact["_objectEdges"])
+        self.assertEqual(
+            {
+                (
+                    edge["source"]["kind"],
+                    edge["target"]["kind"],
+                    edge["relation"],
+                )
+                for edge in atlas_edges
+            },
+            {
+                ("entityType", "nodeType", "generated graph node"),
+                (
+                    "relationshipType",
+                    "edgeType",
+                    "generated graph edge",
+                ),
+                ("table", "nodeType", "maps node"),
+                ("column", "property", "maps property"),
+            },
+        )
+        self.assertIn(
+            "55555555-5555-4555-8555-555555555555",
+            artifact["_definitionSourceIds"],
+        )
+
+        lineage = function_app._official_lineage(
+            [
+                {"id": self.source_id, "_type": "Lakehouse"},
+                {"id": self.ontology_id, "_type": "Ontology"},
+                {
+                    **artifact,
+                    "_definitionSourceIds": {self.source_id},
+                },
+            ],
+            {self.source_id, self.ontology_id, self.graph_id},
+            "workspace",
+        )
+        self.assertIn(
+            {
+                "source": self.ontology_id,
+                "target": self.graph_id,
+                "relation": "generated graph",
+            },
+            lineage,
+        )
+
+    def test_data_agent_projects_sources_and_selected_tree_without_prompts(self):
+        artifact = {"id": self.agent_id, "_type": "DataAgent"}
+        response = {
+            "definition": {
+                "parts": [
+                    _definition_part(
+                        "Files/Config/draft/stage_config.json",
+                        {"aiInstructions": "secret-agent-prompt"},
+                    ),
+                    _definition_part(
+                        "Files/Config/published/stage_config.json",
+                        {"aiInstructions": "secret-published-prompt"},
+                    ),
+                    _definition_part(
+                        "Files/Config/published/ontology-Sales/datasource.json",
+                        {
+                            "artifactId": self.ontology_id,
+                            "workspaceId": "workspace",
+                            "displayName": "Sales ontology",
+                            "type": "ontology",
+                            "dataSourceInstructions": "secret-source-prompt",
+                            "elements": [
+                                {
+                                    "id": "101",
+                                    "display_name": "Customer",
+                                    "type": "graph.nodeType",
+                                    "is_selected": True,
+                                    "children": [
+                                        {
+                                            "id": "201",
+                                            "display_name": "CustomerId",
+                                            "type": "graph.property",
+                                            "is_selected": True,
+                                            "description": "secret-description",
+                                        }
+                                    ],
+                                }
+                            ],
+                        },
+                    ),
+                    _definition_part(
+                        "Files/Config/published/ontology-Sales/fewshots.json",
+                        {
+                            "fewShots": [
+                                {
+                                    "question": "secret-question",
+                                    "query": "secret-query",
+                                }
+                            ]
+                        },
+                    ),
+                    _definition_part(
+                        "Files/Config/publish_info.json",
+                        {"description": "Published catalog assistant"},
+                    ),
+                ]
+            }
+        }
+
+        function_app._project_definition(artifact, response)
+        serialized = json.dumps(
+            function_app._item_config(
+                "token",
+                "workspace",
+                artifact,
+                "DataAgent",
+                [],
+            )
+        )
+
+        self.assertIn("Published catalog assistant", serialized)
+        self.assertIn("published", serialized)
+        self.assertIn("Sales ontology", serialized)
+        self.assertIn("CustomerId", serialized)
+        for secret in (
+            "secret-agent-prompt",
+            "secret-published-prompt",
+            "secret-source-prompt",
+            "secret-description",
+            "secret-question",
+            "secret-query",
+        ):
+            self.assertNotIn(secret, serialized)
+        metadata = artifact["_artifactMetadata"]
+        self.assertEqual(metadata["kind"], "dataAgent")
+        self.assertEqual(len(metadata["sources"]), 1)
+        self.assertEqual(
+            metadata["sources"][0]["artifactId"],
+            self.ontology_id,
+        )
+        self.assertEqual(
+            metadata["sources"][0]["elements"][0]["id"],
+            "101",
+        )
+        self.assertNotIn("instructions", json.dumps(metadata).casefold())
+        self.assertNotIn("fewshot", json.dumps(metadata).casefold())
+        for secret in (
+            "secret-agent-prompt",
+            "secret-published-prompt",
+            "secret-source-prompt",
+            "secret-description",
+            "secret-question",
+            "secret-query",
+        ):
+            self.assertNotIn(secret, json.dumps(metadata))
+        self.assertEqual(
+            artifact["_definitionSchema"][0]["objectType"],
+            "Data Agent source",
+        )
+        self.assertEqual(
+            [
+                column["objectType"]
+                for column in artifact["_definitionSchema"][0]["columns"]
+            ],
+            [
+                "Data Agent selected element",
+                "Data Agent selected element",
+            ],
+        )
+        agent_source = artifact["_definitionSchema"][0]
+        self.assertEqual(
+            agent_source["columns"][0]["sourceObjectId"],
+            function_app._fabric_object_id(
+                self.ontology_id,
+                "ontology-entity",
+                "101",
+            ),
+        )
+        self.assertEqual(
+            agent_source["columns"][0]["targetObjectId"],
+            agent_source["columns"][0]["objectId"],
+        )
+        self.assertEqual(
+            agent_source["columns"][1]["sourceObjectId"],
+            function_app._fabric_object_id(
+                self.ontology_id,
+                "ontology-property",
+                "201",
+            ),
+        )
+        self.assertTrue(
+            any(
+                edge["source"]
+                == agent_source["columns"][0]["sourceObjectId"]
+                and edge["target"]
+                == agent_source["columns"][0]["objectId"]
+                and edge["relation"] == "selected by data agent"
+                for edge in function_app._schema_object_edges(
+                    artifact["_definitionSchema"]
+                )
+            )
+        )
+        atlas_edges = function_app._atlas_object_edges({
+            self.agent_id: artifact["_definitionSchema"],
+        })
+        self.assertTrue(
+            any(
+                edge["source"]["kind"] == "entityType"
+                and edge["target"]["kind"] == "selectedElement"
+                and edge["relation"] == "selected by data agent"
+                and edge["confidence"] == "verified"
+                for edge in atlas_edges
+            )
+        )
+        self.assertTrue(
+            any(
+                edge["source"]["kind"] == "dataSource"
+                and edge["target"]["kind"] == "selectedElement"
+                and edge["relation"] == "contains"
+                for edge in atlas_edges
+            )
+        )
+
+        lineage = function_app._official_lineage(
+            [
+                {"id": self.ontology_id, "_type": "Ontology"},
+                artifact,
+            ],
+            {self.ontology_id, self.agent_id},
+            "workspace",
+        )
+        self.assertIn(
+            {
+                "source": self.ontology_id,
+                "target": self.agent_id,
+                "relation": "ontology",
+            },
+            lineage,
+        )
+
+    def test_definition_permission_locked_and_malformed_are_item_scoped(self):
+        cases = (
+            (_http_error(403), "read-write-permission-required", "unsupported"),
+            (_http_error(423), "encrypted-label-blocked", "unsupported"),
+            (
+                {
+                    "definition": {
+                        "parts": [
+                            {
+                                "path": "graphType.json",
+                                "payload": "not-base64",
+                                "payloadType": "InlineBase64",
+                            }
+                        ]
+                    }
+                },
+                "invalid-definition",
+                "failed",
+            ),
+        )
+        for result, expected_code, expected_tracker in cases:
+            with self.subTest(expected_code=expected_code):
+                artifact = {"id": self.graph_id, "_type": "GraphModel"}
+                trackers = {
+                    "itemDetails": function_app._new_optional_tracker(),
+                    "definitions": function_app._new_optional_tracker(),
+                }
+                errors = []
+                with (
+                    mock.patch.object(
+                        function_app,
+                        "_get",
+                        return_value={"id": self.graph_id},
+                    ),
+                    mock.patch.object(
+                        function_app,
+                        "_get_definition",
+                        side_effect=(
+                            result if isinstance(result, Exception) else None
+                        ),
+                        return_value=(
+                            result if isinstance(result, dict) else None
+                        ),
+                    ),
+                ):
+                    function_app._enrich_artifact(
+                        "token",
+                        "workspace",
+                        artifact,
+                        trackers,
+                        errors,
+                    )
+
+                self.assertEqual(
+                    artifact["_definitionStatus"],
+                    expected_code,
+                )
+                self.assertEqual(
+                    trackers["definitions"][expected_tracker],
+                    1,
+                )
+                if expected_tracker == "failed":
+                    self.assertEqual(
+                        errors,
+                        [f"definitions:{self.graph_id}: {expected_code}"],
+                    )
+                else:
+                    self.assertEqual(errors, [])
+
+    def test_data_agent_physical_selection_points_to_source_object(self):
+        kql_id = "55555555-5555-4555-8555-555555555555"
+        artifact = {"id": self.agent_id, "_type": "DataAgent"}
+        function_app._project_definition(
+            artifact,
+            {
+                "definition": {
+                    "parts": [
+                        _definition_part(
+                            "Files/Config/draft/kusto-Telemetry/datasource.json",
+                            {
+                                "artifactId": kql_id,
+                                "displayName": "Telemetry",
+                                "type": "kusto",
+                                "elements": [
+                                    {
+                                        "display_name": "Events",
+                                        "type": "kusto.table",
+                                        "is_selected": True,
+                                        "children": [
+                                            {
+                                                "display_name": "Timestamp",
+                                                "type": "kusto.column",
+                                                "is_selected": True,
+                                            }
+                                        ],
+                                    }
+                                ],
+                            },
+                        )
+                    ]
+                }
+            },
+        )
+
+        source = artifact["_definitionSchema"][0]
+        table, column = source["columns"]
+        self.assertEqual(
+            table["sourceObjectId"],
+            function_app._fabric_object_id(
+                kql_id,
+                "kql-table",
+                "Events",
+            ),
+        )
+        self.assertEqual(
+            column["sourceObjectId"],
+            function_app._fabric_object_id(
+                kql_id,
+                "kql-table-column",
+                "Events/Timestamp",
+            ),
+        )
+        self.assertEqual(table["targetObjectId"], table["objectId"])
+        self.assertEqual(column["targetObjectId"], column["objectId"])
+        self.assertEqual(table["parentObjectId"], source["objectId"])
+        self.assertEqual(column["parentObjectId"], table["objectId"])
+
+    def test_data_agent_live_element_types_skip_grouping_nodes(self):
+        model_id = "55555555-5555-4555-8555-555555555555"
+        kql_id = "66666666-6666-4666-8666-666666666666"
+        artifact = {"id": self.agent_id, "_type": "DataAgent"}
+        function_app._project_definition(
+            artifact,
+            {
+                "definition": {
+                    "parts": [
+                        _definition_part(
+                            "Files/Config/published/semantic_model-Model/datasource.json",
+                            {
+                                "artifactId": model_id,
+                                "displayName": "Sales model",
+                                "type": "semantic_model",
+                                "elements": [
+                                    {
+                                        "display_name": "Model",
+                                        "type": "semantic_model",
+                                        "is_selected": True,
+                                        "children": [
+                                            {
+                                                "display_name": "Sales",
+                                                "type": "semantic_model.table",
+                                                "is_selected": True,
+                                                "children": [
+                                                    {
+                                                        "display_name": "Amount",
+                                                        "type": "semantic_model.column",
+                                                        "data_type": "Decimal",
+                                                        "is_selected": True,
+                                                    },
+                                                    {
+                                                        "display_name": "Revenue",
+                                                        "type": "semantic_model.measure",
+                                                        "data_type": "Decimal",
+                                                        "is_selected": True,
+                                                    },
+                                                ],
+                                            }
+                                        ],
+                                    }
+                                ],
+                            },
+                        ),
+                        _definition_part(
+                            "Files/Config/published/kusto-Telemetry/datasource.json",
+                            {
+                                "artifactId": kql_id,
+                                "displayName": "Telemetry",
+                                "type": "kusto",
+                                "elements": [
+                                    {
+                                        "display_name": "Tables",
+                                        "type": "kusto",
+                                        "is_selected": True,
+                                        "children": [
+                                            {
+                                                "display_name": "Events",
+                                                "type": "kusto.table",
+                                                "is_selected": True,
+                                                "children": [
+                                                    {
+                                                        "display_name": "Timestamp",
+                                                        "type": "kusto.column",
+                                                        "data_type": "datetime",
+                                                        "is_selected": True,
+                                                    }
+                                                ],
+                                            }
+                                        ],
+                                    }
+                                ],
+                            },
+                        ),
+                        _definition_part(
+                            "Files/Config/published/ontology-Sales/datasource.json",
+                            {
+                                "artifactId": self.ontology_id,
+                                "displayName": "Sales ontology",
+                                "type": "ontology",
+                                "elements": [
+                                    {
+                                        "id": "101",
+                                        "display_name": "Customer",
+                                        "type": "ontology.entity",
+                                        "is_selected": True,
+                                    }
+                                ],
+                            },
+                        ),
+                    ]
+                }
+            },
+        )
+
+        schema = artifact["_definitionSchema"]
+        selected = [
+            column
+            for source in schema
+            for column in source["columns"]
+        ]
+        self.assertEqual(
+            [column["name"] for column in selected],
+            [
+                "Sales",
+                "Amount",
+                "Revenue",
+                "Events",
+                "Timestamp",
+                "Customer",
+            ],
+        )
+        self.assertNotIn("Model", [column["name"] for column in selected])
+        self.assertNotIn("Tables", [column["name"] for column in selected])
+        self.assertEqual(
+            next(
+                column["dataType"]
+                for column in selected
+                if column["name"] == "Amount"
+            ),
+            "Decimal",
+        )
+        self.assertEqual(
+            next(
+                column["dataType"]
+                for column in selected
+                if column["name"] == "Timestamp"
+            ),
+            "datetime",
+        )
+
+        edges = function_app._atlas_object_edges({
+            self.agent_id: schema,
+        })
+        source_edges = [
+            edge
+            for edge in edges
+            if edge["relation"] == "selected by data agent"
+        ]
+        self.assertEqual(
+            {edge["source"]["kind"] for edge in source_edges},
+            {"table", "column", "measure", "entityType"},
+        )
+        amount = next(
+            edge
+            for edge in source_edges
+            if edge["source"]["name"] == "Amount"
+        )
+        self.assertEqual(amount["source"]["tableName"], "Sales")
+        self.assertEqual(amount["source"]["parentPath"], ["Sales"])
+        self.assertEqual(amount["target"]["parentPath"], ["Sales"])
+        ontology = next(
+            edge
+            for edge in source_edges
+            if edge["source"]["kind"] == "entityType"
+        )
+        self.assertEqual(ontology["source"]["itemId"], self.ontology_id)
+
+    def test_data_agent_matching_is_independent_of_workspace_names_and_mix(self):
+        source_id = "77777777-7777-4777-8777-777777777777"
+        agent_id = "88888888-8888-4888-8888-888888888888"
+        artifact = {"id": agent_id, "_type": "DataAgent"}
+        function_app._project_definition(
+            artifact,
+            {
+                "definition": {
+                    "parts": [
+                        _definition_part(
+                            "Files/Config/draft/custom-source/datasource.json",
+                            {
+                                "artifactId": source_id,
+                                "workspaceId": (
+                                    "99999999-9999-4999-8999-999999999999"
+                                ),
+                                "displayName": "Synthetic source",
+                                "type": "future_source_type",
+                                "elements": [
+                                    {
+                                        "display_name": "arbitrary_schema",
+                                        "type": "future.schema",
+                                        "is_selected": True,
+                                        "children": [
+                                            {
+                                                "display_name": "object_name",
+                                                "type": "semantic_model.table",
+                                                "is_selected": True,
+                                                "children": [
+                                                    {
+                                                        "display_name": "field_name",
+                                                        "type": "semantic_model.column",
+                                                        "data_type": "custom_type",
+                                                        "is_selected": True,
+                                                    }
+                                                ],
+                                            }
+                                        ],
+                                    }
+                                ],
+                            },
+                        )
+                    ]
+                }
+            },
+        )
+
+        selected = artifact["_definitionSchema"][0]["columns"]
+        self.assertEqual(
+            [value["name"] for value in selected],
+            ["object_name", "field_name"],
+        )
+        self.assertEqual(
+            selected[0]["sourceObjectId"],
+            function_app._fabric_object_id(
+                source_id,
+                "semantic-model-table",
+                "arbitrary_schema.object_name",
+            ),
+        )
+        edges = function_app._atlas_object_edges({
+            agent_id: artifact["_definitionSchema"],
+        })
+        self.assertTrue(
+            all(
+                edge["source"]["itemId"] == source_id
+                for edge in edges
+                if edge["relation"] == "selected by data agent"
+            )
+        )
+        self.assertEqual(
+            function_app._source_object_kind("future_source_type"),
+            "table",
+        )
+
+    def test_data_agent_metadata_truncation_is_reported(self):
+        response = {
+            "definition": {
+                "parts": [
+                    _definition_part(
+                        "Files/Config/published/model-Source/datasource.json",
+                        {
+                            "artifactId": self.source_id,
+                            "displayName": "Synthetic model",
+                            "type": "semantic_model",
+                            "elements": [
+                                {
+                                    "id": "one",
+                                    "display_name": "One",
+                                    "type": "semantic_model.table",
+                                    "is_selected": True,
+                                },
+                                {
+                                    "id": "two",
+                                    "display_name": "Two",
+                                    "type": "semantic_model.table",
+                                    "is_selected": True,
+                                },
+                            ],
+                        },
+                    )
+                ]
+            }
+        }
+        artifact = {"id": self.agent_id, "_type": "DataAgent"}
+        trackers = {
+            "itemDetails": function_app._new_optional_tracker(),
+            "definitions": function_app._new_optional_tracker(),
+        }
+        with (
+            mock.patch.object(
+                function_app,
+                "MAX_ARTIFACT_METADATA_ELEMENTS",
+                1,
+            ),
+            mock.patch.object(
+                function_app,
+                "_get",
+                return_value={"id": self.agent_id},
+            ),
+            mock.patch.object(
+                function_app,
+                "_get_definition",
+                return_value=response,
+            ),
+        ):
+            function_app._enrich_artifact(
+                "token",
+                "workspace",
+                artifact,
+                trackers,
+                [],
+            )
+
+        self.assertTrue(artifact["_artifactMetadataTruncated"])
+        self.assertEqual(
+            artifact["_definitionStatus"],
+            "artifact-metadata-truncated",
+        )
+        self.assertIn(
+            "artifact-metadata-truncated",
+            trackers["definitions"]["codes"],
+        )
+
+    def test_definition_lro_polls_state_then_fetches_result(self):
+        operation_id = "55555555-5555-4555-8555-555555555555"
+        clock = _Clock()
+        deadline = function_app._ExecutionDeadline(10, clock.monotonic)
+        response = {"definition": {"parts": []}}
+        with (
+            function_app._deadline_scope(deadline),
+            mock.patch.object(
+                function_app,
+                "_req_response",
+                side_effect=[
+                    (
+                        202,
+                        {
+                            "Location": f"{function_app.FABRIC}/operations/{operation_id}",
+                            "x-ms-operation-id": operation_id,
+                            "Retry-After": "1",
+                        },
+                        {},
+                    ),
+                    (
+                        200,
+                        {
+                            "Location": (
+                                f"{function_app.FABRIC}/operations/"
+                                f"{operation_id}/result"
+                            )
+                        },
+                        {"status": "Succeeded"},
+                    ),
+                ],
+            ),
+            mock.patch.object(
+                function_app,
+                "_get",
+                return_value=response,
+            ) as get,
+            mock.patch.object(deadline, "sleep", side_effect=clock.sleep),
+        ):
+            result = function_app._get_definition(
+                "token",
+                "workspace",
+                "Ontology",
+                self.ontology_id,
+            )
+
+        self.assertEqual(result, response)
+        get.assert_called_once_with(
+            "token",
+            f"{function_app.FABRIC}/operations/{operation_id}/result",
+        )
+
+
+class KqlAndSqlMetadataTests(unittest.TestCase):
+    kql_id = "11111111-1111-4111-8111-111111111111"
+    eventhouse_id = "22222222-2222-4222-8222-222222222222"
+    sql_id = "33333333-3333-4333-8333-333333333333"
+
+    def test_sql_access_token_is_packed_for_attrs_before(self):
+        token = "header.payload.synthetic-signature-value"
+        token_bytes = token.encode("utf-16le")
+
+        packed = function_app._pack_sql_access_token(token)
+
+        self.assertEqual(
+            packed,
+            struct.pack(
+                f"<I{len(token_bytes)}s",
+                len(token_bytes),
+                token_bytes,
+            ),
+        )
+        self.assertNotIn(token.encode("utf-8"), packed)
+        with self.assertRaises(ValueError):
+            function_app._pack_sql_access_token("short")
+
+    def test_sql_endpoint_and_database_identity_are_allowlisted(self):
+        self.assertEqual(
+            function_app._sql_endpoint(
+                "server.database.fabric.microsoft.com,1433"
+            ),
+            ("server.database.fabric.microsoft.com", 1433),
+        )
+        self.assertEqual(
+            function_app._sql_endpoint(
+                "https://server.database.fabric.microsoft.com:1433"
+            ),
+            ("server.database.fabric.microsoft.com", 1433),
+        )
+        self.assertEqual(
+            function_app._sql_database_name("Catalog 2026"),
+            "Catalog 2026",
+        )
+        for endpoint in (
+            "http://server.database.fabric.microsoft.com",
+            "https://server.database.fabric.microsoft.com.evil.test",
+            "server.database.fabric.microsoft.com;UID=attacker",
+            "server.database.fabric.microsoft.com,1444",
+            "-server.database.fabric.microsoft.com,1433",
+            "localhost,1433",
+        ):
+            with self.subTest(endpoint=endpoint):
+                with self.assertRaises(ValueError):
+                    function_app._sql_endpoint(endpoint)
+        for database_name in ("", "Catalog;UID=attacker", "Catalog{Name}"):
+            with self.subTest(database_name=database_name):
+                with self.assertRaises(ValueError):
+                    function_app._sql_database_name(database_name)
+
+    def test_sql_catalog_collection_maps_only_system_metadata(self):
+        token = "header.payload.synthetic-signature-value"
+        connection = _SqlConnection(
+            [
+                [
+                    ("dbo", "Customers", "U", "CustomerId", "uniqueidentifier", 1),
+                    ("dbo", "Customers", "U", "Name", "nvarchar", 2),
+                    ("reporting", "CustomerSummary", "V", "CustomerId", "uniqueidentifier", 1),
+                ],
+                [
+                    ("dbo", "Customers", "PK_Customers", "CustomerId", 1),
+                ],
+                [
+                    (
+                        "FK_Customers_Accounts",
+                        "dbo",
+                        "Customers",
+                        "AccountId",
+                        "dbo",
+                        "Accounts",
+                        "AccountId",
+                        1,
+                    ),
+                ],
+            ]
+        )
+        driver = _SqlDriver(connection=connection)
+        artifact = {
+            "id": self.sql_id,
+            "_type": "SQLDatabase",
+            "_detail": {
+                "properties": {
+                    "serverFqdn": (
+                        "server.database.fabric.microsoft.com,1433"
+                    ),
+                    "databaseName": "Synthetic Catalog",
+                    "connectionString": "Password=must-not-be-used",
+                }
+            },
+        }
+
+        with mock.patch.object(
+            function_app.importlib,
+            "import_module",
+            return_value=driver,
+        ):
+            function_app._collect_sql_schema(token, artifact)
+
+        connection_string, kwargs = driver.calls[0]
+        self.assertEqual(
+            connection_string,
+            (
+                "Server=tcp:server.database.fabric.microsoft.com,1433;"
+                "Database=Synthetic Catalog;"
+                "Encrypt=yes;"
+                "TrustServerCertificate=no;"
+                "ApplicationIntent=ReadOnly;"
+            ),
+        )
+        self.assertEqual(kwargs["autocommit"], True)
+        self.assertLessEqual(kwargs["timeout"], function_app.REQUEST_TIMEOUT_SECONDS)
+        self.assertEqual(
+            kwargs["attrs_before"],
+            {
+                function_app.SQL_COPT_SS_ACCESS_TOKEN:
+                    function_app._pack_sql_access_token(token)
+            },
+        )
+        self.assertEqual(
+            [cursor.executed[0] for cursor in connection.cursors],
+            [
+                function_app.SQL_OBJECTS_QUERY,
+                function_app.SQL_PRIMARY_KEYS_QUERY,
+                function_app.SQL_FOREIGN_KEYS_QUERY,
+            ],
+        )
+        self.assertTrue(all(cursor.closed for cursor in connection.cursors))
+        self.assertTrue(connection.closed)
+        self.assertEqual(
+            [
+                (value["name"], value["objectType"])
+                for value in artifact["_sqlSchema"]
+            ],
+            [
+                ("dbo.Customers", "SQL table"),
+                ("reporting.CustomerSummary", "SQL view"),
+            ],
+        )
+        self.assertEqual(
+            [column["name"] for column in artifact["_sqlSchema"][0]["columns"]],
+            ["CustomerId", "Name"],
+        )
+        serialized = json.dumps(artifact)
+        self.assertNotIn(token, serialized)
+        self.assertNotIn("must-not-be-used", json.dumps({
+            "schema": artifact["_sqlSchema"],
+            "facts": artifact["_sqlMetadataFacts"],
+        }))
+        self.assertNotIn(
+            "Synthetic Catalog",
+            " ".join(cursor.executed[0] for cursor in connection.cursors),
+        )
+        self.assertIn("PK_Customers", serialized)
+        self.assertIn("FK_Customers_Accounts", serialized)
+
+    def test_sql_driver_import_auth_and_query_failures_are_safe(self):
+        artifact = {
+            "id": self.sql_id,
+            "_type": "SQLDatabase",
+            "_detail": {
+                "properties": {
+                    "serverFqdn": (
+                        "server.database.fabric.microsoft.com,1433"
+                    ),
+                    "databaseName": "Catalog",
+                }
+            },
+        }
+        with mock.patch.object(
+            function_app.importlib,
+            "import_module",
+            side_effect=ImportError("private import path"),
+        ):
+            with self.assertRaises(function_app.SqlRuntimeUnavailable):
+                function_app._collect_sql_schema("token", artifact)
+
+        auth_driver = _SqlDriver(
+            connect_error=RuntimeError(
+                "SQLSTATE:28000 login failed secret-token"
+            )
+        )
+        with mock.patch.object(
+            function_app.importlib,
+            "import_module",
+            return_value=auth_driver,
+        ):
+            with self.assertRaisesRegex(
+                function_app.SqlAuthorizationError,
+                "^SQL authentication failed$",
+            ):
+                function_app._collect_sql_schema(
+                    "header.payload.secret-token-signature",
+                    artifact,
+                )
+
+        connection = _SqlConnection(
+            [[]],
+            execute_error=RuntimeError("query internals secret-token"),
+        )
+        query_driver = _SqlDriver(connection=connection)
+        with mock.patch.object(
+            function_app.importlib,
+            "import_module",
+            return_value=query_driver,
+        ):
+            with self.assertRaisesRegex(
+                function_app.SqlCatalogQueryError,
+                "^SQL catalog query failed$",
+            ):
+                function_app._collect_sql_schema(
+                    "header.payload.secret-token-signature",
+                    artifact,
+                )
+        self.assertTrue(connection.cursors[0].closed)
+        self.assertTrue(connection.closed)
+
+    def test_sql_catalog_row_limit_fails_instead_of_silently_truncating(self):
+        connection = _SqlConnection([
+            [("dbo", f"Table{index}", "U", None, None, None) for index in range(3)]
+        ])
+        deadline = function_app._ExecutionDeadline(10)
+
+        with self.assertRaises(function_app.ResponseSizeExceeded):
+            function_app._sql_fetch_rows(
+                connection,
+                function_app.SQL_OBJECTS_QUERY,
+                2,
+                deadline,
+            )
+
+        self.assertTrue(connection.cursors[0].closed)
+
+    def test_sql_token_uses_live_catalog_before_injected_metadata(self):
+        artifact = {"id": self.sql_id, "_type": "SQLDatabase"}
+        trackers = {
+            "itemDetails": function_app._new_optional_tracker(),
+            "sqlSchema": function_app._new_optional_tracker(),
+        }
+        live_schema = [
+            {
+                "name": "dbo.Live",
+                "objectType": "SQL table",
+                "source": "Fabric SQL system catalog",
+                "columns": [],
+                "measures": [],
+            }
+        ]
+
+        def collect(_token, value):
+            value["_sqlSchema"] = live_schema
+            value["_sqlMetadataFacts"] = []
+
+        with (
+            mock.patch.object(
+                function_app,
+                "_get",
+                return_value={
+                    "id": self.sql_id,
+                    "properties": {
+                        "serverFqdn": (
+                            "server.database.fabric.microsoft.com,1433"
+                        ),
+                        "databaseName": "Catalog",
+                    },
+                },
+            ),
+            mock.patch.object(
+                function_app,
+                "_collect_sql_schema",
+                side_effect=collect,
+            ) as collect_sql,
+        ):
+            function_app._enrich_artifact(
+                "fabric-token",
+                "workspace",
+                artifact,
+                trackers,
+                [],
+                sql_token="sql-token",
+                sql_metadata={
+                    self.sql_id: {
+                        "tables": [{"name": "Injected"}],
+                    }
+                },
+            )
+
+        collect_sql.assert_called_once_with("sql-token", artifact)
+        self.assertEqual(artifact["_sqlSchema"], live_schema)
+        self.assertEqual(artifact["_sqlSchemaStatus"], "complete")
+
+    def test_kql_schema_uses_readonly_management_command(self):
+        schema_document = {
+            "Databases": {
+                "Telemetry": {
+                    "Tables": {
+                        "Events": {
+                            "Name": "Events",
+                            "OrderedColumns": [
+                                {"Name": "Timestamp", "CslType": "datetime"},
+                                {"Name": "DeviceId", "CslType": "string"},
+                            ],
+                        }
+                    },
+                    "MaterializedViews": {
+                        "LatestEvents": {
+                            "Name": "LatestEvents",
+                            "Schema": {
+                                "OrderedColumns": [
+                                    {"Name": "DeviceId", "CslType": "string"}
+                                ]
+                            },
+                            "Query": "secret-materialized-view-query",
+                        }
+                    },
+                    "Functions": {
+                        "NormalizeDevice": {
+                            "Name": "NormalizeDevice",
+                            "Body": "secret-function-body",
+                        }
+                    },
+                }
+            }
+        }
+        response = {
+            "Tables": [
+                {
+                    "TableName": "PrimaryResult",
+                    "Rows": [[json.dumps(schema_document)]],
+                }
+            ]
+        }
+        artifact = {
+            "id": self.kql_id,
+            "_type": "KQLDatabase",
+            "displayName": "Telemetry",
+            "_detail": {
+                "displayName": "Telemetry",
+                "properties": {
+                    "queryServiceUri": (
+                        "https://cluster.z1.kusto.fabric.microsoft.com"
+                    )
+                },
+            },
+        }
+        with mock.patch.object(
+            function_app,
+            "_req",
+            return_value=response,
+        ) as request:
+            function_app._collect_kql_schema("kusto-token", artifact)
+
+        kwargs = request.call_args.kwargs
+        self.assertEqual(kwargs["headers"]["x-ms-readonly"], "true")
+        self.assertEqual(kwargs["method"], "POST")
+        self.assertIn(".show database", kwargs["body"]["csl"])
+        self.assertEqual(
+            [table["name"] for table in artifact["_kqlSchema"]],
+            ["Events", "LatestEvents", "NormalizeDevice"],
+        )
+        self.assertEqual(
+            [table["objectType"] for table in artifact["_kqlSchema"]],
+            [
+                "KQL table",
+                "KQL materialized view",
+                "KQL function",
+            ],
+        )
+        self.assertEqual(
+            artifact["_kqlFunctions"],
+            [{"name": "NormalizeDevice", "parameters": []}],
+        )
+        self.assertEqual(
+            artifact["_artifactMetadata"],
+            {
+                "kind": "kql",
+                "functions": [
+                    {"name": "NormalizeDevice", "parameters": []}
+                ],
+                "materializedViews": [
+                    {
+                        "name": "LatestEvents",
+                        "columns": [
+                            {
+                                "name": "DeviceId",
+                                "dataType": "string",
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+        metadata_serialized = json.dumps(
+            artifact["_artifactMetadata"]
+        )
+        self.assertNotIn("secret-function-body", metadata_serialized)
+        self.assertNotIn(
+            "secret-materialized-view-query",
+            metadata_serialized,
+        )
+        serialized = json.dumps(
+            function_app._item_config(
+                "token",
+                "workspace",
+                artifact,
+                "KQLDatabase",
+                artifact["_kqlSchema"],
+            )
+        )
+        self.assertNotIn("secret-function-body", serialized)
+        self.assertNotIn("secret-materialized-view-query", serialized)
+
+    def test_kql_parent_relation_is_authoritative(self):
+        lineage = function_app._official_lineage(
+            [
+                {"id": self.eventhouse_id, "_type": "Eventhouse"},
+                {
+                    "id": self.kql_id,
+                    "_type": "KQLDatabase",
+                    "_detail": {
+                        "properties": {
+                            "parentEventhouseItemId": self.eventhouse_id
+                        }
+                    },
+                },
+            ],
+            {self.eventhouse_id, self.kql_id},
+            "workspace",
+        )
+        self.assertEqual(
+            lineage,
+            [
+                {
+                    "source": self.eventhouse_id,
+                    "target": self.kql_id,
+                    "relation": "KQL database",
+                }
+            ],
+        )
+
+    def test_kql_functions_respect_schema_object_limit(self):
+        schema_document = {
+            "Databases": {
+                "Telemetry": {
+                    "Tables": {},
+                    "Functions": {
+                        f"Function{index}": {"Name": f"Function{index}"}
+                        for index in range(5)
+                    },
+                }
+            }
+        }
+        with mock.patch.object(
+            function_app,
+            "MAX_SCHEMA_OBJECTS_PER_ITEM",
+            3,
+        ):
+            schema, functions, _views = function_app._kusto_schema(
+                schema_document,
+                "Telemetry",
+            )
+
+        self.assertEqual(len(schema), 3)
+        self.assertEqual(len(functions), 3)
+        self.assertTrue(
+            all(value["objectType"] == "KQL function" for value in schema)
+        )
+
+    def test_kql_token_absence_is_explicit_and_nonfatal(self):
+        artifact = {"id": self.kql_id, "_type": "KQLDatabase"}
+        trackers = {
+            "itemDetails": function_app._new_optional_tracker(),
+            "kqlSchema": function_app._new_optional_tracker(),
+        }
+        with mock.patch.object(
+            function_app,
+            "_get",
+            return_value={
+                "id": self.kql_id,
+                "displayName": "Telemetry",
+                "properties": {
+                    "queryServiceUri": (
+                        "https://cluster.z1.kusto.fabric.microsoft.com"
+                    )
+                },
+            },
+        ):
+            function_app._enrich_artifact(
+                "token",
+                "workspace",
+                artifact,
+                trackers,
+                [],
+            )
+
+        self.assertEqual(
+            artifact["_kqlSchemaStatus"],
+            "token-unavailable",
+        )
+        self.assertEqual(trackers["kqlSchema"]["unsupported"], 1)
+
+    def test_sql_precollected_catalog_is_allowlisted(self):
+        value = {
+            "tables": [
+                {
+                    "schema": "dbo",
+                    "name": "Customers",
+                    "rowCount": [{"name": "secret-business-row"}],
+                    "rows": [{"name": "secret-business-row"}],
+                    "primaryKey": ["CustomerId"],
+                    "columns": [
+                        {
+                            "name": "CustomerId",
+                            "dataType": "uniqueidentifier",
+                            "values": ["secret-value"],
+                        },
+                        {"name": "Name", "dataType": "nvarchar"},
+                    ],
+                    "moduleDefinition": "secret-sql-module",
+                }
+            ],
+            "views": [
+                {
+                    "schema": "reporting",
+                    "name": "CustomerSummary",
+                    "columns": [{"name": "CustomerId", "dataType": "uuid"}],
+                    "definition": "secret-view-definition",
+                }
+            ],
+            "foreignKeys": [
+                {
+                    "name": "FK_Customers_Accounts",
+                    "sourceTable": "dbo.Customers",
+                    "targetTable": "dbo.Accounts",
+                    "query": "secret-query",
+                }
+            ],
+            "credentials": "secret-credential",
+        }
+
+        schema, facts = function_app._sql_metadata_projection(value)
+        artifact = {
+            "id": self.sql_id,
+            "_type": "SQLDatabase",
+            "_sqlSchema": schema,
+            "_sqlMetadataFacts": facts,
+            "_sqlSchemaStatus": "complete",
+            "_detail": {
+                "properties": {
+                    "databaseName": "Catalog",
+                    "serverFqdn": "server.database.fabric.microsoft.com,1433",
+                    "connectionString": "Password=secret-password",
+                }
+            },
+        }
+        serialized = json.dumps({
+            "schema": schema,
+            "config": function_app._item_config(
+                "token",
+                "workspace",
+                artifact,
+                "SQLDatabase",
+                schema,
+            ),
+        })
+
+        self.assertEqual(
+            [(table["name"], table["objectType"]) for table in schema],
+            [
+                ("dbo.Customers", "SQL table"),
+                ("reporting.CustomerSummary", "SQL view"),
+            ],
+        )
+        self.assertNotIn("rows", schema[0])
+        for secret in (
+            "secret-business-row",
+            "secret-value",
+            "secret-sql-module",
+            "secret-view-definition",
+            "secret-query",
+            "secret-credential",
+            "secret-password",
+        ):
+            self.assertNotIn(secret, serialized)
+
+    def test_sql_without_token_or_injected_metadata_reports_token_absence(self):
+        artifact = {"id": self.sql_id, "_type": "SQLDatabase"}
+        trackers = {
+            "itemDetails": function_app._new_optional_tracker(),
+            "sqlSchema": function_app._new_optional_tracker(),
+        }
+        with mock.patch.object(
+            function_app,
+            "_get",
+            return_value={
+                "id": self.sql_id,
+                "properties": {
+                    "databaseName": "Catalog",
+                    "serverFqdn": "server.database.fabric.microsoft.com,1433",
+                },
+            },
+        ):
+            function_app._enrich_artifact(
+                "token",
+                "workspace",
+                artifact,
+                trackers,
+                [],
+            )
+
+        self.assertEqual(
+            artifact["_sqlSchemaStatus"],
+            "token-unavailable",
+        )
+        self.assertEqual(trackers["sqlSchema"]["unsupported"], 1)
+
+    def test_sql_item_failures_are_isolated_with_precise_codes(self):
+        cases = (
+            (
+                function_app.SqlRuntimeUnavailable("runtime"),
+                "tds-runtime-unavailable",
+                "unsupported",
+            ),
+            (
+                function_app.SqlAuthorizationError("auth"),
+                "authorization-failed",
+                "unsupported",
+            ),
+            (
+                function_app.SqlConnectionError("connect"),
+                "sql-connection-failed",
+                "failed",
+            ),
+            (
+                function_app.SqlCatalogQueryError("query"),
+                "sql-catalog-query-failed",
+                "failed",
+            ),
+        )
+        for error, expected_code, expected_status in cases:
+            with self.subTest(expected_code=expected_code):
+                artifact = {"id": self.sql_id, "_type": "SQLDatabase"}
+                trackers = {
+                    "itemDetails": function_app._new_optional_tracker(),
+                    "sqlSchema": function_app._new_optional_tracker(),
+                }
+                errors = []
+                with (
+                    mock.patch.object(
+                        function_app,
+                        "_get",
+                        return_value={
+                            "id": self.sql_id,
+                            "properties": {
+                                "serverFqdn": (
+                                    "server.database.fabric.microsoft.com,1433"
+                                ),
+                                "databaseName": "Catalog",
+                            },
+                        },
+                    ),
+                    mock.patch.object(
+                        function_app,
+                        "_collect_sql_schema",
+                        side_effect=error,
+                    ),
+                ):
+                    function_app._enrich_artifact(
+                        "fabric-token",
+                        "workspace",
+                        artifact,
+                        trackers,
+                        errors,
+                        sql_token="sql-token",
+                    )
+
+                self.assertEqual(
+                    artifact["_sqlSchemaStatus"],
+                    expected_code,
+                )
+                self.assertEqual(
+                    trackers["sqlSchema"][expected_status],
+                    1,
+                )
+                if expected_status == "failed":
+                    self.assertEqual(
+                        errors,
+                        [f"sqlSchema:{self.sql_id}: {expected_code}"],
+                    )
+                else:
+                    self.assertEqual(errors, [])
 
 
 class LineageTests(unittest.TestCase):
@@ -1163,6 +3307,19 @@ class SyncOrchestrationTests(unittest.TestCase):
                 "sensitivity": {"status": "complete", "code": "label-ids"},
                 "tags": {"status": "complete", "code": "tag-ids"},
                 "ownership": {"status": "complete", "code": "type-specific"},
+                "definitionEnrichment": {
+                    "status": "unsupported",
+                    "code": "not-applicable",
+                },
+                "kqlSchema": {
+                    "status": "unsupported",
+                    "code": "not-applicable",
+                },
+                "sqlSchema": {
+                    "status": "unsupported",
+                    "code": "not-applicable",
+                },
+                "objectLineage": {"status": "complete"},
             },
         )
         self.assertEqual(
@@ -1215,6 +3372,9 @@ class SyncOrchestrationTests(unittest.TestCase):
                 "itemDetails",
                 "lakehouseTables",
                 "reportPages",
+                "definitions",
+                "kqlSchema",
+                "sqlSchema",
             },
         )
 
@@ -1348,6 +3508,124 @@ class SyncOrchestrationTests(unittest.TestCase):
             {"status": "failed", "code": "upstream-failure"},
         )
         self.assertNotIn("secret tenant detail", json.dumps(result))
+
+    def test_definition_permission_failure_preserves_other_item_enrichment(self):
+        ontology_id = "22222222-2222-4222-8222-222222222222"
+        graph_id = "33333333-3333-4333-8333-333333333333"
+        ontology_definition = {
+            "definition": {
+                "parts": [
+                    _definition_part(
+                        "EntityTypes/101/definition.json",
+                        {
+                            "id": "101",
+                            "name": "Customer",
+                            "properties": [
+                                {
+                                    "id": "201",
+                                    "name": "CustomerId",
+                                    "valueType": "String",
+                                }
+                            ],
+                        },
+                    )
+                ]
+            }
+        }
+
+        def get_definition(
+            _token,
+            _workspace,
+            artifact_type,
+            _artifact_id,
+        ):
+            if artifact_type == "Ontology":
+                return ontology_definition
+            raise _http_error(403)
+
+        with mock.patch.object(
+            function_app,
+            "_get_definition",
+            side_effect=get_definition,
+        ):
+            result = self._run_sync(
+                [
+                    {
+                        "id": ontology_id,
+                        "type": "Ontology",
+                        "displayName": "Sales ontology",
+                    },
+                    {
+                        "id": graph_id,
+                        "type": "GraphModel",
+                        "displayName": "Sales graph",
+                    },
+                ],
+                {},
+            )
+
+        self.assertEqual(
+            result["sections"]["definitions"],
+            {"status": "complete", "code": "partial-unsupported"},
+        )
+        self.assertEqual(result["sections"]["config"]["status"], "complete")
+        self.assertEqual(result["sections"]["schema"]["status"], "complete")
+        serialized = json.dumps(result["config"])
+        self.assertIn("Ontology entity types", serialized)
+        self.assertIn("read-write-permission-required", serialized)
+        self.assertEqual(
+            result["schema"][ontology_id][0]["objectType"],
+            "Ontology entity",
+        )
+        self.assertIn("objectId", result["schema"][ontology_id][0])
+        self.assertIn(
+            "parentObjectId",
+            result["schema"][ontology_id][0]["columns"][0],
+        )
+        self.assertEqual(
+            result["artifactMetadata"][ontology_id]["kind"],
+            "ontology",
+        )
+        self.assertNotIn(
+            "artifactMetadata",
+            result["itemMetadata"][ontology_id],
+        )
+        self.assertEqual(
+            result["objectEdges"],
+            [
+                {
+                    "source": {
+                        "itemId": ontology_id,
+                        "kind": "entityType",
+                        "id": function_app._fabric_object_id(
+                            ontology_id,
+                            "ontology-entity",
+                            "101",
+                        ),
+                        "name": "Customer",
+                    },
+                    "target": {
+                        "itemId": ontology_id,
+                        "kind": "property",
+                        "id": function_app._fabric_object_id(
+                            ontology_id,
+                            "ontology-property",
+                            "201",
+                        ),
+                        "name": "CustomerId",
+                        "parentId": function_app._fabric_object_id(
+                            ontology_id,
+                            "ontology-entity",
+                            "101",
+                        ),
+                        "tableName": "Customer",
+                    },
+                    "relation": "contains",
+                    "confidence": "verified",
+                }
+            ],
+        )
+        self.assertEqual(result["errors"], [])
 
 
 class OptionalEndpointStatusTests(unittest.TestCase):

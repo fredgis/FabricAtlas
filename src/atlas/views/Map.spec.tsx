@@ -7,7 +7,12 @@ import {
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { displayPreferenceKey } from "../display-preferences";
+import type { MetadataObjectLineageEdge } from "../item-metadata";
 import { MAP_INSPECTOR_DEFAULT_WIDTH } from "../map-inspector";
+import {
+  buildMetadataObjectGraph,
+  MAX_VISIBLE_OBJECT_EDGES,
+} from "../metadata-object-graph";
 import { SAMPLE_DATA, typeMeta } from "../model";
 import { AtlasProvider } from "../store";
 import { MapView } from "./Map";
@@ -16,6 +21,154 @@ describe("MapView selection", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();
+  });
+
+  describe("metadata object graph", () => {
+    const items = new Map(
+      [
+        {
+          fabricId: "warehouse",
+          displayName: "Operations warehouse",
+          itemType: "Warehouse" as const,
+          health: "healthy" as const,
+          endorsement: "none" as const,
+          tags: [],
+        },
+        {
+          fabricId: "ontology",
+          displayName: "Operations ontology",
+          itemType: "Ontology" as const,
+          health: "healthy" as const,
+          endorsement: "none" as const,
+          tags: [],
+        },
+      ].map((item) => [item.fabricId, item]),
+    );
+    const edges: MetadataObjectLineageEdge[] = [
+      {
+        source: {
+          itemId: "warehouse",
+          kind: "sourceObject",
+          id: "dbo.Devices",
+          name: "Devices",
+          tableName: "Devices",
+        },
+        target: {
+          itemId: "ontology",
+          kind: "ontologyEntity",
+          id: "device",
+          name: "Device",
+        },
+        relation: "binds entity",
+        confidence: "verified",
+      },
+      {
+        source: {
+          itemId: "ontology",
+          kind: "ontologyEntity",
+          id: "device",
+          name: "Device",
+        },
+        target: {
+          itemId: "ontology",
+          kind: "ontologyRelationship",
+          id: "installed-at",
+          name: "Installed at",
+        },
+        relation: "relationship source",
+        confidence: "verified",
+      },
+      {
+        source: {
+          itemId: "ontology",
+          kind: "ontologyRelationship",
+          id: "installed-at",
+          name: "Installed at",
+        },
+        target: {
+          itemId: "ontology",
+          kind: "ontologyEntity",
+          id: "site",
+          name: "Site",
+        },
+        relation: "relationship target",
+        confidence: "verified",
+      },
+      {
+        source: {
+          itemId: "unrelated",
+          kind: "sourceObject",
+          id: "Other",
+          name: "Other",
+        },
+        target: {
+          itemId: "another-item",
+          kind: "graphNode",
+          id: "OtherNode",
+          name: "Other node",
+        },
+        relation: "maps node",
+        confidence: "verified",
+      },
+    ];
+
+    it("lays out verified selected-item edges from source to consumer", () => {
+      const graph = buildMetadataObjectGraph(edges, "ontology", items);
+      const byName = new Map(graph.nodes.map((node) => [node.label, node]));
+
+      expect(graph.verifiedMetadata).toBe(true);
+      expect(graph.edges).toHaveLength(3);
+      expect(byName.has("Other")).toBe(false);
+      expect(byName.get("Devices")!.x).toBeLessThan(byName.get("Device")!.x);
+      expect(byName.get("Device")!.x).toBeLessThan(
+        byName.get("Installed at")!.x,
+      );
+      expect(byName.get("Installed at")!.x).toBeLessThan(
+        byName.get("Site")!.x,
+      );
+    });
+
+    it("filters around matching objects and caps dense graphs", () => {
+      const relationshipGraph = buildMetadataObjectGraph(
+        edges,
+        "ontology",
+        items,
+        { objectKind: "ontologyRelationship" },
+      );
+      expect(relationshipGraph.edges).toHaveLength(2);
+      expect(relationshipGraph.nodes.map((node) => node.label)).toEqual(
+        expect.arrayContaining(["Device", "Installed at", "Site"]),
+      );
+
+      const denseEdges: MetadataObjectLineageEdge[] = Array.from(
+        { length: MAX_VISIBLE_OBJECT_EDGES + 25 },
+        (_, index) => ({
+          source: {
+            itemId: "warehouse",
+            kind: "sourceField" as const,
+            id: `Devices.Field${index}`,
+            name: `Field${index}`,
+            tableName: "Devices",
+          },
+          target: {
+            itemId: "ontology",
+            kind: "ontologyProperty" as const,
+            id: `property-${index}`,
+            name: `Property ${index}`,
+            tableName: "Device",
+          },
+          relation: "binds property",
+          confidence: "verified" as const,
+        }),
+      );
+      const denseGraph = buildMetadataObjectGraph(
+        denseEdges,
+        "ontology",
+        items,
+      );
+      expect(denseGraph.edges).toHaveLength(MAX_VISIBLE_OBJECT_EDGES);
+      expect(denseGraph.truncated).toBe(true);
+    });
   });
 
   const selectInspectorTab = async (

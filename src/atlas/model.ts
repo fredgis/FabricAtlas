@@ -4,11 +4,19 @@
 // app is deployed and a live Sync runs, these shapes are replaced by the real
 // workspace read from the Fabric APIs.
 
+import {
+  ITEM_METADATA_SCHEMA_NAME,
+  type FabricItemMetadata,
+  type MetadataObjectLineageEdge,
+} from "./item-metadata";
+
 export type ItemType =
   | "Lakehouse"
   | "Warehouse"
   | "Eventhouse"
   | "KQLDatabase"
+  | "KQLQueryset"
+  | "KQLDashboard"
   | "SQLEndpoint"
   | "SQLDatabase"
   | "Notebook"
@@ -20,6 +28,9 @@ export type ItemType =
   | "Dashboard"
   | "Eventstream"
   | "MirroredDatabase"
+  | "Ontology"
+  | "GraphModel"
+  | "DataAgent"
   | "UserDataFunction"
   | "AppBackend";
 
@@ -48,6 +59,8 @@ export const ITEM_TYPES: Record<ItemType, TypeMeta> = {
   Warehouse: { label: "Warehouse", code: "DW", color: "#3b82f6", icon: "Warehouse" },
   Eventhouse: { label: "Eventhouse", code: "EH", color: "#0ea5b7", icon: "Zap" },
   KQLDatabase: { label: "KQL Database", code: "KQ", color: "#14b8a6", icon: "Table2" },
+  KQLQueryset: { label: "KQL queryset", code: "QS", color: "#0d9488", icon: "Braces" },
+  KQLDashboard: { label: "KQL dashboard", code: "KD", color: "#f59e0b", icon: "LayoutDashboard" },
   SQLEndpoint: { label: "SQL endpoint", code: "SE", color: "#0f6cbd", icon: "Table2" },
   Notebook: { label: "Notebook", code: "NB", color: "#ef7a45", icon: "NotebookText" },
   DataPipeline: { label: "Data pipeline", code: "PL", color: "#7c5cff", icon: "Workflow" },
@@ -59,6 +72,9 @@ export const ITEM_TYPES: Record<ItemType, TypeMeta> = {
   SQLDatabase: { label: "SQL database", code: "DB", color: "#2563eb", icon: "Database" },
   Eventstream: { label: "Eventstream", code: "ES", color: "#06b6d4", icon: "Radio" },
   MirroredDatabase: { label: "Mirrored DB", code: "MD", color: "#8b5cf6", icon: "Copy" },
+  Ontology: { label: "Ontology", code: "ON", color: "#0f766e", icon: "Network" },
+  GraphModel: { label: "Graph model", code: "GM", color: "#7c3aed", icon: "Waypoints" },
+  DataAgent: { label: "Data agent", code: "DA", color: "#4f46e5", icon: "Bot" },
   UserDataFunction: { label: "User data function", code: "Fn", color: "#64748b", icon: "FunctionSquare" },
   AppBackend: { label: "Fabric app", code: "AP", color: "#0ea5b7", icon: "AppWindow" },
 };
@@ -198,6 +214,8 @@ export interface AtlasData {
   // id, populated by live Fabric/Power BI metadata. Report pages stay in config
   // because the Asset Catalog's schema shape is intentionally tabular.
   schema?: Record<string, ModelTableSchema[]>;
+  itemMetadata?: Record<string, FabricItemMetadata>;
+  objectEdges?: MetadataObjectLineageEdge[];
 }
 
 // ---------- helpers ----------
@@ -261,6 +279,7 @@ const KQL_EVENTS = "10000000-0000-4000-8000-000000000014";
 export interface ModelColumn {
   name: string;
   dataType: string;
+  objectType?: string;
   description?: string;
   isHidden?: boolean;
 }
@@ -279,6 +298,7 @@ export interface ModelTableSchema {
   isHidden?: boolean;
   columns: ModelColumn[];
   measures: ModelMeasure[];
+  metadata?: FabricItemMetadata;
 }
 
 const AR_TABLES: ModelTableSchema[] = [
@@ -404,7 +424,8 @@ export function schemaFor(
   data: { schema?: Record<string, ModelTableSchema[]> },
   id: string,
 ): ModelTableSchema[] | undefined {
-  return data.schema?.[id] ?? MODEL_SCHEMA[id];
+  const tables = data.schema?.[id] ?? MODEL_SCHEMA[id];
+  return tables?.filter((table) => table.name !== ITEM_METADATA_SCHEMA_NAME);
 }
 
 export const SAMPLE_DATA: AtlasData = {

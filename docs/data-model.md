@@ -96,12 +96,21 @@ A refresh, pipeline or notebook run.
 
 ## ConfigEntry
 
-A configuration fact or a chunk of serialized object schema.
+A configuration fact or a chunk of serialized object metadata.
 
 `workspace_id`, `snapshotId`, `writerEmail?`, `itemFabricId`, `section`, `label`, `value?`
 
 Schema chunks use the private `__schema__` section. Chunking preserves complete
-column and measure lists within the bounded SQL text field.
+object lists within the bounded SQL text field. A hidden metadata envelope
+retains safe KQL, Ontology, Graph Model and Data Agent structures after reload.
+
+Verified object-lineage edges use the private `__object_edges__` section. Each
+edge stores source and target item, object kind, stable ID, readable name,
+optional parent/table context, relation and `confidence: verified`. The parser
+rejects inferred, malformed, self-referential or oversized edge sets.
+
+No extra Rayfin entity is required, so this metadata follows the same immutable
+snapshot publication and retention boundary as the catalog.
 
 ## Comment
 
@@ -192,8 +201,9 @@ removed.
 
 History does not require another table. Atlas uses trusted `Workspace`
 manifests as the index and loads older child rows by `workspace_id` and
-`snapshotId`. Comments, saved views and access-review decisions are not part of
-snapshot comparisons.
+`snapshotId`. Schema metadata and verified object edges come from the selected
+historical snapshot. Comments, saved views and access-review decisions are not
+part of snapshot comparisons.
 
 The configured retention window keeps 12 snapshots by default. Retention runs
 after publication, removes child entities before their manifest, and leaves a

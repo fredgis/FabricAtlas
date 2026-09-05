@@ -9,6 +9,7 @@ import {
   summarizeSnapshot,
   type HistoricalSnapshot,
 } from "./history";
+import { parseOntologyMetadata } from "./item-metadata";
 import type { AtlasData, Item } from "./model";
 
 function item(
@@ -300,6 +301,87 @@ describe("snapshot history", () => {
     ).toMatchObject({
       objectType: "view",
       objectName: "ActiveCustomers",
+    });
+  });
+
+  it("classifies ontology changes with stable object identities", () => {
+    const previous = snapshot(
+      "old",
+      "2026-09-01T10:00:00.000Z",
+      data({
+        items: [item("ontology", { itemType: "Ontology" })],
+        itemMetadata: {
+          ontology: parseOntologyMetadata({
+            entities: [
+              {
+                id: "device",
+                name: "Device",
+                properties: [
+                  { id: "status", name: "Status", valueType: "String" },
+                ],
+              },
+              { id: "site", name: "Site", properties: [] },
+            ],
+            relationships: [],
+            bindings: [],
+            contextualizations: [],
+          })!,
+        },
+      }),
+    );
+    const current = snapshot(
+      "new",
+      "2026-09-02T10:00:00.000Z",
+      data({
+        items: [item("ontology", { itemType: "Ontology" })],
+        itemMetadata: {
+          ontology: parseOntologyMetadata({
+            entities: [
+              {
+                id: "device",
+                name: "Device",
+                properties: [
+                  { id: "status", name: "Status", valueType: "Int64" },
+                ],
+              },
+              { id: "site", name: "Site", properties: [] },
+            ],
+            relationships: [
+              {
+                id: "installed-at",
+                name: "Installed at",
+                sourceEntityId: "device",
+                targetEntityId: "site",
+              },
+            ],
+            bindings: [],
+            contextualizations: [],
+          })!,
+        },
+      }),
+    );
+
+    const changes = compareSnapshots(previous, current);
+    expect(
+      changes.find(
+        (change) =>
+          change.type === "schema-object-modified" &&
+          change.objectName === "Status",
+      ),
+    ).toMatchObject({
+      objectType: "ontologyProperty",
+      objectId: "device/status",
+      tableName: "Device",
+    });
+    expect(
+      changes.find(
+        (change) =>
+          change.type === "schema-object-added" &&
+          change.objectName === "Installed at",
+      ),
+    ).toMatchObject({
+      objectType: "ontologyRelationship",
+      objectId: "installed-at",
     });
   });
 
