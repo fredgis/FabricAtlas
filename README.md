@@ -374,6 +374,7 @@ The local app uses the included AlpineRent preview estate.
 
 ```powershell
 npx rayfin login --tenant <tenant-id> --select
+$env:RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_EMAIL = "<authorized-sync-user>"
 npx rayfin up --workspace "<workspace-name>"
 ```
 
@@ -392,7 +393,9 @@ RAYFIN_PUBLIC_ATLAS_PREVIOUS_SYNC_WRITERS=<former-user@example.com>
 RAYFIN_PUBLIC_ATLAS_SENSITIVITY_RANKS='{"<label-id>":3,"<lower-label-id>":1}'
 ```
 
-Run `npx rayfin up` again. The app opens on a guided synchronization screen.
+Keep the configured synchronizer available in the CLI process environment when
+running `npx rayfin up`: it is needed to compile the database policies, not just
+the frontend. The app opens on a guided synchronization screen.
 
 The complete Entra, UDF and deployment steps are in
 [docs/installation.md](docs/installation.md).

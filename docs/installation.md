@@ -72,8 +72,9 @@ are not supported — see
 Deployment provisions the backend (Fabric SQL database + Rayfin Data API, storage, static hosting,
 Fabric auth), applies the schema, and publishes the app — in one command.
 
-```bash
+```powershell
 npx rayfin login                       # sign in with Entra ID (target the tenant that owns the workspace)
+$env:RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_EMAIL = "<authorized-sync-user>"
 npx rayfin up --workspace "<workspace-name>"
 ```
 
@@ -150,6 +151,12 @@ it requires another `npx rayfin up`. Snapshot retention defaults to 12 and is
 clamped between 2 and 50. When rotating the synchronizer, list former writer
 emails in `RAYFIN_PUBLIC_ATLAS_PREVIOUS_SYNC_WRITERS` until their retained
 history has been migrated or pruned.
+
+The synchronizer setting must also be available to the CLI process that
+compiles these policies. Keep it in `rayfin/.env` for frontend generation and
+export it in the deployment shell as shown above. Confirm that the database
+configuration phase succeeds: some CLI versions continue publishing static
+content after a database configuration failure.
 
 Only this configured account can run the first synchronization or publish later
 snapshots. Other authenticated users see the account on the guided sync screen
