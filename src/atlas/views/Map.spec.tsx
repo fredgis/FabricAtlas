@@ -14,6 +14,7 @@ import {
   groupObjectGraphByItem,
   MAX_VISIBLE_OBJECT_EDGES,
   objectItemGroups,
+  shouldUseVerifiedMetadataGraph,
 } from "../metadata-object-graph";
 import { SAMPLE_DATA, typeMeta } from "../model";
 import { AtlasProvider } from "../store";
@@ -199,6 +200,23 @@ describe("MapView selection", () => {
         grouped.nodes.some((node) => node.label === "Installed at"),
       ).toBe(true);
     });
+
+    it("keeps local schema graphs for relational items connected to ontologies", () => {
+      expect(
+        shouldUseVerifiedMetadataGraph(
+          items.get("warehouse"),
+          3,
+          edges.length,
+        ),
+      ).toBe(false);
+      expect(
+        shouldUseVerifiedMetadataGraph(
+          items.get("ontology"),
+          3,
+          edges.length,
+        ),
+      ).toBe(true);
+    });
   });
 
   const selectInspectorTab = async (
@@ -339,6 +357,12 @@ describe("MapView selection", () => {
         before.get(item.fabricId),
       );
     }
+    expect(
+      screen.getByLabelText("alpinerent_dw, Warehouse, healthy"),
+    ).toHaveClass("opacity-[0.14]");
+    expect(
+      document.querySelector('marker[id="atlas-up"]'),
+    ).toHaveAttribute("markerWidth", "7");
   });
 
   it("pans the complete graph by dragging its background", () => {
@@ -563,9 +587,11 @@ describe("MapView selection", () => {
     fireEvent.click(screen.getByRole("button", { name: "objects" }));
     await selectInspectorTab("Summary", "Schema");
     const tableToggles = () =>
-      screen
-        .getAllByRole("button")
-        .filter((button) => button.hasAttribute("aria-expanded"));
+      [
+        ...screen
+          .getByLabelText("Item details inspector")
+          .querySelectorAll<HTMLButtonElement>("button[aria-expanded]"),
+      ];
 
     expect(tableToggles().length).toBeGreaterThan(1);
     expect(
@@ -605,14 +631,14 @@ describe("MapView selection", () => {
     ).toBeInTheDocument();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Expand item groups" }),
+      screen.getByRole("button", { name: "Expand all item groups" }),
     );
     expect(
       screen.getByLabelText("AlpineRent Executive Dashboard, Report"),
     ).toBeInTheDocument();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Collapse item groups" }),
+      screen.getByRole("button", { name: "Collapse all item groups" }),
     );
     expect(
       screen.getByLabelText(

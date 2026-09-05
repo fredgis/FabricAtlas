@@ -36,6 +36,7 @@ import {
   groupObjectGraphByItem,
   MAX_VISIBLE_OBJECT_EDGES,
   objectItemGroups,
+  shouldUseVerifiedMetadataGraph,
   type ObjectGraph,
   type ObjectGraphEdge as ObjectEdge,
   type ObjectGraphNode as ObjectNode,
@@ -663,7 +664,11 @@ export function MapView() {
     : "all";
   const ungroupedObjects = useMemo(
     () =>
-      selectedMetadataEdges.length > 0
+      shouldUseVerifiedMetadataGraph(
+        selected,
+        schema.length,
+        selectedMetadataEdges.length,
+      )
         ? buildMetadataObjectGraph(
             selectedMetadataEdges,
             activeId,
@@ -1408,30 +1413,6 @@ export function MapView() {
             Focus selection
           </button>
         )}
-        {mode === "objects" && objectGroups.length > 1 && (
-          <>
-            <button
-              type="button"
-              onClick={() =>
-                setExpandedObjectItemIds(
-                  new Set(objectGroups.map((group) => group.itemId)),
-                )
-              }
-              className="flex items-center gap-s rounded-lg border border-border px-m font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
-              <ChevronDown size={13} />
-              Expand item groups
-            </button>
-            <button
-              type="button"
-              onClick={() => setExpandedObjectItemIds(new Set())}
-              className="flex items-center gap-s rounded-lg border border-border px-m font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
-              <ChevronRight size={13} />
-              Collapse item groups
-            </button>
-          </>
-        )}
         {(mode === "items"
           ? selectedItemIds.size
           : selectedObjectIds.size) > 1 && (
@@ -1451,6 +1432,87 @@ export function MapView() {
           Reset
         </button>
       </div>
+
+      {mode === "objects" && objectGroups.length > 0 && (
+        <section
+          aria-label="Object item groups"
+          className="flex flex-wrap items-center gap-m border-b border-border bg-secondary/70 px-l py-s"
+        >
+          <div className="shrink-0">
+            <div className="text-200 font-semibold text-foreground">
+              Object item groups
+            </div>
+            <div className="text-200 text-muted-foreground">
+              {objectGroups.length} connected Fabric items
+            </div>
+          </div>
+          <div className="flex min-w-0 flex-1 gap-s overflow-x-auto py-xxs">
+            {objectGroups.map((group) => {
+              const item = itemById.get(group.itemId);
+              const expanded = expandedObjectItemIds.has(group.itemId);
+              const active = group.itemId === activeId;
+              return (
+                <button
+                  key={group.itemId}
+                  type="button"
+                  aria-expanded={expanded}
+                  onClick={() => {
+                    if (!active) {
+                      switchActiveItem(group.itemId);
+                      return;
+                    }
+                    setExpandedObjectItemIds((previous) => {
+                      const next = new Set(previous);
+                      if (next.has(group.itemId)) next.delete(group.itemId);
+                      else next.add(group.itemId);
+                      return next;
+                    });
+                  }}
+                  className={cn(
+                    "flex shrink-0 items-center gap-s rounded-lg border bg-card px-m py-s text-left shadow-fabric-2 hover:bg-accent",
+                    active
+                      ? "border-primary/60 text-foreground"
+                      : "border-border text-muted-foreground",
+                  )}
+                >
+                  {expanded ? (
+                    <ChevronDown size={14} aria-hidden="true" />
+                  ) : (
+                    <ChevronRight size={14} aria-hidden="true" />
+                  )}
+                  {item && <TypeGlyph type={item.itemType} size={23} />}
+                  <span className="max-w-[190px] truncate text-200 font-semibold">
+                    {group.label}
+                  </span>
+                  <span className="rounded-md bg-muted px-s py-xxs font-numeric text-200">
+                    {group.objectCount}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex shrink-0 items-center gap-s">
+            <button
+              type="button"
+              onClick={() =>
+                setExpandedObjectItemIds(
+                  new Set(objectGroups.map((group) => group.itemId)),
+                )
+              }
+              className="rounded-lg border border-primary/35 bg-primary/10 px-m py-s text-200 font-semibold text-primary hover:bg-primary/15"
+            >
+              Expand all item groups
+            </button>
+            <button
+              type="button"
+              onClick={() => setExpandedObjectItemIds(new Set())}
+              className="rounded-lg border border-border bg-card px-m py-s text-200 font-semibold text-foreground hover:bg-accent"
+            >
+              Collapse all item groups
+            </button>
+          </div>
+        </section>
+      )}
 
       <div className="flex min-h-0 flex-1 flex-col xl:flex-row">
         <div
@@ -1529,13 +1591,13 @@ export function MapView() {
                         <marker
                           key={id}
                           id={`atlas-${id}`}
-                          markerWidth="8"
-                          markerHeight="8"
-                          refX="7"
-                          refY="4"
+                          markerWidth="7"
+                          markerHeight="7"
+                          refX="6.2"
+                          refY="3.5"
                           orient="auto"
                         >
-                          <path d="M0 0 8 4 0 8Z" fill={fill} />
+                          <path d="M0 0 7 3.5 0 7Z" fill={fill} />
                         </marker>
                       ))}
                     </defs>
@@ -1563,7 +1625,15 @@ export function MapView() {
                             stroke={color}
                             strokeWidth={active ? 2.6 : 1.5}
                             strokeOpacity={
-                              edge.broken ? 0.9 : active ? 0.96 : activeId ? 0.3 : 0.55
+                              active
+                                ? 0.96
+                                : impactMode
+                                  ? 0.08
+                                  : edge.broken
+                                    ? 0.9
+                                    : activeId
+                                      ? 0.3
+                                      : 0.55
                             }
                             strokeDasharray={
                               edge.broken
@@ -1632,7 +1702,10 @@ export function MapView() {
                       selectedItemIds.has(item.fabricId) || primaryNode;
                     const isUp = impact.upstream.ids.has(item.fabricId);
                     const isDown = impact.downstream.ids.has(item.fabricId);
-                    const dim = !!activeId && !connected.has(item.fabricId);
+                    const dim =
+                      impactMode &&
+                      !!activeId &&
+                      !connected.has(item.fabricId);
                     const activeDrag = dragId === item.fabricId;
                     const accent = primaryNode
                       ? "var(--color-primary)"
@@ -1655,7 +1728,8 @@ export function MapView() {
                         className={cn(
                           "absolute flex touch-none select-none items-center gap-[10px] rounded-lg border bg-card px-[12px] text-left shadow-fabric-2 transition-[box-shadow,opacity,border-color,transform] hover:-translate-y-[1px] hover:shadow-fabric-8",
                           selectedNode ? "border-primary/70" : "border-border",
-                          dim && "border-border/70 bg-card/85 shadow-none",
+                          dim &&
+                            "border-border/50 bg-card/60 opacity-[0.14] shadow-none",
                           "cursor-grab active:cursor-grabbing",
                         )}
                         style={{
@@ -1721,33 +1795,33 @@ export function MapView() {
                     <defs>
                       <marker
                         id="atlas-object-downstream"
-                        markerWidth="8"
-                        markerHeight="8"
-                        refX="7"
-                        refY="4"
+                        markerWidth="7"
+                        markerHeight="7"
+                        refX="6.2"
+                        refY="3.5"
                         orient="auto"
                       >
-                        <path d="M0 0 8 4 0 8Z" fill={DOWN} />
+                        <path d="M0 0 7 3.5 0 7Z" fill={DOWN} />
                       </marker>
                       <marker
                         id="atlas-object-upstream"
-                        markerWidth="8"
-                        markerHeight="8"
-                        refX="7"
-                        refY="4"
+                        markerWidth="7"
+                        markerHeight="7"
+                        refX="6.2"
+                        refY="3.5"
                         orient="auto"
                       >
-                        <path d="M0 0 8 4 0 8Z" fill={UP} />
+                        <path d="M0 0 7 3.5 0 7Z" fill={UP} />
                       </marker>
                       <marker
                         id="atlas-object-neutral"
-                        markerWidth="8"
-                        markerHeight="8"
-                        refX="7"
-                        refY="4"
+                        markerWidth="7"
+                        markerHeight="7"
+                        refX="6.2"
+                        refY="3.5"
                         orient="auto"
                       >
-                        <path d="M0 0 8 4 0 8Z" fill="var(--color-lineage-neutral)" />
+                        <path d="M0 0 7 3.5 0 7Z" fill="var(--color-lineage-neutral)" />
                       </marker>
                     </defs>
                     {objects.edges.map((edge) => {
