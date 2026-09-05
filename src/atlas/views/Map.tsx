@@ -1380,11 +1380,7 @@ export function MapView() {
           type="button"
           role="switch"
           aria-checked={impactMode}
-          onClick={() => {
-            const next = !impactMode;
-            if (next) setFocusId(activeId);
-            setImpactMode(next);
-          }}
+          onClick={() => setImpactMode((current) => !current)}
           className={cn(
             "ml-auto flex items-center gap-s rounded-lg border px-m font-semibold",
             impactMode

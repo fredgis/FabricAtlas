@@ -4,6 +4,13 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.5] - 2026-09-05
+
+### Fixed
+
+- Impact mode no longer changes the layout focus, reorders disconnected graph components or moves a selected middle item toward the top.
+- The lineage viewport and every node coordinate remain unchanged when Impact mode is toggled; only path highlighting and non-impact opacity change.
+
 ## [1.11.4] - 2026-09-05
 
 ### Changed
