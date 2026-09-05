@@ -4,6 +4,19 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.4] - 2026-09-05
+
+### Changed
+
+- Impact mode now renders non-impacted items and links at very low opacity while preserving the complete graph and its positions.
+- Object item grouping is shown in a dedicated, persistent bar with per-item counts and prominent global expand/collapse controls.
+- Reduced item and object lineage arrowhead size without removing directional clarity.
+
+### Fixed
+
+- Lakehouse, Warehouse, SQL Database and Semantic Model object views now prioritize their local schema graph when they also participate in Ontology lineage.
+- Ontology, Graph Model, Data Agent and KQL Database items continue to use their verified metadata-native object graph.
+
 ## [1.11.3] - 2026-09-05
 
 ### Added

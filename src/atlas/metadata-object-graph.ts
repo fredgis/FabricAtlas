@@ -60,6 +60,25 @@ export interface ObjectItemGroup {
   objectCount: number;
 }
 
+const METADATA_NATIVE_ITEM_TYPES = new Set([
+  "Ontology",
+  "GraphModel",
+  "DataAgent",
+  "KQLDatabase",
+]);
+
+export function shouldUseVerifiedMetadataGraph(
+  item: Item | undefined,
+  schemaCount: number,
+  edgeCount: number,
+): boolean {
+  return (
+    edgeCount > 0 &&
+    (!!item &&
+      (schemaCount === 0 || METADATA_NATIVE_ITEM_TYPES.has(item.itemType)))
+  );
+}
+
 function objectNodeItemId(node: ObjectGraphNode, activeItemId: string): string {
   return node.itemId ?? activeItemId;
 }
