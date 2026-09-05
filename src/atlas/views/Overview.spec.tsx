@@ -33,6 +33,9 @@ describe("OverviewView navigation", () => {
         <OverviewView onOpen={onOpen} />
       </AtlasProvider>,
     );
+    expect(
+      screen.getByText("Standard baseline: 70% for each governance pillar."),
+    ).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: /External access:/ }));
     expect(onOpen).toHaveBeenLastCalledWith(

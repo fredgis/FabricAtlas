@@ -88,7 +88,8 @@ export function GovernancePolicyEditor({
         <div>
           <h3 className="text-300 font-semibold">Workspace targets</h3>
           <p className="text-200 text-muted-foreground">
-            Current goals apply to the live score and historical comparisons.
+            The standard target is 70% for every pillar. Custom workspace goals
+            apply to the live score and historical comparisons.
           </p>
         </div>
         {!canEdit && (

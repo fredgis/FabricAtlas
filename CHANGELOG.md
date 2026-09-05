@@ -4,6 +4,18 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.1] - 2026-09-05
+
+### Changed
+
+- Reduced item and object node widths and restored clear horizontal and vertical spacing in lineage views.
+- Made the standard governance baseline explicit: 70% for each of the six pillars.
+
+### Fixed
+
+- Item type and health filters now replace an incompatible selection instead of retaining it outside the filtered type.
+- Changing the object table filter now selects that table and clears the previous incompatible object selection.
+
 ## [1.10.0] - 2026-09-05
 
 ### Added

@@ -16,6 +16,9 @@ describe("GovernancePolicyEditor", () => {
   it("saves all six validated targets", async () => {
     const onSave = vi.fn(async () => undefined);
     render(<GovernancePolicyEditor {...props} onSave={onSave} />);
+    expect(
+      screen.getByText(/standard target is 70% for every pillar/i),
+    ).toBeVisible();
 
     fireEvent.change(screen.getByLabelText("Access target"), {
       target: { value: "82" },

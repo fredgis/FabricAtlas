@@ -1550,8 +1550,8 @@ function PostureSection({
               {atTarget} of {current.pillars.length} pillars at target
             </h2>
             <p className="mt-xs text-200 text-muted-foreground">
-              Pillars are evaluated independently; non-applicable evidence is
-              never counted as zero.
+              Standard baseline: 70% for each pillar. Non-applicable evidence
+              is never counted as zero.
             </p>
           </div>
           <label>

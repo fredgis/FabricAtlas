@@ -451,6 +451,9 @@ export function OverviewView({
                   ? "Loading governance targets"
                   : "Governance targets unavailable"}
             </h2>
+            <p className="mt-xs text-200 text-muted-foreground">
+              Standard baseline: 70% for each governance pillar.
+            </p>
           </div>
           <button
             type="button"

@@ -8,7 +8,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { displayPreferenceKey } from "../display-preferences";
 import { MAP_INSPECTOR_DEFAULT_WIDTH } from "../map-inspector";
-import { SAMPLE_DATA } from "../model";
+import { SAMPLE_DATA, typeMeta } from "../model";
 import { AtlasProvider } from "../store";
 import { MapView } from "./Map";
 
@@ -110,6 +110,7 @@ describe("MapView selection", () => {
       clientY: 100,
       pointerId: 1,
     });
+
     fireEvent.pointerUp(lakehouse, {
       button: 0,
       clientX: 100,
@@ -123,6 +124,76 @@ describe("MapView selection", () => {
     expect(selectedLakehouse).toHaveAttribute("aria-pressed", "true");
     expect(selectedLakehouse.style.left).toBe(position.left);
     expect(selectedLakehouse.style.top).toBe(position.top);
+  });
+
+  it("keeps item nodes compact with visible space between rows and stages", () => {
+    window.history.replaceState(null, "", "/#map");
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+    const nodes = SAMPLE_DATA.items
+      .map((item) =>
+        screen.queryByLabelText(
+          `${item.displayName}, ${typeMeta(item.itemType).label}, ${item.health}`,
+        ),
+      )
+      .filter((node): node is HTMLButtonElement => node instanceof HTMLButtonElement);
+    expect(nodes.length).toBeGreaterThan(1);
+    expect(
+      Math.max(...nodes.map((node) => parseFloat(node.style.width))),
+    ).toBeLessThanOrEqual(224);
+
+    const byColumn = new Map<number, HTMLButtonElement[]>();
+    for (const node of nodes) {
+      const left = parseFloat(node.style.left);
+      byColumn.set(left, [...(byColumn.get(left) ?? []), node]);
+    }
+    const columns = [...byColumn.keys()].sort((left, right) => left - right);
+    for (let index = 1; index < columns.length; index += 1) {
+      const previous = byColumn.get(columns[index - 1])![0];
+      expect(
+        columns[index] -
+          columns[index - 1] -
+          parseFloat(previous.style.width),
+      ).toBeGreaterThanOrEqual(48);
+    }
+    for (const column of byColumn.values()) {
+      const ordered = column.sort(
+        (left, right) => parseFloat(left.style.top) - parseFloat(right.style.top),
+      );
+      for (let index = 1; index < ordered.length; index += 1) {
+        const previous = ordered[index - 1];
+        expect(
+          parseFloat(ordered[index].style.top) -
+            parseFloat(previous.style.top) -
+            parseFloat(previous.style.height),
+        ).toBeGreaterThanOrEqual(16);
+      }
+    }
+  });
+
+  it("moves selection to a matching item when its type is filtered", () => {
+    window.history.replaceState(null, "", "/#map");
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+    const report = SAMPLE_DATA.items.find((item) => item.itemType === "Report")!;
+    fireEvent.change(screen.getByLabelText("Filter by item type"), {
+      target: { value: "Report" },
+    });
+    expect(
+      screen.queryByLabelText("AlpineRent Sales Model, Semantic model, healthy"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByLabelText(`${report.displayName}, Report, ${report.health}`),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("Item details inspector")).toHaveTextContent(
+      report.displayName,
+    );
   });
 
   it("supports object selection, highlighting and drag", () => {
@@ -146,6 +217,7 @@ describe("MapView selection", () => {
       clientY: 100,
       pointerId: 2,
     });
+
     fireEvent.pointerMove(table, {
       clientX: 150,
       clientY: 130,
@@ -181,6 +253,30 @@ describe("MapView selection", () => {
         name: "Selected object lineage relationships",
       }),
     ).toBeInTheDocument();
+  });
+
+  it("selects the matching table when the object table filter changes", () => {
+    window.history.replaceState(null, "", "/#map");
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "objects" }));
+    const tableFilter = screen.getByLabelText("Select object lineage table");
+    const options = [...tableFilter.querySelectorAll("option")];
+    expect(options.length).toBeGreaterThan(1);
+    const nextTable = options[1].value;
+    fireEvent.click(screen.getByLabelText(/Total Revenue, Measure/i));
+    fireEvent.change(tableFilter, { target: { value: nextTable } });
+    const selectedTable = screen
+      .getAllByLabelText(
+        new RegExp(`^${nextTable.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")},`),
+      )
+      .find((node) => node.getAttribute("aria-label")?.includes("columns"));
+    expect(
+      selectedTable,
+    ).toHaveAttribute("aria-pressed", "true");
   });
 
   it("moves a multi-selection together and fully resets positions", () => {

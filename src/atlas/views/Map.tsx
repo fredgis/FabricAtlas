@@ -66,10 +66,13 @@ import {
   type SchemaObjectRef,
 } from "../lineage";
 
-const NODE_W = 260;
-const NODE_H = 84;
-const OBJECT_W = 268;
-const OBJECT_H = 92;
+const NODE_W = 220;
+const NODE_H = 76;
+const OBJECT_W = 224;
+const OBJECT_H = 76;
+const NODE_COLUMN_GAP = 292;
+const NODE_ROW_GAP = 100;
+const OBJECT_ROW_GAP = 100;
 const UP = "var(--color-lineage-upstream)";
 const DOWN = "var(--color-lineage-downstream)";
 
@@ -201,6 +204,32 @@ function curve(source: Point, target: Point, width = NODE_W, height = NODE_H): s
   return `M${x1},${y1} C${x1 + bend},${y1} ${x2 - bend},${y2} ${x2},${y2}`;
 }
 
+function matchesItemFilters(
+  item: Item,
+  type: string,
+  health: Health | "all",
+  query: string,
+): boolean {
+  const normalized = query.trim().toLowerCase();
+  return (
+    (type === "all" || item.itemType === type) &&
+    (health === "all" || item.health === health) &&
+    (!normalized ||
+      item.displayName.toLowerCase().includes(normalized) ||
+      typeMeta(item.itemType).label.toLowerCase().includes(normalized) ||
+      item.tags.some((tag) => tag.toLowerCase().includes(normalized)))
+  );
+}
+
+function matchesObjectQuery(node: ObjectNode, query: string): boolean {
+  const normalized = query.trim().toLowerCase();
+  return (
+    !normalized ||
+    node.label.toLowerCase().includes(normalized) ||
+    node.subtitle.toLowerCase().includes(normalized)
+  );
+}
+
 function objectGraph(
   data: AtlasData,
   selected: Item | undefined,
@@ -228,7 +257,7 @@ function objectGraph(
       table: entry.name,
       kind: "table",
       x: 330,
-      y: 62 + index * 100,
+      y: 62 + index * OBJECT_ROW_GAP,
     };
     nodes.push(modelNode);
 
@@ -310,7 +339,7 @@ function objectGraph(
       itemId: selected.fabricId,
       kind: "field",
       x: 660,
-      y: 134 + index * 100,
+      y: 126 + index * OBJECT_ROW_GAP,
     };
     nodes.push(node);
     graphEdges.push({
@@ -335,7 +364,7 @@ function objectGraph(
         itemId: consumer.fabricId,
         kind: "consumer",
         x: 1000,
-        y: 72 + index * 100,
+        y: 72 + index * OBJECT_ROW_GAP,
       };
       nodes.push(node);
       graphEdges.push({ source: owner.id, target: node.id, relation: edge.relation });
@@ -347,8 +376,8 @@ function objectGraph(
     width: 1240,
     height: Math.max(
       520,
-      selectedSchema.length * 100 + 96,
-      fields.length * 100 + 220,
+      selectedSchema.length * OBJECT_ROW_GAP + 96,
+      fields.length * OBJECT_ROW_GAP + 204,
     ),
     table: table.name,
   };
@@ -449,7 +478,7 @@ export function MapView() {
   const mapRef = useRef<HTMLDivElement>(null);
 
   const selected =
-    itemById.get(selId) ?? itemById.get(startingId);
+    itemById.get(selId) ?? (selId ? itemById.get(startingId) : undefined);
   const activeId = selected?.fabricId ?? "";
   const resolvedFocusId = itemById.has(focusId) ? focusId : activeId;
   const schema = useMemo(
@@ -531,22 +560,13 @@ export function MapView() {
     ) {
       return items;
     }
-    const normalized = query.trim().toLowerCase();
     return items.filter((item) => {
-      if (item.fabricId === activeId) return true;
-      const matchesFilters =
-        (typeFilter === "all" || item.itemType === typeFilter) &&
-        (healthFilter === "all" || item.health === healthFilter) &&
-        (!normalized ||
-          item.displayName.toLowerCase().includes(normalized) ||
-          typeMeta(item.itemType).label.toLowerCase().includes(normalized) ||
-          item.tags.some((tag) => tag.toLowerCase().includes(normalized)));
       return (
-        matchesFilters &&
+        matchesItemFilters(item, typeFilter, healthFilter, query) &&
         (!impactMode || !resolvedFocusId || focusedItems.has(item.fabricId))
       );
     });
-  }, [activeId, focusedItems, healthFilter, impactMode, items, query, resolvedFocusId, typeFilter]);
+  }, [focusedItems, healthFilter, impactMode, items, query, resolvedFocusId, typeFilter]);
   const visibleIds = useMemo(
     () => new Set(visibleItems.map((item) => item.fabricId)),
     [visibleItems],
@@ -563,7 +583,9 @@ export function MapView() {
       buildStagedLayout(visibleItems, visibleEdges, {
         nodeWidth: NODE_W,
         nodeHeight: NODE_H,
-        columnGap: 285,
+        columnGap: NODE_COLUMN_GAP,
+        rowGap: NODE_ROW_GAP,
+        componentGap: 52,
         focusId: resolvedFocusId,
       }),
     [resolvedFocusId, visibleEdges, visibleItems],
@@ -600,12 +622,12 @@ export function MapView() {
     [objects.nodes],
   );
   const activeObjectId = objects.nodes.some(
-    (node) => node.id === selectedObjectId,
+    (node) =>
+      node.id === selectedObjectId &&
+      matchesObjectQuery(node, query),
   )
     ? selectedObjectId
-    : (objects.nodes.find((node) => node.kind === "owner")?.id ??
-      objects.nodes[0]?.id ??
-      "");
+    : (objects.nodes.find((node) => matchesObjectQuery(node, query))?.id ?? "");
   const activeObject = objectNodeById.get(activeObjectId);
   const reportItemId =
     mode === "objects" ? activeObject?.itemId ?? activeId : activeId;
@@ -744,6 +766,47 @@ export function MapView() {
     if ((node.kind === "source" || node.kind === "table") && node.table) {
       setTableName(node.table);
     }
+  };
+
+  const reconcileItemSelection = (
+    nextType: string,
+    nextHealth: Health | "all",
+    nextQuery: string,
+  ) => {
+    if (
+      selected &&
+      matchesItemFilters(selected, nextType, nextHealth, nextQuery)
+    ) {
+      return;
+    }
+    const next = items.find((item) =>
+      matchesItemFilters(item, nextType, nextHealth, nextQuery),
+    );
+    const nextId = next?.fabricId ?? "";
+    setSelId(nextId);
+    setFocusId(nextId);
+    setSelectedItemIds(new Set(nextId ? [nextId] : []));
+    setDrag({});
+  };
+
+  const changeObjectTable = (nextTable: string) => {
+    setTableName(nextTable);
+    const nextId = `table:${nextTable}`;
+    setSelectedObjectId(nextId);
+    setSelectedObjectIds(new Set([nextId]));
+    setObjectDrag({});
+  };
+
+  const changeQuery = (nextQuery: string) => {
+    setQuery(nextQuery);
+    if (mode === "items") return;
+    const active = objectNodeById.get(activeObjectId);
+    if (active && matchesObjectQuery(active, nextQuery)) return;
+    const next = objects.nodes.find((node) =>
+      matchesObjectQuery(node, nextQuery),
+    );
+    setSelectedObjectId(next?.id ?? "");
+    setSelectedObjectIds(new Set(next ? [next.id] : []));
   };
 
   const objectNodeDown = (
@@ -958,7 +1021,7 @@ export function MapView() {
           <span className="sr-only">Search lineage</span>
           <input
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => changeQuery(event.target.value)}
             placeholder={mode === "items" ? "Search items…" : "Search objects…"}
             className="w-full rounded-lg border border-input bg-card pl-[31px] pr-m outline-none"
           />
@@ -968,7 +1031,11 @@ export function MapView() {
             <select
               aria-label="Filter by item type"
               value={typeFilter}
-              onChange={(event) => setTypeFilter(event.target.value)}
+              onChange={(event) => {
+                const nextType = event.target.value;
+                setTypeFilter(nextType);
+                reconcileItemSelection(nextType, healthFilter, query);
+              }}
               className="rounded-lg border border-input bg-card px-m text-muted-foreground outline-none"
             >
               <option value="all">All types</option>
@@ -981,9 +1048,11 @@ export function MapView() {
             <select
               aria-label="Filter by health"
               value={healthFilter}
-              onChange={(event) =>
-                setHealthFilter(event.target.value as Health | "all")
-              }
+              onChange={(event) => {
+                const nextHealth = event.target.value as Health | "all";
+                setHealthFilter(nextHealth);
+                reconcileItemSelection(typeFilter, nextHealth, query);
+              }}
               className="rounded-lg border border-input bg-card px-m text-muted-foreground outline-none"
             >
               <option value="all">All health</option>
@@ -998,7 +1067,7 @@ export function MapView() {
             <select
               aria-label="Select object lineage table"
               value={objects.table ?? ""}
-              onChange={(event) => setTableName(event.target.value)}
+              onChange={(event) => changeObjectTable(event.target.value)}
               className="max-w-[220px] rounded-lg border border-input bg-card px-m text-muted-foreground outline-none"
             >
               {schema.map((entry) => (
@@ -1287,7 +1356,7 @@ export function MapView() {
                           <span className="line-clamp-2 break-words text-200 font-semibold leading-200">
                             {item.displayName}
                           </span>
-                          <span className="mt-xs line-clamp-2 text-200 leading-200 text-muted-foreground">
+                          <span className="mt-xs line-clamp-1 text-200 leading-200 text-muted-foreground">
                             {typeMeta(item.itemType).label} · {item.health}
                           </span>
                         </span>
@@ -1455,10 +1524,7 @@ export function MapView() {
                     const dim = !!activeObjectId && !objectConnected.has(node.id);
                     const draggingNode = objectDragId === node.id;
                     const activeTable = node.table === objects.table;
-                    const matches =
-                      !query.trim() ||
-                      node.label.toLowerCase().includes(query.trim().toLowerCase()) ||
-                      node.subtitle.toLowerCase().includes(query.trim().toLowerCase());
+                    const matches = matchesObjectQuery(node, query);
                     const accent = primaryNode
                       ? "var(--color-primary)"
                       : isUp
@@ -1513,10 +1579,10 @@ export function MapView() {
                           {node.code}
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="line-clamp-3 break-words text-200 font-semibold leading-200">
+                          <span className="line-clamp-2 break-words text-200 font-semibold leading-200">
                             {node.label}
                           </span>
-                          <span className="mt-xs line-clamp-2 break-words text-200 leading-200 text-muted-foreground">
+                          <span className="mt-xs line-clamp-1 break-words text-200 leading-200 text-muted-foreground">
                             {node.subtitle}
                           </span>
                         </span>
@@ -1800,7 +1866,7 @@ export function MapView() {
                           type="button"
                           onClick={() => {
                             setMode("objects");
-                            setTableName(schema[0].name);
+                            changeObjectTable(schema[0].name);
                           }}
                           className="text-[10px] font-semibold text-primary hover:underline"
                         >
