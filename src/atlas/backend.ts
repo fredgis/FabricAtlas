@@ -68,6 +68,7 @@ interface EntityApi {
   select?: (fields: readonly string[]) => EntityQuery;
   findMany?: (f?: unknown) => Promise<Row[]>;
   create: (v: Row) => Promise<Row>;
+  update?: (filter: Row, values: Row) => Promise<unknown>;
   delete?: (filter: Row) => Promise<unknown>;
 }
 
@@ -110,6 +111,7 @@ const ENTITY_FIELDS: Record<string, readonly string[]> = {
     "fabricId",
     "displayName",
     "itemType",
+    "size",
     "description",
     "ownerName",
     "ownerEmail",
@@ -151,6 +153,7 @@ const ENTITY_FIELDS: Record<string, readonly string[]> = {
     "kind",
     "email",
     "external",
+    "workspaceRole",
   ],
   AccessGrant: [
     "id",
@@ -201,11 +204,15 @@ const ENTITY_FIELDS: Record<string, readonly string[]> = {
     "id",
     "workspace_id",
     "snapshotId",
+    "correlationId",
     "writerEmail",
     "startedAt",
     "finishedAt",
     "status",
     "itemsSynced",
+    "durationMs",
+    "failureCode",
+    "failureMessage",
     "triggeredBy",
     "summary",
   ],
@@ -230,20 +237,86 @@ const WS_FALLBACK: WorkspaceInfo = {
   region: "",
 };
 
+interface SyncAttempt {
+  id: string;
+  snapshotId: string;
+  workspaceId: string;
+  writerEmail: string;
+  startedAt: Date;
+  data: Record<string, EntityApi>;
+  user: SyncIdentity;
+}
+
 function textOrFallback(value: unknown, fallback: string): string {
   const text = value == null ? "" : String(value).trim();
   return !text || text === "undefined" || text === "null" ? fallback : text;
 }
 
 function requireSyncWriter(user: SyncIdentity): string {
-  const expected = ATLAS_CONFIG.syncAdminEmail.trim().toLowerCase();
-  const actual = user.email?.trim().toLowerCase() ?? "";
-  if (!expected || !actual || actual !== expected) {
+  const expectedSubject = ATLAS_CONFIG.syncAdminSubject.trim();
+  const actualSubject = user.id?.trim() ?? "";
+  if (
+    !expectedSubject ||
+    !actualSubject ||
+    actualSubject !== expectedSubject
+  ) {
     throw new Error(
       "Only the configured Atlas sync administrator can publish workspace snapshots.",
     );
   }
-  return actual;
+  return ATLAS_CONFIG.syncAdminEmail.trim().toLowerCase();
+}
+
+async function startSyncAttempt(user: SyncIdentity): Promise<SyncAttempt> {
+  const attempt: SyncAttempt = {
+    id: crypto.randomUUID(),
+    snapshotId: crypto.randomUUID(),
+    workspaceId: workspaceId(),
+    writerEmail: requireSyncWriter(user),
+    startedAt: new Date(),
+    data: await dataApi(),
+    user,
+  };
+  await attempt.data.SyncRun.create({
+    id: attempt.id,
+    correlationId: attempt.id,
+    workspace_id: attempt.workspaceId,
+    snapshotId: attempt.snapshotId,
+    writerEmail: attempt.writerEmail,
+    startedAt: attempt.startedAt,
+    status: "running",
+    triggeredBy: user.name,
+    summary: "Synchronization in progress.",
+  });
+  return attempt;
+}
+
+async function updateSyncAttempt(
+  attempt: SyncAttempt,
+  status: "completed" | "failed",
+  finishedAt: Date,
+  itemsSynced?: number,
+  summary?: string,
+): Promise<void> {
+  const api = attempt.data.SyncRun;
+  if (!api.update) {
+    throw new Error("Rayfin SyncRun does not support status updates");
+  }
+  await api.update(
+    { id: attempt.id },
+    {
+    finishedAt,
+    status,
+    itemsSynced,
+    durationMs: Math.max(0, finishedAt.getTime() - attempt.startedAt.getTime()),
+    failureCode: status === "failed" ? "sync-failed" : undefined,
+    failureMessage:
+      status === "failed"
+        ? "Synchronization failed before snapshot publication."
+        : undefined,
+    summary,
+    },
+  );
 }
 
 /* --------------------------- comments --------------------------- */
@@ -268,7 +341,7 @@ export async function persistComment(
     workspace_id: workspaceId(),
     itemFabricId: comment.itemFabricId,
     authorId: comment.authorId,
-    authorName: comment.authorName,
+    authorName: comment.authorEmail,
     authorEmail: comment.authorEmail,
     body: comment.body,
     createdAt: new Date(comment.createdAt),
@@ -286,6 +359,7 @@ export async function runFabricSync(
   isPreview: boolean,
   user: SyncIdentity,
   reportProgress?: SyncProgressReporter,
+  signal?: AbortSignal,
 ): Promise<AtlasData | null> {
   if (isPreview) {
     reportProgress?.(15, "Preparing preview sync");
@@ -295,35 +369,56 @@ export async function runFabricSync(
     reportProgress?.(100, "Sync complete");
     return null;
   }
-  requireSyncWriter(user);
-  const raw = await invokeSyncAll(workspaceId(), user, reportProgress);
-  reportProgress?.(62, "Workspace metadata complete");
-  const atlas = mapSyncToAtlas(raw, WS_FALLBACK);
-  reportProgress?.(66, "Building the governance catalog");
-  // Carry over comments that already live in the DB (sync doesn't touch them).
+  const attempt = await startSyncAttempt(user);
   try {
-    const existing = await loadFromDb(false);
-    if (existing) atlas.comments = existing.comments;
-  } catch {
-    /* ignore */
+    const raw = await invokeSyncAll(
+      attempt.workspaceId,
+      user,
+      reportProgress,
+      signal,
+      attempt.id,
+    );
+    reportProgress?.(62, "Workspace metadata complete");
+    const atlas = mapSyncToAtlas(raw, WS_FALLBACK);
+    reportProgress?.(66, "Building the governance catalog");
+    reportProgress?.(69, "Preserving team notes");
+    const persisted = await persistSync(
+      atlas,
+      reportProgress,
+      attempt,
+    );
+    reportProgress?.(100, "Sync complete");
+    return persisted;
+  } catch (error) {
+    try {
+      await updateSyncAttempt(
+        attempt,
+        "failed",
+        new Date(),
+        undefined,
+        "Synchronization failed before snapshot publication.",
+      );
+    } catch (attemptError) {
+      console.warn("[atlas] failed to record sync failure", attemptError);
+    }
+    throw error;
   }
-  reportProgress?.(69, "Preserving team notes");
-  const persisted = await persistSync(atlas, user, reportProgress);
-  reportProgress?.(100, "Sync complete");
-  return persisted;
 }
 
 /** Replace the catalog rows in the Rayfin DB with a freshly synced snapshot. */
 async function persistSync(
   atlas: AtlasData,
-  user: SyncIdentity,
   reportProgress?: SyncProgressReporter,
+  attempt?: SyncAttempt,
 ): Promise<AtlasData> {
-  const wid = workspaceId();
-  const snapshotId = crypto.randomUUID();
+  if (!attempt) {
+    throw new Error("A synchronization attempt is required for persistence");
+  }
+  const wid = attempt.workspaceId;
+  const snapshotId = attempt.snapshotId;
   const syncedAt = new Date();
-  const writerEmail = requireSyncWriter(user);
-  const data = await dataApi();
+  const writerEmail = attempt.writerEmail;
+  const data = attempt.data;
 
   const insertAll = async (entity: string, rows: Row[]) => {
     for (
@@ -331,17 +426,16 @@ async function persistSync(
       offset < rows.length;
       offset += SNAPSHOT_WRITE_BATCH_SIZE
     ) {
+      const payloads = rows
+        .slice(offset, offset + SNAPSHOT_WRITE_BATCH_SIZE)
+        .map((row) => ({
+          workspace_id: wid,
+          snapshotId,
+          writerEmail,
+          ...row,
+        }));
       const results = await Promise.allSettled(
-        rows
-          .slice(offset, offset + SNAPSHOT_WRITE_BATCH_SIZE)
-          .map((row) =>
-            data[entity].create({
-              workspace_id: wid,
-              snapshotId,
-              writerEmail,
-              ...row,
-            }),
-          ),
+        payloads.map((row) => data[entity].create(row)),
       );
       const failure = results.find(
         (result): result is PromiseRejectedResult =>
@@ -360,6 +454,7 @@ async function persistSync(
       fabricId: i.fabricId,
       displayName: i.displayName,
       itemType: i.itemType,
+      size: i.size,
       description: i.description,
       ownerName: i.ownerName,
       ownerEmail: i.ownerEmail,
@@ -390,7 +485,8 @@ async function persistSync(
       displayName: p.displayName,
       kind: p.kind,
       email: p.email,
-      external: !!p.external,
+      external: p.external,
+      workspaceRole: p.workspaceRole,
     })),
   );
   await insertAll(
@@ -487,25 +583,10 @@ async function persistSync(
     await insertAll("ConfigEntry", objectEdgeRows);
   }
 
-  // The audit row and every snapshot row must succeed before the Workspace
-  // marker is written. That final marker is the atomic visibility switch:
-  // orphaned rows from a failed attempt are never selected by hydration.
-  reportProgress?.(97, "Finalizing the workspace snapshot");
   const snapshotSummary = summarizeSnapshot(
     snapshotFromData(atlas, snapshotId, syncedAt.toISOString()),
   );
-  await data.SyncRun.create({
-    workspace_id: wid,
-    snapshotId,
-    writerEmail,
-    startedAt: syncedAt,
-    finishedAt: syncedAt,
-    status: "completed",
-    itemsSynced: atlas.items.length,
-    triggeredBy: user.name,
-    summary: `${atlas.items.length} items · ${atlas.edges.length} lineage edges · ${atlas.principals.length} principals · ${atlas.jobs.length} jobs`,
-  });
-  await data.Workspace.create({
+  const manifest: Row = {
     snapshotId,
     writerEmail,
     deploymentId: DEPLOYMENT_ID,
@@ -535,21 +616,62 @@ async function persistSync(
     columnCount: snapshotSummary.columnCount,
     measureCount: snapshotSummary.measureCount,
     syncedAt,
-  });
+  };
+  const verifiedCatalog = await verifyPersistedSnapshot(
+    data,
+    manifest,
+    wid,
+    snapshotId,
+    writerEmail,
+  );
+
+  // The audit row and every snapshot row must succeed before the Workspace
+  // marker is written. That final marker is the atomic visibility switch:
+  // orphaned rows from a failed attempt are never selected by hydration.
+  reportProgress?.(97, "Finalizing the workspace snapshot");
+  const syncSummary = `${atlas.items.length} items · ${atlas.edges.length} lineage edges · ${atlas.principals.length} principals · ${atlas.jobs.length} jobs`;
+  await data.Workspace.create(manifest);
+  try {
+    await updateSyncAttempt(
+      attempt,
+      "completed",
+      syncedAt,
+      atlas.items.length,
+      syncSummary,
+    );
+  } catch (error) {
+    console.warn("[atlas] sync completion audit deferred", error);
+  }
   reportProgress?.(99, "Applying snapshot retention");
   try {
     await pruneSnapshots(data, wid, snapshotId, writerEmail);
   } catch (error) {
     console.warn("[atlas] snapshot retention deferred", error);
   }
+  try {
+    await cleanupOrphanSnapshots(data, wid, writerEmail);
+  } catch (error) {
+    console.warn("[atlas] orphan cleanup deferred", error);
+  }
   return {
-    ...atlas,
-    workspace: {
-      ...atlas.workspace,
-      deploymentId: DEPLOYMENT_ID,
-      snapshotId,
-      syncedAt: syncedAt.toISOString(),
-    },
+    ...verifiedCatalog,
+    comments: atlas.comments,
+    syncRuns: [
+      {
+        id: attempt.id,
+        startedAt: attempt.startedAt.toISOString(),
+        finishedAt: syncedAt.toISOString(),
+        status: "completed",
+        itemsSynced: atlas.items.length,
+        durationMs: Math.max(
+          0,
+          syncedAt.getTime() - attempt.startedAt.getTime(),
+        ),
+        triggeredBy: attempt.user.name,
+        summary: syncSummary,
+      },
+      ...atlas.syncRuns,
+    ],
   };
 }
 
@@ -557,7 +679,7 @@ async function persistSync(
 
 const READ_RETRY_DELAYS_MS = [0, 120, 360];
 
-async function readWithRetry(
+export async function readWithRetry(
   api: EntityApi,
   fields: readonly string[],
   filter: Row,
@@ -574,18 +696,23 @@ async function readWithRetry(
       }
       const rows: Row[] = [];
       let cursor: string | undefined;
-      for (let pageNumber = 0; pageNumber < 100; pageNumber += 1) {
+      const seenCursors = new Set<string>();
+      while (true) {
         let query = api.select(fields).where(filter).first(100);
         if (cursor) query = query.after(cursor);
         const page = await query.executePaginated();
         rows.push(...page.items);
         if (!page.hasNextPage) return rows;
-        if (!page.endCursor || page.endCursor === cursor) {
+        if (
+          !page.endCursor ||
+          page.endCursor === cursor ||
+          seenCursors.has(page.endCursor)
+        ) {
           throw new Error("Rayfin pagination did not advance");
         }
+        seenCursors.add(page.endCursor);
         cursor = page.endCursor;
       }
-      throw new Error("Rayfin pagination exceeded the safety limit");
     } catch (error) {
       lastError = error;
     }
@@ -812,6 +939,26 @@ async function readTrustedWorkspaceMarkers(
   return groups.flat();
 }
 
+async function readTrustedSyncRuns(
+  read: ReadEntity,
+  wid: string,
+): Promise<Row[]> {
+  const groups = await Promise.all(
+    trustedWriterEmails().map((writerEmail) =>
+      read("SyncRun", {
+        workspace_id: { eq: wid },
+        writerEmail: { eq: writerEmail },
+      }),
+    ),
+  );
+  return groups
+    .flat()
+    .filter(
+      (row) =>
+        rowBelongsToWorkspace(row, wid) && isTrustedWriter(row.writerEmail),
+    );
+}
+
 function validDateIso(value: unknown): string | undefined {
   if (value == null || value === "") return undefined;
   const date = new Date(value as string | number | Date);
@@ -1013,6 +1160,35 @@ async function readSnapshotRows(
   };
 }
 
+const SNAPSHOT_VERIFY_RETRY_DELAYS_MS = [0, 150, 500];
+
+async function verifyPersistedSnapshot(
+  data: Record<string, EntityApi>,
+  marker: Row,
+  wid: string,
+  snapshotId: string,
+  writerEmail: string,
+): Promise<SnapshotCatalog> {
+  const read = readerFor(data);
+  let lastError: unknown;
+  for (const delay of SNAPSHOT_VERIFY_RETRY_DELAYS_MS) {
+    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+    try {
+      const rows = await readSnapshotRows(
+        read,
+        wid,
+        snapshotId,
+        false,
+        writerEmail,
+      );
+      return catalogFromRows(marker, rows);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
 function catalogFromRows(
   marker: Row,
   rows: SnapshotRows,
@@ -1037,6 +1213,7 @@ function catalogFromRows(
       fabricId,
       displayName: realText(row.displayName) ?? fabricId,
       itemType,
+      size: realText(row.size),
       description: realText(row.description),
       ownerName: realText(row.ownerName),
       ownerEmail: realText(row.ownerEmail),
@@ -1095,14 +1272,6 @@ function catalogFromRows(
       broken: !!row.broken,
     })),
   );
-  const principals: Principal[] = rows.principalRows.map((row) => ({
-    principalId: String(row.principalId),
-    displayName: String(row.displayName),
-    kind: row.kind as Principal["kind"],
-    email: (row.email as string) || undefined,
-    external: !!row.external,
-    workspaceRole: "Viewer",
-  }));
   const grants: Grant[] = rows.grantRows.map((row) => ({
     itemFabricId: (row.itemFabricId as string) || undefined,
     principalRef: String(row.principalRef),
@@ -1111,6 +1280,48 @@ function catalogFromRows(
     roleName: (row.roleName as string) || undefined,
     flag: (row.flag as Grant["flag"]) || undefined,
   }));
+  const principals: Principal[] = rows.principalRows.map((row) => {
+    const persistedRole = realText(row.workspaceRole);
+    const workspaceGrants = grants.filter(
+      (grant) =>
+        !grant.itemFabricId && grant.source === "workspaceRole",
+    );
+    const directGrant = workspaceGrants.find((grant) =>
+      sameText(grant.principalRef, row.principalId),
+    );
+    const emailMatches = realText(row.email)
+      ? workspaceGrants.filter((grant) =>
+          sameText(grant.principalRef, row.email),
+        )
+      : [];
+    const nameMatches = workspaceGrants.filter((grant) =>
+      sameText(grant.principalRef, row.displayName),
+    );
+    const workspaceGrantRole =
+      directGrant?.roleName ??
+      (emailMatches.length === 1
+        ? emailMatches[0].roleName
+        : undefined) ??
+      (nameMatches.length === 1
+        ? nameMatches[0].roleName
+        : undefined);
+    const workspaceRole = [persistedRole, workspaceGrantRole].find(
+      (role): role is Principal["workspaceRole"] =>
+        role === "Admin" ||
+        role === "Member" ||
+        role === "Contributor" ||
+        role === "Viewer",
+    );
+    return {
+      principalId: String(row.principalId),
+      displayName: String(row.displayName),
+      kind: row.kind as Principal["kind"],
+      email: (row.email as string) || undefined,
+      external:
+        typeof row.external === "boolean" ? row.external : undefined,
+      workspaceRole: workspaceRole ?? "Viewer",
+    };
+  });
   const markerTime =
     validDateIso(marker.syncedAt) ?? new Date(0).toISOString();
   const jobs: Job[] = rows.jobRows.map((row) => ({
@@ -1169,6 +1380,7 @@ function catalogFromRows(
 const SNAPSHOT_DELETE_BATCH_SIZE = 8;
 const MAX_SNAPSHOTS_PRUNED_PER_SYNC = 4;
 const MAX_RETENTION_CANDIDATES = 100;
+const ORPHAN_ATTEMPT_GRACE_MS = 60 * 60 * 1000;
 
 async function deleteScopedRows(
   data: Record<string, EntityApi>,
@@ -1224,6 +1436,39 @@ async function deleteSnapshot(
   writerEmail: string,
 ): Promise<void> {
   const snapshotId = String(marker.snapshotId);
+  await deleteSnapshotContent(
+    data,
+    rows,
+    wid,
+    snapshotId,
+    writerEmail,
+  );
+  await deleteScopedRows(
+    data,
+    "SyncRun",
+    rows.syncRows,
+    wid,
+    snapshotId,
+    writerEmail,
+  );
+  await deleteScopedRows(
+    data,
+    "Workspace",
+    [marker],
+    wid,
+    snapshotId,
+    writerEmail,
+    true,
+  );
+}
+
+async function deleteSnapshotContent(
+  data: Record<string, EntityApi>,
+  rows: SnapshotRows,
+  wid: string,
+  snapshotId: string,
+  writerEmail: string,
+): Promise<void> {
   const groups: Array<[string, Row[]]> = [
     [
       "ConfigEntry",
@@ -1238,7 +1483,6 @@ async function deleteSnapshot(
     ["Principal", rows.principalRows],
     ["LineageEdge", rows.edgeRows],
     ["FabricItem", rows.itemRows],
-    ["SyncRun", rows.syncRows],
   ];
   for (const [entity, entityRows] of groups) {
     await deleteScopedRows(
@@ -1250,15 +1494,65 @@ async function deleteSnapshot(
       writerEmail,
     );
   }
-  await deleteScopedRows(
-    data,
-    "Workspace",
-    [marker],
-    wid,
-    snapshotId,
-    writerEmail,
-    true,
+}
+
+async function cleanupOrphanSnapshots(
+  data: Record<string, EntityApi>,
+  wid: string,
+  writerEmail: string,
+): Promise<void> {
+  const read = readerFor(data);
+  const [workspaceRows, syncRows] = await Promise.all([
+    readTrustedWorkspaceMarkers(read, wid),
+    readTrustedSyncRuns(read, wid),
+  ]);
+  const published = new Set(
+    trustedMarkers(workspaceRows, wid).map((row) => String(row.snapshotId)),
   );
+  const now = Date.now();
+  const candidates = syncRows
+    .map((row) => ({
+      row,
+      timestamp: Date.parse(
+        String(row.finishedAt ?? row.startedAt ?? ""),
+      ),
+    }))
+    .filter(({ row, timestamp }) => {
+      const snapshotId = realText(row.snapshotId);
+      return (
+        !!snapshotId &&
+        !published.has(snapshotId) &&
+        (row.status === "running" ||
+          row.status === "failed" ||
+          row.status === "completed") &&
+        Number.isFinite(timestamp) &&
+        now - timestamp >= ORPHAN_ATTEMPT_GRACE_MS
+      );
+    })
+    .sort((left, right) => left.timestamp - right.timestamp)
+    .map(({ row }) => row);
+  for (const attempt of candidates.slice(0, MAX_SNAPSHOTS_PRUNED_PER_SYNC)) {
+    const snapshotId = String(attempt.snapshotId);
+    const attemptWriter = realText(attempt.writerEmail) ?? writerEmail;
+    try {
+      const rows = await readSnapshotRows(
+        read,
+        wid,
+        snapshotId,
+        false,
+        attemptWriter,
+      );
+      await deleteSnapshotContent(
+        data,
+        rows,
+        wid,
+        snapshotId,
+        attemptWriter,
+      );
+    } catch (error) {
+      console.warn("[atlas] orphan snapshot cleanup deferred", error);
+    }
+  }
 }
 
 async function pruneSnapshots(
@@ -1360,16 +1654,32 @@ function commentsFromRows(rows: Row[], wid: string): Comment[] {
     }));
 }
 
+export async function loadCommentsFromDb(
+  isPreview: boolean,
+): Promise<Comment[]> {
+  if (isPreview) return [];
+  const data = await dataApi();
+  const wid = workspaceId();
+  const read = readerFor(data);
+  const rows = await read("Comment", { workspace_id: { eq: wid } });
+  return commentsFromRows(rows, wid);
+}
+
 function syncRunsFromRows(rows: Row[], fallbackTime: string): AtlasData["syncRuns"] {
   return rows
     .map((row) => ({
       id: String(row.id),
+      correlationId: (row.correlationId as string) || undefined,
       startedAt: validDateIso(row.startedAt) ?? fallbackTime,
       finishedAt: validDateIso(row.finishedAt),
       status:
         (row.status as "running" | "completed" | "failed") ?? "completed",
       itemsSynced:
         row.itemsSynced != null ? Number(row.itemsSynced) : undefined,
+      durationMs:
+        row.durationMs != null ? Number(row.durationMs) : undefined,
+      failureCode: (row.failureCode as string) || undefined,
+      failureMessage: (row.failureMessage as string) || undefined,
       triggeredBy: (row.triggeredBy as string) || undefined,
       summary: (row.summary as string) || undefined,
     }))
@@ -1390,11 +1700,13 @@ export async function loadFromDb(isPreview: boolean): Promise<AtlasData | null> 
     const data = await dataApi();
     const wid = workspaceId();
     const read = readerFor(data);
-    const [allCommentRows, workspaceRows] = await Promise.all([
-      read("Comment", { workspace_id: { eq: wid } }),
-      readTrustedWorkspaceMarkers(read, wid),
-    ]);
-    const comments = commentsFromRows(allCommentRows, wid);
+    const workspaceRows = await readTrustedWorkspaceMarkers(read, wid);
+    let syncRows: Row[] = [];
+    try {
+      syncRows = await readTrustedSyncRuns(read, wid);
+    } catch (error) {
+      console.warn("[atlas] sync history unavailable", error);
+    }
 
     for (const marker of trustedMarkers(workspaceRows, wid)) {
       try {
@@ -1405,15 +1717,15 @@ export async function loadFromDb(isPreview: boolean): Promise<AtlasData | null> 
           read,
           wid,
           snapshotId,
-          true,
+          false,
           markerWriter,
         );
         const catalog = catalogFromRows(marker, rows);
         return {
           ...catalog,
-          comments,
+          comments: [],
           syncRuns: syncRunsFromRows(
-            rows.syncRows,
+            syncRows,
             catalog.workspace.syncedAt ?? new Date(0).toISOString(),
           ),
         };

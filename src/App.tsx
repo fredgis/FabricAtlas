@@ -218,6 +218,7 @@ function App() {
     data,
     hydrating,
     sync,
+    cancelSync,
     syncing,
     syncProgress,
     syncStage,
@@ -434,18 +435,27 @@ function App() {
             </span>
             <button
               type="button"
-              onClick={() => void sync()}
-              disabled={syncing || !canSync}
+              onClick={() => {
+                if (syncing) cancelSync();
+                else void sync();
+              }}
+              disabled={!syncing && !canSync}
               title={
-                canSync
+                syncing
+                  ? "Cancel synchronization"
+                  : canSync
                   ? undefined
                   : "Only the configured Atlas sync administrator can synchronize"
               }
               className="flex h-[32px] items-center gap-[7px] rounded-md bg-primary px-[12px] text-[13px] font-semibold text-primary-foreground shadow-fabric-2 hover:bg-primary-hover disabled:opacity-70"
             >
-              <RefreshCw size={15} className={syncing ? "animate-spin" : ""} />
+              {syncing ? (
+                <X size={15} />
+              ) : (
+                <RefreshCw size={15} />
+              )}
               <span className="hidden sm:inline">
-                {syncing ? `${syncProgress}%` : "Sync"}
+                {syncing ? "Cancel" : "Sync"}
               </span>
             </button>
             <button

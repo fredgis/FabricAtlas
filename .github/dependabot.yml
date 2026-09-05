@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      rayfin:
+        patterns:
+          - "@microsoft/rayfin-*"
+      npm-minor-patch:
+        update-types:
+          - minor
+          - patch
+  - package-ecosystem: pip
+    directory: /fabric/udf/atlas_sync_functions
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3

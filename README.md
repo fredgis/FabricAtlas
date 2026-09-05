@@ -412,10 +412,14 @@ if Fabric API coverage changes.
 
 ### Local preview
 
+Clone directly, or scaffold a reusable copy with
+`npx rayfin init my-atlas -t https://github.com/fredgis/FabricAtlas`.
+
 ```powershell
 git clone https://github.com/fredgis/FabricAtlas.git
 Set-Location FabricAtlas
-npm install
+$env:VITE_RAYFIN_ATLAS_DEMO_MODE = "true"
+npm ci
 npm run dev
 ```
 
@@ -426,6 +430,7 @@ The local app uses the included AlpineRent preview estate.
 ```powershell
 npx rayfin login --tenant <tenant-id> --select
 $env:RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_EMAIL = "<authorized-sync-user>"
+$env:RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_SUBJECT = "<authorized-sync-subject>"
 npx rayfin up --workspace "<workspace-name>"
 ```
 
@@ -438,6 +443,7 @@ RAYFIN_PUBLIC_ATLAS_SPA_CLIENT_ID=<entra-client-id>
 RAYFIN_PUBLIC_ATLAS_UDF_URL=https://<host>/functions/sync_all/invoke
 RAYFIN_PUBLIC_ATLAS_WORKSPACE_NAME=<workspace-display-name>
 RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_EMAIL=<authorized-sync-user>
+RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_SUBJECT=<authorized-sync-subject>
 RAYFIN_PUBLIC_ATLAS_SNAPSHOT_RETENTION_COUNT=12
 # Optional during synchronizer rotation:
 RAYFIN_PUBLIC_ATLAS_PREVIOUS_SYNC_WRITERS=<former-user@example.com>
@@ -445,8 +451,9 @@ RAYFIN_PUBLIC_ATLAS_SENSITIVITY_RANKS='{"<label-id>":3,"<lower-label-id>":1}'
 ```
 
 Keep the configured synchronizer available in the CLI process environment when
-running `npx rayfin up`: it is needed to compile the database policies, not just
-the frontend. The app opens on a guided synchronization screen.
+running `npx rayfin up`: its immutable Rayfin subject is needed to compile the
+database policies, while the email remains the visible contact and historical
+snapshot identifier. The app opens on a guided synchronization screen.
 
 The complete Entra, UDF and deployment steps are in
 [docs/installation.md](docs/installation.md).
@@ -598,5 +605,8 @@ IDs and tag IDs. It stores metadata only, never workspace business data.</sub>
 <div align="center">
 
 MIT licensed. Built with React, Rayfin and Microsoft Fabric.
+
+Security and reliability findings were audited with Fable 5.1 and GPT-6 Astra,
+then reviewed and prioritized for the accelerator scope.
 
 </div>

@@ -12,6 +12,7 @@ import { SAMPLE_DATA } from "./model";
 import { AtlasProvider, useAtlas } from "./store";
 
 const backend = vi.hoisted(() => ({
+  loadCommentsFromDb: vi.fn(),
   loadFromDb: vi.fn(),
   loadHistoryFromDb: vi.fn(),
   loadHistoricalSnapshotFromDb: vi.fn(),
@@ -56,6 +57,9 @@ function Harness() {
     <div>
       <button type="button" onClick={() => void atlas.sync()}>
         Sync
+      </button>
+      <button type="button" onClick={atlas.cancelSync}>
+        Cancel sync
       </button>
       <button type="button" onClick={() => void atlas.addComment("New note")}>
         Add comment
@@ -162,6 +166,7 @@ function Harness() {
       </span>
       <span data-testid="progress">{atlas.syncProgress}</span>
       <span data-testid="stage">{atlas.syncStage}</span>
+      <span data-testid="comments-error">{atlas.commentsError ?? ""}</span>
     </div>
   );
 }
@@ -170,8 +175,10 @@ describe("AtlasProvider synchronization", () => {
   beforeEach(() => {
     localStorage.clear();
     ATLAS_CONFIG.syncAdminEmail = currentUser.email;
+    ATLAS_CONFIG.syncAdminSubject = currentUser.id;
     ATLAS_CONFIG.previousSyncWriters = [];
     backend.loadFromDb.mockReset();
+    backend.loadCommentsFromDb.mockReset().mockResolvedValue([]);
     backend.loadHistoryFromDb.mockReset();
     backend.loadHistoricalSnapshotFromDb.mockReset();
     backend.persistComment.mockReset();
@@ -340,7 +347,50 @@ describe("AtlasProvider synchronization", () => {
     expect(afterSync.defaultPrevented).toBe(false);
   });
 
-  it("uses the unique synchronized principal display name for comments", async () => {
+  it("cancels an active synchronization through its abort signal", async () => {
+    let aborted = false;
+    backend.runFabricSync.mockImplementation(
+      async (
+        _isPreview: boolean,
+        _user: unknown,
+        _report: unknown,
+        signal: AbortSignal,
+      ) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener(
+            "abort",
+            () => {
+              aborted = true;
+              reject(new Error("Synchronization cancelled."));
+            },
+            { once: true },
+          );
+        }),
+    );
+
+    render(
+      <AtlasProvider isPreview={false} currentUser={currentUser}>
+        <Harness />
+      </AtlasProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("hydrating")).toHaveTextContent("false"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Sync" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("syncing")).toHaveTextContent("true"),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel sync" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("syncing")).toHaveTextContent("false"),
+    );
+    expect(aborted).toBe(true);
+    expect(screen.getByTestId("stage")).toHaveTextContent("Sync failed");
+  });
+
+  it("uses the authenticated email as the persisted comment identity", async () => {
     const principal = SAMPLE_DATA.principals.find(
       (candidate) => candidate.kind === "user" && candidate.email,
     )!;
@@ -367,9 +417,34 @@ describe("AtlasProvider synchronization", () => {
       true,
       expect.objectContaining({
         authorId: principal.principalId,
-        authorName: principal.displayName,
+        authorName: principal.email,
         authorEmail: principal.email,
       }),
+    );
+  });
+
+  it("keeps a valid catalog visible when team notes fail to load", async () => {
+    backend.loadFromDb.mockResolvedValue(structuredClone(SAMPLE_DATA));
+    backend.loadCommentsFromDb.mockRejectedValue(
+      new Error("notes unavailable"),
+    );
+
+    render(
+      <AtlasProvider isPreview={false} currentUser={currentUser}>
+        <Harness />
+      </AtlasProvider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("has-data")).toHaveTextContent("true"),
+    );
+    expect(screen.getByTestId("item-count")).toHaveTextContent(
+      String(SAMPLE_DATA.items.length),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("comments-error")).toHaveTextContent(
+        "notes unavailable",
+      ),
     );
   });
 

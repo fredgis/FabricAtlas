@@ -11,6 +11,7 @@ import {
   readBoundedResponseText,
   selectMsalAccount,
   syncDeadlineExceeded,
+  tokenNeedsRefresh,
   validateRawSync,
   validateSyncEnrichment,
   type MsalAccount,
@@ -226,6 +227,21 @@ describe("validateRawSync", () => {
       });
     });
 
+    it("renews only tokens that are close to expiry", () => {
+      const token = (exp: number) => {
+        const payload = btoa(JSON.stringify({ exp }))
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_")
+          .replace(/=+$/, "");
+        return `header.${payload}.signature`;
+      };
+      const now = Date.parse("2026-09-05T12:00:00.000Z");
+
+      expect(tokenNeedsRefresh(token(now / 1000 + 60), now)).toBe(true);
+      expect(tokenNeedsRefresh(token(now / 1000 + 900), now)).toBe(false);
+      expect(tokenNeedsRefresh("opaque-token", now)).toBe(false);
+    });
+
   });
 
   describe("sync response parsing", () => {
@@ -336,6 +352,24 @@ describe("validateRawSync", () => {
       /execution budget.*previous snapshot was preserved/i,
     );
     expect(syncDeadlineExceeded(raw)).toBe(true);
+  });
+
+  it("treats request timeouts and deferred retry windows as resumable", () => {
+    expect(
+      syncDeadlineExceeded({
+        errors: ["itemDetails: request-timeout"],
+      }),
+    ).toBe(true);
+    expect(
+      syncDeadlineExceeded({
+        capabilities: {
+          kqlSchema: {
+            status: "failed",
+            code: "retry-after-deferred",
+          },
+        },
+      }),
+    ).toBe(true);
   });
 
   it("rejects failed required v2 sections", () => {
@@ -670,6 +704,47 @@ describe("validateRawSync", () => {
         }),
       ]),
     );
+  });
+
+  it("uses authoritative guest evidence and preserves unknown external state", () => {
+    const raw = completeSync();
+    raw.access = [
+      {
+        itemId: "item-1",
+        principalId: "guest-id",
+        principalName: "Guest User",
+        principalEmail: "guest@vendor.example",
+        principalType: "User",
+        userType: "Guest",
+        accessRight: "Read",
+      },
+      {
+        itemId: "item-1",
+        principalId: "unknown-id",
+        principalName: "Unknown User",
+        principalEmail: "unknown@example.com",
+        principalType: "User",
+        accessRight: "Read",
+      },
+    ];
+
+    const atlas = mapSyncToAtlas(raw, {
+      fabricId: workspaceId,
+      displayName: "Atlas",
+      capacity: "",
+      region: "",
+    });
+
+    expect(
+      atlas.principals.find(
+        (principal) => principal.principalId === "guest-id",
+      ),
+    ).toMatchObject({ kind: "guest", external: true });
+    expect(
+      atlas.principals.find(
+        (principal) => principal.principalId === "unknown-id",
+      ),
+    ).toMatchObject({ kind: "user", external: undefined });
   });
 
   it("correlates legacy item access with role-assignment principals", () => {

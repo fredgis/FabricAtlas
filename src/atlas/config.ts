@@ -7,7 +7,7 @@
 //
 // The UDF invoke URL is only known after the function is published in the
 // Fabric portal. New deployments provide it through a public Rayfin env var;
-// the localStorage fallback keeps older configured installations working.
+// only the build-time environment can configure the token destination.
 
 function boundedInteger(
   value: string | undefined,
@@ -67,6 +67,8 @@ export const ATLAS_CONFIG = {
     "Microsoft Fabric workspace",
   syncAdminEmail:
     (import.meta.env.VITE_RAYFIN_ATLAS_SYNC_ADMIN_EMAIL as string) || "",
+  syncAdminSubject:
+    (import.meta.env.VITE_RAYFIN_ATLAS_SYNC_ADMIN_SUBJECT as string) || "",
   snapshotRetentionCount: boundedInteger(
     import.meta.env.VITE_RAYFIN_ATLAS_SNAPSHOT_RETENTION_COUNT,
     12,
@@ -84,22 +86,58 @@ export const ATLAS_CONFIG = {
   scope: "https://analysis.windows.net/powerbi/api/.default",
 };
 
-const UDF_KEY = "atlas.udfUrl";
-
 /** Resolved UDF `sync_all` invoke URL, or null when not configured yet. */
 export function getUdfUrl(): string | null {
-  const env =
+  return (
     (import.meta.env.VITE_RAYFIN_ATLAS_UDF_URL as string | undefined) ??
-    (import.meta.env.VITE_ATLAS_UDF_URL as string | undefined);
-  if (env) return env;
+    (import.meta.env.VITE_ATLAS_UDF_URL as string | undefined) ??
+    null
+  );
+}
+
+export function validateUdfUrl(value: string, workspaceId: string): string {
+  let url: URL;
   try {
-    return localStorage.getItem(UDF_KEY);
+    url = new URL(value);
   } catch {
-    return null;
+    throw new Error("Atlas Sync is configured with an invalid UDF endpoint.");
   }
+  const host = url.hostname.toLowerCase();
+  const match =
+    /^\/v1\/workspaces\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/userDataFunctions\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/functions\/sync_all\/invoke\/?$/i.exec(
+      url.pathname,
+    );
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    (url.port && url.port !== "443") ||
+    !/^(?:[a-z0-9-]+\.)+userdatafunctions\.fabric\.microsoft\.com$/.test(host) ||
+    url.search ||
+    url.hash ||
+    !match ||
+    match[1].toLowerCase() !== workspaceId.toLowerCase()
+  ) {
+    throw new Error("Atlas Sync is configured with an invalid UDF endpoint.");
+  }
+  return url.toString();
 }
 
 /** True once the UDF `sync_all` invoke URL is known. */
 export function isSyncConfigured(): boolean {
-  return !!getUdfUrl() && !!ATLAS_CONFIG.clientId && !!ATLAS_CONFIG.syncAdminEmail;
+  const udfUrl = getUdfUrl();
+  if (
+    !udfUrl ||
+    !ATLAS_CONFIG.clientId ||
+    !ATLAS_CONFIG.syncAdminEmail ||
+    !ATLAS_CONFIG.syncAdminSubject
+  ) {
+    return false;
+  }
+  try {
+    validateUdfUrl(udfUrl, ATLAS_CONFIG.workspaceId);
+    return true;
+  } catch {
+    return false;
+  }
 }

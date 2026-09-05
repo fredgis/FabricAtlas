@@ -20,7 +20,14 @@ export function CommentsView({
   focus?: AtlasFocusRequest;
   onTargetChange?: (itemId: string) => void;
 } = {}) {
-  const { data, addComment, currentUser } = useAtlas();
+  const {
+    data,
+    addComment,
+    currentUser,
+    commentsLoading,
+    commentsError,
+    reloadComments,
+  } = useAtlas();
   const { comments, items } = data;
 
   const [text, setText] = useState("");
@@ -199,7 +206,33 @@ export function CommentsView({
             </div>
           </div>
 
-          {feed.length === 0 ? (
+          {commentsError && (
+            <div
+              role="alert"
+              className="mb-m flex items-center justify-between gap-m rounded-lg border border-status-failing/30 bg-status-failing/10 px-m py-s text-200 text-status-failing"
+            >
+              <span>Team notes could not be loaded. The catalog remains available.</span>
+              <button
+                type="button"
+                onClick={() => void reloadComments()}
+                className="shrink-0 rounded-md border border-current px-m py-s font-semibold"
+              >
+                Retry notes
+              </button>
+            </div>
+          )}
+
+          {commentsLoading ? (
+            <Card className="border-dashed p-xl text-200 text-muted-foreground">
+              <span
+                role="status"
+                className="flex items-center justify-center gap-s"
+              >
+                <Loader2 className="icon-size-200 animate-spin" aria-hidden="true" />
+                Loading team notes
+              </span>
+            </Card>
+          ) : feed.length === 0 ? (
             <Card className="flex flex-col items-center border-dashed px-xl py-xxxl text-center">
               <span className="flex items-center justify-center rounded-full bg-muted p-l text-muted-foreground">
                 <MessageSquare className="icon-size-500" aria-hidden="true" />

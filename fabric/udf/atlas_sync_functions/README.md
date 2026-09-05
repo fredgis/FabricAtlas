@@ -5,13 +5,13 @@ runs inside Fabric, receives the signed-in user's token, and returns the whole
 workspace picture: items, **per-item access** (who can see each item, not just the
 workspace), the real **lineage** between items, per-item **config**, and recent
 jobs. Contract version 2 also reports collection status for each section and
-metadata capability. See the "Why a Fabric User Data Function?" note in the
-[root README](../../../README.md) for the reasoning.
+metadata capability. See [How it works](../../../README.md#how-it-works) for
+the reasoning.
 
 Per-item access and lineage come from the Fabric **admin scanner** (`getInfo`),
-which needs the `Tenant.Read.All` delegated permission (already consented on the
-`FabricAtlas Sync` app registration) and the tenant's read-only admin API settings
-enabled. The browser rejects any failed required section and keeps the previous
+which needs the `Tenant.Read.All` delegated permission, a **Fabric Administrator**
+synchronizer, and the tenant's enhanced read-only admin API metadata and user
+information settings. The browser rejects any failed required section and keeps the previous
 database snapshot active. Unsupported endpoints and unavailable optional tokens
 remain visible without invalidating complete required metadata. Deadline
 exhaustion in any discovery section rejects the refresh so a partial deep scan
@@ -57,10 +57,11 @@ objects or columns.
 | Semantic Model | Scanner tables, columns, measures, descriptions, hidden flags and measure expressions. |
 | Report | Pages from the supported Power BI `Get Pages In Group` API. The admin scanner and Reports REST do not expose visuals or field bindings, so those are explicitly reported as unavailable rather than fabricated. |
 
-The supported calls require the corresponding delegated permissions:
-`Tenant.Read.All`, `Lakehouse.Read.All`, `Warehouse.Read.All` or `Item.Read.All`,
-`SQLDatabase.Read.All` or `Item.Read.All`, and `Report.Read.All`. A privilege or
-service failure on a required metadata call is added to `errors`; the browser
+The required Fabric token uses `UserDataFunction.Execute.All`,
+`Workspace.Read.All`, `Item.Read.All`, `Report.Read.All`, `Dataset.Read.All`
+and `Tenant.Read.All`. Optional definition discovery uses a separate
+`Item.ReadWrite.All` token. Kusto and Azure SQL use separate optional
+`user_impersonation` tokens. A privilege or service failure on a required metadata call is added to `errors`; the browser
 then retains the last known-good snapshot. Optional enrichment failures and
 expected unsupported cases, such as table enumeration requiring a SQL
 connection, are returned as section evidence or config facts.
@@ -87,11 +88,8 @@ and [Get Pages In Group](https://learn.microsoft.com/rest/api/power-bi/reports/g
 | Function | Params | Returns |
 | --- | --- | --- |
 | `ping` | `name` | smoke test |
-| `list_items` | `fabricToken, workspaceId` | workspace items |
-| `list_role_assignments` | `fabricToken, workspaceId` | users/groups + their workspace role |
-| `get_workspace` | `fabricToken, workspaceId` | workspace metadata |
-| `sync_all` | `fabricToken, workspaceId, kustoToken?, sqlToken?, storageToken?, deferEnrichment?` | Schema v2 payload with workspace data, required/optional section status, metadata capabilities and safe errors |
-| `sync_items` | `fabricToken, workspaceId, itemIds, kustoToken?, sqlToken?, storageToken?` | Resumable deep metadata slice with completed and remaining item IDs |
+| `sync_all` | `fabricToken, workspaceId, correlationId?, definitionToken?, kustoToken?, sqlToken?, storageToken?, deferEnrichment?` | Schema v2 payload with workspace data, required/optional section status, metadata capabilities and safe errors |
+| `sync_items` | `fabricToken, workspaceId, itemIds, correlationId?, definitionToken?, kustoToken?, sqlToken?, storageToken?` | Resumable deep metadata slice with completed and remaining item IDs |
 
 Required sections are `workspace`, `items`, `roleAssignments`, `scanner`,
 `schema`, `lineage`, `access` and `config`. Optional sections are `jobs`,

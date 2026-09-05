@@ -1,5 +1,5 @@
 import { boolean, entity, authenticated, uuid, text, set, date } from '@microsoft/rayfin-core';
-import { SYNC_WRITER_EMAIL } from './sync-policy.js';
+import { SYNC_WRITER_SUBJECT } from './sync-policy.js';
 
 export type ItemHealth = 'healthy' | 'stale' | 'failing' | 'unknown';
 export type Endorsement = 'none' | 'promoted' | 'certified';
@@ -12,13 +12,13 @@ export type Endorsement = 'none' | 'promoted' | 'certified';
 @entity()
 @authenticated('read')
 @authenticated('delete', {
-  policy: (claims) => claims.email.eq(SYNC_WRITER_EMAIL),
+  policy: (claims) => claims.sub.eq(SYNC_WRITER_SUBJECT),
 })
 @authenticated('create', {
   policy: (claims, item) =>
     claims.email
       .eq(item.writerEmail)
-      .and(claims.email.eq(SYNC_WRITER_EMAIL)),
+      .and(claims.sub.eq(SYNC_WRITER_SUBJECT)),
 })
 export class FabricItem {
   @uuid() id!: string;
@@ -28,6 +28,7 @@ export class FabricItem {
   @text({ max: 100 }) fabricId!: string;
   @text({ max: 200 }) displayName!: string;
   @text({ max: 60 }) itemType!: string;
+  @text({ max: 200, optional: true }) size?: string;
   @text({ max: 600, optional: true }) description?: string;
   @text({ max: 120, optional: true }) ownerName?: string;
   @text({ max: 150, optional: true }) ownerEmail?: string;

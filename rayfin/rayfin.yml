@@ -1,6 +1,6 @@
 id: fabricatlas
 name: FabricAtlas
-version: 1.11.5
+version: 1.12.0
 services:
   auth:
     enabled: true
@@ -8,7 +8,6 @@ services:
       enabled: true
     allowedRedirectUris:
       - http://localhost:5173
-      - https://glad-alder-8f53edbdc7-centralus.webapp.fabricapps.net
   data:
     enabled: true
     dialect: mssql
