@@ -329,11 +329,17 @@ describe("MapView selection", () => {
 
   it("keeps the complete graph and node positions when impact mode changes", () => {
     window.history.replaceState(null, "", "/#map");
-    render(
+    const { container } = render(
       <AtlasProvider isPreview>
         <MapView />
       </AtlasProvider>,
     );
+    fireEvent.click(
+      screen.getByLabelText("alpinerent_lakehouse, Lakehouse, healthy"),
+    );
+    const viewport = container.querySelector<HTMLDivElement>(".atlas-map-grid")!;
+    viewport.scrollLeft = 360;
+    viewport.scrollTop = 420;
 
     const before = new Map(
       SAMPLE_DATA.items.map((item) => {
@@ -349,6 +355,8 @@ describe("MapView selection", () => {
 
     fireEvent.click(screen.getByRole("switch", { name: "Impact mode" }));
 
+    expect(viewport.scrollLeft).toBe(360);
+    expect(viewport.scrollTop).toBe(420);
     for (const item of SAMPLE_DATA.items) {
       const node = screen.getByLabelText(
         `${item.displayName}, ${typeMeta(item.itemType).label}, ${item.health}`,
@@ -363,6 +371,79 @@ describe("MapView selection", () => {
     expect(
       document.querySelector('marker[id="atlas-up"]'),
     ).toHaveAttribute("markerWidth", "7");
+  });
+
+  it("does not reorder disconnected components when impact mode is enabled", () => {
+    const model = SAMPLE_DATA.items.find(
+      (item) => item.itemType === "SemanticModel",
+    )!;
+    const report = SAMPLE_DATA.items.find((item) => item.itemType === "Report")!;
+    const lakehouse = SAMPLE_DATA.items.find(
+      (item) => item.itemType === "Lakehouse",
+    )!;
+    const warehouse = SAMPLE_DATA.items.find(
+      (item) => item.itemType === "Warehouse",
+    )!;
+    const originalEdges = SAMPLE_DATA.edges;
+    SAMPLE_DATA.edges = [
+      { source: model.fabricId, target: report.fabricId, relation: "report" },
+      {
+        source: lakehouse.fabricId,
+        target: warehouse.fabricId,
+        relation: "loads",
+      },
+    ];
+    window.history.replaceState(null, "", "/#map");
+    const { container } = render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+    SAMPLE_DATA.edges = originalEdges;
+
+    fireEvent.click(
+      screen.getByLabelText("alpinerent_lakehouse, Lakehouse, healthy"),
+    );
+    const viewport = container.querySelector<HTMLDivElement>(".atlas-map-grid")!;
+    viewport.scrollTop = 500;
+    const before = {
+      lakehouse: {
+        left: screen.getByLabelText(
+          "alpinerent_lakehouse, Lakehouse, healthy",
+        ).style.left,
+        top: screen.getByLabelText(
+          "alpinerent_lakehouse, Lakehouse, healthy",
+        ).style.top,
+      },
+      model: {
+        left: screen.getByLabelText(
+          "AlpineRent Sales Model, Semantic model, healthy",
+        ).style.left,
+        top: screen.getByLabelText(
+          "AlpineRent Sales Model, Semantic model, healthy",
+        ).style.top,
+      },
+    };
+
+    fireEvent.click(screen.getByRole("switch", { name: "Impact mode" }));
+
+    expect(viewport.scrollTop).toBe(500);
+    expect({
+      left: screen.getByLabelText(
+        "alpinerent_lakehouse, Lakehouse, healthy",
+      ).style.left,
+      top: screen.getByLabelText(
+        "alpinerent_lakehouse, Lakehouse, healthy",
+      ).style.top,
+    }).toEqual(before.lakehouse);
+    expect({
+      left: screen.getByLabelText(
+        "AlpineRent Sales Model, Semantic model, healthy",
+      ).style.left,
+      top: screen.getByLabelText(
+        "AlpineRent Sales Model, Semantic model, healthy",
+      ).style.top,
+    }).toEqual(before.model);
   });
 
   it("pans the complete graph by dragging its background", () => {

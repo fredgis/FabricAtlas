@@ -1,6 +1,6 @@
 id: fabricatlas
 name: FabricAtlas
-version: 1.11.4
+version: 1.11.5
 services:
   auth:
     enabled: true
