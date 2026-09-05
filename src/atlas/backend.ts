@@ -44,6 +44,11 @@ import type {
   Principal,
   WorkspaceInfo,
 } from "./model";
+import {
+  itemMetadataFromSchema,
+  parseObjectLineagePayload,
+  type MetadataObjectLineageEdge,
+} from "./item-metadata";
 
 export type SyncProgressReporter = (progress: number, stage: string) => void;
 
@@ -432,7 +437,7 @@ async function persistSync(
     })),
   );
   reportProgress?.(94, "Writing object metadata");
-  // Persist the sub-object schema (tables/columns/measures) as hidden ConfigEntry
+  // Persist the sub-object schema as hidden ConfigEntry
   // rows so the Asset Catalog and deep lineage survive a reload without re-sync.
   // Values are chunked instead of truncated so wide table schemas retain every
   // real column while staying within ConfigEntry.value's 2,000-character limit.
@@ -465,6 +470,23 @@ async function persistSync(
     }
   }
   if (schemaRows.length) await insertAll("ConfigEntry", schemaRows);
+  const objectEdgeRows: Row[] = [];
+  const serializedObjectEdges = JSON.stringify(atlas.objectEdges ?? []);
+  const objectEdgeChunks =
+    serializedObjectEdges === "[]"
+      ? []
+      : serializedObjectEdges.match(/[\s\S]{1,1960}/g) ?? [];
+  for (let part = 0; part < objectEdgeChunks.length; part += 1) {
+    objectEdgeRows.push({
+      itemFabricId: atlas.workspace.fabricId,
+      section: "__object_edges__",
+      label: "workspace",
+      value: `v1:${String(part + 1).padStart(4, "0")}:${String(objectEdgeChunks.length).padStart(4, "0")}:${objectEdgeChunks[part]}`,
+    });
+  }
+  if (objectEdgeRows.length) {
+    await insertAll("ConfigEntry", objectEdgeRows);
+  }
 
   // The audit row and every snapshot row must succeed before the Workspace
   // marker is written. That final marker is the atomic visibility switch:
@@ -501,7 +523,7 @@ async function persistSync(
     grantCount: atlas.grants.length,
     jobCount: atlas.jobs.length,
     configCount: atlas.config.length,
-    schemaEntryCount: schemaRows.length,
+    schemaEntryCount: schemaRows.length + objectEdgeRows.length,
     summaryVersion: 1,
     healthyCount: snapshotSummary.healthyCount,
     staleCount: snapshotSummary.staleCount,
@@ -621,6 +643,38 @@ const MANIFEST_COUNTS = [
   ["schemaEntryCount", "schema chunks"],
 ] as const;
 
+function parseChunkedValue(
+  rawValues: string[],
+  malformedMessage: string,
+  incompleteMessage: string,
+): string {
+  if (rawValues.length === 1 && !rawValues[0].startsWith("v1:")) {
+    return rawValues[0];
+  }
+  const chunks = rawValues.map((value) => {
+    const match = /^v1:(\d{4}):(\d{4}):([\s\S]*)$/.exec(value);
+    if (!match) throw new Error(malformedMessage);
+    return {
+      part: Number(match[1]),
+      total: Number(match[2]),
+      value: match[3],
+    };
+  });
+  const total = chunks[0]?.total ?? 0;
+  if (
+    total !== chunks.length ||
+    chunks.some((chunk) => chunk.total !== total) ||
+    new Set(chunks.map((chunk) => chunk.part)).size !== total ||
+    chunks.some((chunk) => chunk.part < 1 || chunk.part > total)
+  ) {
+    throw new Error(incompleteMessage);
+  }
+  return chunks
+    .sort((left, right) => left.part - right.part)
+    .map((chunk) => chunk.value)
+    .join("");
+}
+
 function validateManifest(
   marker: Row,
   counts: Record<(typeof MANIFEST_COUNTS)[number][0], number>,
@@ -659,33 +713,11 @@ function parseSchemaRows(
   for (const [key, parts] of grouped) {
     const [itemId, label] = JSON.parse(key) as [string, string];
     const rawValues = parts.map((part) => String(part.value ?? ""));
-    let serialized: string;
-    if (rawValues.length === 1 && !rawValues[0].startsWith("v1:")) {
-      serialized = rawValues[0];
-    } else {
-      const chunks = rawValues.map((value) => {
-        const match = /^v1:(\d{4}):(\d{4}):([\s\S]*)$/.exec(value);
-        if (!match) throw new Error("snapshot contains a malformed schema chunk");
-        return {
-          part: Number(match[1]),
-          total: Number(match[2]),
-          value: match[3],
-        };
-      });
-      const total = chunks[0]?.total ?? 0;
-      if (
-        total !== chunks.length ||
-        chunks.some((chunk) => chunk.total !== total) ||
-        new Set(chunks.map((chunk) => chunk.part)).size !== total ||
-        chunks.some((chunk) => chunk.part < 1 || chunk.part > total)
-      ) {
-        throw new Error("snapshot contains an incomplete schema");
-      }
-      serialized = chunks
-        .sort((left, right) => left.part - right.part)
-        .map((chunk) => chunk.value)
-        .join("");
-    }
+    const serialized = parseChunkedValue(
+      rawValues,
+      "snapshot contains a malformed schema chunk",
+      "snapshot contains an incomplete schema",
+    );
     const parsed = JSON.parse(serialized) as {
       rows?: number;
       objectType?: string;
@@ -694,6 +726,7 @@ function parseSchemaRows(
       isHidden?: boolean;
       columns?: ModelTableSchema["columns"];
       measures?: ModelTableSchema["measures"];
+      metadata?: ModelTableSchema["metadata"];
     };
     const tables = schema[itemId] ?? [];
     tables.push({
@@ -705,10 +738,38 @@ function parseSchemaRows(
       isHidden: parsed.isHidden,
       columns: Array.isArray(parsed.columns) ? parsed.columns : [],
       measures: Array.isArray(parsed.measures) ? parsed.measures : [],
+      metadata: parsed.metadata,
     });
     schema[itemId] = tables;
   }
   return schema;
+}
+
+function parseObjectEdgeRows(rows: Row[]): MetadataObjectLineageEdge[] {
+  if (rows.length === 0) return [];
+  if (
+    rows.some(
+      (row) =>
+        String(row.section) !== "__object_edges__" ||
+        String(row.label) !== "workspace",
+    )
+  ) {
+    throw new Error("snapshot contains malformed object lineage chunks");
+  }
+  const serialized = parseChunkedValue(
+    rows.map((row) => String(row.value ?? "")),
+    "snapshot contains a malformed object lineage chunk",
+    "snapshot contains incomplete object lineage",
+  );
+  let raw: unknown;
+  try {
+    raw = JSON.parse(serialized);
+  } catch {
+    throw new Error("snapshot contains invalid object lineage");
+  }
+  const parsed = parseObjectLineagePayload(raw);
+  if (!parsed) throw new Error("snapshot contains invalid object lineage");
+  return parsed.objectEdges;
 }
 
 type ReadEntity = (entity: string, filter: Row) => Promise<Row[]>;
@@ -721,6 +782,7 @@ interface SnapshotRows {
   jobRows: Row[];
   regularConfigRows: Row[];
   schemaRows: Row[];
+  objectEdgeRows: Row[];
   syncRows: Row[];
 }
 
@@ -938,10 +1000,15 @@ async function readSnapshotRows(
     grantRows: rowsForSnapshot(allGrantRows, wid, snapshotId, writerEmail),
     jobRows: rowsForSnapshot(allJobRows, wid, snapshotId, writerEmail),
     regularConfigRows: configRows.filter(
-      (row) => String(row.section) !== "__schema__",
+      (row) =>
+        String(row.section) !== "__schema__" &&
+        String(row.section) !== "__object_edges__",
     ),
     schemaRows: configRows.filter(
       (row) => String(row.section) === "__schema__",
+    ),
+    objectEdgeRows: configRows.filter(
+      (row) => String(row.section) === "__object_edges__",
     ),
     syncRows: rowsForSnapshot(allSyncRows, wid, snapshotId, writerEmail),
   };
@@ -958,7 +1025,7 @@ function catalogFromRows(
     grantCount: rows.grantRows.length,
     jobCount: rows.jobRows.length,
     configCount: rows.regularConfigRows.length,
-    schemaEntryCount: rows.schemaRows.length,
+    schemaEntryCount: rows.schemaRows.length + rows.objectEdgeRows.length,
   });
 
   const items: Item[] = rows.itemRows.map((row) => {
@@ -1063,6 +1130,16 @@ function catalogFromRows(
     value: String(row.value ?? ""),
   }));
   const schema = parseSchemaRows(rows.schemaRows, itemIds);
+  const itemMetadata = Object.fromEntries(
+    items.flatMap((item) => {
+      const metadata = itemMetadataFromSchema(
+        item.itemType,
+        schema[item.fabricId],
+      );
+      return metadata ? [[item.fabricId, metadata] as const] : [];
+    }),
+  );
+  const objectEdges = parseObjectEdgeRows(rows.objectEdgeRows);
   const snapshotId = String(marker.snapshotId);
   const syncedAt = validDateIso(marker.syncedAt) ?? markerTime;
   const workspace: WorkspaceInfo = {
@@ -1085,6 +1162,8 @@ function catalogFromRows(
     jobs,
     config,
     schema,
+    itemMetadata,
+    objectEdges,
   };
 }
 
@@ -1147,7 +1226,14 @@ async function deleteSnapshot(
 ): Promise<void> {
   const snapshotId = String(marker.snapshotId);
   const groups: Array<[string, Row[]]> = [
-    ["ConfigEntry", [...rows.regularConfigRows, ...rows.schemaRows]],
+    [
+      "ConfigEntry",
+      [
+        ...rows.regularConfigRows,
+        ...rows.schemaRows,
+        ...rows.objectEdgeRows,
+      ],
+    ],
     ["JobRun", rows.jobRows],
     ["AccessGrant", rows.grantRows],
     ["Principal", rows.principalRows],

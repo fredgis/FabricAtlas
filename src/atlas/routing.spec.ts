@@ -118,6 +118,39 @@ describe("Atlas routing", () => {
     });
   });
 
+  it("round-trips new object kinds and stable object IDs", () => {
+    const url = urlForNavigation(
+      { pathname: "/", search: "?ctid=tenant" },
+      {
+        tab: "assets",
+        focus: {
+          requestId: "ignored",
+          itemId: "graph",
+          tableName: "Device",
+          objectName: "Device ID",
+          objectId: "Device/DeviceId",
+          objectKind: "graphProperty",
+          filters: { kind: "graphProperty" },
+        },
+      },
+    );
+
+    expect(
+      parseAtlasLocation({
+        hash: "#assets",
+        search: url.slice(url.indexOf("?"), url.indexOf("#")),
+      }),
+    ).toMatchObject({
+      tab: "assets",
+      focus: {
+        itemId: "graph",
+        objectId: "Device/DeviceId",
+        objectKind: "graphProperty",
+        filters: { kind: "graphProperty" },
+      },
+    });
+  });
+
   it("round-trips posture filters", () => {
     const url = urlForNavigation(
       { pathname: "/", search: "" },

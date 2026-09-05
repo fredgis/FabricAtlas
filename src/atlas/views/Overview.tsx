@@ -26,13 +26,13 @@ import {
   typeMeta,
   relativeTime,
   schemaFor,
-  type Health,
   type ItemType,
   type JobStatus,
 } from "../model";
 import { snapshotCatalogFromData } from "../history";
 import { scorePosture } from "../posture";
 import { workspaceDetailLabel } from "../workspace-display";
+import { summarizeHealth } from "../health-summary";
 
 const JOB_TONE: Record<JobStatus, string> = {
   completed: "bg-status-healthy",
@@ -46,21 +46,18 @@ export function OverviewView({
 }: {
   onOpen: (target: Tab | AtlasNavigation) => void;
 }) {
-  const { data, history, lastSyncedAt } = useAtlas();
+  const {
+    data,
+    history,
+    lastSyncedAt,
+    governanceTargets,
+    governancePolicyLoading,
+    governancePolicyError,
+  } = useAtlas();
+  const targetsAvailable = !governancePolicyLoading && !governancePolicyError;
   const { items, principals, jobs, syncRuns, grants, edges } = data;
 
-  const health = useMemo(() => {
-    const counts: Record<Health, number> = {
-      healthy: 0,
-      stale: 0,
-      failing: 0,
-      unknown: 0,
-    };
-    items.forEach((item) => {
-      counts[item.health] += 1;
-    });
-    return counts;
-  }, [items]);
+  const health = useMemo(() => summarizeHealth(items), [items]);
 
   const byType = useMemo(() => {
     const counts = new Map<ItemType, number>();
@@ -99,8 +96,9 @@ export function OverviewView({
     () =>
       scorePosture(
         currentCatalog ?? snapshotCatalogFromData(data),
+        governanceTargets,
       ),
-    [currentCatalog, data],
+    [currentCatalog, data, governanceTargets],
   );
   const previousSnapshotId = historyAligned
     ? history.summaries[1]?.snapshotId
@@ -109,8 +107,8 @@ export function OverviewView({
     (snapshot) => snapshot.snapshotId === previousSnapshotId,
   )?.catalog;
   const previousPosture = useMemo(() => {
-    return previousCatalog ? scorePosture(previousCatalog) : undefined;
-  }, [previousCatalog]);
+    return previousCatalog ? scorePosture(previousCatalog, governanceTargets) : undefined;
+  }, [previousCatalog, governanceTargets]);
   const postureAtTarget = posture.pillars.filter(
     (pillar) => pillar.score != null && pillar.score >= pillar.target,
   ).length;
@@ -154,11 +152,7 @@ export function OverviewView({
       .map((row) => row.principalKey),
   );
   const attentionCount = health.stale + health.failing;
-  const percentage = (count: number) =>
-    Math.round((count / (items.length || 1)) * 100);
-  const healthPercentage = items.length
-    ? percentage(health.healthy)
-    : undefined;
+  const healthPercentage = health.healthPercentage;
   const syncFreshness = lastSyncedAt
     ? relativeTime(lastSyncedAt)
     : "Not synced yet";
@@ -220,7 +214,7 @@ export function OverviewView({
       tone: "bg-lineage-upstream",
     },
     {
-      label: "Owner assignment",
+      label: "Documented ownership",
       detail: ownerCoverage.denominator
         ? `${ownerCoverage.numerator} of ${ownerCoverage.denominator} eligible items`
         : "Metadata not collected",
@@ -306,11 +300,11 @@ export function OverviewView({
   return (
     <section
       aria-labelledby="overview-title"
-      className="flex flex-col gap-xxl p-l sm:p-xxl"
+      className="atlas-content-frame flex flex-col gap-xl"
     >
       <Card className="atlas-overview-hero relative isolate overflow-hidden border-border shadow-fabric-4">
         <div className="grid lg:grid-cols-5">
-          <div className="flex flex-col justify-between gap-xxxl p-xl sm:p-xxl lg:col-span-3 lg:p-xxxl">
+          <div className="atlas-page-header flex flex-col justify-between lg:col-span-3">
             <div>
               <div className="flex items-center gap-m">
                 <span className="atlas-brand-mark flex icon-size-700 shrink-0 items-center justify-center rounded-xl text-primary-foreground">
@@ -326,11 +320,11 @@ export function OverviewView({
 
               <h1
                 id="overview-title"
-                className="atlas-overview-title mt-xl text-balance font-heading text-hero-800 font-bold leading-hero-800 sm:text-hero-900 sm:leading-hero-900"
+                className="atlas-overview-title mt-m text-balance font-heading text-600 font-bold leading-600"
               >
                 {data.workspace.displayName || "Fabric workspace"}
               </h1>
-              <p className="atlas-overview-copy mt-m text-400 leading-500 text-muted-foreground">
+              <p className="atlas-overview-copy mt-s text-300 leading-300 text-muted-foreground">
                 See what is governed, what needs attention, and where to act
                 across this workspace.
               </p>
@@ -343,7 +337,7 @@ export function OverviewView({
 
             <nav
               aria-label="Overview destinations"
-              className="grid gap-s sm:grid-cols-3"
+              className="atlas-toolbar grid sm:grid-cols-3"
             >
               <button
                 type="button"
@@ -390,27 +384,31 @@ export function OverviewView({
             </nav>
           </div>
 
-          <aside className="flex flex-col justify-center gap-xl border-t border-border bg-secondary/70 p-xl sm:p-xxl lg:col-span-2 lg:border-l lg:border-t-0 lg:p-xxxl">
+          <aside className="atlas-page-header flex flex-col justify-center border-t border-border bg-secondary/70 lg:col-span-2 lg:border-l lg:border-t-0">
             <div className="flex items-center gap-l">
               <span
                 className={`relative flex icon-size-600 shrink-0 items-center justify-center rounded-full border ${pulse.className}`}
                 aria-hidden="true"
               >
-                <span className="absolute inset-0 animate-ping rounded-full bg-current opacity-10 motion-reduce:hidden" />
                 <Activity className="icon-size-300" />
               </span>
               <div>
-                <SectionLabel>Health pulse</SectionLabel>
-                <div className="mt-xs flex items-baseline gap-s">
-                  <span className="font-numeric text-hero-800 font-bold leading-hero-800">
-                    {healthPercentage == null ? "—" : `${healthPercentage}%`}
+                <SectionLabel>Assessed item health</SectionLabel>
+                <div className="mt-xs flex flex-wrap items-baseline gap-s">
+                  <span className="font-numeric text-600 font-bold leading-600">
+                    {healthPercentage == null ? "Not assessed" : `${healthPercentage}%`}
                   </span>
                   <span className="text-300 font-semibold">{pulse.label}</span>
                 </div>
                 <p className="mt-xs text-200 text-muted-foreground">
-                  {items.length
-                    ? `${health.healthy} of ${items.length} items healthy`
-                    : "Health appears after the workspace is indexed"}
+                  {health.assessed
+                    ? `${health.healthy} of ${health.assessed} assessed items healthy`
+                    : "No collected health status is available yet."}
+                </p>
+                <p className="mt-s text-200 text-muted-foreground">
+                  Health coverage: {health.coveragePercentage == null ? "Not applicable" : `${health.coveragePercentage}%`}
+                  {" "}({health.assessed} of {health.total} items assessed).
+                  {health.unknown > 0 && ` ${health.unknown} unknown statuses are excluded from the health score.`}
                 </p>
               </div>
             </div>
@@ -447,8 +445,15 @@ export function OverviewView({
               id="posture-targets-title"
               className="mt-xs text-500 font-semibold"
             >
-              {postureAtTarget} of {posture.pillars.length} pillars at target
+              {targetsAvailable
+                ? `${postureAtTarget} of ${posture.pillars.length} pillars at target`
+                : governancePolicyLoading
+                  ? "Loading governance targets"
+                  : "Governance targets unavailable"}
             </h2>
+            <p className="mt-xs text-200 text-muted-foreground">
+              Standard baseline: 70% for each governance pillar.
+            </p>
           </div>
           <button
             type="button"
@@ -466,6 +471,11 @@ export function OverviewView({
             Open posture
           </button>
         </div>
+        {governancePolicyError && (
+          <p role="alert" className="mb-m rounded-lg border border-destructive/30 bg-destructive/10 p-m text-200">
+            {governancePolicyError} Open posture to retry. Raw scores remain visible below.
+          </p>
+        )}
         <Card className="grid gap-s p-m sm:grid-cols-2 xl:grid-cols-6">
           {posture.pillars.map((pillar) => {
             const previous = previousPosture?.pillars.find(
@@ -497,8 +507,8 @@ export function OverviewView({
                 <div className="mt-xs font-numeric text-400 font-bold">
                   {pillar.score == null ? "N/A" : `${pillar.score}%`}
                 </div>
-                <div className="mt-xs text-100 text-muted-foreground">
-                  Target {pillar.target}%
+                <div className="mt-xs text-200 text-muted-foreground">
+                  {targetsAvailable ? `Target ${pillar.target}%` : "Target unavailable"}
                   {delta == null
                     ? ""
                     : ` · ${delta >= 0 ? "+" : ""}${delta} pts`}

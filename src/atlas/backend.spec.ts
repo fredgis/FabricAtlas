@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SAMPLE_DATA } from "./model";
 import {
+  metadataObjectLineageEdges,
+  parseOntologyMetadata,
+  projectItemMetadataToSchema,
+} from "./item-metadata";
+import {
   loadFromDb,
   loadHistoryFromDb,
   persistComment,
@@ -738,6 +743,78 @@ describe("Rayfin snapshot persistence", () => {
     expect(schemaWrites).toHaveLength(1);
     expect(schemaWrites[0].value).not.toContain("businessValue");
     expect(schemaWrites[0].value).not.toContain("secret");
+  });
+
+  it("persists safe item metadata and verified object lineage as hidden chunks", async () => {
+    const atlas = structuredClone(SAMPLE_DATA);
+    const ontology = atlas.items.find(
+      (item) => item.itemType === "SemanticModel",
+    )!;
+    const source = atlas.items.find((item) => item.itemType === "Lakehouse")!;
+    ontology.itemType = "Ontology";
+    const metadata = parseOntologyMetadata({
+      entities: [
+        {
+          id: "customer",
+          name: "Customer",
+          properties: [
+            { id: "customer-id", name: "Customer ID", valueType: "String" },
+          ],
+          entityIdParts: ["customer-id"],
+        },
+      ],
+      relationships: [],
+      bindings: [
+        {
+          id: "customer-binding",
+          entityId: "customer",
+          dataBindingConfiguration: {
+            sourceTableProperties: {
+              itemId: source.fabricId,
+              sourceSchema: "dbo",
+              sourceTableName: "Customers",
+            },
+            propertyBindings: [
+              {
+                sourceColumnName: "CustomerId",
+                targetPropertyId: "customer-id",
+              },
+            ],
+          },
+        },
+      ],
+      contextualizations: [],
+    })!;
+    atlas.schema = {
+      [ontology.fabricId]: projectItemMetadataToSchema(metadata),
+    };
+    atlas.itemMetadata = { [ontology.fabricId]: metadata };
+    atlas.objectEdges = metadataObjectLineageEdges(
+      ontology.fabricId,
+      metadata,
+    );
+    mocks.mapSyncToAtlas.mockReturnValue(atlas);
+
+    await runFabricSync(false, identity);
+
+    const writes = mocks.data.ConfigEntry.create.mock.calls.map(
+      ([row]) => row as Record<string, unknown>,
+    );
+    expect(
+      writes.some((row) => row.section === "__object_edges__"),
+    ).toBe(true);
+    expect(
+      writes
+        .filter((row) => row.section === "__object_edges__")
+        .map((row) => String(row.value))
+        .join(""),
+    ).toContain("binds property");
+    expect(
+      writes
+        .filter((row) => row.section === "__schema__")
+        .map((row) => String(row.value))
+        .join(""),
+    ).not.toMatch(/aiInstructions|fewShots|businessValue/);
   });
 
   it("falls back to the previous complete manifest during hydration", async () => {

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AtlasProvider } from "../store";
 import { AssetCatalogView } from "./AssetCatalog";
@@ -93,8 +93,23 @@ describe("AssetCatalogView", () => {
     fireEvent.click(group!);
     expect(screen.getByText("Item synchronized")).toBeInTheDocument();
     expect(
-      screen.getByText(/No tables, views, columns or measures were exposed/),
+      screen.getByText(/No discoverable objects were exposed/),
     ).toBeInTheDocument();
+  });
+
+  it("does not present missing visibility or provenance as confirmed metadata", async () => {
+    render(
+      <AtlasProvider isPreview>
+        <AssetCatalogView />
+      </AtlasProvider>,
+    );
+    fireEvent.change(screen.getByLabelText("Search assets"), {
+      target: { value: "Total Revenue" },
+    });
+    fireEvent.click(screen.getByText("Total Revenue").closest("button")!);
+    const inspector = within(await screen.findByLabelText("Total Revenue inspector"));
+    expect(inspector.getByText("Visibility").parentElement).toHaveTextContent("Not collected");
+    expect(inspector.getByText("Source").parentElement).toHaveTextContent("Source not recorded");
   });
 
   it("keeps real assets visible when searching by item type", () => {

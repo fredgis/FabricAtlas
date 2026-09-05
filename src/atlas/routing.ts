@@ -6,6 +6,7 @@ import type {
 } from "./navigation";
 import type { SavedViewFilters } from "./saved-views";
 import { ITEM_TYPES } from "./model";
+import { ASSET_OBJECT_KINDS } from "./catalog-objects";
 
 interface AtlasLocation {
   hash: string;
@@ -33,6 +34,8 @@ const KNOWN_KEYS = new Set([
   "health",
   "impact",
   "table",
+  "source",
+  "objectKind",
   "inspector",
 ]);
 const KNOWN_PREFIXES = [
@@ -43,7 +46,7 @@ const KNOWN_PREFIXES = [
   "jobs.",
   "workspace.",
 ];
-const ASSET_KINDS = new Set(["table", "view", "column", "measure"]);
+const ASSET_KINDS = new Set<string>(ASSET_OBJECT_KINDS);
 const GOVERNANCE_SECTIONS = new Set([
   "findings",
   "changes",
@@ -177,6 +180,8 @@ export function parseAtlasLocation(
       "health",
       "impact",
       "table",
+      "source",
+      "objectKind",
       "inspector",
     ].some((key) => params.has(key));
     return {
@@ -223,6 +228,7 @@ export function parseAtlasLocation(
         itemId: value(params, "assets.item"),
         tableName: value(params, "assets.table"),
         objectName,
+        objectId: value(params, "assets.objectId"),
         objectKind: objectName
           ? (objectKind as AtlasFocusRequest["objectKind"] | undefined)
           : undefined,
@@ -383,6 +389,7 @@ export function urlForNavigation(
     set(params, "assets.item", focus?.itemId);
     set(params, "assets.table", focus?.tableName);
     set(params, "assets.object", focus?.objectName);
+    set(params, "assets.objectId", focus?.objectId);
   } else if (navigation.tab === "governance") {
     set(
       params,

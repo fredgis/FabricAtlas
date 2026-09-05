@@ -28,6 +28,16 @@ const findingAckBackend = vi.hoisted(() => ({
   saveFindingAck: vi.fn(),
   deleteFindingAck: vi.fn(),
 }));
+const governancePolicyBackend = vi.hoisted(() => ({
+  loadGovernancePolicy: vi.fn(),
+  saveGovernancePolicy: vi.fn(),
+  deleteGovernancePolicy: vi.fn(),
+}));
+const governanceExceptionBackend = vi.hoisted(() => ({
+  loadGovernanceExceptions: vi.fn(),
+  saveGovernanceException: vi.fn(),
+  deleteGovernanceException: vi.fn(),
+}));
 const currentUser = {
   id: "user-1",
   name: "admin@example.com",
@@ -37,6 +47,8 @@ const currentUser = {
 vi.mock("./backend", () => backend);
 vi.mock("./saved-views", () => savedViewBackend);
 vi.mock("./finding-acks", () => findingAckBackend);
+vi.mock("./governance-policy", () => governancePolicyBackend);
+vi.mock("./governance-exceptions", () => governanceExceptionBackend);
 
 function Harness() {
   const atlas = useAtlas();
@@ -80,6 +92,29 @@ function Harness() {
       >
         Mute finding
       </button>
+      <button
+        type="button"
+        onClick={() =>
+          void atlas.saveGovernanceTargets({
+            ...atlas.governanceTargets,
+            access: 85,
+          }).catch(() => undefined)
+        }
+      >
+        Save governance targets
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          void atlas.saveGovernanceException({
+            findingId: "finding-shared",
+            reason: "Accepted until the migration completes.",
+            expiresAt: "2099-09-05T12:00:00.000Z",
+          }).catch(() => undefined)
+        }
+      >
+        Save governance exception
+      </button>
       <span data-testid="hydrating">{String(atlas.hydrating)}</span>
       <span data-testid="history-loading">{String(atlas.historyLoading)}</span>
       <span data-testid="history-count">{atlas.history.snapshots.length}</span>
@@ -99,6 +134,21 @@ function Harness() {
       </span>
       <span data-testid="finding-ack-pending">
         {String(atlas.findingAckPendingIds.has("finding-queue"))}
+      </span>
+      <span data-testid="governance-target-access">
+        {atlas.governanceTargets.access}
+      </span>
+      <span data-testid="governance-policy-loading">
+        {String(atlas.governancePolicyLoading)}
+      </span>
+      <span data-testid="governance-policy-error">
+        {atlas.governancePolicyError ?? ""}
+      </span>
+      <span data-testid="governance-exception-count">
+        {atlas.governanceExceptions.length}
+      </span>
+      <span data-testid="governance-exception-error">
+        {atlas.governanceExceptionsError ?? ""}
       </span>
       <span data-testid="has-data">{String(atlas.hasData)}</span>
       <span data-testid="syncing">{String(atlas.syncing)}</span>
@@ -145,6 +195,60 @@ describe("AtlasProvider synchronization", () => {
       }),
     );
     findingAckBackend.deleteFindingAck.mockReset();
+    governancePolicyBackend.loadGovernancePolicy.mockReset().mockResolvedValue({
+      targets: {
+        documentation: 70,
+        ownership: 70,
+        sensitivity: 70,
+        access: 70,
+        lineage: 70,
+        operations: 70,
+      },
+      source: "default",
+    });
+    governancePolicyBackend.saveGovernancePolicy.mockReset().mockImplementation(
+      async (
+        _preview: boolean,
+        _workspaceId: string,
+        _user: unknown,
+        targets: Record<string, number>,
+      ) => ({
+        id: "policy-1",
+        targets,
+        source: "persisted",
+      }),
+    );
+    governancePolicyBackend.deleteGovernancePolicy
+      .mockReset()
+      .mockResolvedValue(undefined);
+    governanceExceptionBackend.loadGovernanceExceptions
+      .mockReset()
+      .mockResolvedValue([]);
+    governanceExceptionBackend.saveGovernanceException
+      .mockReset()
+      .mockImplementation(
+        async (
+          _preview: boolean,
+          _workspaceId: string,
+          _user: unknown,
+          input: {
+            findingId: string;
+            reason: string;
+            expiresAt: string;
+          },
+        ) => ({
+          id: "exception-1",
+          ...input,
+          authorId: "user-1",
+          authorName: "Admin",
+          authorEmail: "admin@example.com",
+          createdAt: "2026-09-05T12:00:00.000Z",
+          updatedAt: "2026-09-05T12:00:00.000Z",
+        }),
+      );
+    governanceExceptionBackend.deleteGovernanceException
+      .mockReset()
+      .mockResolvedValue(undefined);
     backend.loadHistoryFromDb.mockImplementation(
       async (_isPreview: boolean, current: typeof SAMPLE_DATA) =>
         buildAtlasHistory([
@@ -309,6 +413,122 @@ describe("AtlasProvider synchronization", () => {
       false,
       expect.any(String),
       currentUser.id,
+    );
+  });
+
+  it("hydrates shared governance targets and exceptions by workspace", async () => {
+    governancePolicyBackend.loadGovernancePolicy.mockResolvedValue({
+      id: "policy-1",
+      targets: {
+        documentation: 75,
+        ownership: 76,
+        sensitivity: 77,
+        access: 78,
+        lineage: 79,
+        operations: 80,
+      },
+      source: "persisted",
+    });
+    governanceExceptionBackend.loadGovernanceExceptions.mockResolvedValue([
+      {
+        id: "exception-1",
+        findingId: "finding-1",
+        reason: "Temporary",
+        expiresAt: "2099-09-05T12:00:00.000Z",
+        authorId: "admin-1",
+        authorName: "Admin",
+        authorEmail: "admin@example.com",
+        createdAt: "2026-09-05T12:00:00.000Z",
+        updatedAt: "2026-09-05T12:00:00.000Z",
+      },
+    ]);
+
+    render(
+      <AtlasProvider isPreview={false} currentUser={currentUser}>
+        <Harness />
+      </AtlasProvider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("governance-target-access")).toHaveTextContent(
+        "78",
+      ),
+    );
+    expect(screen.getByTestId("governance-exception-count")).toHaveTextContent(
+      "1",
+    );
+    expect(
+      governancePolicyBackend.loadGovernancePolicy,
+    ).toHaveBeenCalledWith(false, expect.any(String));
+    expect(
+      governanceExceptionBackend.loadGovernanceExceptions,
+    ).toHaveBeenCalledWith(false, expect.any(String));
+  });
+
+  it("surfaces policy load failures instead of presenting defaults as loaded", async () => {
+    governancePolicyBackend.loadGovernancePolicy.mockRejectedValue(
+      new Error("policy unavailable"),
+    );
+
+    render(
+      <AtlasProvider isPreview={false} currentUser={currentUser}>
+        <Harness />
+      </AtlasProvider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("governance-policy-loading")).toHaveTextContent(
+        "false",
+      ),
+    );
+    expect(screen.getByTestId("governance-policy-error")).toHaveTextContent(
+      "policy unavailable",
+    );
+  });
+
+  it("saves shared targets and exceptions through the administrator path", async () => {
+    render(
+      <AtlasProvider isPreview={false} currentUser={currentUser}>
+        <Harness />
+      </AtlasProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("governance-policy-loading")).toHaveTextContent(
+        "false",
+      ),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save governance targets" }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("governance-target-access")).toHaveTextContent(
+        "85",
+      ),
+    );
+    expect(governancePolicyBackend.saveGovernancePolicy).toHaveBeenCalledWith(
+      false,
+      expect.any(String),
+      currentUser,
+      expect.objectContaining({ access: 85 }),
+      expect.objectContaining({ source: "default" }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save governance exception" }),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("governance-exception-count")).toHaveTextContent(
+        "1",
+      ),
+    );
+    expect(
+      governanceExceptionBackend.saveGovernanceException,
+    ).toHaveBeenCalledWith(
+      false,
+      expect.any(String),
+      currentUser,
+      expect.objectContaining({ findingId: "finding-shared" }),
     );
   });
 

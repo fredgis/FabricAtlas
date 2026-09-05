@@ -17,12 +17,20 @@ import {
 import { SavedViewsMenu } from "../components/SavedViewsMenu";
 import { OffboardingDialog } from "../components/OffboardingDialog";
 import {
-  deleteAccessReview,
-  loadAccessReviews,
+  appendAccessReviewEvent,
+  clearAccessReview,
+  loadAccessReviewHistories,
   saveAccessReview,
   type AccessReviewDecision,
+  type AccessReviewHistory,
+  type AccessReviewHistoryEntry,
   type AccessReviewStatus,
 } from "../access-reviews";
+import {
+  accessReviewEvidenceKey,
+  accessReviewEvidenceKeys,
+  serializeAccessReviewEvidence,
+} from "../access-review-evidence";
 import { accessRowsToCsv } from "../access-export";
 import {
   buildAccessReviewRows,
@@ -53,7 +61,7 @@ const ACCESS_STYLE: Record<
   { label: string; className: string }
 > = {
   owner: {
-    label: "Owner",
+    label: "Owner permission",
     className:
       "border-status-warning/30 bg-status-warning/10 text-status-warning",
   },
@@ -101,7 +109,7 @@ const SOURCE_LABEL: Record<AccessSource, string> = {
   directShare: "Direct share",
   group: "Group grant (recorded)",
   orgLink: "Organization link",
-  itemOwner: "Item owner",
+  itemOwner: "Item owner grant",
 };
 
 const FLAG_LABEL: Record<NonNullable<Grant["flag"]>, string> = {
@@ -319,7 +327,7 @@ function MatrixTable({
     <div role="listbox" aria-label="Access review matrix">
       <div
         aria-hidden="true"
-        className="hidden grid-cols-[minmax(190px,1.2fr)_minmax(190px,1.2fr)_auto_auto_minmax(150px,1fr)_70px] gap-m border-b border-border bg-secondary/70 px-l py-m text-200 font-semibold text-muted-foreground md:grid"
+        className="atlas-row hidden grid-cols-[minmax(190px,1.2fr)_minmax(190px,1.2fr)_auto_auto_minmax(150px,1fr)_70px] gap-m border-b border-border bg-secondary/70 px-l text-200 font-semibold text-muted-foreground md:grid"
       >
         <span>Principal</span>
         <span>Item</span>
@@ -369,7 +377,7 @@ function MatrixTable({
                 }
               }}
               className={cn(
-                "atlas-windowed-block grid w-full cursor-pointer gap-m p-l text-left transition-colors hover:bg-accent/60 md:grid-cols-[minmax(190px,1.2fr)_minmax(190px,1.2fr)_auto_auto_minmax(150px,1fr)_70px] md:items-center",
+                "atlas-row atlas-windowed-block grid w-full cursor-pointer gap-m px-l text-left transition-colors hover:bg-accent/60 md:grid-cols-[minmax(190px,1.2fr)_minmax(190px,1.2fr)_auto_auto_minmax(150px,1fr)_70px] md:items-center",
                 selected && "bg-primary/10",
               )}
             >
@@ -485,7 +493,7 @@ function PrincipalGroups({
                 aria-controls={regionId}
                 disabled={searching}
                 onClick={() => onToggle(principalKey)}
-                className="flex min-w-0 flex-1 items-center gap-m px-l py-m text-left transition-colors hover:bg-accent/60 disabled:cursor-default disabled:opacity-100"
+                className="atlas-row flex min-w-0 flex-1 items-center gap-m px-l text-left transition-colors hover:bg-accent/60 disabled:cursor-default disabled:opacity-100"
               >
               {isExpanded ? (
                 <ChevronDown
@@ -512,7 +520,7 @@ function PrincipalGroups({
               <button
                 type="button"
                 onClick={() => onOpenPack(first)}
-                className="mr-l rounded-lg border border-primary/30 bg-primary/10 px-m py-s text-200 font-semibold text-brand-foreground hover:bg-primary/15"
+                className="atlas-control mr-l rounded-lg border border-primary/30 bg-primary/10 px-m text-200 font-semibold text-brand-foreground hover:bg-primary/15"
               >
                 {first.principal?.kind === "user" ||
                 first.principal?.kind === "guest"
@@ -537,7 +545,7 @@ function PrincipalGroups({
                         aria-label={`Review ${row.principalRef} access to ${row.item.displayName}`}
                         onClick={() => onSelect(row)}
                         className={cn(
-                          "grid w-full gap-m rounded-lg px-m py-s text-left transition-colors hover:bg-accent sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center",
+                          "atlas-row grid w-full gap-m rounded-lg px-m text-left transition-colors hover:bg-accent sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center",
                           selected && "bg-primary/10",
                         )}
                       >
@@ -577,7 +585,7 @@ function reviewSummary(
   const grants = row.applicableGrants
     .map((grant) => {
       const effective = row.effectiveGrants.includes(grant)
-        ? " — determines effective access"
+        ? ", determines effective access"
         : "";
       return `- ${SOURCE_LABEL[grant.source]} (${grantScope(grant, row)}): ${
         ACCESS_STYLE[grant.accessLevel].label
@@ -591,7 +599,13 @@ function reviewSummary(
     `Principal resolution: ${row.principalResolution}`,
     `Flags: ${flags.length ? flags.map((flag) => FLAG_LABEL[flag]).join(", ") : "None"}`,
     `Contributing grants: ${row.applicableGrants.length}`,
-    `Review decision: ${decision ? REVIEW_STATUS[decision.status].label : "Not reviewed"}`,
+    `Review decision: ${
+      decision
+        ? decision.needsReview
+          ? `Needs review (previously ${REVIEW_STATUS[decision.status].label})`
+          : REVIEW_STATUS[decision.status].label
+        : "Not reviewed"
+    }`,
     ...(decision?.reviewedAt
       ? [`Reviewed at: ${new Date(decision.reviewedAt).toLocaleString()}`]
       : []),
@@ -602,9 +616,15 @@ function reviewSummary(
   ].join("\n");
 }
 
-function DetailPanel({
+function historyStatusLabel(entry: AccessReviewHistoryEntry): string {
+  return entry.status === "cleared"
+    ? "Cleared"
+    : REVIEW_STATUS[entry.status].label;
+}
+
+export function AccessReviewDetailPanel({
   row,
-  decision,
+  review,
   reviewsLoading,
   saving,
   reviewError,
@@ -613,7 +633,7 @@ function DetailPanel({
   onClose,
 }: {
   row: AccessReviewRow;
-  decision?: AccessReviewDecision;
+  review?: AccessReviewHistory;
   reviewsLoading: boolean;
   saving: boolean;
   reviewError?: string;
@@ -624,6 +644,7 @@ function DetailPanel({
   onClearDecision: () => Promise<void>;
   onClose: () => void;
 }) {
+  const decision = review?.decision;
   const [copied, setCopied] = useState(false);
   const [note, setNote] = useState(decision?.note ?? "");
 
@@ -641,7 +662,7 @@ function DetailPanel({
 
   return (
     <Card className="overflow-hidden xl:sticky xl:top-l">
-      <div className="flex items-start justify-between gap-m border-b border-border bg-secondary/60 p-l">
+      <div className="atlas-page-header flex items-start justify-between gap-m border-b border-border bg-secondary/60 p-l">
         <div className="min-w-0">
           <SectionLabel>Selected pair</SectionLabel>
           <h2 className="mt-xs text-400 font-semibold">Review detail</h2>
@@ -713,7 +734,9 @@ function DetailPanel({
                 {reviewsLoading
                   ? "Loading current decision…"
                   : decision
-                    ? `Reviewed ${new Date(decision.reviewedAt).toLocaleString()}`
+                    ? decision.needsReview
+                      ? `Previous decision from ${new Date(decision.reviewedAt).toLocaleString()}`
+                      : `Reviewed ${new Date(decision.reviewedAt).toLocaleString()}`
                     : "Not reviewed yet"}
               </p>
             </div>
@@ -721,13 +744,36 @@ function DetailPanel({
               <span
                 className={cn(
                   "inline-flex rounded-md border px-s py-xxs text-200 font-semibold",
-                  REVIEW_STATUS[decision.status].className,
+                  decision.needsReview
+                    ? "border-status-warning/30 bg-status-warning/10 text-status-warning"
+                    : REVIEW_STATUS[decision.status].className,
                 )}
               >
-                {REVIEW_STATUS[decision.status].label}
+                {decision.needsReview
+                  ? "Needs review"
+                  : REVIEW_STATUS[decision.status].label}
               </span>
             )}
           </div>
+
+          {decision?.needsReview && (
+            <div
+              className="mt-m rounded-lg border border-status-warning/30 bg-status-warning/10 p-m"
+              role="status"
+            >
+              <div className="flex gap-s">
+                <AlertTriangle
+                  className="mt-xxs icon-size-200 shrink-0 text-status-warning"
+                  aria-hidden="true"
+                />
+                <p className="text-200 leading-300 text-muted-foreground">
+                  {decision.source === "legacy"
+                    ? "This legacy decision has no recorded permission evidence. Review the current grants before relying on it."
+                    : "The effective permission evidence changed after this decision. Review the current grants before relying on it."}
+                </p>
+              </div>
+            </div>
+          )}
 
           <label
             htmlFor="access-review-note"
@@ -761,12 +807,14 @@ function DetailPanel({
                   <button
                     key={status}
                     type="button"
-                    aria-pressed={decision?.status === status}
+                    aria-pressed={
+                      !decision?.needsReview && decision?.status === status
+                    }
                     disabled={saving || reviewsLoading}
                     onClick={() => void onSaveDecision(status, note)}
                     className={cn(
-                      "inline-flex min-h-xxxl items-center justify-center rounded-lg border px-m py-s text-300 font-semibold transition-colors hover:bg-accent disabled:opacity-60",
-                      decision?.status === status
+                      "atlas-control inline-flex items-center justify-center rounded-lg border px-m text-300 font-semibold transition-colors hover:bg-accent disabled:opacity-60",
+                      !decision?.needsReview && decision?.status === status
                         ? statusMeta.className
                         : "border-border bg-card text-foreground",
                     )}
@@ -791,7 +839,9 @@ function DetailPanel({
               {reviewError ??
                 (saving
                   ? "Saving review decision…"
-                  : decision
+                  : decision?.needsReview
+                    ? "Choose a status to review the current evidence."
+                    : decision
                     ? "Decision is saved for your account."
                     : "Choose a status to save this review.")}
             </span>
@@ -807,6 +857,50 @@ function DetailPanel({
             )}
           </div>
         </section>
+
+        {review && review.history.length > 0 && (
+          <section aria-labelledby="review-history-heading">
+            <h3
+              id="review-history-heading"
+              className="text-300 font-semibold"
+            >
+              Personal review history
+            </h3>
+            <p className="mt-xs text-200 text-muted-foreground">
+              Decisions and clears are retained for your account, newest first.
+            </p>
+            <ol className="mt-m grid gap-s">
+              {review.history.map((entry) => (
+                <li
+                  key={`${entry.source}:${entry.id}`}
+                  className="rounded-lg border border-border bg-secondary/30 p-m"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-s">
+                    <div>
+                      <div className="text-300 font-semibold">
+                        {historyStatusLabel(entry)}
+                      </div>
+                      <div className="mt-xxs text-200 text-muted-foreground">
+                        {new Date(entry.occurredAt).toLocaleString()}
+                        {entry.source === "legacy" ? " · Legacy record" : ""}
+                      </div>
+                    </div>
+                    {!entry.evidenceKey && (
+                      <span className="rounded-md border border-status-warning/30 bg-status-warning/10 px-s py-xxs text-200 font-semibold text-status-warning">
+                        Evidence not recorded
+                      </span>
+                    )}
+                  </div>
+                  {entry.note && (
+                    <p className="mt-s whitespace-pre-wrap text-200 leading-300 text-muted-foreground">
+                      {entry.note}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
 
         {row.principalResolution !== "resolved" && (
           <div
@@ -847,7 +941,7 @@ function DetailPanel({
               <dd className="text-right font-medium">{row.item.itemType}</dd>
             </div>
             <div className="flex justify-between gap-m">
-              <dt className="text-muted-foreground">Owner</dt>
+              <dt className="text-muted-foreground">Documented owner</dt>
               <dd className="text-right font-medium">
                 {row.item.ownerName ??
                   (row.item.ownerMetadataAvailable === false
@@ -937,7 +1031,7 @@ function DetailPanel({
         <button
           type="button"
           onClick={() => void copy()}
-          className="inline-flex min-h-xxxl items-center justify-center gap-s rounded-lg bg-primary px-l py-s text-300 font-semibold text-primary-foreground transition-colors hover:bg-primary-hover"
+          className="atlas-control inline-flex items-center justify-center gap-s rounded-lg bg-primary px-l text-300 font-semibold text-primary-foreground transition-colors hover:bg-primary-hover"
         >
           {copied ? (
             <Check className="icon-size-200" aria-hidden="true" />
@@ -974,6 +1068,25 @@ export function AccessView({
     addSavedView,
     removeSavedView,
   } = useAtlas();
+  const rows = useMemo(
+    () =>
+      buildAccessReviewRows(data).filter(
+        (row) => row.effectiveAccess !== "none",
+      ),
+    [data],
+  );
+  const summary = useMemo(() => summarizeAccessReview(rows), [rows]);
+  const reviewScopeKey = `${isPreview ? "preview" : "live"}\u0000${data.workspace.fabricId}\u0000${currentUser.id}`;
+  const reviewLoadKey = useMemo(
+    () =>
+      [
+        reviewScopeKey,
+        ...rows.map(
+          (row) => `${row.id}\u0000${serializeAccessReviewEvidence(row)}`,
+        ),
+      ].join("\u0001"),
+    [reviewScopeKey, rows],
+  );
   const [mode, setMode] = useState<AccessMode>(
     initialFilters?.mode === "principals" ||
       (initialPrincipalId && !initialItemId)
@@ -1004,11 +1117,17 @@ export function AccessView({
   const [expandedPrincipals, setExpandedPrincipals] = useState<Set<string>>(
     () => new Set(),
   );
-  const [reviewDecisions, setReviewDecisions] = useState<
-    AccessReviewDecision[]
-  >([]);
-  const [reviewsLoading, setReviewsLoading] = useState(!isPreview);
-  const [reviewError, setReviewError] = useState<string>();
+  const [reviewState, setReviewState] = useState<{
+    key: string;
+    histories: AccessReviewHistory[];
+  }>(() => ({
+    key: isPreview ? reviewLoadKey : "",
+    histories: [],
+  }));
+  const [reviewErrorState, setReviewErrorState] = useState<{
+    key: string;
+    message?: string;
+  }>(() => ({ key: reviewLoadKey }));
   const [reviewOperationId, setReviewOperationId] = useState<string | null>(
     null,
   );
@@ -1019,40 +1138,45 @@ export function AccessView({
   useEffect(() => {
     if (isPreview) return;
     let active = true;
-    void loadAccessReviews(
-      false,
-      data.workspace.fabricId,
-      currentUser.id,
-    )
-      .then((loaded) => {
+    void (async () => {
+      try {
+        const evidence = await accessReviewEvidenceKeys(rows);
+        if (!active) return;
+        const loaded = await loadAccessReviewHistories(
+          false,
+          data.workspace.fabricId,
+          currentUser.id,
+          evidence,
+        );
         if (active) {
-          setReviewDecisions(loaded);
-          setReviewError(undefined);
+          setReviewState({ key: reviewLoadKey, histories: loaded });
+          setReviewErrorState({ key: reviewLoadKey });
         }
-      })
-      .catch((error) => {
+      } catch (error) {
         if (active) {
-          setReviewError(
-            error instanceof Error ? error.message : String(error),
-          );
+          setReviewState({ key: reviewLoadKey, histories: [] });
+          setReviewErrorState({
+            key: reviewLoadKey,
+            message: error instanceof Error ? error.message : String(error),
+          });
         }
-      })
-      .finally(() => {
-        if (active) setReviewsLoading(false);
-      });
+      }
+    })();
     return () => {
       active = false;
     };
-  }, [currentUser.id, data.workspace.fabricId, isPreview]);
-
-  const rows = useMemo(
-    () =>
-      buildAccessReviewRows(data).filter(
-        (row) => row.effectiveAccess !== "none",
-      ),
-    [data],
-  );
-  const summary = useMemo(() => summarizeAccessReview(rows), [rows]);
+  }, [
+    currentUser.id,
+    data.workspace.fabricId,
+    isPreview,
+    reviewLoadKey,
+    rows,
+  ]);
+  const reviewsLoading = !isPreview && reviewState.key !== reviewLoadKey;
+  const reviewError =
+    reviewErrorState.key === reviewLoadKey
+      ? reviewErrorState.message
+      : undefined;
 
   const focusRows = useMemo(() => {
     let candidates = rows;
@@ -1139,23 +1263,16 @@ export function AccessView({
   const flaggedCount = rows.filter(hasRisk).length;
   const reviewsByRowKey = useMemo(
     () => {
-      const byKey = new Map<string, AccessReviewDecision>();
-      for (const decision of reviewDecisions) {
-        if (!byKey.has(decision.rowKey)) {
-          byKey.set(decision.rowKey, decision);
-        }
+      const byKey = new Map<string, AccessReviewHistory>();
+      const histories =
+        reviewState.key === reviewLoadKey ? reviewState.histories : [];
+      for (const review of histories) {
+        byKey.set(review.rowKey, review);
       }
       return byKey;
     },
-    [reviewDecisions],
+    [reviewLoadKey, reviewState],
   );
-
-  const replaceDecision = (decision: AccessReviewDecision) => {
-    setReviewDecisions((previous) => [
-      decision,
-      ...previous.filter((entry) => entry.rowKey !== decision.rowKey),
-    ]);
-  };
 
   const saveDecision = async (
     row: AccessReviewRow,
@@ -1163,59 +1280,73 @@ export function AccessView({
     note: string,
   ) => {
     setReviewOperationId(row.id);
-    setReviewError(undefined);
+    setReviewErrorState({ key: reviewLoadKey });
     try {
+      const evidenceKey = await accessReviewEvidenceKey(row);
+      const evidence = new Map([[row.id, evidenceKey]]);
       const saved = await saveAccessReview(
         isPreview,
         data.workspace.fabricId,
         currentUser.id,
         {
-          current: reviewsByRowKey.get(row.id),
           rowKey: row.id,
           itemFabricId: row.itemId,
           principalRef: row.principalRef,
           status,
+          evidenceKey,
           note,
         },
       );
-      replaceDecision(saved);
-      if (!isPreview) {
-        setReviewDecisions(
-          await loadAccessReviews(
-            false,
-            data.workspace.fabricId,
-            currentUser.id,
-          ),
-        );
-      }
+      setReviewState((previous) => ({
+        key: reviewLoadKey,
+        histories: appendAccessReviewEvent(
+          previous.key === reviewLoadKey ? previous.histories : [],
+          saved,
+          evidence,
+        ),
+      }));
     } catch (error) {
-      setReviewError(error instanceof Error ? error.message : String(error));
+      setReviewErrorState({
+        key: reviewLoadKey,
+        message: error instanceof Error ? error.message : String(error),
+      });
     } finally {
       setReviewOperationId(null);
     }
   };
 
   const clearDecision = async (row: AccessReviewRow) => {
-    const current = reviewsByRowKey.get(row.id);
+    const current = reviewsByRowKey.get(row.id)?.decision;
     if (!current) return;
     setReviewOperationId(row.id);
-    setReviewError(undefined);
+    setReviewErrorState({ key: reviewLoadKey });
     try {
-      await deleteAccessReview(isPreview, current.id);
-      setReviewDecisions((previous) =>
-        previous.filter((decision) => decision.rowKey !== row.id),
+      const evidenceKey = await accessReviewEvidenceKey(row);
+      const evidence = new Map([[row.id, evidenceKey]]);
+      const cleared = await clearAccessReview(
+        isPreview,
+        data.workspace.fabricId,
+        currentUser.id,
+        {
+          rowKey: row.id,
+          itemFabricId: row.itemId,
+          principalRef: row.principalRef,
+          evidenceKey,
+        },
       );
-      if (!isPreview) {
-        setReviewDecisions(
-          await loadAccessReviews(
-            false,
-            data.workspace.fabricId,
-            currentUser.id,
-          ),
-        );
-      }
+      setReviewState((previous) => ({
+        key: reviewLoadKey,
+        histories: appendAccessReviewEvent(
+          previous.key === reviewLoadKey ? previous.histories : [],
+          cleared,
+          evidence,
+        ),
+      }));
     } catch (error) {
-      setReviewError(error instanceof Error ? error.message : String(error));
+      setReviewErrorState({
+        key: reviewLoadKey,
+        message: error instanceof Error ? error.message : String(error),
+      });
     } finally {
       setReviewOperationId(null);
     }
@@ -1274,7 +1405,7 @@ export function AccessView({
   return (
     <div className="atlas-content-frame flex flex-col gap-l p-l sm:p-xxl">
       <Card className="overflow-hidden border-primary/25">
-        <div className="atlas-fabric-hero flex flex-col gap-l border-b border-border p-l lg:flex-row lg:items-end lg:justify-between">
+        <div className="atlas-page-header atlas-fabric-hero flex flex-col gap-l border-b border-border p-l lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
             <SectionLabel>Governance / additive permissions</SectionLabel>
             <h1 className="mt-xs text-600 font-bold leading-600">
@@ -1296,7 +1427,7 @@ export function AccessView({
               aria-pressed={mode === "matrix"}
               onClick={() => setMode("matrix")}
               className={cn(
-                "rounded-md px-l py-s text-300 font-semibold transition-colors",
+                "atlas-control rounded-md px-l text-300 font-semibold transition-colors",
                 mode === "matrix"
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
@@ -1309,7 +1440,7 @@ export function AccessView({
               aria-pressed={mode === "principals"}
               onClick={() => setMode("principals")}
               className={cn(
-                "rounded-md px-l py-s text-300 font-semibold transition-colors",
+                "atlas-control rounded-md px-l text-300 font-semibold transition-colors",
                 mode === "principals"
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
@@ -1349,13 +1480,13 @@ export function AccessView({
       </Card>
 
       <Card className="overflow-hidden">
-        <div className="border-b border-border bg-secondary/40 px-l py-m">
+        <div className="atlas-toolbar border-b border-border bg-secondary/40 px-l py-m">
           <div className="flex flex-col gap-m xl:flex-row xl:items-end">
             <label className="min-w-0 flex-1">
               <span className="mb-xs block text-200 font-semibold text-muted-foreground">
                 Search
               </span>
-              <span className="flex min-h-xxxl items-center gap-s rounded-lg border border-input bg-card px-m">
+              <span className="atlas-control flex items-center gap-s rounded-lg border border-input bg-card px-m">
                 <Search
                   className="icon-size-200 shrink-0 text-muted-foreground"
                   aria-hidden="true"
@@ -1380,10 +1511,10 @@ export function AccessView({
                 onChange={(event) =>
                   setAccessLevel(event.target.value as "all" | AccessLevel)
                 }
-                className="min-h-xxxl w-full rounded-lg border border-input bg-card px-m py-s text-300 text-foreground xl:w-auto"
+                className="atlas-control w-full rounded-lg border border-input bg-card px-m text-300 text-foreground xl:w-auto"
               >
                 <option value="all">All levels</option>
-                <option value="owner">Owner</option>
+                <option value="owner">Owner permission</option>
                 <option value="edit">Edit</option>
                 <option value="view">View</option>
               </select>
@@ -1398,7 +1529,7 @@ export function AccessView({
                 onChange={(event) =>
                   setOrigin(event.target.value as OriginFilter)
                 }
-                className="min-h-xxxl w-full rounded-lg border border-input bg-card px-m py-s text-300 text-foreground xl:w-auto"
+                className="atlas-control w-full rounded-lg border border-input bg-card px-m text-300 text-foreground xl:w-auto"
               >
                 <option value="all">All origins</option>
                 <option value="workspace">Workspace / inherited</option>
@@ -1416,7 +1547,7 @@ export function AccessView({
                 onChange={(event) =>
                   setRisk(event.target.value as RiskFilter)
                 }
-                className="min-h-xxxl w-full rounded-lg border border-input bg-card px-m py-s text-300 text-foreground xl:w-auto"
+                className="atlas-control w-full rounded-lg border border-input bg-card px-m text-300 text-foreground xl:w-auto"
               >
                 <option value="all">All flags</option>
                 <option value="flagged">Any flag or warning</option>
@@ -1475,7 +1606,7 @@ export function AccessView({
                 type="button"
                 onClick={clearFilters}
                 disabled={!activeFilters}
-                className="inline-flex min-h-xxxl items-center justify-center gap-s rounded-lg border border-border bg-card px-m py-s text-300 font-semibold text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+                className="atlas-control inline-flex items-center justify-center gap-s rounded-lg border border-border bg-card px-m text-300 font-semibold text-foreground transition-colors hover:bg-accent disabled:opacity-50"
               >
                 <FilterX className="icon-size-200" aria-hidden="true" />
                 Clear filters
@@ -1484,7 +1615,7 @@ export function AccessView({
                 type="button"
                 onClick={() => downloadCsv(filteredRows)}
                 disabled={filteredRows.length === 0}
-                className="inline-flex min-h-xxxl items-center justify-center gap-s rounded-lg bg-primary px-m py-s text-300 font-semibold text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-50"
+                className="atlas-control inline-flex items-center justify-center gap-s rounded-lg bg-primary px-m text-300 font-semibold text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-50"
               >
                 <Download className="icon-size-200" aria-hidden="true" />
                 Export CSV
@@ -1493,7 +1624,7 @@ export function AccessView({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-s px-l py-m">
+        <div className="atlas-row flex flex-wrap items-center justify-between gap-s px-l">
           <div>
             <h2 className="text-300 font-semibold">
               {mode === "matrix" ? "Review matrix" : "Principals"}
@@ -1507,6 +1638,15 @@ export function AccessView({
           </span>
         </div>
       </Card>
+
+      {reviewError && !selectedRow && (
+        <div
+          className="rounded-lg border border-status-failing/30 bg-status-failing/10 px-m py-s text-200 text-status-failing"
+          role="alert"
+        >
+          Access review history could not be loaded: {reviewError}
+        </div>
+      )}
 
       <div
         className={cn(
@@ -1544,10 +1684,10 @@ export function AccessView({
         </Card>
 
         {selectedRow && (
-          <DetailPanel
-            key={`${selectedRow.id}:${reviewsByRowKey.get(selectedRow.id)?.updatedAt ?? "none"}`}
+          <AccessReviewDetailPanel
+            key={`${selectedRow.id}:${reviewsByRowKey.get(selectedRow.id)?.history[0]?.id ?? "none"}`}
             row={selectedRow}
-            decision={reviewsByRowKey.get(selectedRow.id)}
+            review={reviewsByRowKey.get(selectedRow.id)}
             reviewsLoading={reviewsLoading}
             saving={reviewOperationId === selectedRow.id}
             reviewError={reviewError}

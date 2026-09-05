@@ -5,12 +5,187 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import { SAMPLE_DATA } from "../model";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { displayPreferenceKey } from "../display-preferences";
+import type { MetadataObjectLineageEdge } from "../item-metadata";
+import { MAP_INSPECTOR_DEFAULT_WIDTH } from "../map-inspector";
+import {
+  buildMetadataObjectGraph,
+  MAX_VISIBLE_OBJECT_EDGES,
+} from "../metadata-object-graph";
+import { SAMPLE_DATA, typeMeta } from "../model";
 import { AtlasProvider } from "../store";
 import { MapView } from "./Map";
 
 describe("MapView selection", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  describe("metadata object graph", () => {
+    const items = new Map(
+      [
+        {
+          fabricId: "warehouse",
+          displayName: "Operations warehouse",
+          itemType: "Warehouse" as const,
+          health: "healthy" as const,
+          endorsement: "none" as const,
+          tags: [],
+        },
+        {
+          fabricId: "ontology",
+          displayName: "Operations ontology",
+          itemType: "Ontology" as const,
+          health: "healthy" as const,
+          endorsement: "none" as const,
+          tags: [],
+        },
+      ].map((item) => [item.fabricId, item]),
+    );
+    const edges: MetadataObjectLineageEdge[] = [
+      {
+        source: {
+          itemId: "warehouse",
+          kind: "sourceObject",
+          id: "dbo.Devices",
+          name: "Devices",
+          tableName: "Devices",
+        },
+        target: {
+          itemId: "ontology",
+          kind: "ontologyEntity",
+          id: "device",
+          name: "Device",
+        },
+        relation: "binds entity",
+        confidence: "verified",
+      },
+      {
+        source: {
+          itemId: "ontology",
+          kind: "ontologyEntity",
+          id: "device",
+          name: "Device",
+        },
+        target: {
+          itemId: "ontology",
+          kind: "ontologyRelationship",
+          id: "installed-at",
+          name: "Installed at",
+        },
+        relation: "relationship source",
+        confidence: "verified",
+      },
+      {
+        source: {
+          itemId: "ontology",
+          kind: "ontologyRelationship",
+          id: "installed-at",
+          name: "Installed at",
+        },
+        target: {
+          itemId: "ontology",
+          kind: "ontologyEntity",
+          id: "site",
+          name: "Site",
+        },
+        relation: "relationship target",
+        confidence: "verified",
+      },
+      {
+        source: {
+          itemId: "unrelated",
+          kind: "sourceObject",
+          id: "Other",
+          name: "Other",
+        },
+        target: {
+          itemId: "another-item",
+          kind: "graphNode",
+          id: "OtherNode",
+          name: "Other node",
+        },
+        relation: "maps node",
+        confidence: "verified",
+      },
+    ];
+
+    it("lays out verified selected-item edges from source to consumer", () => {
+      const graph = buildMetadataObjectGraph(edges, "ontology", items);
+      const byName = new Map(graph.nodes.map((node) => [node.label, node]));
+
+      expect(graph.verifiedMetadata).toBe(true);
+      expect(graph.edges).toHaveLength(3);
+      expect(byName.has("Other")).toBe(false);
+      expect(byName.get("Devices")!.x).toBeLessThan(byName.get("Device")!.x);
+      expect(byName.get("Device")!.x).toBeLessThan(
+        byName.get("Installed at")!.x,
+      );
+      expect(byName.get("Installed at")!.x).toBeLessThan(
+        byName.get("Site")!.x,
+      );
+    });
+
+    it("filters around matching objects and caps dense graphs", () => {
+      const relationshipGraph = buildMetadataObjectGraph(
+        edges,
+        "ontology",
+        items,
+        { objectKind: "ontologyRelationship" },
+      );
+      expect(relationshipGraph.edges).toHaveLength(2);
+      expect(relationshipGraph.nodes.map((node) => node.label)).toEqual(
+        expect.arrayContaining(["Device", "Installed at", "Site"]),
+      );
+
+      const denseEdges: MetadataObjectLineageEdge[] = Array.from(
+        { length: MAX_VISIBLE_OBJECT_EDGES + 25 },
+        (_, index) => ({
+          source: {
+            itemId: "warehouse",
+            kind: "sourceField" as const,
+            id: `Devices.Field${index}`,
+            name: `Field${index}`,
+            tableName: "Devices",
+          },
+          target: {
+            itemId: "ontology",
+            kind: "ontologyProperty" as const,
+            id: `property-${index}`,
+            name: `Property ${index}`,
+            tableName: "Device",
+          },
+          relation: "binds property",
+          confidence: "verified" as const,
+        }),
+      );
+      const denseGraph = buildMetadataObjectGraph(
+        denseEdges,
+        "ontology",
+        items,
+      );
+      expect(denseGraph.edges).toHaveLength(MAX_VISIBLE_OBJECT_EDGES);
+      expect(denseGraph.truncated).toBe(true);
+    });
+  });
+
+  const selectInspectorTab = async (
+    currentName: string,
+    nextName: string,
+  ) => {
+    const current = screen.getByRole("tab", { name: currentName });
+    act(() => current.focus());
+    fireEvent.keyDown(current, { key: "ArrowRight" });
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: nextName })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      ),
+    );
+  };
+
   it("shows the full workspace by default without edge text overlays", () => {
     window.history.replaceState(null, "", "/#map");
     const { container } = render(
@@ -88,6 +263,7 @@ describe("MapView selection", () => {
       clientY: 100,
       pointerId: 1,
     });
+
     fireEvent.pointerUp(lakehouse, {
       button: 0,
       clientX: 100,
@@ -101,6 +277,76 @@ describe("MapView selection", () => {
     expect(selectedLakehouse).toHaveAttribute("aria-pressed", "true");
     expect(selectedLakehouse.style.left).toBe(position.left);
     expect(selectedLakehouse.style.top).toBe(position.top);
+  });
+
+  it("keeps item nodes compact with visible space between rows and stages", () => {
+    window.history.replaceState(null, "", "/#map");
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+    const nodes = SAMPLE_DATA.items
+      .map((item) =>
+        screen.queryByLabelText(
+          `${item.displayName}, ${typeMeta(item.itemType).label}, ${item.health}`,
+        ),
+      )
+      .filter((node): node is HTMLButtonElement => node instanceof HTMLButtonElement);
+    expect(nodes.length).toBeGreaterThan(1);
+    expect(
+      Math.max(...nodes.map((node) => parseFloat(node.style.width))),
+    ).toBeLessThanOrEqual(224);
+
+    const byColumn = new Map<number, HTMLButtonElement[]>();
+    for (const node of nodes) {
+      const left = parseFloat(node.style.left);
+      byColumn.set(left, [...(byColumn.get(left) ?? []), node]);
+    }
+    const columns = [...byColumn.keys()].sort((left, right) => left - right);
+    for (let index = 1; index < columns.length; index += 1) {
+      const previous = byColumn.get(columns[index - 1])![0];
+      expect(
+        columns[index] -
+          columns[index - 1] -
+          parseFloat(previous.style.width),
+      ).toBeGreaterThanOrEqual(48);
+    }
+    for (const column of byColumn.values()) {
+      const ordered = column.sort(
+        (left, right) => parseFloat(left.style.top) - parseFloat(right.style.top),
+      );
+      for (let index = 1; index < ordered.length; index += 1) {
+        const previous = ordered[index - 1];
+        expect(
+          parseFloat(ordered[index].style.top) -
+            parseFloat(previous.style.top) -
+            parseFloat(previous.style.height),
+        ).toBeGreaterThanOrEqual(16);
+      }
+    }
+  });
+
+  it("moves selection to a matching item when its type is filtered", () => {
+    window.history.replaceState(null, "", "/#map");
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+    const report = SAMPLE_DATA.items.find((item) => item.itemType === "Report")!;
+    fireEvent.change(screen.getByLabelText("Filter by item type"), {
+      target: { value: "Report" },
+    });
+    expect(
+      screen.queryByLabelText("AlpineRent Sales Model, Semantic model, healthy"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByLabelText(`${report.displayName}, Report, ${report.health}`),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("Item details inspector")).toHaveTextContent(
+      report.displayName,
+    );
   });
 
   it("supports object selection, highlighting and drag", () => {
@@ -124,6 +370,7 @@ describe("MapView selection", () => {
       clientY: 100,
       pointerId: 2,
     });
+
     fireEvent.pointerMove(table, {
       clientX: 150,
       clientY: 130,
@@ -161,6 +408,30 @@ describe("MapView selection", () => {
     ).toBeInTheDocument();
   });
 
+  it("selects the matching table when the object table filter changes", () => {
+    window.history.replaceState(null, "", "/#map");
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "objects" }));
+    const tableFilter = screen.getByLabelText("Select object lineage table");
+    const options = [...tableFilter.querySelectorAll("option")];
+    expect(options.length).toBeGreaterThan(1);
+    const nextTable = options[1].value;
+    fireEvent.click(screen.getByLabelText(/Total Revenue, Measure/i));
+    fireEvent.change(tableFilter, { target: { value: nextTable } });
+    const selectedTable = screen
+      .getAllByLabelText(
+        new RegExp(`^${nextTable.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")},`),
+      )
+      .find((node) => node.getAttribute("aria-label")?.includes("columns"));
+    expect(
+      selectedTable,
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("moves a multi-selection together and fully resets positions", () => {
     window.history.replaceState(null, "", "/#map");
     render(
@@ -189,6 +460,7 @@ describe("MapView selection", () => {
       clientY: 100,
       pointerId: 4,
     });
+
     fireEvent.pointerMove(lakehouse, {
       clientX: 150,
       clientY: 140,
@@ -212,5 +484,117 @@ describe("MapView selection", () => {
     expect(model.style.top).toBe(initial.modelTop);
     expect(lakehouse.style.left).toBe(initial.lakehouseLeft);
     expect(lakehouse.style.top).toBe(initial.lakehouseTop);
+  });
+
+  it("keeps widened object nodes inside the canvas bounds", () => {
+    window.history.replaceState(null, "", "/#map");
+    const { container } = render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "objects" }));
+    const nodes = [...container.querySelectorAll<HTMLButtonElement>(".atlas-map-grid button[aria-pressed]")]
+      .filter((node) => node.style.width && node.style.left);
+    expect(nodes.length).toBeGreaterThan(0);
+    for (const node of nodes) {
+      const canvas = node.parentElement!;
+      expect(parseFloat(node.style.left) + parseFloat(node.style.width))
+        .toBeLessThanOrEqual(parseFloat(canvas.style.width));
+      expect(parseFloat(node.style.top) + parseFloat(node.style.height))
+        .toBeLessThanOrEqual(parseFloat(canvas.style.height));
+    }
+  });
+
+  it("persists and resets the inspector width for the preview identity and workspace", () => {
+    window.history.replaceState(null, "", "/#map");
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+
+    const separator = screen.getByRole("separator", {
+      name: "Resize details inspector",
+    });
+    fireEvent.keyDown(separator, { key: "ArrowLeft" });
+
+    const key = displayPreferenceKey(
+      "preview-user",
+      SAMPLE_DATA.workspace.fabricId,
+      "map-inspector-width",
+    );
+    expect(localStorage.getItem(key)).toBe(
+      JSON.stringify(MAP_INSPECTOR_DEFAULT_WIDTH + 16),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reset inspector width" }),
+    );
+    expect(localStorage.getItem(key)).toBe(
+      JSON.stringify(MAP_INSPECTOR_DEFAULT_WIDTH),
+    );
+  });
+
+  it("surfaces an invalid saved inspector preference", () => {
+    window.history.replaceState(null, "", "/#map");
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    localStorage.setItem(
+      displayPreferenceKey(
+        "preview-user",
+        SAMPLE_DATA.workspace.fabricId,
+        "map-inspector-width",
+      ),
+      JSON.stringify(100),
+    );
+
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "saved display setting could not be loaded",
+    );
+  });
+
+  it("distinguishes documented ownership from owner permission", async () => {
+    window.history.replaceState(null, "", "/#map");
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+
+    expect(screen.getByText("Documented owner")).toBeInTheDocument();
+    await selectInspectorTab("Summary", "Schema");
+    await selectInspectorTab("Schema", "Access");
+    expect(
+      await screen.findByText(
+        /owner permission is an access role and is separate from documented ownership/i,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Owner permission").length).toBeGreaterThan(0);
+  });
+
+  it("keeps schema groups collapsed until a search is active", async () => {
+    window.history.replaceState(null, "", "/#map");
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+
+    await selectInspectorTab("Summary", "Schema");
+    const table = await screen.findByRole("button", {
+      name: /rentals_daily_summary/i,
+    });
+    expect(table).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.change(screen.getByLabelText("Search lineage"), {
+      target: { value: "rentals" },
+    });
+    expect(table).toHaveAttribute("aria-expanded", "true");
   });
 });

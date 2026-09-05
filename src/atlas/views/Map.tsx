@@ -25,10 +25,28 @@ import {
 } from "lucide-react";
 import * as Tabs from "@radix-ui/react-tabs";
 import { ImpactReportDialog } from "../components/ImpactReportDialog";
+import { MetadataObjectImpactDialog } from "../components/MetadataObjectImpactDialog";
+import { ResizableInspector } from "../components/ResizableInspector";
+import {
+  metadataObjectKindLabel,
+  verifiedMetadataEdgesForItem,
+} from "../catalog-objects";
+import {
+  buildMetadataObjectGraph,
+  MAX_VISIBLE_OBJECT_EDGES,
+  type ObjectGraph,
+  type ObjectGraphEdge as ObjectEdge,
+  type ObjectGraphNode as ObjectNode,
+} from "../metadata-object-graph";
+import { useDisplayPreference } from "../display-preferences";
 import {
   buildAccessReviewRows,
   selectAccessByItem,
 } from "../governance";
+import {
+  MAP_INSPECTOR_DEFAULT_WIDTH,
+  isMapInspectorWidth,
+} from "../map-inspector";
 import { useAtlas } from "../store";
 import {
   Avatar,
@@ -50,6 +68,9 @@ import {
   type Item,
   type ModelTableSchema,
 } from "../model";
+import type {
+  MetadataObjectKind,
+} from "../item-metadata";
 import {
   LINEAGE_STAGE_LABELS,
   buildStagedLayout,
@@ -60,10 +81,13 @@ import {
   type SchemaObjectRef,
 } from "../lineage";
 
-const NODE_W = 196;
-const NODE_H = 60;
-const OBJECT_W = 204;
-const OBJECT_H = 52;
+const NODE_W = 220;
+const NODE_H = 76;
+const OBJECT_W = 224;
+const OBJECT_H = 76;
+const NODE_COLUMN_GAP = 292;
+const NODE_ROW_GAP = 100;
+const OBJECT_ROW_GAP = 100;
 const UP = "var(--color-lineage-upstream)";
 const DOWN = "var(--color-lineage-downstream)";
 
@@ -73,24 +97,6 @@ type InspectorTab = "summary" | "schema" | "access" | "runs";
 interface Point {
   x: number;
   y: number;
-}
-
-interface ObjectNode extends Point {
-  id: string;
-  label: string;
-  subtitle: string;
-  code: string;
-  color: string;
-  table?: string;
-  itemId?: string;
-  kind: "source" | "table" | "field" | "owner" | "consumer";
-}
-
-interface ObjectEdge {
-  source: string;
-  target: string;
-  relation: string;
-  structural?: boolean;
 }
 
 interface ObjectLineageIndex {
@@ -195,6 +201,32 @@ function curve(source: Point, target: Point, width = NODE_W, height = NODE_H): s
   return `M${x1},${y1} C${x1 + bend},${y1} ${x2 - bend},${y2} ${x2},${y2}`;
 }
 
+function matchesItemFilters(
+  item: Item,
+  type: string,
+  health: Health | "all",
+  query: string,
+): boolean {
+  const normalized = query.trim().toLowerCase();
+  return (
+    (type === "all" || item.itemType === type) &&
+    (health === "all" || item.health === health) &&
+    (!normalized ||
+      item.displayName.toLowerCase().includes(normalized) ||
+      typeMeta(item.itemType).label.toLowerCase().includes(normalized) ||
+      item.tags.some((tag) => tag.toLowerCase().includes(normalized)))
+  );
+}
+
+function matchesObjectQuery(node: ObjectNode, query: string): boolean {
+  const normalized = query.trim().toLowerCase();
+  return (
+    !normalized ||
+    node.label.toLowerCase().includes(normalized) ||
+    node.subtitle.toLowerCase().includes(normalized)
+  );
+}
+
 function objectGraph(
   data: AtlasData,
   selected: Item | undefined,
@@ -203,9 +235,17 @@ function objectGraph(
   itemById: Map<string, Item>,
   lineageIndex: LineageIndex,
   tableName: string,
-): { nodes: ObjectNode[]; edges: ObjectEdge[]; width: number; height: number; table?: string } {
+): ObjectGraph {
   if (!selected || selectedSchema.length === 0) {
-    return { nodes: [], edges: [], width: 1080, height: 520 };
+    return {
+      nodes: [],
+      edges: [],
+      width: 1080,
+      height: 520,
+      stageLabels: ["Source objects", "Model tables", "Fields", "Consumers"],
+      verifiedMetadata: false,
+      truncated: false,
+    };
   }
 
   const table = selectedSchema.find((entry) => entry.name === tableName) ?? selectedSchema[0];
@@ -222,7 +262,7 @@ function objectGraph(
       table: entry.name,
       kind: "table",
       x: 330,
-      y: 62 + index * 72,
+      y: 62 + index * OBJECT_ROW_GAP,
     };
     nodes.push(modelNode);
 
@@ -266,7 +306,7 @@ function objectGraph(
     itemId: selected.fabricId,
     kind: "owner",
     x: 660,
-    y: 20,
+    y: 36,
   };
   nodes.push(owner);
 
@@ -304,7 +344,7 @@ function objectGraph(
       itemId: selected.fabricId,
       kind: "field",
       x: 660,
-      y: 98 + index * 58,
+      y: 126 + index * OBJECT_ROW_GAP,
     };
     nodes.push(node);
     graphEdges.push({
@@ -329,7 +369,7 @@ function objectGraph(
         itemId: consumer.fabricId,
         kind: "consumer",
         x: 1000,
-        y: 72 + index * 80,
+        y: 72 + index * OBJECT_ROW_GAP,
       };
       nodes.push(node);
       graphEdges.push({ source: owner.id, target: node.id, relation: edge.relation });
@@ -339,8 +379,15 @@ function objectGraph(
     nodes,
     edges: graphEdges,
     width: 1240,
-    height: Math.max(520, selectedSchema.length * 72 + 96, fields.length * 58 + 170),
+    height: Math.max(
+      520,
+      selectedSchema.length * OBJECT_ROW_GAP + 96,
+      fields.length * OBJECT_ROW_GAP + 204,
+    ),
     table: table.name,
+    stageLabels: ["Source objects", "Model tables", "Fields", "Consumers"],
+    verifiedMetadata: false,
+    truncated: false,
   };
 }
 
@@ -373,8 +420,15 @@ function InspectorTabButton({
 }
 
 export function MapView() {
-  const { data } = useAtlas();
+  const { data, currentUser } = useAtlas();
   const { items, edges, comments, config, principals, jobs } = data;
+  const inspectorWidth = useDisplayPreference(
+    currentUser.id,
+    data.workspace.fabricId,
+    "map-inspector-width",
+    MAP_INSPECTOR_DEFAULT_WIDTH,
+    isMapInspectorWidth,
+  );
   const itemById = useMemo(
     () => new Map<string, Item>(items.map((item) => [item.fabricId, item])),
     [items],
@@ -400,6 +454,12 @@ export function MapView() {
     (searchParam("health") as Health | "all") || "all",
   );
   const [tableName, setTableName] = useState(searchParam("table"));
+  const [sourceItemFilter, setSourceItemFilter] = useState(
+    searchParam("source") || "all",
+  );
+  const [objectKindFilter, setObjectKindFilter] = useState<
+    MetadataObjectKind | "all"
+  >((searchParam("objectKind") as MetadataObjectKind | "all") || "all");
   const [tab, setTab] = useState<InspectorTab>(initialInspectorTab);
   const [openTables, setOpenTables] = useState<Set<string>>(new Set());
   const [drag, setDrag] = useState<Record<string, Point>>({});
@@ -432,7 +492,7 @@ export function MapView() {
   const mapRef = useRef<HTMLDivElement>(null);
 
   const selected =
-    itemById.get(selId) ?? itemById.get(startingId);
+    itemById.get(selId) ?? (selId ? itemById.get(startingId) : undefined);
   const activeId = selected?.fabricId ?? "";
   const resolvedFocusId = itemById.has(focusId) ? focusId : activeId;
   const schema = useMemo(
@@ -514,22 +574,13 @@ export function MapView() {
     ) {
       return items;
     }
-    const normalized = query.trim().toLowerCase();
     return items.filter((item) => {
-      if (item.fabricId === activeId) return true;
-      const matchesFilters =
-        (typeFilter === "all" || item.itemType === typeFilter) &&
-        (healthFilter === "all" || item.health === healthFilter) &&
-        (!normalized ||
-          item.displayName.toLowerCase().includes(normalized) ||
-          typeMeta(item.itemType).label.toLowerCase().includes(normalized) ||
-          item.tags.some((tag) => tag.toLowerCase().includes(normalized)));
       return (
-        matchesFilters &&
+        matchesItemFilters(item, typeFilter, healthFilter, query) &&
         (!impactMode || !resolvedFocusId || focusedItems.has(item.fabricId))
       );
     });
-  }, [activeId, focusedItems, healthFilter, impactMode, items, query, resolvedFocusId, typeFilter]);
+  }, [focusedItems, healthFilter, impactMode, items, query, resolvedFocusId, typeFilter]);
   const visibleIds = useMemo(
     () => new Set(visibleItems.map((item) => item.fabricId)),
     [visibleItems],
@@ -546,7 +597,9 @@ export function MapView() {
       buildStagedLayout(visibleItems, visibleEdges, {
         nodeWidth: NODE_W,
         nodeHeight: NODE_H,
-        columnGap: 285,
+        columnGap: NODE_COLUMN_GAP,
+        rowGap: NODE_ROW_GAP,
+        componentGap: 52,
         focusId: resolvedFocusId,
       }),
     [resolvedFocusId, visibleEdges, visibleItems],
@@ -561,18 +614,103 @@ export function MapView() {
     });
     return { width, height };
   }, [drag, layout.height, layout.width]);
+  const selectedMetadataEdges = useMemo(
+    () => verifiedMetadataEdgesForItem(data.objectEdges, activeId),
+    [activeId, data.objectEdges],
+  );
+  const metadataSourceOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          selectedMetadataEdges
+            .flatMap((edge) => [edge.source.itemId, edge.target.itemId])
+            .filter((itemId) => itemId !== activeId),
+        ),
+      ].sort((left, right) =>
+        (itemById.get(left)?.displayName ?? left).localeCompare(
+          itemById.get(right)?.displayName ?? right,
+        ),
+      ),
+    [activeId, itemById, selectedMetadataEdges],
+  );
+  const metadataTableOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          selectedMetadataEdges.flatMap((edge) =>
+            [edge.source.tableName, edge.target.tableName].filter(
+              (value): value is string => Boolean(value),
+            ),
+          ),
+        ),
+      ].sort(),
+    [selectedMetadataEdges],
+  );
+  const metadataKindOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          selectedMetadataEdges.flatMap((edge) => [
+            edge.source.kind,
+            edge.target.kind,
+          ]),
+        ),
+      ].sort((left, right) =>
+        metadataObjectKindLabel(left).localeCompare(
+          metadataObjectKindLabel(right),
+        ),
+      ),
+    [selectedMetadataEdges],
+  );
+  const resolvedSourceFilter = metadataSourceOptions.includes(sourceItemFilter)
+    ? sourceItemFilter
+    : "all";
+  const resolvedTableFilter = metadataTableOptions.includes(tableName)
+    ? tableName
+    : "all";
+  const resolvedObjectKindFilter = metadataKindOptions.includes(
+    objectKindFilter as MetadataObjectKind,
+  )
+    ? objectKindFilter
+    : "all";
   const objects = useMemo(
     () =>
-      objectGraph(
-        data,
-        selected,
-        schema,
-        upstream,
-        itemById,
-        lineageIndex,
-        tableName,
-      ),
-    [data, itemById, lineageIndex, schema, selected, tableName, upstream],
+      selectedMetadataEdges.length > 0
+        ? buildMetadataObjectGraph(
+            selectedMetadataEdges,
+            activeId,
+            itemById,
+            {
+              query,
+              sourceItemId: resolvedSourceFilter,
+              tableName: resolvedTableFilter,
+              objectKind: resolvedObjectKindFilter,
+            },
+          )
+        : objectGraph(
+            data,
+            selected,
+            schema,
+            upstream,
+            itemById,
+            lineageIndex,
+            tableName,
+          ),
+    [
+      activeId,
+      data,
+      itemById,
+      lineageIndex,
+      query,
+      resolvedObjectKindFilter,
+      resolvedSourceFilter,
+      resolvedTableFilter,
+      schema,
+      selected,
+      selectedMetadataEdges,
+      tableName,
+      upstream,
+    ],
   );
   const objectLineageIndex = useMemo(
     () => createObjectLineageIndex(objects.edges),
@@ -583,15 +721,17 @@ export function MapView() {
     [objects.nodes],
   );
   const activeObjectId = objects.nodes.some(
-    (node) => node.id === selectedObjectId,
+    (node) =>
+      node.id === selectedObjectId &&
+      matchesObjectQuery(node, query),
   )
     ? selectedObjectId
-    : (objects.nodes.find((node) => node.kind === "owner")?.id ??
-      objects.nodes[0]?.id ??
-      "");
+    : (objects.nodes.find((node) => matchesObjectQuery(node, query))?.id ?? "");
   const activeObject = objectNodeById.get(activeObjectId);
   const reportItemId =
     mode === "objects" ? activeObject?.itemId ?? activeId : activeId;
+  const metadataReportObject =
+    mode === "objects" ? activeObject?.metadataRef : undefined;
   const reportObject: SchemaObjectRef | undefined =
     mode === "objects" && activeObject?.kind === "table"
       ? {
@@ -631,12 +771,13 @@ export function MapView() {
   const objectBounds = useMemo(() => {
     let width = objects.width;
     let height = objects.height;
-    Object.values(objectDrag).forEach((point) => {
+    objects.nodes.forEach((node) => {
+      const point = objectDrag[node.id] ?? node;
       width = Math.max(width, point.x + OBJECT_W + 48);
       height = Math.max(height, point.y + OBJECT_H + 48);
     });
     return { width, height };
-  }, [objectDrag, objects.height, objects.width]);
+  }, [objectDrag, objects.height, objects.nodes, objects.width]);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -652,10 +793,31 @@ export function MapView() {
     else url.searchParams.delete("impact");
     if (mode === "objects" && objects.table) url.searchParams.set("table", objects.table);
     else url.searchParams.delete("table");
+    if (mode === "objects" && resolvedSourceFilter !== "all") {
+      url.searchParams.set("source", resolvedSourceFilter);
+    } else {
+      url.searchParams.delete("source");
+    }
+    if (mode === "objects" && resolvedObjectKindFilter !== "all") {
+      url.searchParams.set("objectKind", resolvedObjectKindFilter);
+    } else {
+      url.searchParams.delete("objectKind");
+    }
     if (tab !== "summary") url.searchParams.set("inspector", tab);
     else url.searchParams.delete("inspector");
     window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
-  }, [activeId, healthFilter, impactMode, mode, objects.table, query, tab, typeFilter]);
+  }, [
+    activeId,
+    healthFilter,
+    impactMode,
+    mode,
+    objects.table,
+    query,
+    resolvedObjectKindFilter,
+    resolvedSourceFilter,
+    tab,
+    typeFilter,
+  ]);
 
   const nodeDown = (event: RPE<HTMLButtonElement>, id: string) => {
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -718,6 +880,9 @@ export function MapView() {
       setSelectedItemIds(new Set([id]));
       setSelId(id);
     }
+    setSelectedObjectId("");
+    setSelectedObjectIds(new Set());
+    setObjectDrag({});
     setTab("summary");
   };
 
@@ -726,6 +891,71 @@ export function MapView() {
     if ((node.kind === "source" || node.kind === "table") && node.table) {
       setTableName(node.table);
     }
+  };
+
+  const reconcileItemSelection = (
+    nextType: string,
+    nextHealth: Health | "all",
+    nextQuery: string,
+  ) => {
+    if (
+      selected &&
+      matchesItemFilters(selected, nextType, nextHealth, nextQuery)
+    ) {
+      return;
+    }
+    const next = items.find((item) =>
+      matchesItemFilters(item, nextType, nextHealth, nextQuery),
+    );
+    const nextId = next?.fabricId ?? "";
+    setSelId(nextId);
+    setFocusId(nextId);
+    setSelectedItemIds(new Set(nextId ? [nextId] : []));
+    setDrag({});
+    setSelectedObjectId("");
+    setSelectedObjectIds(new Set());
+    setObjectDrag({});
+  };
+
+  const changeObjectTable = (nextTable: string) => {
+    setTableName(nextTable);
+    if (selectedMetadataEdges.length > 0) {
+      setSelectedObjectId("");
+      setSelectedObjectIds(new Set());
+      setObjectDrag({});
+      return;
+    }
+    const nextId = `table:${nextTable}`;
+    setSelectedObjectId(nextId);
+    setSelectedObjectIds(new Set([nextId]));
+    setObjectDrag({});
+  };
+
+  const changeObjectSource = (nextSource: string) => {
+    setSourceItemFilter(nextSource);
+    setSelectedObjectId("");
+    setSelectedObjectIds(new Set());
+    setObjectDrag({});
+  };
+
+  const changeObjectKind = (nextKind: MetadataObjectKind | "all") => {
+    setObjectKindFilter(nextKind);
+    setSelectedObjectId("");
+    setSelectedObjectIds(new Set());
+    setObjectDrag({});
+  };
+
+  const changeQuery = (nextQuery: string) => {
+    setQuery(nextQuery);
+    if (mode === "items") return;
+    const active = objectNodeById.get(activeObjectId);
+    if (active && matchesObjectQuery(active, nextQuery)) return;
+    const next = objects.nodes.find((node) =>
+      matchesObjectQuery(node, nextQuery),
+    );
+    setSelectedObjectId(next?.id ?? "");
+    setSelectedObjectIds(new Set(next ? [next.id] : []));
+    setObjectDrag({});
   };
 
   const objectNodeDown = (
@@ -888,7 +1118,7 @@ export function MapView() {
 
   return (
     <div className="flex h-full min-h-[720px] flex-col xl:min-h-0">
-      <div className="flex flex-wrap items-end justify-between gap-[12px] border-b border-border px-[20px] py-[14px]">
+      <div className="atlas-page-header flex flex-wrap items-end justify-between border-b border-border">
         <div>
           <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-lineage-downstream">
             Workspace topology
@@ -916,7 +1146,7 @@ export function MapView() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-[8px] border-b border-border bg-card px-[20px] py-[8px] shadow-fabric-2">
+      <div className="atlas-toolbar flex flex-wrap items-center border-b border-border bg-card px-l py-s shadow-fabric-2">
         <div className="flex rounded-md border border-border bg-secondary p-[2px]">
           {(["items", "objects"] as const).map((value) => (
             <button
@@ -924,7 +1154,7 @@ export function MapView() {
               type="button"
               onClick={() => setMode(value)}
               className={cn(
-                "h-[30px] rounded-md px-[12px] text-[12px] font-semibold capitalize text-muted-foreground",
+                "rounded-md px-m font-semibold capitalize text-muted-foreground",
                 mode === value && "bg-card text-brand-foreground shadow-fabric-2",
               )}
             >
@@ -940,9 +1170,9 @@ export function MapView() {
           <span className="sr-only">Search lineage</span>
           <input
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => changeQuery(event.target.value)}
             placeholder={mode === "items" ? "Search items…" : "Search objects…"}
-            className="h-[34px] w-full rounded-lg border border-input bg-card pl-[31px] pr-[10px] text-[12px] outline-none"
+            className="w-full rounded-lg border border-input bg-card pl-[31px] pr-m outline-none"
           />
         </label>
         {mode === "items" ? (
@@ -950,8 +1180,12 @@ export function MapView() {
             <select
               aria-label="Filter by item type"
               value={typeFilter}
-              onChange={(event) => setTypeFilter(event.target.value)}
-              className="h-[34px] rounded-lg border border-input bg-card px-[10px] text-[12px] text-muted-foreground outline-none"
+              onChange={(event) => {
+                const nextType = event.target.value;
+                setTypeFilter(nextType);
+                reconcileItemSelection(nextType, healthFilter, query);
+              }}
+              className="rounded-lg border border-input bg-card px-m text-muted-foreground outline-none"
             >
               <option value="all">All types</option>
               {types.map((type) => (
@@ -963,10 +1197,12 @@ export function MapView() {
             <select
               aria-label="Filter by health"
               value={healthFilter}
-              onChange={(event) =>
-                setHealthFilter(event.target.value as Health | "all")
-              }
-              className="h-[34px] rounded-lg border border-input bg-card px-[10px] text-[12px] text-muted-foreground outline-none"
+              onChange={(event) => {
+                const nextHealth = event.target.value as Health | "all";
+                setHealthFilter(nextHealth);
+                reconcileItemSelection(typeFilter, nextHealth, query);
+              }}
+              className="rounded-lg border border-input bg-card px-m text-muted-foreground outline-none"
             >
               <option value="all">All health</option>
               <option value="healthy">Healthy</option>
@@ -976,19 +1212,73 @@ export function MapView() {
             </select>
           </>
         ) : (
-          schema.length > 0 && (
-            <select
-              aria-label="Select object lineage table"
-              value={objects.table ?? ""}
-              onChange={(event) => setTableName(event.target.value)}
-              className="h-[34px] max-w-[220px] rounded-lg border border-input bg-card px-[10px] text-[12px] text-muted-foreground outline-none"
-            >
-              {schema.map((entry) => (
-                <option key={entry.name} value={entry.name}>
-                  {entry.name}
-                </option>
-              ))}
-            </select>
+          selectedMetadataEdges.length > 0 ? (
+            <>
+              {metadataSourceOptions.length > 0 && (
+                <select
+                  aria-label="Filter object lineage by source item"
+                  value={resolvedSourceFilter}
+                  onChange={(event) =>
+                    changeObjectSource(event.target.value)
+                  }
+                  className="max-w-[220px] rounded-lg border border-input bg-card px-m text-muted-foreground outline-none"
+                >
+                  <option value="all">All source items</option>
+                  {metadataSourceOptions.map((itemId) => (
+                    <option key={itemId} value={itemId}>
+                      {itemById.get(itemId)?.displayName ?? itemId}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {metadataTableOptions.length > 0 && (
+                <select
+                  aria-label="Select object lineage table"
+                  value={resolvedTableFilter}
+                  onChange={(event) => changeObjectTable(event.target.value)}
+                  className="max-w-[220px] rounded-lg border border-input bg-card px-m text-muted-foreground outline-none"
+                >
+                  <option value="all">All source objects</option>
+                  {metadataTableOptions.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <select
+                aria-label="Filter object lineage by object kind"
+                value={resolvedObjectKindFilter}
+                onChange={(event) =>
+                  changeObjectKind(
+                    event.target.value as MetadataObjectKind | "all",
+                  )
+                }
+                className="max-w-[220px] rounded-lg border border-input bg-card px-m text-muted-foreground outline-none"
+              >
+                <option value="all">All object kinds</option>
+                {metadataKindOptions.map((objectKind) => (
+                  <option key={objectKind} value={objectKind}>
+                    {metadataObjectKindLabel(objectKind)}
+                  </option>
+                ))}
+              </select>
+            </>
+          ) : (
+            schema.length > 0 && (
+              <select
+                aria-label="Select object lineage table"
+                value={objects.table ?? ""}
+                onChange={(event) => changeObjectTable(event.target.value)}
+                className="max-w-[220px] rounded-lg border border-input bg-card px-m text-muted-foreground outline-none"
+              >
+                {schema.map((entry) => (
+                  <option key={entry.name} value={entry.name}>
+                    {entry.name}
+                  </option>
+                ))}
+              </select>
+            )
           )
         )}
         {mode === "items" && <button
@@ -1001,7 +1291,7 @@ export function MapView() {
             setImpactMode(next);
           }}
           className={cn(
-            "ml-auto flex h-[34px] items-center gap-[7px] rounded-lg border px-[10px] text-[12px] font-semibold",
+            "ml-auto flex items-center gap-s rounded-lg border px-m font-semibold",
             impactMode
               ? "border-lineage-upstream/50 bg-lineage-upstream/10 text-lineage-upstream"
               : "border-border text-muted-foreground",
@@ -1022,7 +1312,7 @@ export function MapView() {
               setFocusId(activeId);
               setDrag({});
             }}
-            className="flex h-[34px] items-center gap-[6px] rounded-lg border border-border px-[10px] text-[12px] font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
+            className="flex items-center gap-s rounded-lg border border-border px-m font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <GitBranch size={13} />
             Focus selection
@@ -1041,22 +1331,26 @@ export function MapView() {
         <button
           type="button"
           onClick={resetGraph}
-          className="flex h-[34px] items-center gap-[6px] rounded-lg border border-border px-[10px] text-[12px] font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
+          className="flex items-center gap-s rounded-lg border border-border px-m font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
         >
           <RotateCcw size={13} />
           Reset
         </button>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="flex min-h-0 flex-1 flex-col xl:flex-row">
         <div
           ref={mapRef}
-          className="atlas-map-grid relative min-h-[500px] overflow-auto bg-muted/30"
+          className="atlas-map-grid relative min-h-[500px] min-w-0 flex-1 overflow-auto bg-muted/30"
         >
           {mode === "objects" && (
             <div className="sticky left-[16px] top-[12px] z-20 max-w-[500px] rounded-lg border border-border bg-card px-[10px] py-[7px] text-[11px] text-muted-foreground shadow-fabric-4">
-              Object metadata is exact; field-to-report usage remains item-level because
-              Fabric does not expose visual field bindings through the current APIs.
+              {objects.verifiedMetadata
+                ? "Verified object metadata is shown from the selected item snapshot."
+                : "Object metadata is exact; field-to-report usage remains item-level because Fabric does not expose visual field bindings through the current APIs."}
+              {objects.truncated
+                ? ` The view is limited to ${MAX_VISIBLE_OBJECT_EDGES} edges. Narrow the source, object or kind filter for the remaining relationships.`
+                : ""}
             </div>
           )}
           <div style={{ width: graph.width * zoom, height: graph.height * zoom }}>
@@ -1148,7 +1442,7 @@ export function MapView() {
                             stroke={color}
                             strokeWidth={active ? 2.6 : 1.5}
                             strokeOpacity={
-                              edge.broken ? 0.9 : active ? 0.96 : activeId ? 0.18 : 0.5
+                              edge.broken ? 0.9 : active ? 0.96 : activeId ? 0.3 : 0.55
                             }
                             strokeDasharray={
                               edge.broken
@@ -1233,13 +1527,14 @@ export function MapView() {
                         aria-pressed={selectedNode}
                         onClick={(event) => nodeClick(event, item.fabricId)}
                         aria-label={`${item.displayName}, ${typeMeta(item.itemType).label}, ${item.health}`}
+                        title={item.displayName}
                         onPointerDown={(event) => nodeDown(event, item.fabricId)}
                         onPointerMove={nodeMove}
                         onPointerUp={nodeUp}
                         className={cn(
                           "absolute flex touch-none select-none items-center gap-[10px] rounded-lg border bg-card px-[12px] text-left shadow-fabric-2 transition-[box-shadow,opacity,border-color,transform] hover:-translate-y-[1px] hover:shadow-fabric-8",
                           selectedNode ? "border-primary/70" : "border-border",
-                          dim && "opacity-30",
+                          dim && "border-border/70 bg-card/85 shadow-none",
                           "cursor-grab active:cursor-grabbing",
                         )}
                         style={{
@@ -1265,11 +1560,11 @@ export function MapView() {
                         )}
                         <TypeGlyph type={item.itemType} size={34} />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[13px] font-semibold leading-[1.15]">
+                          <span className="line-clamp-2 break-words text-200 font-semibold leading-200">
                             {item.displayName}
                           </span>
-                          <span className="mt-[3px] block truncate text-[10px] uppercase tracking-wide text-muted-foreground">
-                            {typeMeta(item.itemType).label}
+                          <span className="mt-xs line-clamp-1 text-200 leading-200 text-muted-foreground">
+                            {typeMeta(item.itemType).label} · {item.health}
                           </span>
                         </span>
                         <HealthDot health={item.health} />
@@ -1282,12 +1577,11 @@ export function MapView() {
                   <div
                     className="pointer-events-none absolute inset-x-0 top-[9px] grid"
                     style={{
-                      gridTemplateColumns: "306px 330px 340px 300px",
+                      gridTemplateColumns: `repeat(${objects.stageLabels.length}, 282px)`,
                       paddingLeft: 24,
                     }}
                   >
-                    {["Source objects", "Model tables", "Fields", "Consumers"].map(
-                      (label) => (
+                    {objects.stageLabels.map((label) => (
                         <div
                           key={label}
                           className="flex items-center gap-[7px] pr-[18px] text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground"
@@ -1295,8 +1589,7 @@ export function MapView() {
                           <span>{label}</span>
                           <span className="h-px flex-1 bg-border" />
                         </div>
-                      ),
-                    )}
+                      ))}
                   </div>
                   <svg
                     className="pointer-events-none absolute inset-0 overflow-visible"
@@ -1361,7 +1654,7 @@ export function MapView() {
                             stroke={color}
                             strokeWidth={active ? 2.6 : edge.structural ? 1.3 : 1.8}
                             strokeOpacity={
-                              active ? 0.96 : activeObjectId ? 0.16 : 0.55
+                              active ? 0.96 : activeObjectId ? 0.3 : 0.55
                             }
                             strokeDasharray={
                               isUp
@@ -1436,10 +1729,7 @@ export function MapView() {
                     const dim = !!activeObjectId && !objectConnected.has(node.id);
                     const draggingNode = objectDragId === node.id;
                     const activeTable = node.table === objects.table;
-                    const matches =
-                      !query.trim() ||
-                      node.label.toLowerCase().includes(query.trim().toLowerCase()) ||
-                      node.subtitle.toLowerCase().includes(query.trim().toLowerCase());
+                    const matches = matchesObjectQuery(node, query);
                     const accent = primaryNode
                       ? "var(--color-primary)"
                       : isUp
@@ -1452,6 +1742,7 @@ export function MapView() {
                         key={node.id}
                         type="button"
                         aria-label={`${node.label}, ${node.subtitle}`}
+                        title={`${node.label} (${node.subtitle})`}
                         aria-pressed={selectedNode}
                         onClick={(event) => objectNodeClick(event, node)}
                         onPointerDown={(event) => objectNodeDown(event, node)}
@@ -1460,7 +1751,10 @@ export function MapView() {
                         className={cn(
                           "absolute flex touch-none cursor-grab select-none items-center gap-[10px] rounded-lg border border-border bg-card px-[11px] text-left shadow-fabric-2 transition-[box-shadow,opacity,border-color,transform] hover:-translate-y-[1px] hover:shadow-fabric-8 active:cursor-grabbing",
                           selectedNode && "border-primary/70",
-                          (!matches || dim) && "opacity-25",
+                          !matches && "border-dashed border-border/70 bg-muted/50 shadow-none",
+                          matches &&
+                            dim &&
+                            "border-border/70 bg-card/85 shadow-none",
                         )}
                         style={{
                           left: point.x,
@@ -1490,10 +1784,10 @@ export function MapView() {
                           {node.code}
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[12px] font-semibold">
+                          <span className="line-clamp-2 break-words text-200 font-semibold leading-200">
                             {node.label}
                           </span>
-                          <span className="mt-[2px] block truncate text-[9.5px] text-muted-foreground">
+                          <span className="mt-xs line-clamp-1 break-words text-200 leading-200 text-muted-foreground">
                             {node.subtitle}
                           </span>
                         </span>
@@ -1595,23 +1889,40 @@ export function MapView() {
           </div>
         </div>
 
-        <Tabs.Root
-          value={tab}
-          onValueChange={(value) => setTab(value as InspectorTab)}
-          asChild
+        <ResizableInspector
+          width={inspectorWidth.value}
+          onWidthChange={inspectorWidth.setValue}
+          error={inspectorWidth.error}
+          className="border-t border-border bg-card xl:border-l xl:border-t-0"
         >
-        <aside className="flex min-h-0 flex-col border-t border-border bg-card xl:border-l xl:border-t-0">
+          <Tabs.Root
+            value={tab}
+            onValueChange={(value) => setTab(value as InspectorTab)}
+            asChild
+          >
+        <aside aria-label="Item details inspector" className="flex min-h-0 flex-1 flex-col">
           {selected && (
             <>
               <div className="border-b border-border p-[16px]">
                 <div className="flex items-start gap-[12px]">
                   <TypeGlyph type={selected.itemType} size={44} />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[17px] font-bold">{selected.displayName}</div>
-                    <div className="mt-[2px] text-[10px] uppercase tracking-wide text-muted-foreground">
+                    <div className="break-words text-[17px] font-bold">{selected.displayName}</div>
+                    <div className="mt-[2px] text-200 uppercase tracking-wide text-muted-foreground">
                       {typeMeta(selected.itemType).label}
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      inspectorWidth.setValue(MAP_INSPECTOR_DEFAULT_WIDTH)
+                    }
+                    aria-label="Reset inspector width"
+                    title="Reset inspector width"
+                    className="hidden h-[32px] w-[32px] items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-accent hover:text-foreground xl:flex"
+                  >
+                    <RotateCcw size={14} />
+                  </button>
                   <button
                     type="button"
                     onClick={() => void copyLink()}
@@ -1649,16 +1960,54 @@ export function MapView() {
               <div className="min-h-[300px] flex-1 overflow-auto p-[16px]">
                 {tab === "summary" && (
                   <div className="flex flex-col gap-[14px]">
+                    {mode === "objects" && activeObject && (
+                      <Card className="p-[12px]">
+                        <SectionLabel>Selected object</SectionLabel>
+                        <div className="mt-[7px] break-words text-[13px] font-semibold">
+                          {activeObject.label}
+                        </div>
+                        <div className="mt-[3px] break-words text-[10px] text-muted-foreground">
+                          {activeObject.metadataRef
+                            ? metadataObjectKindLabel(
+                                activeObject.metadataRef.kind,
+                              )
+                            : activeObject.subtitle}
+                          {activeObject.table
+                            ? ` · ${activeObject.table}`
+                            : ""}
+                        </div>
+                        {activeObject.metadataRef && (
+                          <div className="mt-[8px] rounded-lg bg-secondary px-[9px] py-[7px] text-[10px] text-muted-foreground">
+                            Verified source-to-consumer object lineage from the
+                            active snapshot.
+                          </div>
+                        )}
+                      </Card>
+                    )}
                     {selected.description && (
                       <p className="text-[12px] leading-[1.5] text-muted-foreground">{selected.description}</p>
                     )}
                     <Card className="p-[12px]">
                       <div className="flex items-center justify-between gap-[10px] text-[12px]">
-                        <span className="text-muted-foreground">Owner</span>
-                        {selected.ownerName ? (
-                          <span className="flex min-w-0 items-center gap-[7px] font-semibold">
-                            <Avatar name={selected.ownerName} size={23} />
-                            <span className="max-w-[190px] truncate">{selected.ownerName}</span>
+                        <span className="text-muted-foreground">Documented owner</span>
+                        {selected.ownerName || selected.ownerEmail ? (
+                          <span className="flex min-w-0 items-center gap-[7px] text-right font-semibold">
+                            <Avatar
+                              name={selected.ownerName ?? selected.ownerEmail ?? "Owner"}
+                              size={23}
+                            />
+                            <span className="min-w-0">
+                              {selected.ownerName && (
+                                <span className="block break-words">
+                                  {selected.ownerName}
+                                </span>
+                              )}
+                              {selected.ownerEmail && (
+                                <span className="block break-all text-200 font-normal text-muted-foreground">
+                                  {selected.ownerEmail}
+                                </span>
+                              )}
+                            </span>
                           </span>
                         ) : (
                           <span className="text-muted-foreground">
@@ -1706,13 +2055,16 @@ export function MapView() {
                               type="button"
                               onClick={() => {
                                 setSelId(item.fabricId);
+                                setSelectedObjectId("");
+                                setSelectedObjectIds(new Set());
+                                setObjectDrag({});
                                 setTab("summary");
                               }}
-                              className="flex items-center gap-[8px] rounded-lg px-[7px] py-[5px] text-left hover:bg-accent"
+                              className="atlas-row flex items-center gap-[8px] rounded-lg px-[7px] text-left hover:bg-accent"
                             >
                               <TypeGlyph type={item.itemType} size={23} />
-                              <span className="min-w-0 flex-1 truncate text-[12px] font-semibold">{item.displayName}</span>
-                              <span className="text-[9.5px] text-muted-foreground">
+                              <span className="min-w-0 flex-1 break-words text-200 font-semibold">{item.displayName}</span>
+                              <span className="text-200 text-muted-foreground">
                                 {(distance as Map<string, number>).get(item.fabricId)} hop
                               </span>
                             </button>
@@ -1746,7 +2098,7 @@ export function MapView() {
                           type="button"
                           onClick={() => {
                             setMode("objects");
-                            setTableName(schema[0].name);
+                            changeObjectTable(schema[0].name);
                           }}
                           className="text-[10px] font-semibold text-primary hover:underline"
                         >
@@ -1761,18 +2113,20 @@ export function MapView() {
                         </div>
                       )}
                       {schema.map((table) => {
-                        const open = openTables.has(table.name);
+                        const open =
+                          openTables.has(table.name) || Boolean(query.trim());
                         return (
                           <div key={table.name} className="overflow-hidden rounded-lg border border-border">
                             <button
                               type="button"
                               aria-expanded={open}
+                              disabled={Boolean(query.trim())}
                               onClick={() => toggleTable(table.name)}
-                              className="flex w-full items-center gap-[6px] px-[10px] py-[7px] text-left hover:bg-accent"
+                              className="atlas-row flex w-full items-center gap-[6px] px-[10px] text-left hover:bg-accent"
                             >
                               {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                              <span className="min-w-0 flex-1 truncate text-[12px] font-semibold">{table.name}</span>
-                              {table.rows != null && <span className="text-[10px] text-muted-foreground">{table.rows} rows</span>}
+                              <span className="min-w-0 flex-1 break-all text-200 font-semibold">{table.name}</span>
+                              {table.rows != null && <span className="text-200 text-muted-foreground">{table.rows} rows</span>}
                             </button>
                             {open && (
                               <div className="border-t border-border px-[10px] py-[8px]">
@@ -1804,17 +2158,18 @@ export function MapView() {
                     <SectionLabel>Effective access · {effectiveAccess.length}</SectionLabel>
                     <div className="mt-[8px] text-[10px] leading-[1.4] text-muted-foreground">
                       Workspace and item grants are additive. Direct shares
-                      never reduce inherited access.
+                      never reduce inherited access. Owner permission is an
+                      access role and is separate from documented ownership.
                     </div>
                     <div className="mt-[10px] flex flex-col gap-[7px]">
                       {effectiveAccess.map((grant) => {
                         const principal = principals.find((entry) => entry.displayName === grant.principalRef);
                         return (
-                          <div key={grant.principalRef} className="flex items-center gap-[9px] rounded-lg border border-border px-[10px] py-[8px]">
+                          <div key={grant.principalRef} className="atlas-row flex items-center gap-[9px] rounded-lg border border-border px-[10px]">
                             <PrincipalAvatar name={grant.principalRef} kind={principal?.kind ?? "user"} size={27} />
                             <div className="min-w-0 flex-1">
                               <div className="truncate text-[12px] font-semibold">{grant.principalRef}</div>
-                              <div className="text-[9.5px] text-muted-foreground">
+                              <div className="text-200 text-muted-foreground">
                                 {grant.inherited
                                   ? "Inherited · workspace"
                                   : grant.mixed
@@ -1823,7 +2178,11 @@ export function MapView() {
                                 {grant.roleName ? ` · ${grant.roleName}` : ""}
                               </div>
                             </div>
-                            <span className="rounded-md bg-primary/10 px-[7px] py-[2px] text-[10px] font-semibold capitalize text-primary">{grant.accessLevel}</span>
+                            <span className="rounded-md bg-primary/10 px-[7px] py-[2px] text-200 font-semibold capitalize text-primary">
+                              {grant.accessLevel === "owner"
+                                ? "Owner permission"
+                                : `${grant.accessLevel} access`}
+                            </span>
                           </div>
                         );
                       })}
@@ -1889,9 +2248,17 @@ export function MapView() {
             </>
           )}
         </aside>
-        </Tabs.Root>
+          </Tabs.Root>
+        </ResizableInspector>
       </div>
-      {reportItemId && (
+      {metadataReportObject ? (
+        <MetadataObjectImpactDialog
+          data={data}
+          subject={metadataReportObject}
+          open={impactReportOpen}
+          onClose={() => setImpactReportOpen(false)}
+        />
+      ) : reportItemId ? (
         <ImpactReportDialog
           data={data}
           itemId={reportItemId}
@@ -1899,7 +2266,7 @@ export function MapView() {
           open={impactReportOpen}
           onClose={() => setImpactReportOpen(false)}
         />
-      )}
+      ) : null}
     </div>
   );
 }

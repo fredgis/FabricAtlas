@@ -41,6 +41,20 @@ import {
   type FindingAcknowledgement,
   type FindingAckStatus,
 } from "./finding-acks";
+import {
+  deleteGovernancePolicy,
+  loadGovernancePolicy,
+  saveGovernancePolicy,
+  type GovernancePolicyRecord,
+  type GovernanceTargets,
+} from "./governance-policy";
+import {
+  deleteGovernanceException,
+  loadGovernanceExceptions,
+  saveGovernanceException,
+  type GovernanceException,
+} from "./governance-exceptions";
+import { POSTURE_TARGETS } from "./posture";
 
 export interface CurrentUser {
   id: string;
@@ -62,6 +76,13 @@ export interface AtlasContextValue {
   findingAcksLoading: boolean;
   findingAcksError?: string;
   findingAckPendingIds: Set<string>;
+  governanceTargets: GovernanceTargets;
+  governancePolicyLoading: boolean;
+  governancePolicyError?: string;
+  governanceExceptions: GovernanceException[];
+  governanceExceptionsLoading: boolean;
+  governanceExceptionsError?: string;
+  governanceExceptionPendingIds: Set<string>;
   syncing: boolean;
   syncProgress: number;
   syncStage: string;
@@ -88,6 +109,16 @@ export interface AtlasContextValue {
     note?: string;
   }) => Promise<void>;
   removeFindingAcknowledgement: (id: string) => Promise<void>;
+  reloadGovernancePolicy: () => Promise<void>;
+  saveGovernanceTargets: (targets: GovernanceTargets) => Promise<void>;
+  resetGovernanceTargets: () => Promise<void>;
+  reloadGovernanceExceptions: () => Promise<void>;
+  saveGovernanceException: (input: {
+    findingId: string;
+    reason: string;
+    expiresAt: string;
+  }) => Promise<void>;
+  removeGovernanceException: (id: string) => Promise<void>;
   loadHistorySnapshot: (snapshotId: string) => Promise<void>;
 }
 
@@ -194,6 +225,26 @@ export function AtlasProvider({
   const [findingAckPendingIds, setFindingAckPendingIds] = useState(
     new Set<string>(),
   );
+  const [governancePolicy, setGovernancePolicy] =
+    useState<GovernancePolicyRecord>({
+      targets: { ...POSTURE_TARGETS },
+      source: "default",
+    });
+  const [governancePolicyLoading, setGovernancePolicyLoading] =
+    useState(!isPreview);
+  const [governancePolicyError, setGovernancePolicyError] = useState<
+    string | undefined
+  >();
+  const [governanceExceptions, setGovernanceExceptions] = useState<
+    GovernanceException[]
+  >([]);
+  const [governanceExceptionsLoading, setGovernanceExceptionsLoading] =
+    useState(!isPreview);
+  const [governanceExceptionsError, setGovernanceExceptionsError] = useState<
+    string | undefined
+  >();
+  const [governanceExceptionPendingIds, setGovernanceExceptionPendingIds] =
+    useState(new Set<string>());
   const [syncing, setSyncing] = useState(false);
   const [syncProgress, setSyncProgress] = useState(0);
   const [syncStage, setSyncStage] = useState("Ready to sync");
@@ -220,6 +271,12 @@ export function AtlasProvider({
   const findingAckQueues = useRef(new Map<string, Promise<void>>());
   const findingAckGeneration = useRef(0);
   const findingAcksLoadingRef = useRef(findingAcksLoading);
+  const governancePolicyGeneration = useRef(0);
+  const governancePolicyLoadingRef = useRef(governancePolicyLoading);
+  const governanceExceptionGeneration = useRef(0);
+  const governanceExceptionsLoadingRef = useRef(
+    governanceExceptionsLoading,
+  );
 
   useEffect(() => {
     dataRef.current = data;
@@ -236,6 +293,14 @@ export function AtlasProvider({
   useEffect(() => {
     findingAcksLoadingRef.current = findingAcksLoading;
   }, [findingAcksLoading]);
+
+  useEffect(() => {
+    governancePolicyLoadingRef.current = governancePolicyLoading;
+  }, [governancePolicyLoading]);
+
+  useEffect(() => {
+    governanceExceptionsLoadingRef.current = governanceExceptionsLoading;
+  }, [governanceExceptionsLoading]);
 
   useEffect(
     () => () => {
@@ -271,6 +336,94 @@ export function AtlasProvider({
       alive = false;
     };
   }, [currentUser.id, data.workspace.fabricId, isPreview]);
+
+  const reloadGovernancePolicy = useCallback(async () => {
+    const generation = governancePolicyGeneration.current + 1;
+    governancePolicyGeneration.current = generation;
+    governancePolicyLoadingRef.current = true;
+    setGovernancePolicy({
+      targets: { ...POSTURE_TARGETS },
+      source: "default",
+    });
+    setGovernancePolicyLoading(true);
+    setGovernancePolicyError(undefined);
+    try {
+      const policy = await loadGovernancePolicy(
+        isPreview,
+        data.workspace.fabricId,
+      );
+      if (governancePolicyGeneration.current === generation) {
+        setGovernancePolicy(policy);
+      }
+    } catch (error) {
+      if (governancePolicyGeneration.current === generation) {
+        setGovernancePolicyError(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+      throw error;
+    } finally {
+      if (governancePolicyGeneration.current === generation) {
+        governancePolicyLoadingRef.current = false;
+        setGovernancePolicyLoading(false);
+      }
+    }
+  }, [data.workspace.fabricId, isPreview]);
+
+  useEffect(() => {
+    if (isPreview) return;
+    let alive = true;
+    window.queueMicrotask(() => {
+      if (alive) void reloadGovernancePolicy().catch(() => undefined);
+    });
+    return () => {
+      alive = false;
+      governancePolicyGeneration.current += 1;
+    };
+  }, [isPreview, reloadGovernancePolicy]);
+
+  const reloadGovernanceExceptions = useCallback(async () => {
+    const generation = governanceExceptionGeneration.current + 1;
+    governanceExceptionGeneration.current = generation;
+    governanceExceptionsLoadingRef.current = true;
+    setGovernanceExceptions([]);
+    setGovernanceExceptionPendingIds(new Set());
+    setGovernanceExceptionsLoading(true);
+    setGovernanceExceptionsError(undefined);
+    try {
+      const exceptions = await loadGovernanceExceptions(
+        isPreview,
+        data.workspace.fabricId,
+      );
+      if (governanceExceptionGeneration.current === generation) {
+        setGovernanceExceptions(exceptions);
+      }
+    } catch (error) {
+      if (governanceExceptionGeneration.current === generation) {
+        setGovernanceExceptionsError(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+      throw error;
+    } finally {
+      if (governanceExceptionGeneration.current === generation) {
+        governanceExceptionsLoadingRef.current = false;
+        setGovernanceExceptionsLoading(false);
+      }
+    }
+  }, [data.workspace.fabricId, isPreview]);
+
+  useEffect(() => {
+    if (isPreview) return;
+    let alive = true;
+    window.queueMicrotask(() => {
+      if (alive) void reloadGovernanceExceptions().catch(() => undefined);
+    });
+    return () => {
+      alive = false;
+      governanceExceptionGeneration.current += 1;
+    };
+  }, [isPreview, reloadGovernanceExceptions]);
 
   useEffect(() => {
     if (isPreview) return;
@@ -658,6 +811,196 @@ export function AtlasProvider({
     [isPreview],
   );
 
+  const saveGovernanceTargets = useCallback(
+    async (targets: GovernanceTargets) => {
+      if (!canSync) {
+        const error = new Error(
+          "Only the configured Atlas sync administrator can change governance targets.",
+        );
+        setGovernancePolicyError(error.message);
+        throw error;
+      }
+      if (governancePolicyLoadingRef.current) {
+        const error = new Error("Governance targets are still loading.");
+        setGovernancePolicyError(error.message);
+        throw error;
+      }
+      setGovernancePolicyError(undefined);
+      setGovernancePolicyLoading(true);
+      governancePolicyLoadingRef.current = true;
+      try {
+        const saved = await saveGovernancePolicy(
+          isPreview,
+          data.workspace.fabricId,
+          currentUser,
+          targets,
+          governancePolicy,
+        );
+        setGovernancePolicy(saved);
+      } catch (error) {
+        setGovernancePolicyError(
+          error instanceof Error ? error.message : String(error),
+        );
+        throw error;
+      } finally {
+        governancePolicyLoadingRef.current = false;
+        setGovernancePolicyLoading(false);
+      }
+    },
+    [
+      canSync,
+      currentUser,
+      data.workspace.fabricId,
+      governancePolicy,
+      isPreview,
+    ],
+  );
+
+  const resetGovernanceTargets = useCallback(async () => {
+    if (!canSync) {
+      const error = new Error(
+        "Only the configured Atlas sync administrator can reset governance targets.",
+      );
+      setGovernancePolicyError(error.message);
+      throw error;
+    }
+    if (governancePolicyLoadingRef.current) {
+      const error = new Error("Governance targets are still loading.");
+      setGovernancePolicyError(error.message);
+      throw error;
+    }
+    setGovernancePolicyError(undefined);
+    setGovernancePolicyLoading(true);
+    governancePolicyLoadingRef.current = true;
+    try {
+      await deleteGovernancePolicy(isPreview, governancePolicy.id);
+      setGovernancePolicy({
+        targets: { ...POSTURE_TARGETS },
+        source: "default",
+      });
+    } catch (error) {
+      setGovernancePolicyError(
+        error instanceof Error ? error.message : String(error),
+      );
+      throw error;
+    } finally {
+      governancePolicyLoadingRef.current = false;
+      setGovernancePolicyLoading(false);
+    }
+  }, [canSync, governancePolicy.id, isPreview]);
+
+  const saveSharedGovernanceException = useCallback(
+    async (input: {
+      findingId: string;
+      reason: string;
+      expiresAt: string;
+    }) => {
+      if (!canSync) {
+        const error = new Error(
+          "Only the configured Atlas sync administrator can change governance exceptions.",
+        );
+        setGovernanceExceptionsError(error.message);
+        throw error;
+      }
+      if (governanceExceptionsLoadingRef.current) {
+        const error = new Error("Governance exceptions are still loading.");
+        setGovernanceExceptionsError(error.message);
+        throw error;
+      }
+      const generation = governanceExceptionGeneration.current;
+      setGovernanceExceptionsError(undefined);
+      setGovernanceExceptionPendingIds((pending) => {
+        const next = new Set(pending);
+        next.add(input.findingId);
+        return next;
+      });
+      try {
+        const current = governanceExceptions.find(
+          (exception) => exception.findingId === input.findingId,
+        );
+        const saved = await saveGovernanceException(
+          isPreview,
+          data.workspace.fabricId,
+          currentUser,
+          { ...input, current },
+        );
+        if (governanceExceptionGeneration.current !== generation) return;
+        setGovernanceExceptions((existing) => [
+          saved,
+          ...existing.filter(
+            (exception) => exception.findingId !== saved.findingId,
+          ),
+        ]);
+      } catch (error) {
+        if (governanceExceptionGeneration.current === generation) {
+          setGovernanceExceptionsError(
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+        throw error;
+      } finally {
+        if (governanceExceptionGeneration.current === generation) {
+          setGovernanceExceptionPendingIds((pending) => {
+            const next = new Set(pending);
+            next.delete(input.findingId);
+            return next;
+          });
+        }
+      }
+    },
+    [
+      canSync,
+      currentUser,
+      data.workspace.fabricId,
+      governanceExceptions,
+      isPreview,
+    ],
+  );
+
+  const removeSharedGovernanceException = useCallback(
+    async (id: string) => {
+      if (!canSync) {
+        const error = new Error(
+          "Only the configured Atlas sync administrator can remove governance exceptions.",
+        );
+        setGovernanceExceptionsError(error.message);
+        throw error;
+      }
+      const current = governanceExceptions.find(
+        (exception) => exception.id === id,
+      );
+      if (!current) {
+        const error = new Error("The selected governance exception is unavailable.");
+        setGovernanceExceptionsError(error.message);
+        throw error;
+      }
+      setGovernanceExceptionsError(undefined);
+      setGovernanceExceptionPendingIds((pending) => {
+        const next = new Set(pending);
+        next.add(current.findingId);
+        return next;
+      });
+      try {
+        await deleteGovernanceException(isPreview, id);
+        setGovernanceExceptions((existing) =>
+          existing.filter((exception) => exception.id !== id),
+        );
+      } catch (error) {
+        setGovernanceExceptionsError(
+          error instanceof Error ? error.message : String(error),
+        );
+        throw error;
+      } finally {
+        setGovernanceExceptionPendingIds((pending) => {
+          const next = new Set(pending);
+          next.delete(current.findingId);
+          return next;
+        });
+      }
+    },
+    [canSync, governanceExceptions, isPreview],
+  );
+
   const loadHistorySnapshot = useCallback(
     async (snapshotId: string) => {
       if (
@@ -733,6 +1076,13 @@ export function AtlasProvider({
       findingAcksLoading,
       findingAcksError,
       findingAckPendingIds,
+      governanceTargets: governancePolicy.targets,
+      governancePolicyLoading,
+      governancePolicyError,
+      governanceExceptions,
+      governanceExceptionsLoading,
+      governanceExceptionsError,
+      governanceExceptionPendingIds,
       syncing,
       syncProgress,
       syncStage,
@@ -750,9 +1100,15 @@ export function AtlasProvider({
       removeSavedView,
       saveFindingAcknowledgement,
       removeFindingAcknowledgement,
+      reloadGovernancePolicy,
+      saveGovernanceTargets,
+      resetGovernanceTargets,
+      reloadGovernanceExceptions,
+      saveGovernanceException: saveSharedGovernanceException,
+      removeGovernanceException: removeSharedGovernanceException,
       loadHistorySnapshot,
     }),
-    [data, history, hydrating, historyLoading, historyError, historyFailedSnapshotIds, savedViews, savedViewsLoading, savedViewsError, findingAcks, findingAcksLoading, findingAcksError, findingAckPendingIds, syncing, syncProgress, syncStage, lastSyncedAt, isPreview, configured, canSync, hasData, requiresDeploymentSync, syncError, currentUser, sync, addComment, addSavedView, removeSavedView, saveFindingAcknowledgement, removeFindingAcknowledgement, loadHistorySnapshot],
+    [data, history, hydrating, historyLoading, historyError, historyFailedSnapshotIds, savedViews, savedViewsLoading, savedViewsError, findingAcks, findingAcksLoading, findingAcksError, findingAckPendingIds, governancePolicy.targets, governancePolicyLoading, governancePolicyError, governanceExceptions, governanceExceptionsLoading, governanceExceptionsError, governanceExceptionPendingIds, syncing, syncProgress, syncStage, lastSyncedAt, isPreview, configured, canSync, hasData, requiresDeploymentSync, syncError, currentUser, sync, addComment, addSavedView, removeSavedView, saveFindingAcknowledgement, removeFindingAcknowledgement, reloadGovernancePolicy, saveGovernanceTargets, resetGovernanceTargets, reloadGovernanceExceptions, saveSharedGovernanceException, removeSharedGovernanceException, loadHistorySnapshot],
   );
 
   return <AtlasContext.Provider value={value}>{children}</AtlasContext.Provider>;

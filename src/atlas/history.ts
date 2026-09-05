@@ -4,10 +4,11 @@ import type {
   Grant,
   Item,
   Job,
-  ModelColumn,
-  ModelMeasure,
-  ModelTableSchema,
 } from "./model";
+import {
+  buildCatalogObjects,
+  type AssetObjectKind,
+} from "./catalog-objects";
 
 export type SnapshotCatalog = Omit<AtlasData, "comments" | "syncRuns">;
 
@@ -91,8 +92,9 @@ export interface AtlasChange {
   syncedAt: string;
   label: string;
   itemFabricId?: string;
-  objectType?: "table" | "view" | "column" | "measure";
+  objectType?: AssetObjectKind;
   objectName?: string;
+  objectId?: string;
   tableName?: string;
   before?: unknown;
   after?: unknown;
@@ -112,11 +114,46 @@ export interface AtlasHistory {
 export type ChangeRecord = AtlasChange;
 export type SnapshotChange = AtlasChange;
 
+export function snapshotDataForInspection(
+  snapshot: HistoricalSnapshot,
+): AtlasData {
+  return {
+    ...snapshot.catalog,
+    comments: [],
+    syncRuns: [],
+  };
+}
+
+export function readableChangeValue(value: unknown): string {
+  if (value === undefined) return "Not present";
+  if (value === null || value === "") return "None";
+  if (typeof value === "string") return value;
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
+    return String(value);
+  }
+  return JSON.stringify(value, null, 2);
+}
+
+export function changeFieldValue(
+  value: unknown,
+  field: string,
+): unknown {
+  if (!value || Array.isArray(value) || typeof value !== "object") {
+    return undefined;
+  }
+  return (value as Record<string, unknown>)[field];
+}
+
 interface SchemaObject {
   key: string;
   itemFabricId: string;
-  objectType: "table" | "view" | "column" | "measure";
+  objectType: AssetObjectKind;
   objectName: string;
+  objectId: string;
   tableName?: string;
   label: string;
   value: Record<string, unknown>;
@@ -275,73 +312,18 @@ function itemValue(item: Item): Record<string, unknown> {
 }
 
 function schemaObjects(catalog: SnapshotCatalog): SchemaObject[] {
-  const result: SchemaObject[] = [];
-  for (const [itemFabricId, tables] of Object.entries(catalog.schema ?? {}).sort(
-    ([left], [right]) => left.localeCompare(right),
-  )) {
-    for (const table of [...tables].sort((left, right) =>
-      left.name.localeCompare(right.name),
-    )) {
-      const tableType =
-        normalizedText(table.objectType) === "view" ? "view" : "table";
-      const tableKey = `${itemFabricId}\u0000${tableType}\u0000${table.name}`;
-      result.push({
-        key: tableKey,
-        itemFabricId,
-        objectType: tableType,
-        objectName: table.name,
-        label: table.name,
-        value: {
-          rows: table.rows,
-          objectType: cleanText(table.objectType),
-          source: cleanText(table.source),
-          description: cleanText(table.description),
-          isHidden: !!table.isHidden,
-        },
-      });
-      for (const column of [...table.columns].sort((left, right) =>
-        left.name.localeCompare(right.name),
-      )) {
-        result.push(
-          schemaChild(itemFabricId, table, "column", column, {
-            dataType: cleanText(column.dataType),
-            description: cleanText(column.description),
-            isHidden: !!column.isHidden,
-          }),
-        );
-      }
-      for (const measure of [...table.measures].sort((left, right) =>
-        left.name.localeCompare(right.name),
-      )) {
-        result.push(
-          schemaChild(itemFabricId, table, "measure", measure, {
-            expression: cleanText(measure.expr),
-            description: cleanText(measure.description),
-            isHidden: !!measure.isHidden,
-          }),
-        );
-      }
-    }
-  }
-  return result;
-}
-
-function schemaChild(
-  itemFabricId: string,
-  table: ModelTableSchema,
-  objectType: "column" | "measure",
-  child: ModelColumn | ModelMeasure,
-  value: Record<string, unknown>,
-): SchemaObject {
-  return {
-    key: `${itemFabricId}\u0000${objectType}\u0000${table.name}\u0000${child.name}`,
-    itemFabricId,
-    objectType,
-    objectName: child.name,
-    tableName: table.name,
-    label: `${table.name}.${child.name}`,
-    value,
-  };
+  return buildCatalogObjects(catalog).map((object) => ({
+    key: object.id,
+    itemFabricId: object.itemFabricId,
+    objectType: object.kind,
+    objectName: object.name,
+    objectId: object.objectId,
+    tableName: object.tableName ?? object.parentName,
+    label: object.parentName
+      ? `${object.parentName}.${object.name}`
+      : object.name,
+    value: object.details,
+  }));
 }
 
 function principalForReference(
@@ -551,6 +533,7 @@ export function compareSnapshots(
           itemFabricId: object.itemFabricId,
           objectType: object.objectType,
           objectName: object.objectName,
+          objectId: object.objectId,
           tableName: object.tableName,
           after: object.value,
         }),
@@ -560,6 +543,7 @@ export function compareSnapshots(
           itemFabricId: object.itemFabricId,
           objectType: object.objectType,
           objectName: object.objectName,
+          objectId: object.objectId,
           tableName: object.tableName,
           before: object.value,
         }),
@@ -571,6 +555,7 @@ export function compareSnapshots(
               itemFabricId: after.itemFabricId,
               objectType: after.objectType,
               objectName: after.objectName,
+              objectId: after.objectId,
               tableName: after.tableName,
               before: before.value,
               after: after.value,
@@ -686,7 +671,7 @@ export function compareSnapshots(
 }
 
 export function summarizeSnapshot(snapshot: HistoricalSnapshot): SnapshotSummary {
-  const schema = Object.values(snapshot.catalog.schema ?? {}).flat();
+  const objects = buildCatalogObjects(snapshot.catalog);
   const items = snapshot.catalog.items.length;
   const lineage = snapshot.catalog.edges.length;
   const healthy = snapshot.catalog.items.filter(
@@ -712,15 +697,22 @@ export function summarizeSnapshot(snapshot: HistoricalSnapshot): SnapshotSummary
     (job) => job.status === "failed",
   ).length;
   const brokenEdges = snapshot.catalog.edges.filter((edge) => edge.broken).length;
-  const tables = schema.length;
-  const columns = schema.reduce(
-    (count, table) => count + table.columns.length,
-    0,
-  );
-  const measures = schema.reduce(
-    (count, table) => count + table.measures.length,
-    0,
-  );
+  const tables = objects.filter((object) =>
+    [
+      "table",
+      "view",
+      "sqlTable",
+      "sqlView",
+      "kqlTable",
+      "kqlMaterializedView",
+    ].includes(object.kind),
+  ).length;
+  const columns = objects.filter((object) =>
+    ["column", "sqlColumn", "kqlColumn"].includes(object.kind),
+  ).length;
+  const measures = objects.filter(
+    (object) => object.kind === "measure",
+  ).length;
   return {
     snapshotId: snapshot.snapshotId,
     syncedAt: snapshot.syncedAt,
@@ -777,6 +769,24 @@ export function snapshotCatalogFromData(data: AtlasData): SnapshotCatalog {
         })),
       ]),
     ),
+    itemMetadata: data.itemMetadata
+      ? structuredClone(data.itemMetadata)
+      : undefined,
+    objectEdges: data.objectEdges?.map((edge) => ({
+      ...edge,
+      source: {
+        ...edge.source,
+        parentPath: edge.source.parentPath
+          ? [...edge.source.parentPath]
+          : undefined,
+      },
+      target: {
+        ...edge.target,
+        parentPath: edge.target.parentPath
+          ? [...edge.target.parentPath]
+          : undefined,
+      },
+    })),
   };
 }
 

@@ -27,6 +27,11 @@ update and delete policies require the authenticated subject claim to match
 workspace, user and stable finding ID so different users can acknowledge the
 same governance signal independently.
 
+`AccessReviewEvent` allows only personal create and read operations under the
+same subject policy. `GovernancePolicy` and `GovernanceException` allow shared
+authenticated reads; only the configured synchronization administrator can
+write them.
+
 ## Workspace
 
 The manifest for a complete synchronized snapshot.
@@ -91,12 +96,21 @@ A refresh, pipeline or notebook run.
 
 ## ConfigEntry
 
-A configuration fact or a chunk of serialized object schema.
+A configuration fact or a chunk of serialized object metadata.
 
 `workspace_id`, `snapshotId`, `writerEmail?`, `itemFabricId`, `section`, `label`, `value?`
 
 Schema chunks use the private `__schema__` section. Chunking preserves complete
-column and measure lists within the bounded SQL text field.
+object lists within the bounded SQL text field. A hidden metadata envelope
+retains safe KQL, Ontology, Graph Model and Data Agent structures after reload.
+
+Verified object-lineage edges use the private `__object_edges__` section. Each
+edge stores source and target item, object kind, stable ID, readable name,
+optional parent/table context, relation and `confidence: verified`. The parser
+rejects inferred, malformed, self-referential or oversized edge sets.
+
+No extra Rayfin entity is required, so this metadata follows the same immutable
+snapshot publication and retention boundary as the catalog.
 
 ## Comment
 
@@ -128,12 +142,50 @@ A personal named view over Atlas navigation and filters.
 
 ## AccessReview
 
-A personal decision for one effective principal and item pair.
+A legacy personal decision for one effective principal and item pair.
 
 `workspace_id`, `user_id`, `recordKey`, `rowKey`, `itemFabricId`,
 `principalRef`, `status`, `note?`, `reviewedAt`, `updatedAt`
 
 The status is `reviewed`, `accepted` or `needsAction`.
+
+Legacy rows remain available as history. They require revalidation because they
+do not carry the permission evidence needed to confirm a current decision.
+
+## AccessReviewEvent
+
+An append-only personal decision or clear event.
+
+`workspace_id`, `user_id`, `rowKey`, `itemFabricId`, `principalRef`, `status`,
+`evidenceKey`, `eventOrder`, `note?`, `occurredAt`
+
+The status is `reviewed`, `accepted`, `needsAction` or `cleared`. The evidence
+fingerprint includes the resolved principal and underlying grants, independently
+of grant order or display names. The newest event determines the current
+decision. Clearing appends an event and retains all earlier records.
+
+## GovernancePolicy
+
+Shared targets for one configured workspace.
+
+`workspace_id`, `recordKey`, `writerEmail`, `documentationTarget`,
+`ownershipTarget`, `sensitivityTarget`, `accessTarget`, `lineageTarget`,
+`operationsTarget`, `updatedById`, `updatedByName`, `updatedByEmail`, `updatedAt`
+
+Targets are whole percentages from 0 to 100. When no policy row exists, all six
+default to 70. An unavailable or invalid persisted policy is reported as an
+error rather than treated as an absent policy.
+
+## GovernanceException
+
+A shared, expiring annotation for one stable finding.
+
+`workspace_id`, `recordKey`, `writerEmail`, `findingId`, `reason`, `expiresAt`,
+`authorId`, `authorName`, `authorEmail`, `createdAt`, `updatedAt`
+
+The administrator supplies a justification and future expiry. The UI retains
+the raw finding and score and distinguishes active, expired and invalid
+exceptions. This entity is separate from personal `FindingAck` records.
 
 ## FindingAck
 
@@ -149,8 +201,9 @@ removed.
 
 History does not require another table. Atlas uses trusted `Workspace`
 manifests as the index and loads older child rows by `workspace_id` and
-`snapshotId`. Comments, saved views and access-review decisions are not part of
-snapshot comparisons.
+`snapshotId`. Schema metadata and verified object edges come from the selected
+historical snapshot. Comments, saved views and access-review decisions are not
+part of snapshot comparisons.
 
 The configured retention window keeps 12 snapshots by default. Retention runs
 after publication, removes child entities before their manifest, and leaves a

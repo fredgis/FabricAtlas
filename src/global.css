@@ -259,6 +259,86 @@ body,
   height: 100%;
 }
 
+:root {
+  --atlas-control-height: 36px;
+  --atlas-control-padding: 6px;
+  --atlas-row-padding: 10px;
+  --atlas-page-spacing: 24px;
+  --atlas-header-padding: 16px;
+  --atlas-card-min-height: 168px;
+  --atlas-touch-target: 44px;
+}
+
+:root[data-atlas-density="compact"] {
+  --atlas-control-height: 32px;
+  --atlas-control-padding: 4px;
+  --atlas-row-padding: 6px;
+  --atlas-page-spacing: 16px;
+  --atlas-header-padding: 12px;
+  --atlas-card-min-height: 136px;
+}
+
+.atlas-control,
+.atlas-toolbar :is(button:not([role="tab"]), select, input:not([type="checkbox"]):not([type="radio"])) {
+  min-height: var(--atlas-control-height);
+  padding-block: var(--atlas-control-padding);
+  font-family: var(--font-base);
+  font-size: var(--text-300);
+  line-height: var(--leading-300);
+}
+
+.atlas-toolbar :is(select, input:not([type="checkbox"]):not([type="radio"])) {
+  height: var(--atlas-control-height);
+}
+
+.atlas-toolbar {
+  gap: var(--spacing-s);
+}
+
+.atlas-page-header {
+  gap: var(--spacing-m);
+  padding-block: var(--atlas-header-padding);
+  padding-inline: var(--spacing-l);
+}
+
+.atlas-row {
+  padding-block: var(--atlas-row-padding);
+}
+
+.atlas-catalog-card {
+  min-height: var(--atlas-card-min-height);
+}
+
+.atlas-catalog-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-300);
+}
+
+.atlas-catalog-table :is(th, td) {
+  padding: var(--atlas-row-padding) var(--spacing-m);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.atlas-catalog-table th {
+  background: var(--color-secondary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.atlas-catalog-table tbody tr:hover {
+  background: var(--color-accent);
+}
+
+@media (max-width: 639px) {
+  .atlas-control,
+  .atlas-toolbar :is(button:not([role="tab"]), select, input:not([type="checkbox"]):not([type="radio"])) {
+    min-height: var(--atlas-touch-target);
+    min-width: var(--atlas-touch-target);
+  }
+}
+
 /* Animated flow along active lineage edges. */
 @keyframes atlas-flow {
   to {
@@ -369,6 +449,7 @@ body,
     width: 100%;
     max-width: 1480px;
     margin-inline: auto;
+    padding: var(--atlas-page-spacing);
 }
 
 .atlas-sync-grid {

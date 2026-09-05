@@ -1,9 +1,31 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { AtlasProvider } from "../store";
+import { AtlasProvider, useAtlas } from "../store";
 import { OverviewView } from "./Overview";
 
+function GovernanceTargetButton() {
+  const { governanceTargets, saveGovernanceTargets } = useAtlas();
+  return (
+    <button
+      onClick={() => void saveGovernanceTargets({ ...governanceTargets, documentation: 95 })}
+    >
+      Set documentation target
+    </button>
+  );
+}
+
 describe("OverviewView navigation", () => {
+  it("reflects shared target changes without reverting to the default", async () => {
+    render(
+      <AtlasProvider isPreview>
+        <GovernanceTargetButton />
+        <OverviewView onOpen={vi.fn()} />
+      </AtlasProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Set documentation target" }));
+    expect(await screen.findByText(/^Target 95%/)).toBeVisible();
+  });
+
   it("opens governance and access signals with actionable filters", () => {
     const onOpen = vi.fn();
     render(
@@ -11,6 +33,9 @@ describe("OverviewView navigation", () => {
         <OverviewView onOpen={onOpen} />
       </AtlasProvider>,
     );
+    expect(
+      screen.getByText("Standard baseline: 70% for each governance pillar."),
+    ).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: /External access:/ }));
     expect(onOpen).toHaveBeenLastCalledWith(

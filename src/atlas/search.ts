@@ -1,4 +1,10 @@
-import type { AtlasData, ModelTableSchema } from "./model";
+import {
+  assetObjectKindLabel,
+  buildCatalogObjects,
+  type AssetObjectKind,
+  type CatalogObject,
+} from "./catalog-objects";
+import type { AtlasData } from "./model";
 
 export type SearchTargetKind =
   | "workspace"
@@ -22,6 +28,8 @@ export interface SearchTarget {
   section?: string;
   tableName?: string;
   objectName?: string;
+  objectId?: string;
+  objectKind?: AssetObjectKind;
 }
 
 export interface SearchIndexEntry {
@@ -96,10 +104,30 @@ function entry(
   };
 }
 
-function tableKind(table: ModelTableSchema): "table" | "view" {
-  return normalizeSearchText(table.objectType ?? "") === "view"
-    ? "view"
-    : "table";
+function searchKindForObject(object: CatalogObject): SearchTargetKind {
+  if (object.kind === "view" || object.kind === "sqlView") return "view";
+  if (
+    object.kind === "table" ||
+    object.kind === "sqlTable" ||
+    object.kind === "kqlTable" ||
+    object.kind === "kqlMaterializedView"
+  ) {
+    return "table";
+  }
+  if (
+    object.kind === "column" ||
+    object.kind === "sqlColumn" ||
+    object.kind === "kqlColumn" ||
+    object.kind === "kqlFunctionParameter" ||
+    object.kind === "ontologyProperty" ||
+    object.kind === "ontologyTimeSeriesProperty" ||
+    object.kind === "graphProperty" ||
+    object.kind === "dataAgentElement"
+  ) {
+    return "column";
+  }
+  if (object.kind === "measure") return "measure";
+  return "item";
 }
 
 export function searchJobId(
@@ -168,90 +196,39 @@ export function buildSearchIndex(data: AtlasData): SearchIndexEntry[] {
     );
   }
 
-  const schemaEntries = Object.entries(data.schema ?? {}).sort(
-    ([left], [right]) => compareText(left, right),
-  );
-  for (const [itemId, itemSchema] of schemaEntries) {
-    const item = data.items.find((candidate) => candidate.fabricId === itemId);
-    const itemName = item?.displayName ?? itemId;
-    for (const table of itemSchema) {
-      const kind = tableKind(table);
-      const tableId = [
-        "schema",
-        stablePart(itemId),
+  for (const object of buildCatalogObjects(data)) {
+    const kind = searchKindForObject(object);
+    const label = assetObjectKindLabel(object.kind);
+    entries.push(
+      entry(
+        `asset:${object.id}`,
         kind,
-        stablePart(table.name),
-      ].join(":");
-      entries.push(
-        entry(
-          tableId,
+        object.name,
+        `${label}${object.parentName ? ` in ${object.parentName}` : ""} · ${object.itemName}`,
+        {
           kind,
-          table.name,
-          `${kind === "view" ? "View" : "Table"} in ${itemName}`,
-          {
-            kind,
-            itemId,
-            tableName: table.name,
-          },
-          [
-            itemName,
-            item?.itemType,
-            table.description,
-            table.objectType,
-            table.source,
-            typeof table.rows === "number" ? String(table.rows) : "",
-          ],
-        ),
-      );
-
-      for (const column of table.columns) {
-        entries.push(
-          entry(
-            `${tableId}:column:${stablePart(column.name)}`,
-            "column",
-            column.name,
-            `Column in ${table.name} · ${itemName}`,
-            {
-              kind: "column",
-              itemId,
-              tableName: table.name,
-              objectName: column.name,
-            },
-            [
-              table.name,
-              itemName,
-              column.dataType,
-              column.description,
-              column.isHidden ? "hidden" : "",
-            ],
-          ),
-        );
-      }
-
-      for (const measure of table.measures) {
-        entries.push(
-          entry(
-            `${tableId}:measure:${stablePart(measure.name)}`,
-            "measure",
-            measure.name,
-            `Measure in ${table.name} · ${itemName}`,
-            {
-              kind: "measure",
-              itemId,
-              tableName: table.name,
-              objectName: measure.name,
-            },
-            [
-              table.name,
-              itemName,
-              measure.description,
-              measure.expr,
-              measure.isHidden ? "hidden" : "",
-            ],
-          ),
-        );
-      }
-    }
+          itemId: object.itemFabricId,
+          tableName: object.tableName ?? object.parentName,
+          objectName: object.name,
+          objectId: object.objectId,
+          objectKind: object.kind,
+        },
+        [
+          label,
+          object.itemName,
+          object.itemType,
+          object.parentName,
+          object.tableName,
+          object.dataType,
+          object.source,
+          object.sourceItemName,
+          object.description,
+          object.expression,
+          JSON.stringify(object.details),
+          object.isHidden ? "hidden" : "",
+        ],
+      ),
+    );
   }
 
   for (const principal of data.principals) {

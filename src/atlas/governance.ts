@@ -6,6 +6,7 @@ import type {
   Item,
   Principal,
 } from "./model";
+import { isItemMetadataSchemaEntry } from "./item-metadata";
 import { lineageEdgeKey } from "./lineage";
 import { searchJobId } from "./search";
 
@@ -127,11 +128,13 @@ const SEVERITY_RANK: Record<GovernanceSeverity, number> = {
 const SCHEMA_CAPABLE_ITEM_TYPES = new Set<Item["itemType"]>([
   "Lakehouse",
   "Warehouse",
-  "Eventhouse",
   "KQLDatabase",
   "SQLEndpoint",
   "SQLDatabase",
   "SemanticModel",
+  "Ontology",
+  "GraphModel",
+  "DataAgent",
 ]);
 
 function normalize(value: string | undefined): string {
@@ -744,7 +747,9 @@ export function getCoverageDiagnostics(
   const schemaCapableItems = data.items.filter((item) =>
     SCHEMA_CAPABLE_ITEM_TYPES.has(item.itemType),
   );
-  const tables = data.items.flatMap((item) => schema[item.fabricId] ?? []);
+  const tables = data.items
+    .flatMap((item) => schema[item.fabricId] ?? [])
+    .filter((table) => !isItemMetadataSchemaEntry(table));
   const columns = tables.flatMap((table) => table.columns);
   const measures = tables.flatMap((table) => table.measures);
   const ownerEligible = eligibleItems(

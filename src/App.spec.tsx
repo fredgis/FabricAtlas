@@ -31,6 +31,7 @@ function renderApp() {
 describe("App", () => {
     beforeEach(() => {
         window.history.replaceState(null, "", "/#overview");
+        localStorage.clear();
     });
 
     it("renders without throwing", () => {
@@ -59,6 +60,18 @@ describe("App", () => {
     it("mounts content into the document", () => {
         renderApp();
         expect(document.body).not.toBeEmptyDOMElement();
+    });
+
+    it("applies and restores the personal display density", () => {
+        const app = renderApp();
+        expect(document.documentElement).toHaveAttribute("data-atlas-density", "comfortable");
+        fireEvent.click(screen.getByRole("button", { name: "Switch to compact density" }));
+        expect(document.documentElement).toHaveAttribute("data-atlas-density", "compact");
+        app.unmount();
+        renderApp();
+        expect(document.documentElement).toHaveAttribute("data-atlas-density", "compact");
+        fireEvent.click(screen.getByRole("button", { name: "Switch to comfortable density" }));
+        expect(document.documentElement).toHaveAttribute("data-atlas-density", "comfortable");
     });
 
     it("opens the grouped Governance Center from the sidebar", async () => {

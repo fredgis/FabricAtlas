@@ -51,10 +51,13 @@ are not product defaults or a reference architecture.
 Fabric workspaces spread operational metadata across many portal pages and APIs.
 Fabric Atlas collects that metadata without copying business data.
 
-- Browse workspace items and their internal objects.
-- Inspect Lakehouse, Warehouse and SQL Database tables or views, Semantic Model
-  columns and measures, and Report pages when Fabric exposes them.
-- Trace item and object lineage from source to report.
+- Browse workspace items as cards or a sortable table, then inspect their internal objects.
+- Inspect Lakehouse, Warehouse, SQL Database and KQL tables, views, columns,
+  functions and materialized views when the required metadata access is available.
+- Explore Ontology entities, properties, relationships and bindings, Graph Model
+  node and edge types, and Data Agent source selections.
+- Trace item and verified object lineage from physical sources through models,
+  ontologies, graphs, agents and reports.
 - Review effective access, direct shares and external principals.
 - Check sensitivity coverage and confidential assets.
 - Compare validated snapshots and review governance findings.
@@ -96,14 +99,16 @@ Fabric Atlas collects that metadata without copying business data.
 | Functionality | What it provides |
 |---|---|
 | Findings | Actionable access, metadata, operations and lineage checks based on synchronized evidence |
-| Governance Radar | Establishes a visible first-snapshot baseline, shows only new priority risks, and links non-risky changes to the exact latest comparison |
+| Governance Radar | Establishes a visible first-snapshot baseline, shows new priority risks, and keeps the no-new-risk state compact with a link to the exact latest comparison |
 | Personal Radar state | Acknowledges one occurrence or mutes a stable finding for the signed-in user |
 | Change Center | Compares any two validated snapshots across items, schema, access, sensitivity, lineage and jobs |
+| Full change evidence | Shows complete before/after values and DAX expressions, with impact computed from the selected historical snapshot, including removed objects |
 | Shareable comparisons | Preserves both selected snapshots, section and filters in the URL |
 | Governance history | Tracks items, labels, external principals, failures, lineage and schema inventory over time |
 | Lazy Change Center evidence | Keeps the ledger immediate and hydrates older detailed catalogs only for the selected comparison |
 | Metadata coverage | Separates collected gaps from metadata that Fabric did not expose, using explicit `N/A` states |
-| Posture targets | Scores six reproducible pillars, compares targets and tracks historical trends without false zeroes |
+| Posture targets | Scores six reproducible pillars against shared, configurable workspace targets, all set to 70% by default |
+| Governance exceptions | Records an administrator's justification and expiry beside a finding without hiding the finding or changing its raw score |
 | Sensitivity posture | Groups protected and unlabeled items and surfaces confidential assets |
 | Saved governance views | Persists personal filters such as metadata gaps, external access or failed operations |
 
@@ -115,11 +120,18 @@ Fabric Atlas collects that metadata without copying business data.
 | Functionality | What it provides |
 |---|---|
 | Workspace catalog | Groups Fabric items by type with search, health, ownership, labels, tags and detail drawers |
-| Asset Catalog | Lists tables, views, columns and measures under their parent Fabric item, while keeping synchronized schema-capable items visible when no objects are exposed |
+| Catalog table | Keeps cards available and adds sorting by name, health, documented owner or last refresh within collapsed item-type groups |
+| Asset Catalog | Lists relational, KQL, ontology, graph and Data Agent objects under their parent Fabric item, while keeping synchronized schema-capable items visible when no objects are exposed |
 | Deep metadata | Shows data types, descriptions, visibility, sources, row counts, measure expressions and collection provenance when available |
 | DAX dependency evidence | Resolves measure references only to real synchronized columns or measures and labels inferred source hops |
+| KQL inventory | Discovers databases, tables, columns, stored functions and materialized views through read-only Kusto metadata |
+| SQL Database inventory | Discovers schemas, tables, views and columns through read-only system catalogs |
+| Ontology inventory | Decodes entity types, properties, time-series properties, source bindings, relationship types and contextualizations |
+| Graph Model inventory | Shows node and edge types plus source and property mappings without reading graph instances |
+| Data Agent inventory | Shows draft/published sources and selected tables, columns, measures, KQL objects, ontology entities and graph types without retaining prompts |
 | Item context | Keeps properties, lineage, access, configuration and job history beside the selected item |
 | Collapsed groups | Starts inventory lists grouped and collapsed for faster scanning |
+| Ownership labels | Distinguishes documented item ownership from an Owner permission in the access evidence |
 
 </details>
 
@@ -129,14 +141,17 @@ Fabric Atlas collects that metadata without copying business data.
 | Functionality | What it provides |
 |---|---|
 | Item lineage | Places Fabric items in lifecycle stages from orchestration to consumption |
-| Object mode | Expands synchronized tables, columns and measures without claiming unsupported field bindings |
+| Object mode | Expands relational, KQL, semantic, ontology, graph and Data Agent objects using verified snapshot relationships |
 | Impact tracing | Highlights upstream and downstream paths without moving the selected node |
 | Indexed graph engine | Reuses adjacency indexes for traversal, impact, connected groups and staged layout |
 | Accessible relationships | Exposes item and object edges as text and distinguishes upstream paths with a dashed pattern |
 | Multi-selection | Moves several selected item or object nodes together |
 | Layout controls | Provides zoom, fit, reset, filters, minimap and persistent deep links |
+| Readable map and inspector | Wraps node labels, keeps inactive context readable and supports pointer or keyboard resizing of the details inspector |
 | Impact reports | Exports verified dependency evidence as Markdown for an item or schema object |
 | Object-level impact | Switches to DAX-resolved object granularity when evidence exists and preserves item fallback otherwise |
+| Ontology and graph lineage | Connects physical objects to ontology properties and entities, then follows verified entity relationships and graph mappings |
+| Data Agent lineage | Connects selected source objects to their Data Agent source and element nodes for downstream impact analysis |
 
 </details>
 
@@ -150,7 +165,8 @@ Fabric Atlas collects that metadata without copying business data.
 | Access Review matrix | Reviews every reachable principal and item pair with permission, source and evidence |
 | Responsive access ledger | Uses one keyboard-navigable representation across mobile and desktop without hidden duplicate rows |
 | Principal review | Groups all reachable items under collapsible principal sections |
-| Review decisions | Persists Reviewed, Accepted or Needs action status with an optional personal note |
+| Review decisions | Appends personal Reviewed, Accepted, Needs action and clear events with retained notes and history |
+| Evidence revalidation | Marks a decision Needs review when its permission evidence changes, including changed underlying grants that leave the strongest permission unchanged |
 | CSV export | Downloads the currently filtered access evidence |
 | Risk filters | Isolates external, broad, service-principal, admin and unresolved access |
 | Departure packs | Finds sole ownership, urgent orphan risk, downstream blast radius and deterministic reassignment candidates |
@@ -164,6 +180,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Functionality | What it provides |
 |---|---|
 | Jobs and health | Groups refresh, pipeline and notebook activity with status, duration and errors |
+| Health and coverage | Calculates observed health from assessed items and separately shows how much of the workspace has a known health status |
 | Responsive job timeline | Shows compact mobile cards and an aligned desktop grid without horizontal table scrolling |
 | Job filters | Searches run history, isolates failures and saves recurring operational views |
 | Active filter chips | Removes search, status, focused item or focused run constraints independently |
@@ -178,11 +195,13 @@ Fabric Atlas collects that metadata without copying business data.
 
 | Functionality | What it provides |
 |---|---|
-| Global `Ctrl+K` search | Searches items, tables, views, columns, measures, principals, jobs, configuration and notes |
+| Global `Ctrl+K` search | Searches items, relational/KQL objects, ontology and graph types, Data Agent selections, principals, jobs, configuration and notes |
 | Debounced workspace index | Reuses one index per snapshot and never activates results from an earlier query |
 | Targeted navigation | Opens the matching drawer, asset, review, job or Workspace Hub section |
 | Shareable view state | Keeps active sections, filters, searches, selected assets and focused runs in namespaced URL parameters |
 | Personal saved views | Stores user-scoped filter presets in the Fabric-backed Rayfin database |
+| Display density | Switches between comfortable and compact spacing without reducing the text size |
+| Browser-local display preferences | Remembers density, catalog layout and inspector width separately for each signed-in user and workspace on this browser |
 | Light and dark themes | Uses a Fabric-aligned light mode by default with an optional persistent dark mode |
 | Responsive navigation | Keeps grouped Explore, Govern, Operate and System sections usable on smaller screens |
 | Keyboard-first controls | Adds managed dialogs, focus restoration, skip navigation and Arrow/Home/End tab navigation |
@@ -196,8 +215,10 @@ Fabric Atlas collects that metadata without copying business data.
 | Functionality | What it provides |
 |---|---|
 | Fabric brokered authentication | Runs inside the Fabric portal with the signed-in Entra identity |
-| Bound token selection | Matches the Power BI token account and tenant to the current Fabric user |
+| Bound token selection | Matches every Fabric, Kusto and SQL token account and tenant to the current signed-in Fabric user |
 | Metadata-only storage | Allowlists governance metadata and excludes rows, datasource details, connections and Power Query or source expressions |
+| Definition sanitization | Excludes Data Agent instructions and few-shots, graph filter values, ontology documents/resource links, KQL function bodies and SQL module definitions |
+| Scoped enrichment | Keeps advanced KQL, SQL and definition scans optional and reports missing token, permission or encrypted-label capability explicitly |
 | User-scoped preferences | Protects saved views and access-review decisions with Rayfin row policies |
 | User-scoped Radar actions | Protects acknowledgements and mutes through the authenticated subject claim |
 | Fabric deployment | Builds, migrates the schema and deploys the app through `npx rayfin up` |
@@ -310,6 +331,25 @@ See [Architecture](docs/architecture.md) for the full data flow.
 
 ## Roadmap
 
+### v2 backlog
+
+The following P2 and P3 work is planned for the v2 series. It is outside the
+v1.11 release scope. The table describes intended behaviour, not features
+available in the current app.
+
+| Priority | Planned feature | Scope |
+|---|---|---|
+| P2 | Scheduled synchronization | Refresh metadata on the server without an open browser, using an identity supported by the required APIs and write policies |
+| P2 | Shared action plan | Assign findings, set deadlines and track team resolution, including actions from departure packs |
+| P2 | Teams and email notifications | Notify the team about relevant new findings and synchronization failures |
+| P2 | Simultaneous departures | Assess several departing principals together so reassignment does not depend on another departing person |
+| P2 | Entra group membership | Expand group evidence where permissions allow it, while distinguishing direct grants from membership-derived access |
+| P2 | Multi-workspace catalog and verified lineage | Index an explicitly selected workspace scope and show cross-workspace relationships only when Microsoft exposes the evidence |
+| P2 | Resumable synchronization | Process bounded batches and resume failed work without discarding the last validated snapshot |
+| P3 | Report visual field usage | Read supported report definitions to trace measure and column references to visuals, subject to report permissions and sensitivity restrictions |
+
+### Multi-workspace milestones
+
 Multi-workspace catalog support is planned and tracked in
 [#4](https://github.com/fredgis/FabricAtlas/issues/4). The implementation will
 stay focused on a controlled set of workspaces rather than scanning an entire
@@ -345,6 +385,7 @@ The local app uses the included AlpineRent preview estate.
 
 ```powershell
 npx rayfin login --tenant <tenant-id> --select
+$env:RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_EMAIL = "<authorized-sync-user>"
 npx rayfin up --workspace "<workspace-name>"
 ```
 
@@ -363,7 +404,9 @@ RAYFIN_PUBLIC_ATLAS_PREVIOUS_SYNC_WRITERS=<former-user@example.com>
 RAYFIN_PUBLIC_ATLAS_SENSITIVITY_RANKS='{"<label-id>":3,"<lower-label-id>":1}'
 ```
 
-Run `npx rayfin up` again. The app opens on a guided synchronization screen.
+Keep the configured synchronizer available in the CLI process environment when
+running `npx rayfin up`: it is needed to compile the database policies, not just
+the frontend. The app opens on a guided synchronization screen.
 
 The complete Entra, UDF and deployment steps are in
 [docs/installation.md](docs/installation.md).
@@ -412,6 +455,18 @@ Saved views, access-review decisions and Governance Radar acknowledgements are
 different: Rayfin policies bind those records to the authenticated subject, so
 each user sees only their own personal state.
 
+Access decisions are now append-only events. Older decisions remain in the
+history but require a new review because they do not contain a permission
+fingerprint. Clearing a decision appends an event rather than deleting history.
+
+Governance targets and exceptions are shared workspace settings. Only the
+configured synchronization administrator can change them. All six targets
+default to 70%; the same current targets apply to Overview and historical
+posture comparisons. Historical versions of the target policy are not stored.
+An exception needs a reason and a future expiry. It annotates the finding
+without hiding it or improving the underlying score, and it remains separate
+from a user's personal mute.
+
 Team notes are append-only in v1.x. Creation is bound to the authenticated
 email and subject. Atlas resolves a unique synchronized Fabric principal by
 email and stores that display name separately; when no unique principal exists,
@@ -458,6 +513,7 @@ Pull requests are welcome. Read
 - [Installation](docs/installation.md)
 - [Architecture](docs/architecture.md)
 - [Data model](docs/data-model.md)
+- [Metadata coverage audit](docs/fabric-metadata-coverage-audit.md)
 - [Security policy](.github/SECURITY.md)
 - [Code of conduct](.github/CODE_OF_CONDUCT.md)
 
@@ -473,7 +529,7 @@ metadata capability was not collected; it is not treated as a missing value.</su
 | <sub>Workspace</sub> | <sub>Name, ID, capacity and region</sub> | <sub>Not applicable</sub> | <sub>Not applicable</sub> | <sub>Workspace role assignments</sub> | <sub>Not applicable</sub> | <sub>One workspace per `v1.x` deployment</sub> |
 | <sub>Lakehouse</sub> | <sub>Description, OneLake paths, default schema and SQL endpoint status</sub> | <sub>Tables and columns from Lakehouse REST, scanner metadata or a downstream-model subset</sub> | <sub>Scanner relations and SQL endpoint path</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Schema-enabled variants may require the downstream Semantic Model path</sub> |
 | <sub>Warehouse</sub> | <sub>Description, collation, created and updated dates</sub> | <sub>Tables, views and columns from the scanner; downstream-model subset fallback</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Complete inventory can require SQL catalog connectivity</sub> |
-| <sub>SQL Database</sub> | <sub>Database name, collation and backup retention</sub> | <sub>Tables, views and columns from the scanner; downstream-model subset fallback</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Complete inventory can require SQL catalog connectivity</sub> |
+| <sub>SQL Database</sub> | <sub>Database identity, endpoint, collation and backup metadata</sub> | <sub>Schemas, tables, views and columns from a constant read-only system-catalog query; scanner subset fallback</sub> | <sub>Scanner relations and verified downstream bindings</sub> | <sub>Workspace roles, item users and SQL metadata visibility</sub> | <sub>When supported</sub> | <sub>Requires an Azure SQL delegated token; no rows or module definitions are read</sub> |
 | <sub>SQL endpoint</sub> | <sub>Item identity and scanner metadata</sub> | <sub>No dedicated internal-object scan</sub> | <sub>Storage-to-endpoint-to-model relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Used primarily as a lineage bridge</sub> |
 | <sub>Semantic Model</sub> | <sub>Description, storage mode, provider and documented `configuredBy` owner</sub> | <sub>Tables, columns, measures, descriptions, hidden flags, measure DAX and resolved object dependencies</sub> | <sub>Scanner item relations plus DAX-verified measure dependencies and explicitly inferred unique source hops</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Requires scanner schema and expression options; unresolved/ambiguous references and source or Power Query expressions are discarded</sub> |
 | <sub>Report</sub> | <sub>Report type, bound Semantic Model, documented `createdBy` owner and page inventory</sub> | <sub>Pages and order</sub> | <sub>Model binding plus scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Visuals and field bindings are not exposed by this flow</sub> |
@@ -482,8 +538,12 @@ metadata capability was not collected; it is not treated as a missing value.</su
 | <sub>Data Pipeline</sub> | <sub>Item description and modified metadata when returned</sub> | <sub>Activities and expressions are not expanded</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>Up to 3 returned instances</sub> | <sub>No owner is inferred and pipeline definitions are not copied</sub> |
 | <sub>Dataflow</sub> | <sub>Item metadata and documented `configuredBy` owner</sub> | <sub>Entities and Power Query definitions are not expanded</sub> | <sub>Official upstream Dataflow/Datamart IDs plus scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Cross-workspace dependencies are omitted; query content is not copied</sub> |
 | <sub>Datamart</sub> | <sub>Item metadata and documented `configuredBy` owner</sub> | <sub>No deep object inventory</sub> | <sub>Official upstream Dataflow/Datamart IDs plus scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Cross-workspace dependencies are omitted</sub> |
-| <sub>Eventhouse</sub> | <sub>Item and scanner metadata</sub> | <sub>No KQL object inventory</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Hosted database objects are not expanded</sub> |
-| <sub>KQL Database</sub> | <sub>Item and scanner metadata</sub> | <sub>Tables, functions and policies are not expanded</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>KQL catalog connectivity is not used</sub> |
+| <sub>Eventhouse</sub> | <sub>Item metadata and contained KQL Database IDs</sub> | <sub>Databases remain separate catalog items</sub> | <sub>Verified Eventhouse-to-database relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Eventhouse hosts databases; tables belong to each KQL Database</sub> |
+| <sub>KQL Database</sub> | <sub>Parent Eventhouse, query endpoint and database type</sub> | <sub>Tables, columns, functions and materialized views from read-only Kusto metadata</sub> | <sub>Parent, materialization and verified consumer relations</sub> | <sub>Workspace roles, item users and KQL database reader access</sub> | <sub>When supported</sub> | <sub>Requires a separate Kusto delegated token; function bodies and rows are excluded</sub> |
+| <sub>KQL Queryset / Dashboard</sub> | <sub>Top-level item metadata</sub> | <sub>No saved query text or dashboard payload</sub> | <sub>Scanner or explicit source relations when returned</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Query text and visual definitions remain outside the metadata boundary</sub> |
+| <sub>Ontology</sub> | <sub>Item metadata and definition capability</sub> | <sub>Entity types, properties, time-series properties, bindings, relationship types and contextualizations</sub> | <sub>Physical source-to-property bindings and entity-relationship-entity paths</sub> | <sub>Workspace/item access; definition enrichment requires read-write item permission</sub> | <sub>Not applicable</sub> | <sub>Preview; encrypted labels can block definition retrieval; documents, resource links and instances are excluded</sub> |
+| <sub>Graph Model</sub> | <sub>Item metadata and definition capability</sub> | <sub>Node types, edge types, properties and source mappings</sub> | <sub>Physical source-to-node/edge/property mappings</sub> | <sub>Workspace/item access; definition enrichment requires read-write item permission</sub> | <sub>Not applicable</sub> | <sub>Preview; filter literals and graph instances are excluded</sub> |
+| <sub>Data Agent</sub> | <sub>Published state and description when exposed</sub> | <sub>Configured source items and selected tables, columns, measures, KQL objects, ontology entities and graph types</sub> | <sub>Selected source objects feed Data Agent source and element nodes</sub> | <sub>Workspace/item access; definition enrichment requires read-write item permission</sub> | <sub>Not applicable</sub> | <sub>AI instructions, data-source instructions, few-shot questions/queries and answers are excluded</sub> |
 | <sub>Eventstream</sub> | <sub>Item and scanner metadata</sub> | <sub>Internal stream topology is not expanded</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Event payloads are never read</sub> |
 | <sub>Mirrored Database</sub> | <sub>Item and scanner metadata</sub> | <sub>Mirrored tables are not expanded</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Source data and replication contents are not read</sub> |
 | <sub>User Data Function</sub> | <sub>Item and scanner metadata</sub> | <sub>Function source and endpoints are not expanded</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Function code is not copied</sub> |

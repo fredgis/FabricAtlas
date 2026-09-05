@@ -29,7 +29,7 @@ Rayfin Data API (Data API Builder)  ──  Fabric SQL database (mssql)
 
 ## Data model
 
-Twelve entities capture the workspace, team context and personal review state.
+Fifteen entities capture the workspace, team context and personal review state.
 See [data-model.md](data-model.md) for fields.
 
 | Entity | Holds |
@@ -44,8 +44,11 @@ See [data-model.md](data-model.md) for fields.
 | `Comment` | Team notes on the workspace or an item |
 | `SyncRun` | Audit of each Sync |
 | `SavedView` | User-scoped filter and navigation presets |
-| `AccessReview` | User-scoped access-review decisions and notes |
+| `AccessReview` | Legacy user-scoped access-review decisions and notes |
+| `AccessReviewEvent` | Personal append-only review history bound to permission evidence |
 | `FindingAck` | User-scoped Governance Radar acknowledgements and mutes |
+| `GovernancePolicy` | Shared workspace targets for the six posture pillars |
+| `GovernanceException` | Shared, justified exceptions with an expiry |
 
 ## Authorization and collaboration scope
 
@@ -65,20 +68,27 @@ possible, then falls back to the authenticated session label. `authorEmail`
 remains the authoritative identity and is displayed beside a distinct label so
 readers can verify the author.
 
+`AccessReviewEvent` uses the same personal subject boundary but exposes only
+create and read. Shared `GovernancePolicy` and `GovernanceException` records are
+readable by the app audience and writable only by the configured synchronizer.
+
 Comments are append-only in v1.x: authenticated app users can read them and
 their authenticated author can create them, but the entity exposes no update
 or delete action.
 
 ## Sync
 
-The Sync button calls `runFabricSync` (`src/atlas/backend.ts`). When deployed, the browser invokes
-the published `sync_all` Fabric User Data Function. That server-side function reads Fabric and
-Power BI metadata APIs with the user's delegated token. The app maps the response, writes it through
-the Rayfin Data API, and records a `SyncRun`.
+The Sync button calls `runFabricSync` (`src/atlas/backend.ts`). When deployed,
+the browser invokes the published `sync_all` Fabric User Data Function. The
+required Fabric/Power BI token is accompanied by optional Kusto, Azure SQL and
+OneLake tokens acquired for the same signed-in identity. Each token is used
+only by its matching metadata collector. The app maps the response, writes it
+through the Rayfin Data API, and records a `SyncRun`.
 
 Contract version 2 separates required sections from optional enrichment and
-records metadata capabilities for ownership, sensitivity, endorsement and
-tags. Required-section failure rejects the refresh. Optional endpoint failures
+records metadata capabilities for ownership, sensitivity, endorsement, tags,
+KQL schema, SQL schema and item definitions. Required-section failure rejects
+the refresh. Optional token, permission, encrypted-label or endpoint failures
 remain visible as evidence but do not invalidate otherwise authoritative
 metadata. Valid empty workspaces are accepted.
 
@@ -123,7 +133,8 @@ the new snapshot together before background reconciliation.
 
 The MSAL account used for Sync must match the current Rayfin user and tenant.
 Tokens use session storage so switching Fabric users cannot silently reuse the
-first account from a persistent browser cache.
+first account from a persistent browser cache. Optional audience acquisition
+fails closed and never substitutes data from another identity.
 
 ## Governance history
 
@@ -143,6 +154,11 @@ the current and previous detailed catalogs. Selecting another Change Center
 snapshot lazily loads and validates that catalog through a snapshot-scoped
 query; in-flight loads are discarded when a newer sync starts.
 
+Change details retain full values and DAX rather than only ledger previews.
+Historical impact uses the explicitly selected before or after catalog. A
+removed object is inspected in its earlier snapshot; unavailable historical
+evidence never falls back to the current graph.
+
 ## Personal governance state
 
 Saved views and access-review decisions are separate from synchronized
@@ -154,6 +170,12 @@ coverage. Access Review uses the same additive effective-access engine as the
 Asset Catalog and lineage inspector.
 
 ## Navigation state
+
+Display preferences are separate from shareable navigation. Density, Catalog
+layout and lineage inspector width are stored in browser local storage, keyed
+by the authenticated user and configured workspace. They are not cloud-synced
+and are not included in copied URLs. A storage failure leaves a visible warning.
+Compact mode adjusts spacing and control height rather than reducing font size.
 
 `src/atlas/routing.ts` parses and serializes Atlas-owned URL parameters while
 preserving unrelated Fabric host parameters. Catalog, Asset Catalog,
@@ -183,11 +205,34 @@ lineage and operations. Non-applicable evidence is excluded rather than scored
 as zero. Current and previous loaded catalogs provide Overview deltas; opening
 Posture lazily hydrates older catalogs for a consistent trend.
 
+`GovernancePolicy` supplies workspace targets, all defaulting to 70%. Current
+targets apply consistently to current and historical scores; earlier policy
+versions are not retained. `GovernanceException` attaches an administrator's
+reason and expiry to a finding without suppressing the finding or changing
+its score.
+
+Access-review events include a canonical permission fingerprint. A changed
+grant or principal resolution requires revalidation even when the strongest
+access level is unchanged. Legacy decisions remain visible as history, and
+clear actions append events instead of deleting earlier decisions.
+
 `src/atlas/offboarding.ts` composes existing metadata, effective access and
 indexed lineage into departure/removal packs. It blocks ownership claims for
 ambiguous principals and recommends only resolved internal user successors.
 
-## DAX object lineage
+## Object lineage
+
+Verified object edges are stored beside schema chunks as hidden `ConfigEntry`
+rows. The generic contract identifies item and object, uses stable IDs and
+accepts only `confidence: verified`. It covers physical object-to-ontology
+bindings, entity relationships, Graph Model mappings and selected source
+objects feeding Data Agents. Historical impact loads the edges from the
+selected snapshot.
+
+Atlas does not read Ontology or Graph Model instances. Those are business data,
+not workspace metadata.
+
+### DAX object lineage
 
 `src/atlas/dax-refs.ts` strips strings and comments before extracting qualified
 columns and measures. `src/atlas/schema-lineage.ts` emits dependencies only
@@ -207,6 +252,16 @@ resolves.
 - Warehouse and SQL Database objects use scanner metadata, with a clearly
   labelled downstream model subset when complete SQL catalog access is not
   available.
+- KQL Database tables and columns come from one database-wide read-only schema
+  command. Function and materialized-view bodies are not retained.
+- SQL Database tables, views and columns come from one constant `sys.*`
+  metadata query. Atlas does not select table rows or retain module definitions.
+- Ontology definitions are reduced to entities, properties, source bindings,
+  relationships and contextualizations.
+- Graph Model definitions are reduced to node/edge types and source/property
+  mappings; filter values and instances are discarded.
+- Data Agent definitions retain publication state, source references and
+  selected element trees. Instructions, few-shots and answers are discarded.
 - Semantic Models include tables, columns, measures, descriptions, hidden
   flags and measure expressions. Dataset expressions are requested only because
   the scanner requires that option for measure DAX.

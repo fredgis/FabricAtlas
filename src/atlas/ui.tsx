@@ -118,7 +118,7 @@ export function Chip({
   return (
     <span
       className={cn(
-        "inline-flex min-h-[24px] items-center gap-[6px] rounded-md border border-transparent px-[8px] py-[2px] text-[11px] font-semibold",
+        "inline-flex min-h-xxl items-center gap-xs rounded-md border border-transparent px-s py-xxs text-[length:var(--text-200)] font-semibold",
         className,
       )}
       style={style}
@@ -187,21 +187,19 @@ export function EndorsementChip({ endorsement }: { endorsement: string }) {
 }
 
 export function HealthChip({ health }: { health: Health }) {
-  const label =
-    health === "healthy"
-      ? "Healthy"
-      : health === "stale"
-        ? "Stale"
-        : health === "failing"
-          ? "Failing"
-          : "Unknown";
+  const states: Record<Health, { label: string; tone: string }> = {
+    healthy: { label: "Healthy", tone: "border-status-healthy/30 bg-status-healthy/10 text-status-healthy" },
+    stale: { label: "Stale", tone: "border-status-warning/30 bg-status-warning/10 text-status-warning" },
+    failing: { label: "Failing", tone: "border-status-failing/30 bg-status-failing/10 text-status-failing" },
+    unknown: { label: "Health unknown", tone: "border-border bg-muted text-muted-foreground" },
+  };
+  const state = states[health];
   return (
     <span
-      className="inline-flex items-center gap-[6px] rounded-md px-[8px] py-[2px] text-[11px] font-semibold"
-      style={{ background: `${HEALTH_COLOR[health]}22`, color: HEALTH_COLOR[health] }}
+      className={cn("inline-flex items-center gap-xs rounded-md border px-s py-xxs text-[length:var(--text-200)] font-semibold", state.tone)}
     >
-      <HealthDot health={health} size={8} />
-      {label}
+      <span className="size-s shrink-0 rounded-full bg-current" aria-hidden="true" />
+      {state.label}
     </span>
   );
 }

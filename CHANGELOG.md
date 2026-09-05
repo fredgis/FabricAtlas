@@ -4,6 +4,84 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-09-05
+
+### Added
+
+- Generic deep discovery for every KQL Database in the configured workspace, including tables, columns, stored functions and materialized views.
+- Generic Fabric SQL Database discovery through workspace-resolved endpoints and constant read-only system-catalog queries.
+- First-class Ontology, Graph Model, Data Agent, KQL Queryset and KQL Dashboard item types.
+- Ontology entity, property, time-series property, relationship, binding and contextualization inventory.
+- Graph Model node, edge, property and physical-source mapping inventory.
+- Data Agent draft/published source inventory and selected table, column, measure, KQL, ontology and graph objects.
+- Verified object lineage for physical source bindings, ontology relationships, Graph Model mappings and Data Agent selections.
+- Object-level impact, filtering, search, deep links and historical comparison for the new metadata types.
+- A cited Fabric metadata coverage audit in `docs/fabric-metadata-coverage-audit.md`.
+
+### Changed
+
+- Asset Catalog now uses workload-specific object labels instead of presenting every object as a table or column.
+- Map object mode uses verified metadata edges when available and retains the existing DAX graph as the Semantic Model fallback.
+- Snapshot persistence stores safe item metadata and verified object edges in bounded hidden `ConfigEntry` chunks.
+- Synchronization acquires separate optional Kusto, Azure SQL and OneLake audience tokens for the same authenticated Fabric user.
+
+### Security
+
+- SQL discovery uses allowlisted `*.database.fabric.microsoft.com` endpoints, a constant `sys.*` query, read-only application intent and token-based authentication.
+- KQL discovery runs only fixed read-only metadata commands against allowlisted Fabric Kusto endpoints.
+- Definition sanitization removes Data Agent instructions and few-shots, KQL function bodies, SQL module definitions, graph filter literals and instances, and Ontology documents or resource links.
+- Optional metadata failures remain visible as capability status and never replace the last validated snapshot with fabricated or partial success.
+
+### Documentation
+
+- Updated the README coverage matrix, installation permissions, architecture and data model for generic workspace discovery.
+
+## [1.10.1] - 2026-09-05
+
+### Changed
+
+- Reduced item and object node widths and restored clear horizontal and vertical spacing in lineage views.
+- Made the standard governance baseline explicit: 70% for each of the six pillars.
+
+### Fixed
+
+- Item type and health filters now replace an incompatible selection instead of retaining it outside the filtered type.
+- Changing the object table filter now selects that table and clears the previous incompatible object selection.
+
+## [1.10.0] - 2026-09-05
+
+### Added
+
+- A grouped Catalog table with sorting by item name, health, documented owner and last refresh, alongside the existing cards.
+- Personal compact and comfortable display density, with browser-local settings separated by user and workspace.
+- A resizable lineage inspector with keyboard controls and a remembered width.
+- Evidence-bound access-review history. Changed permissions require a fresh decision, while earlier decisions remain visible.
+- Shared workspace governance targets, with a default of 70% for each of the six posture pillars.
+- Justified, expiring governance exceptions, separate from personal Radar acknowledgements and mutes.
+- Full before/after schema and DAX details, with impact evaluated from the selected historical snapshot, including removed objects.
+
+### Changed
+
+- Reduced page-header space and standardized toolbar typography and density-aware rows.
+- Improved lineage label readability and the visibility of inactive context without moving nodes when selection changes.
+- Kept Radar compact when it has no new priority risk, preserving the first-snapshot baseline and the exact comparison link.
+- Distinguished Owner permissions from documented item ownership.
+
+### Fixed
+
+- Overview health now excludes unknown statuses from its denominator and displays health coverage separately.
+- Unavailable visibility and source metadata no longer appear as confirmed visibility or a recorded source.
+
+### Security
+
+- Added governance policy and exception entities with shared authenticated reads and writes restricted to the configured synchronization administrator.
+- Added personal, append-only access-review events without deleting legacy review records or synchronized snapshots.
+
+### Documentation
+
+- Updated the README for the P1 features and browser-local display settings.
+- Recorded all deferred P2 and P3 work in the v2 roadmap, including scheduled synchronization and the shared action plan.
+
 ## [1.9.2] - 2026-08-30
 
 ### Fixed

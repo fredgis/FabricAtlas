@@ -1,5 +1,6 @@
 import type { SavedViewFilters, SavedViewSection } from "./saved-views";
-import type { SearchResult, SearchTarget } from "./search";
+import type { SearchResult } from "./search";
+import type { AssetObjectKind } from "./catalog-objects";
 
 export type Tab =
   | "overview"
@@ -27,7 +28,8 @@ export interface AtlasFocusRequest {
   jobId?: string;
   tableName?: string;
   objectName?: string;
-  objectKind?: SearchTarget["kind"];
+  objectId?: string;
+  objectKind?: AssetObjectKind;
   workspaceSection?: "configuration" | "notes";
   governanceSection?: GovernanceSection;
   query?: string;
@@ -47,6 +49,19 @@ function request(
 
 export function navigationForSearch(result: SearchResult): AtlasNavigation {
   const target = result.target;
+  if (target.objectKind) {
+    return {
+      tab: "assets",
+      focus: request({
+        itemId: target.itemId,
+        tableName: target.tableName,
+        objectName: target.objectName ?? result.title,
+        objectId: target.objectId,
+        objectKind: target.objectKind,
+        query: result.title,
+      }),
+    };
+  }
   switch (target.kind) {
     case "workspace":
       return { tab: "overview" };
@@ -65,7 +80,7 @@ export function navigationForSearch(result: SearchResult): AtlasNavigation {
           itemId: target.itemId,
           tableName: target.tableName,
           objectName: target.objectName ?? result.title,
-          objectKind: target.kind,
+          objectKind: target.kind as AssetObjectKind,
           query: result.title,
         }),
       };

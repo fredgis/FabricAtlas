@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAtlasHistory,
+  changeFieldValue,
   compareSnapshots,
+  readableChangeValue,
+  snapshotDataForInspection,
   snapshotFromData,
   summarizeSnapshot,
   type HistoricalSnapshot,
 } from "./history";
+import { parseOntologyMetadata } from "./item-metadata";
 import type { AtlasData, Item } from "./model";
 
 function item(
@@ -53,6 +57,40 @@ function snapshot(
 }
 
 describe("snapshot history", () => {
+  it("keeps full expressions and converts validated snapshots for inspection", () => {
+    const historical = snapshot(
+      "old",
+      "2026-08-28T10:00:00.000Z",
+      data({
+        items: [item("model", { itemType: "SemanticModel" })],
+        schema: {
+          model: [
+            {
+              name: "Measures",
+              columns: [],
+              measures: [
+                {
+                  name: "Revenue",
+                  expr: 'CALCULATE(SUM(Sales[Amount]), Sales[Region] = "<West>")',
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    const inspected = snapshotDataForInspection(historical);
+    const expression =
+      inspected.schema!.model[0].measures[0].expr;
+
+    expect(inspected.comments).toEqual([]);
+    expect(inspected.syncRuns).toEqual([]);
+    expect(readableChangeValue(expression)).toContain(
+      'Sales[Region] = "<West>"',
+    );
+    expect(changeFieldValue({ expression }, "expression")).toBe(expression);
+  });
+
   it("reports every supported change domain without treating missing jobs as removals", () => {
     const previous = snapshot(
       "old",
@@ -263,6 +301,87 @@ describe("snapshot history", () => {
     ).toMatchObject({
       objectType: "view",
       objectName: "ActiveCustomers",
+    });
+  });
+
+  it("classifies ontology changes with stable object identities", () => {
+    const previous = snapshot(
+      "old",
+      "2026-09-01T10:00:00.000Z",
+      data({
+        items: [item("ontology", { itemType: "Ontology" })],
+        itemMetadata: {
+          ontology: parseOntologyMetadata({
+            entities: [
+              {
+                id: "device",
+                name: "Device",
+                properties: [
+                  { id: "status", name: "Status", valueType: "String" },
+                ],
+              },
+              { id: "site", name: "Site", properties: [] },
+            ],
+            relationships: [],
+            bindings: [],
+            contextualizations: [],
+          })!,
+        },
+      }),
+    );
+    const current = snapshot(
+      "new",
+      "2026-09-02T10:00:00.000Z",
+      data({
+        items: [item("ontology", { itemType: "Ontology" })],
+        itemMetadata: {
+          ontology: parseOntologyMetadata({
+            entities: [
+              {
+                id: "device",
+                name: "Device",
+                properties: [
+                  { id: "status", name: "Status", valueType: "Int64" },
+                ],
+              },
+              { id: "site", name: "Site", properties: [] },
+            ],
+            relationships: [
+              {
+                id: "installed-at",
+                name: "Installed at",
+                sourceEntityId: "device",
+                targetEntityId: "site",
+              },
+            ],
+            bindings: [],
+            contextualizations: [],
+          })!,
+        },
+      }),
+    );
+
+    const changes = compareSnapshots(previous, current);
+    expect(
+      changes.find(
+        (change) =>
+          change.type === "schema-object-modified" &&
+          change.objectName === "Status",
+      ),
+    ).toMatchObject({
+      objectType: "ontologyProperty",
+      objectId: "device/status",
+      tableName: "Device",
+    });
+    expect(
+      changes.find(
+        (change) =>
+          change.type === "schema-object-added" &&
+          change.objectName === "Installed at",
+      ),
+    ).toMatchObject({
+      objectType: "ontologyRelationship",
+      objectId: "installed-at",
     });
   });
 
