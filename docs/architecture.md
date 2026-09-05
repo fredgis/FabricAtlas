@@ -29,7 +29,7 @@ Rayfin Data API (Data API Builder)  ──  Fabric SQL database (mssql)
 
 ## Data model
 
-Twelve entities capture the workspace, team context and personal review state.
+Fifteen entities capture the workspace, team context and personal review state.
 See [data-model.md](data-model.md) for fields.
 
 | Entity | Holds |
@@ -44,8 +44,11 @@ See [data-model.md](data-model.md) for fields.
 | `Comment` | Team notes on the workspace or an item |
 | `SyncRun` | Audit of each Sync |
 | `SavedView` | User-scoped filter and navigation presets |
-| `AccessReview` | User-scoped access-review decisions and notes |
+| `AccessReview` | Legacy user-scoped access-review decisions and notes |
+| `AccessReviewEvent` | Personal append-only review history bound to permission evidence |
 | `FindingAck` | User-scoped Governance Radar acknowledgements and mutes |
+| `GovernancePolicy` | Shared workspace targets for the six posture pillars |
+| `GovernanceException` | Shared, justified exceptions with an expiry |
 
 ## Authorization and collaboration scope
 
@@ -64,6 +67,10 @@ Atlas resolves `authorName` from one unique synchronized principal email when
 possible, then falls back to the authenticated session label. `authorEmail`
 remains the authoritative identity and is displayed beside a distinct label so
 readers can verify the author.
+
+`AccessReviewEvent` uses the same personal subject boundary but exposes only
+create and read. Shared `GovernancePolicy` and `GovernanceException` records are
+readable by the app audience and writable only by the configured synchronizer.
 
 Comments are append-only in v1.x: authenticated app users can read them and
 their authenticated author can create them, but the entity exposes no update
@@ -143,6 +150,11 @@ the current and previous detailed catalogs. Selecting another Change Center
 snapshot lazily loads and validates that catalog through a snapshot-scoped
 query; in-flight loads are discarded when a newer sync starts.
 
+Change details retain full values and DAX rather than only ledger previews.
+Historical impact uses the explicitly selected before or after catalog. A
+removed object is inspected in its earlier snapshot; unavailable historical
+evidence never falls back to the current graph.
+
 ## Personal governance state
 
 Saved views and access-review decisions are separate from synchronized
@@ -154,6 +166,12 @@ coverage. Access Review uses the same additive effective-access engine as the
 Asset Catalog and lineage inspector.
 
 ## Navigation state
+
+Display preferences are separate from shareable navigation. Density, Catalog
+layout and lineage inspector width are stored in browser local storage, keyed
+by the authenticated user and configured workspace. They are not cloud-synced
+and are not included in copied URLs. A storage failure leaves a visible warning.
+Compact mode adjusts spacing and control height rather than reducing font size.
 
 `src/atlas/routing.ts` parses and serializes Atlas-owned URL parameters while
 preserving unrelated Fabric host parameters. Catalog, Asset Catalog,
@@ -182,6 +200,17 @@ personalization failure never hides the underlying Radar alerts.
 lineage and operations. Non-applicable evidence is excluded rather than scored
 as zero. Current and previous loaded catalogs provide Overview deltas; opening
 Posture lazily hydrates older catalogs for a consistent trend.
+
+`GovernancePolicy` supplies workspace targets, all defaulting to 70%. Current
+targets apply consistently to current and historical scores; earlier policy
+versions are not retained. `GovernanceException` attaches an administrator's
+reason and expiry to a finding without suppressing the finding or changing
+its score.
+
+Access-review events include a canonical permission fingerprint. A changed
+grant or principal resolution requires revalidation even when the strongest
+access level is unchanged. Legacy decisions remain visible as history, and
+clear actions append events instead of deleting earlier decisions.
 
 `src/atlas/offboarding.ts` composes existing metadata, effective access and
 indexed lineage into departure/removal packs. It blocks ownership claims for

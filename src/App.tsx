@@ -25,6 +25,7 @@ import {
   Menu,
   Moon,
   RefreshCw,
+  Rows3,
   Search,
   Settings2,
   ShieldCheck,
@@ -53,6 +54,10 @@ import {
 } from "./atlas/model";
 import { buildSearchIndex } from "./atlas/search";
 import { workspaceDetailLabel } from "./atlas/workspace-display";
+import {
+  isDisplayDensity,
+  useDisplayPreference,
+} from "./atlas/display-preferences";
 
 import { OverviewView } from "./atlas/views/Overview";
 import { MapView } from "./atlas/views/Map";
@@ -223,6 +228,19 @@ function App() {
     hasData,
     requiresDeploymentSync,
   } = useAtlas();
+  const density = useDisplayPreference(
+    currentUser.id,
+    data.workspace.fabricId,
+    "density",
+    "comfortable",
+    isDisplayDensity,
+  );
+  useEffect(() => {
+    document.documentElement.dataset.atlasDensity = density.value;
+    return () => {
+      delete document.documentElement.dataset.atlasDensity;
+    };
+  }, [density.value]);
   const workspaceSearchIndex = useMemo(() => buildSearchIndex(data), [data]);
 
   useEffect(() => {
@@ -356,7 +374,7 @@ function App() {
 
       {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="relative flex h-[52px] shrink-0 items-center justify-between gap-[10px] border-b border-border bg-card px-[12px] shadow-fabric-2 sm:px-[18px] lg:px-[20px]">
+        <header className="atlas-toolbar relative flex min-h-[52px] shrink-0 items-center justify-between border-b border-border bg-card px-m shadow-fabric-2 sm:px-l lg:px-xl">
           <div className="flex min-w-0 items-center gap-[8px]">
             <Dialog.Trigger asChild>
               <button
@@ -384,7 +402,7 @@ function App() {
             >
               <Search className="icon-size-100" aria-hidden="true" />
               Search workspace
-              <kbd className="rounded border border-border bg-muted px-xs py-xxs font-mono text-100">
+              <kbd className="rounded border border-border bg-muted px-xs py-xxs font-mono text-200">
                 Ctrl K
               </kbd>
             </button>
@@ -430,6 +448,19 @@ function App() {
             </button>
             <button
               type="button"
+              onClick={() =>
+                density.setValue(density.value === "compact" ? "comfortable" : "compact")
+              }
+              aria-label={density.value === "compact" ? "Switch to comfortable density" : "Switch to compact density"}
+              aria-pressed={density.value === "compact"}
+              title={density.value === "compact" ? "Use comfortable spacing" : "Use compact spacing"}
+              className="flex items-center gap-s rounded-md border border-border bg-card px-s text-200 text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <Rows3 className="icon-size-200" aria-hidden="true" />
+              <span className="hidden xl:inline">{density.value === "compact" ? "Compact" : "Comfortable"}</span>
+            </button>
+            <button
+              type="button"
               onClick={toggleTheme}
               title={isDark ? "Switch to light theme" : "Switch to dark theme"}
               aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
@@ -455,6 +486,11 @@ function App() {
             </div>
           )}
         </header>
+        {density.error && (
+          <p role="status" className="border-b border-status-warning/30 bg-status-warning/10 px-l py-s text-200 text-foreground">
+            {density.error}
+          </p>
+        )}
 
         <main
           ref={mainRef}

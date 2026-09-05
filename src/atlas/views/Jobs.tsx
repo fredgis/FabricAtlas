@@ -226,7 +226,7 @@ export function JobsView({
 
   return (
     <div className="atlas-content-frame flex flex-col gap-xl p-xl lg:p-xxl">
-      <header className="border-l border-primary pl-l">
+      <header className="atlas-page-header">
         <SectionLabel>Operations / run history</SectionLabel>
         <div className="mt-s flex flex-col gap-s lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -286,7 +286,7 @@ export function JobsView({
             )}
           </div>
 
-          <div className="flex flex-col gap-s border-b border-border bg-secondary/60 px-l py-s sm:flex-row sm:items-center">
+          <div className="atlas-toolbar flex flex-col border-b border-border bg-secondary/60 px-l py-s sm:flex-row sm:items-center">
             <label className="relative min-w-0 flex-1">
               <span className="sr-only">Search job history</span>
               <Search className="icon-size-200 pointer-events-none absolute left-m top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -466,7 +466,7 @@ function JobTimeline({
               <li
                 key={`${job.itemFabricId}-${job.jobType}-${job.startedAt}`}
                 className={cn(
-                  "atlas-windowed-block relative grid gap-m border-b border-border/60 px-l py-m transition-colors last:border-b-0 hover:bg-accent/50 md:grid-cols-[auto_minmax(180px,1.3fr)_minmax(120px,0.8fr)_minmax(150px,0.9fr)_100px_minmax(180px,1fr)] md:items-center",
+                  "atlas-row atlas-windowed-block relative grid gap-m border-b border-border/60 px-l transition-colors last:border-b-0 hover:bg-accent/50 md:grid-cols-[auto_minmax(180px,1.3fr)_minmax(120px,0.8fr)_minmax(150px,0.9fr)_100px_minmax(180px,1fr)] md:items-center",
                   job.status === "failed" && "bg-status-failing/5",
                 )}
               >

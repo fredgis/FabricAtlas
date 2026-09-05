@@ -130,7 +130,7 @@ export function ConfigView({
       <div className="grid items-start gap-l lg:grid-cols-3">
         <aside aria-label="Configuration items" className="lg:sticky lg:top-l">
           <Card className="overflow-hidden">
-            <div className="border-b border-border p-l">
+            <div className="atlas-toolbar border-b border-border p-l">
               <div className="flex items-center justify-between gap-s">
                 <div>
                   <h2 className="text-400 leading-400 font-semibold">Items</h2>
@@ -198,7 +198,7 @@ export function ConfigView({
                     }}
                     aria-current={isSelected ? "true" : undefined}
                     className={cn(
-                      "flex w-full items-center gap-m border-l px-l py-m text-left transition-colors",
+                      "atlas-row flex w-full items-center gap-m border-l px-l text-left transition-colors",
                       isSelected
                         ? "border-l-primary bg-accent text-accent-foreground"
                         : "border-l-transparent hover:bg-accent/60",
@@ -263,7 +263,7 @@ export function ConfigView({
                       </h2>
                       <p className="mt-xs text-300 leading-300 text-muted-foreground">
                         {typeMeta(selected.itemType).label}
-                        {selected.ownerName ? ` · Owned by ${selected.ownerName}` : ""}
+                        {selected.ownerName ? ` · Documented owner: ${selected.ownerName}` : ""}
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-s">
@@ -334,7 +334,7 @@ export function ConfigView({
                               onClick={() => toggleSection(section)}
                               aria-expanded={isOpen}
                               aria-controls={regionId}
-                              className="flex w-full items-center gap-s bg-secondary px-l py-m text-left transition-colors hover:bg-accent"
+                              className="atlas-row flex w-full items-center gap-s bg-secondary px-l text-left transition-colors hover:bg-accent"
                             >
                               {isOpen ? (
                                 <ChevronDown
@@ -360,7 +360,7 @@ export function ConfigView({
                                 {values.map((entry, entryIndex) => (
                                   <div
                                     key={`${entry.label}-${entryIndex}`}
-                                    className="grid gap-s px-l py-m md:grid-cols-3"
+                                    className="atlas-row grid gap-s px-l md:grid-cols-3"
                                   >
                                     <dt className="text-300 leading-300 font-semibold text-muted-foreground">
                                       {entry.label}

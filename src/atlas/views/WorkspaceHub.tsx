@@ -61,7 +61,7 @@ export function WorkspaceHubView({
     >
       <div className="atlas-content-frame flex flex-col gap-l p-xl lg:p-xxl">
       <Card className="atlas-fabric-hero overflow-hidden border-border shadow-fabric-4">
-        <div className="flex flex-col gap-l p-l lg:flex-row lg:items-end lg:justify-between">
+        <div className="atlas-page-header flex flex-col lg:flex-row lg:items-end lg:justify-between">
           <div>
             <SectionLabel>Operate / workspace context</SectionLabel>
             <h1 className="mt-xs font-heading text-600 font-bold leading-600">

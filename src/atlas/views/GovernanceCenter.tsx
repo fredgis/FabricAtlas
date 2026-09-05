@@ -24,6 +24,9 @@ import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import { SavedViewsMenu } from "../components/SavedViewsMenu";
 import { TrendChart } from "../components/TrendChart";
+import { GovernanceExceptionControl } from "../components/GovernanceExceptionControl";
+import { GovernancePolicyEditor } from "../components/GovernancePolicyEditor";
+import { HistoricalChangeDetails } from "../components/HistoricalChangeDetails";
 import { ATLAS_CONFIG } from "../config";
 import {
   buildGovernanceFindings,
@@ -37,6 +40,7 @@ import {
   snapshotCatalogFromData,
   type AtlasChange,
   type AtlasChangeDomain,
+  type HistoricalSnapshot,
   type SnapshotSummary,
 } from "../history";
 import type {
@@ -52,6 +56,7 @@ import {
   type RiskyChange,
 } from "../radar";
 import type { FindingAcknowledgement } from "../finding-acks";
+import type { GovernanceException } from "../governance-exceptions";
 import { radarToMarkdown } from "../radar-markdown";
 import {
   scorePosture,
@@ -198,17 +203,6 @@ function changeTone(change: AtlasChange): string {
   return "border-status-warning/30 bg-status-warning/10 text-status-warning";
 }
 
-function compactValue(value: unknown): string {
-  if (value == null || value === "") return "None";
-  if (typeof value === "string" || typeof value === "number") {
-    return String(value);
-  }
-  const serialized = JSON.stringify(value);
-  return serialized.length > 140
-    ? `${serialized.slice(0, 137)}...`
-    : serialized;
-}
-
 function focusRequest(
   values: Omit<AtlasFocusRequest, "requestId">,
 ): AtlasFocusRequest {
@@ -275,6 +269,20 @@ export function GovernanceCenterView({
     findingAckPendingIds,
     saveFindingAcknowledgement,
     removeFindingAcknowledgement,
+    governanceTargets,
+    governancePolicyLoading,
+    governancePolicyError,
+    governanceExceptions,
+    governanceExceptionsLoading,
+    governanceExceptionsError,
+    governanceExceptionPendingIds,
+    canSync,
+    reloadGovernancePolicy,
+    saveGovernanceTargets,
+    resetGovernanceTargets,
+    reloadGovernanceExceptions,
+    saveGovernanceException,
+    removeGovernanceException,
   } = useAtlas();
   const initialSection =
     focus?.governanceSection ??
@@ -497,12 +505,15 @@ export function GovernanceCenterView({
       new Map(
         history.snapshots.map((snapshot) => [
           snapshot.snapshotId,
-          scorePosture(snapshot.catalog),
+          scorePosture(snapshot.catalog, governanceTargets),
         ]),
       ),
-    [history.snapshots],
+    [governanceTargets, history.snapshots],
   );
-  const currentPosture = scorePosture(snapshotCatalogFromData(data));
+  const currentPosture = scorePosture(
+    snapshotCatalogFromData(data),
+    governanceTargets,
+  );
   const previousPosture = historyIsCurrent
     ? postureScores.get(history.summaries[1]?.snapshotId ?? "")
     : undefined;
@@ -518,6 +529,19 @@ export function GovernanceCenterView({
     !historyError &&
     Boolean(effectiveCurrentSnapshotId && effectivePreviousSnapshotId) &&
     (!selectedCurrent || !selectedPrevious);
+  const comparisonNewer =
+    selectedCurrent && selectedPrevious
+      ? Date.parse(selectedCurrent.syncedAt) >=
+        Date.parse(selectedPrevious.syncedAt)
+        ? selectedCurrent
+        : selectedPrevious
+      : undefined;
+  const comparisonOlder =
+    selectedCurrent && selectedPrevious
+      ? comparisonNewer === selectedCurrent
+        ? selectedPrevious
+        : selectedCurrent
+      : undefined;
 
   useEffect(() => {
     if (section !== "changes") return;
@@ -542,14 +566,9 @@ export function GovernanceCenterView({
     section,
   ]);
   const snapshotChanges = useMemo(() => {
-    if (!selectedCurrent || !selectedPrevious) return [];
-    const newer =
-      Date.parse(selectedCurrent.syncedAt) >= Date.parse(selectedPrevious.syncedAt)
-        ? selectedCurrent
-        : selectedPrevious;
-    const older = newer === selectedCurrent ? selectedPrevious : selectedCurrent;
-    return compareSnapshots(older, newer);
-  }, [selectedCurrent, selectedPrevious]);
+    if (!comparisonNewer || !comparisonOlder) return [];
+    return compareSnapshots(comparisonOlder, comparisonNewer);
+  }, [comparisonNewer, comparisonOlder]);
   const filteredChanges = useMemo(() => {
     const query = changeSearch.trim().toLowerCase();
     return snapshotChanges.filter(
@@ -583,6 +602,18 @@ export function GovernanceCenterView({
       : history.changes.filter(
           (change) => change.snapshotId === history.current?.snapshotId,
         ).length;
+  const exceptionByFinding = useMemo(
+    () =>
+      new Map(
+        governanceExceptions.map((exception) => [
+          exception.findingId,
+          exception,
+        ]),
+      ),
+    [governanceExceptions],
+  );
+  const hasNewPriorityAlert =
+    radar.state === "ready" && allRadarEntries.length > 0;
   const tabs: Array<{
     id: GovernanceSection;
     label: string;
@@ -739,6 +770,11 @@ export function GovernanceCenterView({
         historyLoading={historyLoading}
         failedSnapshotIds={radarFailedSnapshotIds}
         pendingIds={findingAckPendingIds}
+        exceptions={exceptionByFinding}
+        exceptionsLoading={governanceExceptionsLoading}
+        exceptionsError={governanceExceptionsError}
+        exceptionPendingIds={governanceExceptionPendingIds}
+        canManageExceptions={canSync}
         onAcknowledge={(entry) =>
           saveFindingAcknowledgement({
             findingId: entry.id,
@@ -754,6 +790,9 @@ export function GovernanceCenterView({
           })
         }
         onRestore={(id) => removeFindingAcknowledgement(id)}
+        onSaveException={saveGovernanceException}
+        onRemoveException={removeGovernanceException}
+        onRetryExceptions={reloadGovernanceExceptions}
         onReviewChanges={() => {
           if (radar.state === "ready") {
             setCurrentSnapshotId(radar.currentSnapshotId);
@@ -817,24 +856,25 @@ export function GovernanceCenterView({
         }}
       />
       <Card className="overflow-hidden border-border shadow-fabric-4">
-        <div className="atlas-fabric-hero relative overflow-hidden p-l sm:p-xl">
-          <div className="relative flex flex-col gap-l lg:flex-row lg:items-end lg:justify-between">
+        <div className="atlas-page-header atlas-fabric-hero relative overflow-hidden">
+          <div className="atlas-row relative flex flex-col gap-m lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-start gap-m">
-              <span className="atlas-brand-mark flex icon-size-700 shrink-0 items-center justify-center rounded-xl text-primary-foreground">
-                <ShieldCheck className="icon-size-400" aria-hidden="true" />
+              <span className="atlas-brand-mark flex icon-size-600 shrink-0 items-center justify-center rounded-xl text-primary-foreground">
+                <ShieldCheck className="icon-size-300" aria-hidden="true" />
               </span>
               <div>
                 <SectionLabel>Govern / workspace assurance</SectionLabel>
-                <h1 className="mt-xs font-heading text-600 font-bold leading-600">
+                <h1 className="mt-xxs font-heading text-500 font-bold leading-500">
                   Governance Center
                 </h1>
-                <p className="mt-xs max-w-3xl text-300 leading-300 text-muted-foreground">
-                  See what changed, what needs attention, and where Fabric
-                  metadata coverage is incomplete without leaving the workspace.
+                <p className="mt-xxs max-w-3xl text-200 text-muted-foreground">
+                  {hasNewPriorityAlert
+                    ? `${allRadarEntries.length} new priority alert${allRadarEntries.length === 1 ? "" : "s"} require review.`
+                    : "No new priority alert. Governance details remain available below."}
                 </p>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-s">
+            <div className="atlas-toolbar flex flex-wrap items-center gap-s">
               <SavedViewsMenu
                 views={savedViews.filter(
                   (view) => view.section === "governance",
@@ -850,55 +890,57 @@ export function GovernanceCenterView({
               <span
                 className={cn(
                   "rounded-full border px-m py-s text-200 font-semibold",
-                  priorityFindings
+                  hasNewPriorityAlert
                     ? "border-status-warning/30 bg-status-warning/10 text-status-warning"
                     : "border-status-healthy/30 bg-status-healthy/10 text-status-healthy",
                 )}
               >
-                {priorityFindings
-                  ? `${priorityFindings} priority findings`
-                  : "No priority finding"}
+                {hasNewPriorityAlert
+                  ? `${allRadarEntries.length} new priority alert${allRadarEntries.length === 1 ? "" : "s"}`
+                  : "No new priority alert"}
               </span>
             </div>
           </div>
 
-          <div className="relative mt-l grid grid-cols-2 gap-s lg:grid-cols-4">
-            {[
-              {
-                label: "Open findings",
-                value: findings.length,
-                detail: `${priorityFindings} high priority`,
-              },
-              {
-                label: "Latest changes",
-                value: currentChanges,
-                detail: history.summaries.length > 1 ? "Since previous sync" : "Needs two snapshots",
-              },
-              {
-                label: "Coverage",
-                value: `${coverageScore}%`,
-                detail: "Across available metadata",
-              },
-              {
-                label: "History",
-                value: history.summaries.length,
-                detail: "Validated snapshots",
-              },
-            ].map((metric) => (
-              <div
-                key={metric.label}
-                className="rounded-xl border border-border bg-background/65 p-m backdrop-blur"
-              >
-                <div className="font-numeric text-500 font-bold">
-                  {metric.value}
+          <details className="relative mt-m rounded-lg border border-border bg-background/65">
+            <summary className="cursor-pointer px-m py-s text-200 font-semibold text-primary">
+              Workspace governance summary
+            </summary>
+            <div className="grid grid-cols-2 gap-s border-t border-border p-m lg:grid-cols-4">
+              {[
+                {
+                  label: "Open findings",
+                  value: findings.length,
+                  detail: `${priorityFindings} high priority`,
+                },
+                {
+                  label: "Latest changes",
+                  value: currentChanges,
+                  detail: history.summaries.length > 1 ? "Since previous sync" : "Needs two snapshots",
+                },
+                {
+                  label: "Coverage",
+                  value: `${coverageScore}%`,
+                  detail: "Across available metadata",
+                },
+                {
+                  label: "History",
+                  value: history.summaries.length,
+                  detail: "Validated snapshots",
+                },
+              ].map((metric) => (
+                <div key={metric.label} className="rounded-lg bg-secondary/60 p-m">
+                  <div className="font-numeric text-400 font-bold">
+                    {metric.value}
+                  </div>
+                  <div className="text-200 font-semibold">{metric.label}</div>
+                  <div className="mt-xxs text-100 text-muted-foreground">
+                    {metric.detail}
+                  </div>
                 </div>
-                <div className="text-200 font-semibold">{metric.label}</div>
-                <div className="mt-xxs text-100 text-muted-foreground">
-                  {metric.detail}
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </details>
         </div>
 
         <Tabs.List
@@ -971,6 +1013,12 @@ export function GovernanceCenterView({
             onNavigate={(finding) =>
               onNavigate(navigationForFinding(finding))
             }
+            exceptions={exceptionByFinding}
+            exceptionsLoading={governanceExceptionsLoading}
+            exceptionPendingIds={governanceExceptionPendingIds}
+            canManageExceptions={canSync}
+            onSaveException={saveGovernanceException}
+            onRemoveException={removeGovernanceException}
             onPreset={(preset) => {
               setFindingPillar("");
               if (preset === "external") {
@@ -1009,24 +1057,20 @@ export function GovernanceCenterView({
             search={changeSearch}
             domain={changeDomain}
             loading={historyLoading || comparisonLoading}
+            historyError={historyError}
+            failedSnapshotIds={historyFailedSnapshotIds}
+            loadedSnapshots={history.snapshots}
+            loadHistorySnapshot={loadHistorySnapshot}
+            comparisonCurrentSnapshotId={
+              comparisonNewer?.snapshotId ?? effectiveCurrentSnapshotId
+            }
+            comparisonPreviousSnapshotId={
+              comparisonOlder?.snapshotId ?? effectivePreviousSnapshotId
+            }
             onCurrentSnapshot={setCurrentSnapshotId}
             onPreviousSnapshot={setPreviousSnapshotId}
             onSearch={setChangeSearch}
             onDomain={setChangeDomain}
-            onNavigate={(change) => {
-              if (change.itemFabricId) {
-                onNavigate({
-                  tab:
-                    change.domain === "schema" ? "assets" : "catalog",
-                  focus: focusRequest({
-                    itemId: change.itemFabricId,
-                    objectName: change.objectName,
-                    tableName: change.tableName,
-                    objectKind: change.objectType,
-                  }),
-                });
-              }
-            }}
           />
         </motion.div>
       </Tabs.Content>
@@ -1070,6 +1114,12 @@ export function GovernanceCenterView({
             summaries={history.trend}
             selectedPillar={postureMetric}
             loading={historyLoading}
+            policyLoading={governancePolicyLoading}
+            policyError={governancePolicyError}
+            canEditPolicy={canSync}
+            onRetryPolicy={reloadGovernancePolicy}
+            onSaveTargets={saveGovernanceTargets}
+            onResetTargets={resetGovernanceTargets}
             onPillar={setPostureMetric}
             onNavigate={onNavigate}
           />
@@ -1089,9 +1139,17 @@ export function RadarPanel({
   historyLoading,
   failedSnapshotIds,
   pendingIds,
+  exceptions = new Map<string, GovernanceException>(),
+  exceptionsLoading = false,
+  exceptionsError,
+  exceptionPendingIds = new Set<string>(),
+  canManageExceptions = false,
   onAcknowledge,
   onMute,
   onRestore,
+  onSaveException = async () => undefined,
+  onRemoveException = async () => undefined,
+  onRetryExceptions = async () => undefined,
   onReviewChanges,
   onRetryHistory,
   onOpen,
@@ -1105,9 +1163,21 @@ export function RadarPanel({
   historyLoading: boolean;
   failedSnapshotIds: string[];
   pendingIds: Set<string>;
+  exceptions?: ReadonlyMap<string, GovernanceException>;
+  exceptionsLoading?: boolean;
+  exceptionsError?: string;
+  exceptionPendingIds?: Set<string>;
+  canManageExceptions?: boolean;
   onAcknowledge: (entry: RadarEntry) => Promise<void>;
   onMute: (entry: RadarEntry) => Promise<void>;
   onRestore: (id: string) => Promise<void>;
+  onSaveException?: (input: {
+    findingId: string;
+    reason: string;
+    expiresAt: string;
+  }) => Promise<void>;
+  onRemoveException?: (id: string) => Promise<void>;
+  onRetryExceptions?: () => Promise<void>;
   onReviewChanges: () => void;
   onRetryHistory: () => void;
   onOpen: (entry: RadarEntry) => void;
@@ -1118,28 +1188,28 @@ export function RadarPanel({
     radar.state === "baseline" && radar.reason === "first-snapshot";
   return (
     <Card className="overflow-hidden border-primary/25 shadow-fabric-4">
-      <div className="atlas-fabric-hero flex flex-col gap-l p-l lg:flex-row lg:items-center">
-        <span className="flex icon-size-700 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-          <RadarIcon className="icon-size-400" aria-hidden="true" />
+      <div className="atlas-page-header atlas-fabric-hero flex flex-col gap-m lg:flex-row lg:items-center">
+        <span className="flex icon-size-600 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+          <RadarIcon className="icon-size-300" aria-hidden="true" />
         </span>
         <div className="min-w-0 flex-1">
           <SectionLabel>Governance radar</SectionLabel>
-          <h2 className="mt-xs text-500 font-semibold">
+          <h2 className="mt-xxs text-400 font-semibold">
             {firstSnapshotBaseline
               ? "Your governance baseline is ready"
               : "What became risky since the last sync"}
           </h2>
-          <p className="mt-xs text-200 text-muted-foreground">
+          <p className="mt-xxs text-200 text-muted-foreground">
             {firstSnapshotBaseline
               ? "The first validated snapshot arms the Radar; the next sync will produce risk deltas."
               : "New high-priority findings and dangerous access, sensitivity, lineage or removal changes only."}
           </p>
         </div>
-        {ready && (
+        {ready && entries.length > 0 && (
           <button
             type="button"
             onClick={onDownload}
-            className="inline-flex items-center justify-center gap-s rounded-lg border border-border bg-card px-m py-s text-200 font-semibold hover:bg-accent"
+            className="atlas-control inline-flex items-center justify-center gap-s rounded-lg border border-border bg-card px-m font-semibold hover:bg-accent"
           >
             <Download className="icon-size-100" />
             Export digest
@@ -1155,6 +1225,33 @@ export function RadarPanel({
           >
             Personal acknowledgements are unavailable; Radar remains fully
             visible. {error}
+          </div>
+        )}
+        {exceptionsError && (
+          <div
+            role="alert"
+            className="flex flex-col gap-s border-b border-status-warning/25 bg-status-warning/10 px-l py-s text-200 text-status-warning sm:flex-row sm:items-center"
+          >
+            <span className="min-w-0 flex-1">
+              Shared governance exceptions are unavailable; findings remain
+              visible. {exceptionsError}
+            </span>
+            <button
+              type="button"
+              disabled={exceptionsLoading}
+              onClick={() => void onRetryExceptions().catch(() => undefined)}
+              className="atlas-control rounded-lg border border-border bg-card px-m font-semibold hover:bg-accent disabled:opacity-50"
+            >
+              Retry exceptions
+            </button>
+          </div>
+        )}
+        {exceptionsLoading && ready && !exceptionsError && (
+          <div
+            role="status"
+            className="border-b border-border bg-secondary/50 px-l py-s text-100 text-muted-foreground"
+          >
+            Loading shared governance exceptions...
           </div>
         )}
         {loading && ready && (
@@ -1185,7 +1282,7 @@ export function RadarPanel({
               type="button"
               disabled={historyLoading}
               onClick={onRetryHistory}
-              className="inline-flex items-center justify-center gap-s rounded-lg border border-border bg-card px-m py-s text-200 font-semibold hover:bg-accent disabled:opacity-50"
+              className="atlas-control inline-flex items-center justify-center gap-s rounded-lg border border-border bg-card px-m font-semibold hover:bg-accent disabled:opacity-50"
             >
               <RotateCcw className="icon-size-100" />
               {historyLoading ? "Retrying…" : "Retry comparison"}
@@ -1223,7 +1320,7 @@ export function RadarPanel({
             {entries.map((entry) => (
               <div
                 key={entry.id}
-                className="grid gap-m p-l lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
+                className="atlas-row grid gap-m px-l lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
               >
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-s">
@@ -1246,10 +1343,20 @@ export function RadarPanel({
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-s">
+                  <GovernanceExceptionControl
+                    findingId={entry.id}
+                    findingTitle={entry.title}
+                    exception={exceptions.get(entry.id)}
+                    canEdit={canManageExceptions}
+                    loading={exceptionsLoading}
+                    pending={exceptionPendingIds.has(entry.id)}
+                    onSave={onSaveException}
+                    onRemove={onRemoveException}
+                  />
                   <button
                     type="button"
                     onClick={() => onOpen(entry)}
-                    className="rounded-lg border border-border px-m py-s text-200 font-semibold hover:bg-accent"
+                    className="atlas-control rounded-lg border border-border px-m font-semibold hover:bg-accent"
                   >
                     Open evidence
                   </button>
@@ -1259,7 +1366,7 @@ export function RadarPanel({
                     onClick={() =>
                       void onAcknowledge(entry).catch(() => undefined)
                     }
-                    className="inline-flex items-center gap-s rounded-lg border border-status-healthy/30 bg-status-healthy/10 px-m py-s text-200 font-semibold text-status-healthy disabled:opacity-50"
+                    className="atlas-control inline-flex items-center gap-s rounded-lg border border-status-healthy/30 bg-status-healthy/10 px-m font-semibold text-status-healthy disabled:opacity-50"
                   >
                     <CheckCheck className="icon-size-100" />
                     Acknowledge
@@ -1270,7 +1377,7 @@ export function RadarPanel({
                     onClick={() =>
                       void onMute(entry).catch(() => undefined)
                     }
-                    className="inline-flex items-center gap-s rounded-lg border border-border px-m py-s text-200 font-semibold text-muted-foreground hover:bg-accent disabled:opacity-50"
+                    className="atlas-control inline-flex items-center gap-s rounded-lg border border-border px-m font-semibold text-muted-foreground hover:bg-accent disabled:opacity-50"
                   >
                     <VolumeX className="icon-size-100" />
                     Mute
@@ -1281,7 +1388,7 @@ export function RadarPanel({
           </div>
         )}
         {suppressed.length > 0 && (
-          <div className="flex flex-wrap items-center gap-s border-t border-border bg-secondary/50 px-l py-s">
+          <div className="atlas-row flex flex-wrap items-center gap-s border-t border-border bg-secondary/50 px-l">
             <span className="text-200 text-muted-foreground">
               {suppressed.length} hidden radar item
               {suppressed.length === 1 ? "" : "s"}
@@ -1298,7 +1405,7 @@ export function RadarPanel({
                     () => undefined,
                   )
                 }
-                className="rounded-full border border-border bg-card px-s py-xs text-100 font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
+                className="atlas-control rounded-full border border-border bg-card px-s text-100 font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
               >
                 Restore {acknowledgement.findingId.slice(0, 18)}
               </button>
@@ -1325,39 +1432,35 @@ function RadarTargetState({
 }) {
   const baseline = mode === "baseline";
   const StatusIcon = baseline ? Clock3 : CheckCircle2;
-  const CenterIcon = baseline ? Clock3 : ShieldCheck;
-  const watermarkClass = baseline ? "text-primary" : "text-status-healthy";
   const titleClass = baseline ? "text-primary" : "text-status-healthy";
   const signalClass = baseline
     ? "inline-flex items-center gap-xs rounded-full border border-primary/20 bg-primary/5 px-s py-xs text-100 font-semibold text-primary"
     : "inline-flex items-center gap-xs rounded-full border border-status-healthy/20 bg-status-healthy/5 px-s py-xs text-100 font-semibold text-status-healthy";
 
   return (
-    <div className="relative overflow-hidden p-l">
-      <div
-        aria-hidden="true"
-        className={`pointer-events-none absolute right-l top-1/2 -translate-y-1/2 opacity-10 ${watermarkClass}`}
-      >
-        <RadarIcon className="icon-size-800" />
-        <CenterIcon className="absolute left-1/2 top-1/2 icon-size-400 -translate-x-1/2 -translate-y-1/2" />
-      </div>
-      <div className="relative max-w-3xl">
+    <div className="p-m">
+      <div className="max-w-3xl">
         <div className="flex items-center gap-s text-300 font-semibold">
           <StatusIcon className={`icon-size-200 ${titleClass}`} />
           <span className={titleClass}>{title}</span>
         </div>
         <p className="mt-xs text-200 text-muted-foreground">{description}</p>
-        <div
-          aria-label="Radar monitored signals"
-          className="mt-m flex flex-wrap gap-s"
-        >
-          {RADAR_SIGNALS.map((signal) => (
-            <span key={signal} className={signalClass}>
-              <StatusIcon className="icon-size-100" />
-              {signal}
-            </span>
-          ))}
-        </div>
+        <details className="mt-s">
+          <summary className="cursor-pointer text-200 font-semibold text-primary">
+            Radar details
+          </summary>
+          <div
+            aria-label="Radar monitored signals"
+            className="mt-m flex flex-wrap gap-s"
+          >
+            {RADAR_SIGNALS.map((signal) => (
+              <span key={signal} className={signalClass}>
+                <StatusIcon className="icon-size-100" />
+                {signal}
+              </span>
+            ))}
+          </div>
+        </details>
         {!baseline && observedChangeCount > 0 && onReviewChanges && (
           <div className="mt-m flex flex-col gap-s rounded-lg border border-border bg-secondary/70 p-m sm:flex-row sm:items-center">
             <FileClock className="icon-size-200 shrink-0 text-primary" />
@@ -1369,7 +1472,7 @@ function RadarTargetState({
             <button
               type="button"
               onClick={onReviewChanges}
-              className="shrink-0 rounded-lg border border-border bg-card px-m py-s text-200 font-semibold text-primary hover:bg-primary/10"
+              className="atlas-control shrink-0 rounded-lg border border-border bg-card px-m font-semibold text-primary hover:bg-primary/10"
             >
               Review changes
             </button>
@@ -1396,6 +1499,12 @@ function PostureSection({
   summaries,
   selectedPillar,
   loading,
+  policyLoading,
+  policyError,
+  canEditPolicy,
+  onRetryPolicy,
+  onSaveTargets,
+  onResetTargets,
   onPillar,
   onNavigate,
 }: {
@@ -1405,6 +1514,14 @@ function PostureSection({
   summaries: SnapshotSummary[];
   selectedPillar: PosturePillar;
   loading: boolean;
+  policyLoading: boolean;
+  policyError?: string;
+  canEditPolicy: boolean;
+  onRetryPolicy: () => Promise<void>;
+  onSaveTargets: (
+    targets: Record<PosturePillar, number>,
+  ) => Promise<void>;
+  onResetTargets: () => Promise<void>;
   onPillar: (pillar: PosturePillar) => void;
   onNavigate: (navigation: AtlasNavigation) => void;
 }) {
@@ -1444,7 +1561,7 @@ function PostureSection({
               onChange={(event) =>
                 onPillar(event.target.value as PosturePillar)
               }
-              className="h-9 rounded-lg border border-input bg-card px-m text-300"
+              className="atlas-control rounded-lg border border-input bg-card px-m"
             >
               {current.pillars.map((pillar) => (
                 <option key={pillar.pillar} value={pillar.pillar}>
@@ -1529,6 +1646,21 @@ function PostureSection({
         </div>
       </Card>
 
+      <GovernancePolicyEditor
+        key={current.pillars
+          .map((pillar) => `${pillar.pillar}:${pillar.target}`)
+          .join("|")}
+        targets={Object.fromEntries(
+          current.pillars.map((pillar) => [pillar.pillar, pillar.target]),
+        ) as Record<PosturePillar, number>}
+        loading={policyLoading}
+        error={policyError}
+        canEdit={canEditPolicy}
+        onRetry={onRetryPolicy}
+        onSave={onSaveTargets}
+        onReset={onResetTargets}
+      />
+
       <Card className="overflow-hidden">
         <div className="border-b border-border bg-secondary/55 px-l py-m">
           <h3 className="text-300 font-semibold">
@@ -1571,6 +1703,12 @@ function FindingsSection({
   onClearPillar,
   onNavigate,
   onPreset,
+  exceptions,
+  exceptionsLoading,
+  exceptionPendingIds,
+  canManageExceptions,
+  onSaveException,
+  onRemoveException,
 }: {
   findings: GovernanceFinding[];
   total: number;
@@ -1584,6 +1722,16 @@ function FindingsSection({
   onClearPillar: () => void;
   onNavigate: (finding: GovernanceFinding) => void;
   onPreset: (value: "all" | "external" | "metadata" | "failures") => void;
+  exceptions: ReadonlyMap<string, GovernanceException>;
+  exceptionsLoading: boolean;
+  exceptionPendingIds: Set<string>;
+  canManageExceptions: boolean;
+  onSaveException: (input: {
+    findingId: string;
+    reason: string;
+    expiresAt: string;
+  }) => Promise<void>;
+  onRemoveException: (id: string) => Promise<void>;
 }) {
   const activeFilters =
     search || severity !== "all" || category !== "all" || pillar;
@@ -1622,13 +1770,13 @@ function FindingsSection({
             <button
               type="button"
               onClick={onClearPillar}
-              className="rounded-lg px-s py-xs text-200 font-semibold text-primary hover:bg-primary/10"
+              className="atlas-control rounded-lg px-s text-200 font-semibold text-primary hover:bg-primary/10"
             >
               Clear pillar
             </button>
           </div>
         )}
-        <div className="flex flex-col gap-s border-b border-border bg-secondary/55 p-m lg:flex-row lg:items-center">
+        <div className="atlas-toolbar flex flex-col gap-s border-b border-border bg-secondary/55 p-m lg:flex-row lg:items-center">
           <label className="relative min-w-0 flex-1">
             <span className="sr-only">Search governance findings</span>
             <Search className="icon-size-200 pointer-events-none absolute left-m top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -1636,7 +1784,7 @@ function FindingsSection({
               value={search}
               onChange={(event) => onSearch(event.target.value)}
               placeholder="Search finding, evidence or recommendation"
-              className="h-9 w-full rounded-lg border border-input bg-card pl-xxxl pr-m text-300"
+              className="atlas-control w-full rounded-lg border border-input bg-card pl-xxxl pr-m"
             />
           </label>
           <select
@@ -1645,7 +1793,7 @@ function FindingsSection({
             onChange={(event) =>
               onSeverity(event.target.value as GovernanceSeverity | "all")
             }
-            className="h-9 rounded-lg border border-input bg-card px-m text-300"
+            className="atlas-control rounded-lg border border-input bg-card px-m"
           >
             <option value="all">All severities</option>
             <option value="critical">Critical</option>
@@ -1659,7 +1807,7 @@ function FindingsSection({
             onChange={(event) =>
               onCategory(event.target.value as GovernanceCategory | "all")
             }
-            className="h-9 rounded-lg border border-input bg-card px-m text-300"
+            className="atlas-control rounded-lg border border-input bg-card px-m"
           >
             <option value="all">All categories</option>
             <option value="access">Access</option>
@@ -1671,7 +1819,7 @@ function FindingsSection({
             <button
               type="button"
               onClick={() => onPreset("all")}
-              className="inline-flex h-9 items-center gap-s rounded-lg px-m text-200 font-semibold text-primary hover:bg-primary/10"
+              className="atlas-control inline-flex items-center gap-s rounded-lg px-m font-semibold text-primary hover:bg-primary/10"
             >
               <FilterX className="icon-size-100" />
               Reset
@@ -1735,14 +1883,26 @@ function FindingsSection({
                   <div className="mt-m rounded-lg bg-secondary px-m py-s text-200 text-muted-foreground">
                     {finding.recommendation}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => onNavigate(finding)}
-                    className="mt-m inline-flex items-center gap-s self-start text-200 font-semibold text-primary hover:underline"
-                  >
-                    Open evidence
-                    <ArrowRight className="icon-size-100" />
-                  </button>
+                  <div className="atlas-row mt-m flex flex-wrap items-center gap-s">
+                    <button
+                      type="button"
+                      onClick={() => onNavigate(finding)}
+                      className="atlas-control inline-flex items-center gap-s px-s font-semibold text-primary hover:underline"
+                    >
+                      Open evidence
+                      <ArrowRight className="icon-size-100" />
+                    </button>
+                    <GovernanceExceptionControl
+                      findingId={finding.id}
+                      findingTitle={finding.title}
+                      exception={exceptions.get(finding.id)}
+                      canEdit={canManageExceptions}
+                      loading={exceptionsLoading}
+                      pending={exceptionPendingIds.has(finding.id)}
+                      onSave={onSaveException}
+                      onRemove={onRemoveException}
+                    />
+                  </div>
                 </article>
               );
             })}
@@ -1762,11 +1922,16 @@ function ChangesSection({
   search,
   domain,
   loading,
+  historyError,
+  failedSnapshotIds,
+  loadedSnapshots,
+  loadHistorySnapshot,
+  comparisonCurrentSnapshotId,
+  comparisonPreviousSnapshotId,
   onCurrentSnapshot,
   onPreviousSnapshot,
   onSearch,
   onDomain,
-  onNavigate,
 }: {
   changes: AtlasChange[];
   total: number;
@@ -1776,11 +1941,16 @@ function ChangesSection({
   search: string;
   domain: AtlasChangeDomain | "all";
   loading: boolean;
+  historyError?: string;
+  failedSnapshotIds: Set<string>;
+  loadedSnapshots: HistoricalSnapshot[];
+  loadHistorySnapshot: (snapshotId: string) => Promise<void>;
+  comparisonCurrentSnapshotId: string;
+  comparisonPreviousSnapshotId: string;
   onCurrentSnapshot: (value: string) => void;
   onPreviousSnapshot: (value: string) => void;
   onSearch: (value: string) => void;
   onDomain: (value: AtlasChangeDomain | "all") => void;
-  onNavigate: (change: AtlasChange) => void;
 }) {
   return (
     <Card className="overflow-hidden">
@@ -1792,7 +1962,7 @@ function ChangesSection({
           <select
             value={currentSnapshotId}
             onChange={(event) => onCurrentSnapshot(event.target.value)}
-            className="h-9 w-full rounded-lg border border-input bg-card px-m text-300"
+            className="atlas-control w-full rounded-lg border border-input bg-card px-m"
           >
             {snapshots.map((snapshot) => (
               <option key={snapshot.snapshotId} value={snapshot.snapshotId}>
@@ -1808,7 +1978,7 @@ function ChangesSection({
           <select
             value={previousSnapshotId}
             onChange={(event) => onPreviousSnapshot(event.target.value)}
-            className="h-9 w-full rounded-lg border border-input bg-card px-m text-300"
+            className="atlas-control w-full rounded-lg border border-input bg-card px-m"
           >
             {snapshots.map((snapshot) => (
               <option key={snapshot.snapshotId} value={snapshot.snapshotId}>
@@ -1827,7 +1997,7 @@ function ChangesSection({
         </div>
       </div>
 
-      <div className="flex flex-col gap-s border-b border-border p-m sm:flex-row">
+      <div className="atlas-toolbar flex flex-col gap-s border-b border-border p-m sm:flex-row">
         <label className="relative min-w-0 flex-1">
           <span className="sr-only">Search snapshot changes</span>
           <Search className="icon-size-200 pointer-events-none absolute left-m top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -1835,7 +2005,7 @@ function ChangesSection({
             value={search}
             onChange={(event) => onSearch(event.target.value)}
             placeholder="Search item, schema object or changed field"
-            className="h-9 w-full rounded-lg border border-input bg-card pl-xxxl pr-m text-300"
+            className="atlas-control w-full rounded-lg border border-input bg-card pl-xxxl pr-m"
           />
         </label>
         <select
@@ -1844,7 +2014,7 @@ function ChangesSection({
           onChange={(event) =>
             onDomain(event.target.value as AtlasChangeDomain | "all")
           }
-          className="h-9 rounded-lg border border-input bg-card px-m text-300"
+          className="atlas-control rounded-lg border border-input bg-card px-m"
         >
           <option value="all">All domains</option>
           {Object.entries(CHANGE_DOMAIN_LABEL).map(([id, label]) => (
@@ -1885,7 +2055,7 @@ function ChangesSection({
           {changes.map((change) => (
             <article
               key={change.id}
-              className="grid gap-m px-l py-m hover:bg-accent/40 lg:grid-cols-[150px_minmax(0,1fr)_auto]"
+              className="atlas-row grid gap-m px-l hover:bg-accent/40 lg:grid-cols-[150px_minmax(0,1fr)_auto]"
             >
               <div className="flex flex-wrap items-start gap-s">
                 <span
@@ -1909,39 +2079,17 @@ function ChangesSection({
                     ? `Changed: ${change.changedFields.join(", ")}`
                     : change.type.replaceAll("-", " ")}
                 </p>
-                {(change.before !== undefined || change.after !== undefined) && (
-                  <div className="mt-s grid gap-s text-100 sm:grid-cols-2">
-                    <div className="rounded-lg bg-secondary px-s py-xs">
-                      <span className="font-semibold text-muted-foreground">
-                        Before
-                      </span>
-                      <div className="mt-xxs break-all font-mono">
-                        {compactValue(change.before)}
-                      </div>
-                    </div>
-                    <div className="rounded-lg bg-primary/5 px-s py-xs">
-                      <span className="font-semibold text-muted-foreground">
-                        After
-                      </span>
-                      <div className="mt-xxs break-all font-mono">
-                        {compactValue(change.after)}
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
-              {change.itemFabricId &&
-                change.type !== "item-removed" &&
-                change.type !== "schema-object-removed" && (
-                <button
-                  type="button"
-                  onClick={() => onNavigate(change)}
-                  className="inline-flex items-center gap-s self-start text-200 font-semibold text-primary hover:underline"
-                >
-                  Inspect
-                  <ArrowRight className="icon-size-100" />
-                </button>
-              )}
+              <HistoricalChangeDetails
+                change={change}
+                previousSnapshotId={comparisonPreviousSnapshotId}
+                currentSnapshotId={comparisonCurrentSnapshotId}
+                snapshots={loadedSnapshots}
+                historyLoading={loading}
+                historyError={historyError}
+                failedSnapshotIds={failedSnapshotIds}
+                loadHistorySnapshot={loadHistorySnapshot}
+              />
             </article>
           ))}
         </div>
@@ -1989,7 +2137,7 @@ function HistorySection({
               onChange={(event) =>
                 onMetric(event.target.value as HistoryMetric)
               }
-              className="h-9 rounded-lg border border-input bg-card px-m text-300"
+              className="atlas-control rounded-lg border border-input bg-card px-m"
             >
               {HISTORY_METRICS.map((candidate) => (
                 <option key={candidate.id} value={candidate.id}>

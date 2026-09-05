@@ -5,10 +5,12 @@ import {
   ChevronRight,
   FilterX,
   Layers,
+  LayoutGrid,
   Search,
   Settings2,
   ShieldCheck,
   Tag,
+  Table2,
   Waypoints,
   X,
 } from "lucide-react";
@@ -20,6 +22,8 @@ import {
   type PosturePillar,
 } from "../posture";
 import { useAtlas } from "../store";
+import { isCatalogLayout, useDisplayPreference } from "../display-preferences";
+import { CatalogTable } from "../components/CatalogTable";
 import {
   Avatar,
   EndorsementChip,
@@ -59,7 +63,7 @@ const HEALTH_META: Record<
     dotClassName: "bg-status-failing",
   },
   unknown: {
-    label: "Unknown",
+    label: "Health unknown",
     className:
       "border-lineage-neutral/30 bg-lineage-neutral/10 text-muted-foreground",
     dotClassName: "bg-lineage-neutral",
@@ -90,7 +94,7 @@ function DrawerRow({
 }) {
   if (value == null || value === "") return null;
   return (
-    <div className="grid grid-cols-1 gap-xs border-t border-border/60 px-l py-m first:border-t-0 sm:grid-cols-3 sm:gap-l">
+    <div className="atlas-row grid grid-cols-1 gap-xs border-t border-border/60 px-l first:border-t-0 sm:grid-cols-3 sm:gap-l">
       <div className="text-200 font-semibold text-muted-foreground">
         {label}
       </div>
@@ -135,8 +139,15 @@ export function CatalogView({
   focus?: AtlasFocusRequest;
   onStateChange?: (navigation: AtlasNavigation) => void;
 } = {}) {
-  const { data } = useAtlas();
+  const { data, currentUser } = useAtlas();
   const { items, config, grants, edges, jobs, principals } = data;
+  const layout = useDisplayPreference(
+    currentUser.id,
+    data.workspace.fabricId,
+    "catalog-layout",
+    "cards",
+    isCatalogLayout,
+  );
 
   const groups = useMemo(() => {
     const grouped = new Map<ItemType, Item[]>();
@@ -193,6 +204,8 @@ export function CatalogView({
           )),
     );
   }, [items, postureItemIds, selType, query]);
+  const searching = Boolean(query.trim());
+  const visibleIds = useMemo(() => new Set(visible.map((item) => item.fabricId)), [visible]);
 
   const [detailId, setDetailId] = useState<string | null>(
     focus?.itemId ?? null,
@@ -309,7 +322,7 @@ export function CatalogView({
   return (
     <div className="atlas-content-frame p-xxl">
       <header className="mb-l overflow-hidden rounded-xl border border-border bg-card shadow-fabric-2">
-        <div className="flex flex-col gap-l px-xl py-l lg:flex-row lg:items-center">
+        <div className="atlas-page-header flex flex-col lg:flex-row lg:items-center">
           <div className="min-w-0 flex-1">
             <SectionLabel>Workspace inventory</SectionLabel>
             <div className="mt-xs flex flex-wrap items-baseline gap-s">
@@ -342,7 +355,7 @@ export function CatalogView({
             </div>
           </dl>
         </div>
-        <div className="flex flex-wrap items-center gap-s border-t border-border bg-secondary px-xl py-s">
+        {hasActiveFilters && <div className="atlas-toolbar flex flex-wrap items-center border-t border-border bg-secondary px-l py-s">
           <Search className="icon-size-200 text-muted-foreground" />
           <span className="text-200 text-muted-foreground">
             Search by item name or tag, then narrow the inventory by type.
@@ -372,12 +385,13 @@ export function CatalogView({
               Clear filters
             </button>
           )}
-        </div>
+        </div>}
       </header>
+      {layout.error && <p role="status" className="mb-m rounded-lg border border-status-warning/30 bg-status-warning/10 p-m text-200">{layout.error}</p>}
 
       <div className="grid items-start gap-l lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] xl:grid-cols-[minmax(0,1fr)_minmax(0,3fr)]">
         <aside className="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-fabric-2 lg:sticky lg:top-l lg:max-h-screen">
-          <div className="sticky top-0 z-10 border-b border-border bg-card p-m">
+          <div className="atlas-toolbar sticky top-0 z-10 border-b border-border bg-card p-m">
             <label
               htmlFor="catalog-search"
               className="mb-s block text-200 font-semibold text-foreground"
@@ -438,8 +452,10 @@ export function CatalogView({
 
             <div className="my-s border-t border-border" />
 
-            {groups.map(([type, list]) => {
-              const open = expanded.has(type);
+            {groups.map(([type, allItems]) => {
+              const list = searching ? allItems.filter((item) => visibleIds.has(item.fabricId)) : allItems;
+              if (searching && list.length === 0) return null;
+              const open = searching || expanded.has(type);
               const selected = selType === type;
               return (
                 <div key={type} className="px-s">
@@ -455,6 +471,7 @@ export function CatalogView({
                       type="button"
                       aria-expanded={open}
                       aria-label={`${open ? "Collapse" : "Expand"} ${typeMeta(type).label}`}
+                      disabled={searching}
                       onClick={() => toggle(type)}
                       className="m-xs rounded-md p-s text-muted-foreground hover:bg-card hover:text-foreground"
                     >
@@ -512,12 +529,20 @@ export function CatalogView({
         </aside>
 
         <section aria-label="Catalog items">
-          <div className="mb-m flex items-center justify-between gap-m">
+          <div className="atlas-toolbar mb-m flex flex-wrap items-center justify-between">
             <div>
               <h2 className="text-400 font-semibold">Governed items</h2>
               <p className="text-200 text-muted-foreground">
                 {visible.length} {visible.length === 1 ? "result" : "results"}
               </p>
+            </div>
+            <div className="inline-flex gap-xs rounded-lg border border-border bg-card p-xs" role="group" aria-label="Catalog layout">
+              <button type="button" aria-pressed={layout.value === "cards"} onClick={() => layout.setValue("cards")} className={cn("inline-flex items-center gap-s rounded-md px-m py-s text-200 font-semibold", layout.value === "cards" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent")}>
+                <LayoutGrid className="icon-size-200" aria-hidden="true" /> Cards
+              </button>
+              <button type="button" aria-pressed={layout.value === "table"} onClick={() => layout.setValue("table")} className={cn("inline-flex items-center gap-s rounded-md px-m py-s text-200 font-semibold", layout.value === "table" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent")}>
+                <Table2 className="icon-size-200" aria-hidden="true" /> Table
+              </button>
             </div>
             {selType && (
               <button
@@ -545,6 +570,15 @@ export function CatalogView({
                 Clear filters
               </button>
             </div>
+          ) : layout.value === "table" ? (
+            <CatalogTable
+              items={visible}
+              expanded={expanded}
+              searching={searching}
+              selectedId={detailId}
+              onToggle={toggle}
+              onSelect={setDetailId}
+            />
           ) : (
             <div className="grid grid-cols-1 gap-m sm:grid-cols-2 2xl:grid-cols-3">
               {visible.map((item) => {
@@ -557,48 +591,45 @@ export function CatalogView({
                     aria-label={`Open details for ${item.displayName}`}
                     onClick={() => setDetailId(item.fabricId)}
                     className={cn(
-                      "group flex min-h-52 flex-col overflow-hidden rounded-xl border bg-card text-left text-card-foreground shadow-fabric-2 transition-[border-color,box-shadow,transform,background-color] hover:-translate-y-xxs hover:border-primary/50 hover:shadow-fabric-8",
+                      "atlas-catalog-card group flex flex-col overflow-hidden rounded-xl border bg-card text-left text-card-foreground shadow-fabric-2 transition-[border-color,box-shadow,background-color] hover:border-primary/50 hover:shadow-fabric-4",
                       selected
                         ? "border-primary bg-primary/5 ring-2 ring-primary/20"
                         : "border-border",
                     )}
                   >
-                    <div className="flex w-full items-start gap-m border-b border-border bg-secondary/70 px-l py-m">
+                    <div className="atlas-row flex w-full items-start gap-m border-b border-border bg-secondary/70 px-l">
                       <TypeGlyph type={item.itemType} size={36} />
                       <div className="min-w-0 flex-1">
-                        <div className="text-100 font-semibold uppercase tracking-wide text-muted-foreground">
+                        <div className="text-200 font-semibold text-muted-foreground">
                           {typeMeta(item.itemType).label}
                         </div>
-                        <div className="mt-xxs truncate text-400 font-bold leading-400">
+                        <div className="mt-xxs break-words text-400 font-bold leading-400">
                           {item.displayName}
                         </div>
                       </div>
                       <HealthBadge health={item.health} />
                     </div>
 
-                    <div className="flex flex-1 flex-col gap-m px-l py-m">
+                    <div className="atlas-row flex flex-1 flex-col gap-s px-l">
                       <div className="flex items-center gap-s">
-                        {item.ownerName ? (
+                        {item.ownerName || item.ownerEmail ? (
                           <>
-                            <Avatar name={item.ownerName} size={24} />
+                            <Avatar name={item.ownerName || item.ownerEmail || ""} size={24} />
                             <div className="min-w-0">
-                              <div className="text-100 font-semibold uppercase tracking-wide text-muted-foreground">
-                                Owner
+                              <div className="text-200 font-semibold text-muted-foreground">
+                                Documented owner
                               </div>
                               <div className="truncate text-200 font-semibold">
-                                {item.ownerName}
+                                {item.ownerName || item.ownerEmail}
                               </div>
                             </div>
                           </>
                         ) : (
                           <div>
-                            <div className="text-100 font-semibold uppercase tracking-wide text-muted-foreground">
-                              Owner
-                            </div>
                             <div className="text-200 text-muted-foreground">
                               {item.ownerMetadataAvailable === false
-                                ? "Not collected"
-                                : "Unassigned"}
+                                ? "Ownership not collected"
+                                : "No documented owner"}
                             </div>
                           </div>
                         )}
@@ -718,13 +749,13 @@ export function CatalogView({
                 >
                   <DrawerRow label="Description" value={detail.description} />
                   <DrawerRow
-                    label="Owner"
+                    label="Documented owner"
                     value={
                       detail.ownerName
                         ? `${detail.ownerName}${detail.ownerEmail ? ` · ${detail.ownerEmail}` : ""}`
-                        : detail.ownerMetadataAvailable === false
+                        : detail.ownerEmail || (detail.ownerMetadataAvailable === false
                           ? "Not collected"
-                          : "Unassigned"
+                          : "Unassigned")
                     }
                   />
                   <DrawerRow
@@ -862,7 +893,7 @@ export function CatalogView({
                         return (
                           <div
                             key={index}
-                            className="flex items-center gap-s px-l py-m text-300"
+                            className="atlas-row flex items-center gap-s px-l text-300"
                           >
                             <PrincipalAvatar
                               name={principalName}
@@ -873,7 +904,9 @@ export function CatalogView({
                               {principalName}
                             </span>
                             <span className="text-200 text-muted-foreground">
-                              {grant.roleName ?? grant.accessLevel}
+                              {grant.accessLevel === "owner"
+                                ? "Owner permission"
+                                : grant.roleName ?? grant.accessLevel}
                             </span>
                           </div>
                         );

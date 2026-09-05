@@ -36,6 +36,10 @@ describe("GovernanceCenterView", () => {
         name: "Your governance baseline is ready",
       }),
     ).toBeInTheDocument();
+    expect(screen.getByText("No new priority alert")).toBeInTheDocument();
+    expect(
+      screen.getByText("Workspace governance summary"),
+    ).toBeInTheDocument();
   });
 
   it("supports arrow-key tab navigation", async () => {
@@ -101,6 +105,31 @@ describe("GovernanceCenterView", () => {
       screen.getByRole("heading", { name: /pillars at target/ }),
     ).toBeInTheDocument();
     expect(screen.getByText(/Fixed 0–100 scale/)).toBeInTheDocument();
+    expect(screen.getAllByText("Target 70%").length).toBeGreaterThan(0);
+  });
+
+  it("adds a shared exception without hiding the raw finding", async () => {
+    renderView();
+    const evidenceCount = screen.getAllByRole("button", {
+      name: "Open evidence",
+    }).length;
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Add exception" })[0],
+    );
+    fireEvent.change(screen.getByLabelText("Justification"), {
+      target: { value: "Accepted while the owner record is corrected." },
+    });
+    fireEvent.change(screen.getByLabelText("Expires"), {
+      target: { value: "2099-09-05T12:00" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save exception" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("Active exception")).toBeInTheDocument(),
+    );
+    expect(
+      screen.getAllByRole("button", { name: "Open evidence" }),
+    ).toHaveLength(evidenceCount);
   });
 });
 
@@ -130,7 +159,7 @@ describe("RadarPanel", () => {
     onDownload: vi.fn(),
   };
 
-  it("shows the monitored goal as a watermark when no risk is new", () => {
+  it("keeps monitored signals in expandable details when no risk is new", () => {
     render(<RadarPanel {...baseProps} radar={readyRadar} />);
 
     expect(

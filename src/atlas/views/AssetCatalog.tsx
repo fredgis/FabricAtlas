@@ -105,7 +105,7 @@ const ACCESS_META: Record<
   { label: string; className: string }
 > = {
   owner: {
-    label: "Owner",
+    label: "Owner permission",
     className:
       "border-object-measure/30 bg-object-measure/10 text-object-measure",
   },
@@ -165,10 +165,10 @@ function MetadataCell({
 }) {
   return (
     <div className="min-w-0 rounded-lg border border-border bg-secondary px-m py-s">
-      <div className="text-100 font-semibold uppercase tracking-wide text-muted-foreground">
+      <div className="text-200 font-semibold text-muted-foreground">
         {label}
       </div>
-      <div className="mt-xxs truncate text-300 font-semibold">{value || "—"}</div>
+      <div className="mt-xxs break-words text-300 font-semibold">{value || "Not collected"}</div>
     </div>
   );
 }
@@ -453,7 +453,7 @@ export function AssetCatalogView({
   return (
     <div className="atlas-content-frame flex h-full flex-col gap-l p-xxl">
       <header className="overflow-hidden rounded-xl border border-border bg-card shadow-fabric-2">
-        <div className="flex flex-col gap-l px-xl py-l lg:flex-row lg:items-center">
+        <div className="atlas-page-header flex flex-col lg:flex-row lg:items-center">
           <div className="min-w-0 flex-1">
             <SectionLabel>Schema inventory</SectionLabel>
             <div className="mt-xs flex flex-wrap items-baseline gap-s">
@@ -489,7 +489,7 @@ export function AssetCatalogView({
           </dl>
         </div>
 
-        <div className="flex flex-col gap-s border-t border-border bg-secondary px-xl py-m xl:flex-row xl:items-center">
+        <div className="atlas-toolbar flex flex-col border-t border-border bg-secondary px-l py-s xl:flex-row xl:items-center">
           <div className="relative min-w-0 flex-1">
             <label htmlFor="asset-search" className="sr-only">
               Search assets
@@ -560,7 +560,7 @@ export function AssetCatalogView({
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-l xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-fabric-2">
-          <div className="flex flex-wrap items-center gap-s border-b border-border bg-card px-l py-m">
+          <div className="atlas-toolbar atlas-row flex flex-wrap items-center border-b border-border bg-card px-l">
             <div>
               <h2 className="text-300 font-semibold">Items and assets</h2>
               <p className="text-200 text-muted-foreground">
@@ -643,7 +643,7 @@ export function AssetCatalogView({
                           return next;
                         })
                       }
-                      className="flex w-full items-center gap-m px-l py-m text-left transition-colors hover:bg-accent disabled:cursor-default disabled:opacity-100"
+                      className="atlas-row flex w-full items-center gap-m px-l text-left transition-colors hover:bg-accent disabled:cursor-default disabled:opacity-100"
                     >
                       <span className="flex size-xxl shrink-0 items-center justify-center rounded-md border border-border bg-secondary text-muted-foreground">
                         {open ? (
@@ -795,11 +795,11 @@ export function AssetCatalogView({
                     />
                     <MetadataCell
                       label="Source"
-                      value={selectedAsset.source ?? "Fabric metadata"}
+                      value={selectedAsset.source ?? "Source not recorded"}
                     />
                     <MetadataCell
                       label="Visibility"
-                      value={selectedAsset.isHidden ? "Hidden" : "Visible"}
+                      value={selectedAsset.isHidden == null ? "Not collected" : selectedAsset.isHidden ? "Hidden" : "Visible"}
                     />
                   </div>
 

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAtlasHistory,
+  changeFieldValue,
   compareSnapshots,
+  readableChangeValue,
+  snapshotDataForInspection,
   snapshotFromData,
   summarizeSnapshot,
   type HistoricalSnapshot,
@@ -53,6 +56,40 @@ function snapshot(
 }
 
 describe("snapshot history", () => {
+  it("keeps full expressions and converts validated snapshots for inspection", () => {
+    const historical = snapshot(
+      "old",
+      "2026-08-28T10:00:00.000Z",
+      data({
+        items: [item("model", { itemType: "SemanticModel" })],
+        schema: {
+          model: [
+            {
+              name: "Measures",
+              columns: [],
+              measures: [
+                {
+                  name: "Revenue",
+                  expr: 'CALCULATE(SUM(Sales[Amount]), Sales[Region] = "<West>")',
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    const inspected = snapshotDataForInspection(historical);
+    const expression =
+      inspected.schema!.model[0].measures[0].expr;
+
+    expect(inspected.comments).toEqual([]);
+    expect(inspected.syncRuns).toEqual([]);
+    expect(readableChangeValue(expression)).toContain(
+      'Sales[Region] = "<West>"',
+    );
+    expect(changeFieldValue({ expression }, "expression")).toBe(expression);
+  });
+
   it("reports every supported change domain without treating missing jobs as removals", () => {
     const previous = snapshot(
       "old",

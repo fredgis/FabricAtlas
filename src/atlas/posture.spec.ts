@@ -1,10 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { snapshotCatalogFromData } from "./history";
 import { SAMPLE_DATA } from "./model";
-import { scorePosture } from "./posture";
+import { POSTURE_TARGETS, scorePosture } from "./posture";
 import type { SnapshotCatalog } from "./history";
 
 describe("scorePosture", () => {
+  it("defaults all six governance pillars to 70 percent", () => {
+    expect(Object.keys(POSTURE_TARGETS)).toHaveLength(6);
+    expect(Object.values(POSTURE_TARGETS)).toEqual([
+      70,
+      70,
+      70,
+      70,
+      70,
+      70,
+    ]);
+  });
+
   it("excludes not-applicable metrics instead of counting zero", () => {
     const catalog = snapshotCatalogFromData(structuredClone(SAMPLE_DATA));
     catalog.schema = {};

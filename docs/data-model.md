@@ -27,6 +27,11 @@ update and delete policies require the authenticated subject claim to match
 workspace, user and stable finding ID so different users can acknowledge the
 same governance signal independently.
 
+`AccessReviewEvent` allows only personal create and read operations under the
+same subject policy. `GovernancePolicy` and `GovernanceException` allow shared
+authenticated reads; only the configured synchronization administrator can
+write them.
+
 ## Workspace
 
 The manifest for a complete synchronized snapshot.
@@ -128,12 +133,50 @@ A personal named view over Atlas navigation and filters.
 
 ## AccessReview
 
-A personal decision for one effective principal and item pair.
+A legacy personal decision for one effective principal and item pair.
 
 `workspace_id`, `user_id`, `recordKey`, `rowKey`, `itemFabricId`,
 `principalRef`, `status`, `note?`, `reviewedAt`, `updatedAt`
 
 The status is `reviewed`, `accepted` or `needsAction`.
+
+Legacy rows remain available as history. They require revalidation because they
+do not carry the permission evidence needed to confirm a current decision.
+
+## AccessReviewEvent
+
+An append-only personal decision or clear event.
+
+`workspace_id`, `user_id`, `rowKey`, `itemFabricId`, `principalRef`, `status`,
+`evidenceKey`, `eventOrder`, `note?`, `occurredAt`
+
+The status is `reviewed`, `accepted`, `needsAction` or `cleared`. The evidence
+fingerprint includes the resolved principal and underlying grants, independently
+of grant order or display names. The newest event determines the current
+decision. Clearing appends an event and retains all earlier records.
+
+## GovernancePolicy
+
+Shared targets for one configured workspace.
+
+`workspace_id`, `recordKey`, `writerEmail`, `documentationTarget`,
+`ownershipTarget`, `sensitivityTarget`, `accessTarget`, `lineageTarget`,
+`operationsTarget`, `updatedById`, `updatedByName`, `updatedByEmail`, `updatedAt`
+
+Targets are whole percentages from 0 to 100. When no policy row exists, all six
+default to 70. An unavailable or invalid persisted policy is reported as an
+error rather than treated as an absent policy.
+
+## GovernanceException
+
+A shared, expiring annotation for one stable finding.
+
+`workspace_id`, `recordKey`, `writerEmail`, `findingId`, `reason`, `expiresAt`,
+`authorId`, `authorName`, `authorEmail`, `createdAt`, `updatedAt`
+
+The administrator supplies a justification and future expiry. The UI retains
+the raw finding and score and distinguishes active, expired and invalid
+exceptions. This entity is separate from personal `FindingAck` records.
 
 ## FindingAck
 

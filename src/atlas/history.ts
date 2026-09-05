@@ -112,6 +112,40 @@ export interface AtlasHistory {
 export type ChangeRecord = AtlasChange;
 export type SnapshotChange = AtlasChange;
 
+export function snapshotDataForInspection(
+  snapshot: HistoricalSnapshot,
+): AtlasData {
+  return {
+    ...snapshot.catalog,
+    comments: [],
+    syncRuns: [],
+  };
+}
+
+export function readableChangeValue(value: unknown): string {
+  if (value === undefined) return "Not present";
+  if (value === null || value === "") return "None";
+  if (typeof value === "string") return value;
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
+    return String(value);
+  }
+  return JSON.stringify(value, null, 2);
+}
+
+export function changeFieldValue(
+  value: unknown,
+  field: string,
+): unknown {
+  if (!value || Array.isArray(value) || typeof value !== "object") {
+    return undefined;
+  }
+  return (value as Record<string, unknown>)[field];
+}
+
 interface SchemaObject {
   key: string;
   itemFabricId: string;

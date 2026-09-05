@@ -2,14 +2,16 @@ import {
   fireEvent,
   render,
   screen,
+  within,
   waitFor,
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { buildAccessReviewRows } from "../governance";
 import { accessRowsToCsv } from "../access-export";
+import type { AccessReviewHistory } from "../access-reviews";
 import { SAMPLE_DATA } from "../model";
 import { AtlasProvider } from "../store";
-import { AccessView } from "./Access";
+import { AccessReviewDetailPanel, AccessView } from "./Access";
 
 function renderAccess() {
   return render(
@@ -67,6 +69,69 @@ describe("AccessView", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("2 contributing grants · 2 determine effective access")).toBeInTheDocument();
     expect(screen.getAllByText("Determines effective")).toHaveLength(2);
+  });
+
+  it("shows changed evidence as needing review while retaining the prior decision", () => {
+    const row = buildAccessReviewRows(SAMPLE_DATA).find(
+      (candidate) =>
+        candidate.principalRef === "System Administrator" &&
+        candidate.item.displayName === "AlpineRent Executive Dashboard",
+    )!;
+    const review: AccessReviewHistory = {
+      rowKey: row.id,
+      itemFabricId: row.itemId,
+      principalRef: row.principalRef,
+      decision: {
+        id: "event-1",
+        rowKey: row.id,
+        itemFabricId: row.itemId,
+        principalRef: row.principalRef,
+        status: "accepted",
+        evidenceKey: "old-evidence",
+        reviewedAt: "2026-09-04T10:00:00.000Z",
+        updatedAt: "2026-09-04T10:00:00.000Z",
+        needsReview: true,
+        source: "event",
+      },
+      history: [
+        {
+          id: "event-1",
+          rowKey: row.id,
+          itemFabricId: row.itemId,
+          principalRef: row.principalRef,
+          status: "accepted",
+          evidenceKey: "old-evidence",
+          eventOrder: "0000000000001:event-1",
+          occurredAt: "2026-09-04T10:00:00.000Z",
+          source: "event",
+        },
+      ],
+    };
+
+    render(
+      <AccessReviewDetailPanel
+        row={row}
+        review={review}
+        reviewsLoading={false}
+        saving={false}
+        onSaveDecision={vi.fn()}
+        onClearDecision={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Needs review")).toBeVisible();
+    expect(
+      screen.getByText(/effective permission evidence changed/i),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Accepted" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    const history = screen
+      .getByRole("heading", { name: "Personal review history" })
+      .closest("section")!;
+    expect(within(history).getByText("Accepted")).toBeVisible();
   });
 
   it("starts principal groups collapsed and expands them on click", () => {
@@ -190,7 +255,7 @@ describe("AccessView", () => {
     );
   });
 
-  it("keeps preview review decisions locally after save", async () => {
+  it("keeps preview decisions and clears in personal history", async () => {
     renderAccess();
 
     fireEvent.click(
@@ -215,6 +280,24 @@ describe("AccessView", () => {
       screen.getByText("Decision is saved for your account."),
     ).toBeInTheDocument();
     expect(screen.getByDisplayValue("Owner access confirmed.")).toBeVisible();
+
+    const history = screen
+      .getByRole("heading", { name: "Personal review history" })
+      .closest("section")!;
+    expect(within(history).getByText("Accepted")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear decision" }));
+    await waitFor(() =>
+      expect(screen.getByText("Not reviewed yet")).toBeInTheDocument(),
+    );
+    const retainedHistory = screen
+      .getByRole("heading", { name: "Personal review history" })
+      .closest("section")!;
+    expect(within(retainedHistory).getByText("Cleared")).toBeVisible();
+    expect(within(retainedHistory).getByText("Accepted")).toBeVisible();
+    expect(
+      within(retainedHistory).getByText("Owner access confirmed."),
+    ).toBeVisible();
   });
 
   it("downloads the filtered rows as CSV", async () => {

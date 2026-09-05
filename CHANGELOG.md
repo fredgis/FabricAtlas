@@ -4,6 +4,40 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-09-05
+
+### Added
+
+- A grouped Catalog table with sorting by item name, health, documented owner and last refresh, alongside the existing cards.
+- Personal compact and comfortable display density, with browser-local settings separated by user and workspace.
+- A resizable lineage inspector with keyboard controls and a remembered width.
+- Evidence-bound access-review history. Changed permissions require a fresh decision, while earlier decisions remain visible.
+- Shared workspace governance targets, with a default of 70% for each of the six posture pillars.
+- Justified, expiring governance exceptions, separate from personal Radar acknowledgements and mutes.
+- Full before/after schema and DAX details, with impact evaluated from the selected historical snapshot, including removed objects.
+
+### Changed
+
+- Reduced page-header space and standardized toolbar typography and density-aware rows.
+- Improved lineage label readability and the visibility of inactive context without moving nodes when selection changes.
+- Kept Radar compact when it has no new priority risk, preserving the first-snapshot baseline and the exact comparison link.
+- Distinguished Owner permissions from documented item ownership.
+
+### Fixed
+
+- Overview health now excludes unknown statuses from its denominator and displays health coverage separately.
+- Unavailable visibility and source metadata no longer appear as confirmed visibility or a recorded source.
+
+### Security
+
+- Added governance policy and exception entities with shared authenticated reads and writes restricted to the configured synchronization administrator.
+- Added personal, append-only access-review events without deleting legacy review records or synchronized snapshots.
+
+### Documentation
+
+- Updated the README for the P1 features and browser-local display settings.
+- Recorded all deferred P2 and P3 work in the v2 roadmap, including scheduled synchronization and the shared action plan.
+
 ## [1.9.2] - 2026-08-30
 
 ### Fixed

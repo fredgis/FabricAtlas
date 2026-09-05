@@ -5,12 +5,34 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { displayPreferenceKey } from "../display-preferences";
+import { MAP_INSPECTOR_DEFAULT_WIDTH } from "../map-inspector";
 import { SAMPLE_DATA } from "../model";
 import { AtlasProvider } from "../store";
 import { MapView } from "./Map";
 
 describe("MapView selection", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  const selectInspectorTab = async (
+    currentName: string,
+    nextName: string,
+  ) => {
+    const current = screen.getByRole("tab", { name: currentName });
+    act(() => current.focus());
+    fireEvent.keyDown(current, { key: "ArrowRight" });
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: nextName })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      ),
+    );
+  };
+
   it("shows the full workspace by default without edge text overlays", () => {
     window.history.replaceState(null, "", "/#map");
     const { container } = render(
@@ -189,6 +211,7 @@ describe("MapView selection", () => {
       clientY: 100,
       pointerId: 4,
     });
+
     fireEvent.pointerMove(lakehouse, {
       clientX: 150,
       clientY: 140,
@@ -212,5 +235,117 @@ describe("MapView selection", () => {
     expect(model.style.top).toBe(initial.modelTop);
     expect(lakehouse.style.left).toBe(initial.lakehouseLeft);
     expect(lakehouse.style.top).toBe(initial.lakehouseTop);
+  });
+
+  it("keeps widened object nodes inside the canvas bounds", () => {
+    window.history.replaceState(null, "", "/#map");
+    const { container } = render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "objects" }));
+    const nodes = [...container.querySelectorAll<HTMLButtonElement>(".atlas-map-grid button[aria-pressed]")]
+      .filter((node) => node.style.width && node.style.left);
+    expect(nodes.length).toBeGreaterThan(0);
+    for (const node of nodes) {
+      const canvas = node.parentElement!;
+      expect(parseFloat(node.style.left) + parseFloat(node.style.width))
+        .toBeLessThanOrEqual(parseFloat(canvas.style.width));
+      expect(parseFloat(node.style.top) + parseFloat(node.style.height))
+        .toBeLessThanOrEqual(parseFloat(canvas.style.height));
+    }
+  });
+
+  it("persists and resets the inspector width for the preview identity and workspace", () => {
+    window.history.replaceState(null, "", "/#map");
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+
+    const separator = screen.getByRole("separator", {
+      name: "Resize details inspector",
+    });
+    fireEvent.keyDown(separator, { key: "ArrowLeft" });
+
+    const key = displayPreferenceKey(
+      "preview-user",
+      SAMPLE_DATA.workspace.fabricId,
+      "map-inspector-width",
+    );
+    expect(localStorage.getItem(key)).toBe(
+      JSON.stringify(MAP_INSPECTOR_DEFAULT_WIDTH + 16),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reset inspector width" }),
+    );
+    expect(localStorage.getItem(key)).toBe(
+      JSON.stringify(MAP_INSPECTOR_DEFAULT_WIDTH),
+    );
+  });
+
+  it("surfaces an invalid saved inspector preference", () => {
+    window.history.replaceState(null, "", "/#map");
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    localStorage.setItem(
+      displayPreferenceKey(
+        "preview-user",
+        SAMPLE_DATA.workspace.fabricId,
+        "map-inspector-width",
+      ),
+      JSON.stringify(100),
+    );
+
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "saved display setting could not be loaded",
+    );
+  });
+
+  it("distinguishes documented ownership from owner permission", async () => {
+    window.history.replaceState(null, "", "/#map");
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+
+    expect(screen.getByText("Documented owner")).toBeInTheDocument();
+    await selectInspectorTab("Summary", "Schema");
+    await selectInspectorTab("Schema", "Access");
+    expect(
+      await screen.findByText(
+        /owner permission is an access role and is separate from documented ownership/i,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Owner permission").length).toBeGreaterThan(0);
+  });
+
+  it("keeps schema groups collapsed until a search is active", async () => {
+    window.history.replaceState(null, "", "/#map");
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+
+    await selectInspectorTab("Summary", "Schema");
+    const table = await screen.findByRole("button", {
+      name: /rentals_daily_summary/i,
+    });
+    expect(table).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.change(screen.getByLabelText("Search lineage"), {
+      target: { value: "rentals" },
+    });
+    expect(table).toHaveAttribute("aria-expanded", "true");
   });
 });

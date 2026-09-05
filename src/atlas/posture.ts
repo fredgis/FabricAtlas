@@ -32,16 +32,7 @@ export interface PostureScore {
 }
 
 export const POSTURE_ALGORITHM_VERSION = 1;
-export const POSTURE_TARGETS: Record<PosturePillar, number> = {
-  documentation: 80,
-  ownership: 95,
-  sensitivity: 90,
-  access: 90,
-  lineage: 95,
-  operations: 95,
-};
-
-const PILLAR_ORDER: PosturePillar[] = [
+export const POSTURE_PILLARS: readonly PosturePillar[] = [
   "documentation",
   "ownership",
   "sensitivity",
@@ -49,6 +40,17 @@ const PILLAR_ORDER: PosturePillar[] = [
   "lineage",
   "operations",
 ];
+export const DEFAULT_POSTURE_TARGETS = {
+  documentation: 70,
+  ownership: 70,
+  sensitivity: 70,
+  access: 70,
+  lineage: 70,
+  operations: 70,
+} as const satisfies Record<PosturePillar, number>;
+export const POSTURE_TARGETS: Record<PosturePillar, number> = {
+  ...DEFAULT_POSTURE_TARGETS,
+};
 const DOCUMENTATION_WEIGHTS: Partial<Record<CoverageMetricId, number>> = {
   descriptions: 25,
   endorsement: 10,
@@ -179,7 +181,7 @@ export function scorePosture(
       category: "operations",
     },
   ];
-  const pillars = PILLAR_ORDER.map((pillar) => {
+  const pillars = POSTURE_PILLARS.map((pillar) => {
     const definition = definitions.find((value) => value.pillar === pillar)!;
     return {
       pillar,

@@ -51,7 +51,7 @@ are not product defaults or a reference architecture.
 Fabric workspaces spread operational metadata across many portal pages and APIs.
 Fabric Atlas collects that metadata without copying business data.
 
-- Browse workspace items and their internal objects.
+- Browse workspace items as cards or a sortable table, then inspect their internal objects.
 - Inspect Lakehouse, Warehouse and SQL Database tables or views, Semantic Model
   columns and measures, and Report pages when Fabric exposes them.
 - Trace item and object lineage from source to report.
@@ -96,14 +96,16 @@ Fabric Atlas collects that metadata without copying business data.
 | Functionality | What it provides |
 |---|---|
 | Findings | Actionable access, metadata, operations and lineage checks based on synchronized evidence |
-| Governance Radar | Establishes a visible first-snapshot baseline, shows only new priority risks, and links non-risky changes to the exact latest comparison |
+| Governance Radar | Establishes a visible first-snapshot baseline, shows new priority risks, and keeps the no-new-risk state compact with a link to the exact latest comparison |
 | Personal Radar state | Acknowledges one occurrence or mutes a stable finding for the signed-in user |
 | Change Center | Compares any two validated snapshots across items, schema, access, sensitivity, lineage and jobs |
+| Full change evidence | Shows complete before/after values and DAX expressions, with impact computed from the selected historical snapshot, including removed objects |
 | Shareable comparisons | Preserves both selected snapshots, section and filters in the URL |
 | Governance history | Tracks items, labels, external principals, failures, lineage and schema inventory over time |
 | Lazy Change Center evidence | Keeps the ledger immediate and hydrates older detailed catalogs only for the selected comparison |
 | Metadata coverage | Separates collected gaps from metadata that Fabric did not expose, using explicit `N/A` states |
-| Posture targets | Scores six reproducible pillars, compares targets and tracks historical trends without false zeroes |
+| Posture targets | Scores six reproducible pillars against shared, configurable workspace targets, all set to 70% by default |
+| Governance exceptions | Records an administrator's justification and expiry beside a finding without hiding the finding or changing its raw score |
 | Sensitivity posture | Groups protected and unlabeled items and surfaces confidential assets |
 | Saved governance views | Persists personal filters such as metadata gaps, external access or failed operations |
 
@@ -115,11 +117,13 @@ Fabric Atlas collects that metadata without copying business data.
 | Functionality | What it provides |
 |---|---|
 | Workspace catalog | Groups Fabric items by type with search, health, ownership, labels, tags and detail drawers |
+| Catalog table | Keeps cards available and adds sorting by name, health, documented owner or last refresh within collapsed item-type groups |
 | Asset Catalog | Lists tables, views, columns and measures under their parent Fabric item, while keeping synchronized schema-capable items visible when no objects are exposed |
 | Deep metadata | Shows data types, descriptions, visibility, sources, row counts, measure expressions and collection provenance when available |
 | DAX dependency evidence | Resolves measure references only to real synchronized columns or measures and labels inferred source hops |
 | Item context | Keeps properties, lineage, access, configuration and job history beside the selected item |
 | Collapsed groups | Starts inventory lists grouped and collapsed for faster scanning |
+| Ownership labels | Distinguishes documented item ownership from an Owner permission in the access evidence |
 
 </details>
 
@@ -135,6 +139,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Accessible relationships | Exposes item and object edges as text and distinguishes upstream paths with a dashed pattern |
 | Multi-selection | Moves several selected item or object nodes together |
 | Layout controls | Provides zoom, fit, reset, filters, minimap and persistent deep links |
+| Readable map and inspector | Wraps node labels, keeps inactive context readable and supports pointer or keyboard resizing of the details inspector |
 | Impact reports | Exports verified dependency evidence as Markdown for an item or schema object |
 | Object-level impact | Switches to DAX-resolved object granularity when evidence exists and preserves item fallback otherwise |
 
@@ -150,7 +155,8 @@ Fabric Atlas collects that metadata without copying business data.
 | Access Review matrix | Reviews every reachable principal and item pair with permission, source and evidence |
 | Responsive access ledger | Uses one keyboard-navigable representation across mobile and desktop without hidden duplicate rows |
 | Principal review | Groups all reachable items under collapsible principal sections |
-| Review decisions | Persists Reviewed, Accepted or Needs action status with an optional personal note |
+| Review decisions | Appends personal Reviewed, Accepted, Needs action and clear events with retained notes and history |
+| Evidence revalidation | Marks a decision Needs review when its permission evidence changes, including changed underlying grants that leave the strongest permission unchanged |
 | CSV export | Downloads the currently filtered access evidence |
 | Risk filters | Isolates external, broad, service-principal, admin and unresolved access |
 | Departure packs | Finds sole ownership, urgent orphan risk, downstream blast radius and deterministic reassignment candidates |
@@ -164,6 +170,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Functionality | What it provides |
 |---|---|
 | Jobs and health | Groups refresh, pipeline and notebook activity with status, duration and errors |
+| Health and coverage | Calculates observed health from assessed items and separately shows how much of the workspace has a known health status |
 | Responsive job timeline | Shows compact mobile cards and an aligned desktop grid without horizontal table scrolling |
 | Job filters | Searches run history, isolates failures and saves recurring operational views |
 | Active filter chips | Removes search, status, focused item or focused run constraints independently |
@@ -183,6 +190,8 @@ Fabric Atlas collects that metadata without copying business data.
 | Targeted navigation | Opens the matching drawer, asset, review, job or Workspace Hub section |
 | Shareable view state | Keeps active sections, filters, searches, selected assets and focused runs in namespaced URL parameters |
 | Personal saved views | Stores user-scoped filter presets in the Fabric-backed Rayfin database |
+| Display density | Switches between comfortable and compact spacing without reducing the text size |
+| Browser-local display preferences | Remembers density, catalog layout and inspector width separately for each signed-in user and workspace on this browser |
 | Light and dark themes | Uses a Fabric-aligned light mode by default with an optional persistent dark mode |
 | Responsive navigation | Keeps grouped Explore, Govern, Operate and System sections usable on smaller screens |
 | Keyboard-first controls | Adds managed dialogs, focus restoration, skip navigation and Arrow/Home/End tab navigation |
@@ -310,6 +319,26 @@ See [Architecture](docs/architecture.md) for the full data flow.
 
 ## Roadmap
 
+### v2 backlog
+
+The following P2 and P3 work is planned for the v2 series. It is outside the
+v1.10 release scope. The table describes intended behaviour, not features
+available in the current app.
+
+| Priority | Planned feature | Scope |
+|---|---|---|
+| P2 | Scheduled synchronization | Refresh metadata on the server without an open browser, using an identity supported by the required APIs and write policies |
+| P2 | Shared action plan | Assign findings, set deadlines and track team resolution, including actions from departure packs |
+| P2 | Teams and email notifications | Notify the team about relevant new findings and synchronization failures |
+| P2 | Simultaneous departures | Assess several departing principals together so reassignment does not depend on another departing person |
+| P2 | More complete SQL inventory | Extend supported catalog connections to collect tables, views and columns that the current metadata APIs do not expose |
+| P2 | Entra group membership | Expand group evidence where permissions allow it, while distinguishing direct grants from membership-derived access |
+| P2 | Multi-workspace catalog and verified lineage | Index an explicitly selected workspace scope and show cross-workspace relationships only when Microsoft exposes the evidence |
+| P2 | Resumable synchronization | Process bounded batches and resume failed work without discarding the last validated snapshot |
+| P3 | Report visual field usage | Read supported report definitions to trace measure and column references to visuals, subject to report permissions and sensitivity restrictions |
+
+### Multi-workspace milestones
+
 Multi-workspace catalog support is planned and tracked in
 [#4](https://github.com/fredgis/FabricAtlas/issues/4). The implementation will
 stay focused on a controlled set of workspaces rather than scanning an entire
@@ -411,6 +440,18 @@ audience through the Fabric app and workspace access settings.
 Saved views, access-review decisions and Governance Radar acknowledgements are
 different: Rayfin policies bind those records to the authenticated subject, so
 each user sees only their own personal state.
+
+Access decisions are now append-only events. Older decisions remain in the
+history but require a new review because they do not contain a permission
+fingerprint. Clearing a decision appends an event rather than deleting history.
+
+Governance targets and exceptions are shared workspace settings. Only the
+configured synchronization administrator can change them. All six targets
+default to 70%; the same current targets apply to Overview and historical
+posture comparisons. Historical versions of the target policy are not stored.
+An exception needs a reason and a future expiry. It annotates the finding
+without hiding it or improving the underlying score, and it remains separate
+from a user's personal mute.
 
 Team notes are append-only in v1.x. Creation is bound to the authenticated
 email and subject. Atlas resolves a unique synchronized Fabric principal by
