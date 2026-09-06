@@ -6,8 +6,8 @@ author: "Fabric Atlas project"
 lang: en-GB
 ---
 
-> This paper documents Fabric Atlas version 1.9.2. FGI-MAIN is used as one
-> example deployment, captured on 2 September 2026. Its counts and findings
+> This paper documents Fabric Atlas version 1.12.0. FGI-MAIN is used as one
+> example deployment, captured on 6 September 2026. Its counts and findings
 > describe that workspace at one point in time. They are not product defaults,
 > limits or benchmarks.
 
@@ -32,19 +32,19 @@ report visual bindings. Measure DAX is retained only when Fabric exposes it as
 semantic model metadata, because Atlas uses those expressions to resolve
 measure and column dependencies.
 
-The example deployment used for the figures contained 47 Fabric items across
-13 item types, 33 lineage links and 150 indexed schema objects. It also retained
-12 validated snapshots. FGI-MAIN is included to make the workflows concrete,
-not to define how an Atlas workspace must look. Fabric Atlas can be deployed
-against another supported Fabric workspace with its own item mix, metadata
-coverage and governance history.
+The example deployment used for the figures contained 76 Fabric items across
+19 item types, 64 item-lineage links and 1,164 indexed assets. The fresh
+version 1.12.0 deployment had one validated baseline snapshot. FGI-MAIN is
+included to make the workflows concrete, not to define how an Atlas workspace
+must look. Another supported Fabric workspace will have its own item mix,
+metadata coverage and governance history.
 
 ### What Atlas provides
 
 | Area | Practical outcome |
 |---|---|
 | Workspace inventory | One searchable list of Fabric items with type, ownership, health, labels, tags and context |
-| Asset inventory | Tables, views, columns and measures grouped under their parent item |
+| Asset inventory | Relational, semantic, KQL, ontology, graph and data-agent objects grouped under their parent item |
 | Lineage | Source-to-consumer paths across pipelines, notebooks, stores, endpoints, semantic models and reports |
 | DAX dependencies | Verified measure-to-column and measure-to-measure references when names resolve uniquely |
 | Governance | Findings, new-risk radar, snapshot comparison, metadata coverage and posture targets |
@@ -89,23 +89,23 @@ operate the assets.
 
 The screenshots in this paper use FGI-MAIN as a practical case study. It is a
 deployed Fabric App connected to one real workspace and had been synchronized
-about 20 hours before the capture. It is not a reference architecture or a
+about nine hours before the capture. It is not a reference architecture or a
 required workspace shape.
 
 | Observed value | Example count |
 |---|---:|
-| Fabric items | 47 |
-| Item types | 13 |
-| Lineage links | 33 |
-| Indexed schema objects | 150 |
-| Tables | 27 |
-| Columns | 108 |
-| Measures | 15 |
-| Validated snapshots | 12 |
+| Fabric items | 76 |
+| Item types | 19 |
+| Item-lineage links | 64 |
+| Indexed assets | 1,164 |
+| Tables | 144 |
+| Columns | 376 |
+| Measures and KPIs | 62 |
+| Validated snapshots | 1 |
 | Unique principals in Access Review | 2 |
-| Reachable principal and item pairs | 49 |
-| Recent job runs | 8 |
-| Failed recent job runs | 0 |
+| Reachable principal and item pairs | 78 |
+| Recent job runs | 25 |
+| Failed recent job runs | 3 |
 
 The Overview page is designed for orientation rather than exhaustive detail.
 It combines workspace identity, sync freshness, posture targets, priority
@@ -114,10 +114,10 @@ filtered view, so the summary remains connected to evidence.
 
 ![Overview from the FGI-MAIN example deployment.](fabric-atlas-whitepaper/assets/01-overview.png){ width=100% }
 
-The Health Pulse in Figure 1 reads 9 percent because 43 of 47 items have an
-unknown health state. Atlas does not silently convert unknown metadata into a
-failure. The same rule is used throughout the product: missing evidence and
-negative evidence are different states.
+The assessed-item health score in Figure 1 is 79 percent. Eleven of the 14
+items with health evidence are healthy; the other 62 workspace items remain
+unknown and are excluded from the score. Atlas does not turn missing evidence
+into a failure. Missing evidence and negative evidence are different states.
 
 The six posture pillars are evaluated independently. In this snapshot,
 ownership, access, lineage and operations met their targets. Documentation and
@@ -137,7 +137,7 @@ drawer. The drawer keeps ownership, description, lineage, effective access,
 configuration and recent jobs next to the selected item. Groups remain
 collapsed until the user searches or chooses to expand them.
 
-![The example catalog contains 47 items across 13 Fabric item types.](fabric-atlas-whitepaper/assets/04-catalog.png){ width=100% }
+![The example catalog contains 76 items across 19 Fabric item types.](fabric-atlas-whitepaper/assets/04-catalog.png){ width=100% }
 
 This view answers "what exists?" without forcing every object into the same
 shape. A Notebook, Semantic Model, Lakehouse and Fabric App remain distinct
@@ -146,12 +146,13 @@ lineage inspection, access review and change comparison.
 
 ### Asset Catalog
 
-The Asset Catalog moves below the item boundary. It groups synchronized tables,
-views, columns and measures under their parent Fabric item. In the captured
-workspace, 26 items exposed at least one schema object. The inventory contained
-27 tables, 108 columns and 15 measures.
+The Asset Catalog moves below the item boundary. It groups synchronized
+relational, semantic, KQL, ontology, graph and data-agent objects under their
+parent Fabric item. In the captured workspace, 39 items exposed at least one
+asset. The inventory contained 1,164 assets, including 144 tables, 376 columns
+and 62 measures or KPIs.
 
-![A Lakehouse table selected in the example Asset Catalog.](fabric-atlas-whitepaper/assets/05-asset-catalog.png){ width=100% }
+![A Lakehouse column selected in the example Asset Catalog.](fabric-atlas-whitepaper/assets/05-asset-catalog.png){ width=100% }
 
 Atlas records the provenance of an object where possible. A Lakehouse table may
 come from the Fabric Tables REST API. A semantic model column or measure may
@@ -173,13 +174,14 @@ DAX expression after removing comments and string literals, then resolves
 qualified columns and measures against the synchronized schema. A dependency
 is emitted only when the reference matches one real object unambiguously.
 
-![The Total Revenue measure with its DAX expression and resolved dependencies.](fabric-atlas-whitepaper/assets/05d-measure-impact.png){ width=100% }
+![The Available Beds measure with its DAX expression and resolved dependencies.](fabric-atlas-whitepaper/assets/05d-measure-impact.png){ width=100% }
 
 Figure 4 shows the distinction between a DAX edge and an inferred source hop.
-The measure references a semantic model column and receives a verified DAX
-label. Atlas can also connect that model column to a matching upstream
-Lakehouse column when item lineage exists and the table and column match is
-unique. That second hop is labelled inferred.
+The `Available Beds` measure filters the `Bed[Current Status]` column and
+reuses the `Beds` measure. Those same-model references receive verified DAX
+labels. Atlas also connects the semantic object to the matching upstream
+Lakehouse object when item lineage and the schema match are unambiguous. That
+cross-item hop is labelled inferred.
 
 Ambiguous references are discarded. Atlas does not guess which object the
 author meant, and it does not create object lineage from name similarity alone.
@@ -202,13 +204,13 @@ Selecting an item highlights its upstream and downstream paths without moving
 the graph. The inspector shows the same item context used elsewhere in the
 application, plus impact counts and textual relationship summaries.
 
-![The AlpineRent Sales Model selected in item lineage.](fabric-atlas-whitepaper/assets/02-map-lineage.png){ width=100% }
+![The HealthcareOperationsModel selected in item lineage.](fabric-atlas-whitepaper/assets/02-map-lineage.png){ width=100% }
 
-In the captured graph, the AlpineRent Sales Model has one direct upstream
-Lakehouse and two downstream reports. The complete upstream path also includes
-the notebooks and pipeline that feed the Lakehouse. Atlas traverses that
-reachable graph through indexed adjacency maps, so selection does not require a
-full scan of every edge.
+In the captured graph, `HealthcareOperationsModel` has one direct upstream
+Lakehouse and two direct consumers: a report and a data agent. Its complete
+impact path contains ten upstream items, two downstream items and fourteen
+relationships. Atlas traverses that reachable graph through indexed adjacency
+maps, so selection does not require a full scan of every edge.
 
 ### Object lineage
 
@@ -230,23 +232,24 @@ a selected measure.
 Atlas supports two related forms of impact analysis.
 
 At item level, selecting a semantic model returns all reachable downstream
-items. In the FGI-MAIN example, the AlpineRent Sales Model impact report lists
-the Executive Dashboard and Station Utilization reports as one-hop consumers.
-It also lists seven upstream dependencies and the relationship evidence used to
-build the result.
+items. In the FGI-MAIN example, the `HealthcareOperationsModel` impact report
+lists `HealthcareOperationsReport` and `AcuteCareOperationsCompanion` as
+one-hop consumers. It also lists ten upstream dependencies and the relationship
+evidence used to build the result.
 
-![Item-level impact for the AlpineRent Sales Model.](fabric-atlas-whitepaper/assets/08b-semantic-model-impact-report.png){ width=100% }
+![Item-level impact for HealthcareOperationsModel.](fabric-atlas-whitepaper/assets/08b-semantic-model-impact-report.png){ width=100% }
 
 At object level, Atlas builds a reverse dependency index from resolved DAX
 references. Selecting a model column can therefore show which measures use it.
-The captured `total_revenue_chf` column in `equipment_performance` is used by
-the `Equipment Revenue` measure, and that relationship is verified from DAX.
+The captured `Bed[Current Status]` model column is used by three measures,
+including `Available Beds`, and the selected object is also exposed to the
+`AcuteCareOperationsCompanion` data agent.
 
 ![A model column with a verified DAX consumer.](fabric-atlas-whitepaper/assets/05g-model-column-dax-consumer.png){ width=100% }
 
-The exportable impact report keeps the confidence label beside the object
-evidence. Same-model object dependencies appear in the "Depends on" and "Used
-by" lists even though they do not create another downstream Fabric item.
+The exportable impact report keeps the relationship type beside the object
+evidence. Same-model DAX dependencies appear in the "Used by" list, while the
+report in Figure 9 shows the verified data-agent selected-element relationship.
 
 ![Exportable object impact report with a verified DAX consumer.](fabric-atlas-whitepaper/assets/08-column-impact-report.png){ width=100% }
 
@@ -268,9 +271,10 @@ new high or critical findings and risky changes involving access, sensitivity,
 lineage or removals. Existing findings do not reappear as new every time a user
 opens the page.
 
-In the captured workspace, Radar found 12 changes but no new high-priority
-regression. The Findings section still contained 43 open checks, all below the
-high-priority threshold.
+The captured deployment contains one validated baseline snapshot, so Radar has
+no adjacent pair to compare yet. The Findings section contains 76 current
+checks, including failed-operation evidence. The next successful sync will
+produce the first before-and-after risk delta.
 
 ![Governance Radar and the current findings queue.](fabric-atlas-whitepaper/assets/06-governance-center.png){ width=100% }
 
@@ -285,7 +289,7 @@ schema objects, access grants, sensitivity, lineage and jobs. The selected
 snapshot pair and filters are kept in the URL so a reviewer can share the exact
 comparison.
 
-![Twelve changes between the two latest snapshots in the example deployment.](fabric-atlas-whitepaper/assets/07-governance-changes.png){ width=100% }
+![Change Center waiting for a second validated snapshot.](fabric-atlas-whitepaper/assets/07-governance-changes.png){ width=100% }
 
 Older detailed catalogs are loaded only when selected. Workspace manifests
 carry compact trend summaries, which keeps the history ledger responsive
@@ -298,11 +302,12 @@ does not convert unsupported metadata into a governance defect.
 
 ![Collection status and coverage for the example workspace.](fabric-atlas-whitepaper/assets/07b-governance-coverage.png){ width=100% }
 
-The captured sync completed every required and optional section shown in the
-contract. That does not mean every item had a value. For example, 21 of 47 items
-had descriptions, while all four items eligible for the documented ownership
-rules had owners. Sensitivity metadata was collected, but no eligible item had
-a label in this snapshot.
+The captured sync completed the required contract and most optional metadata
+families. Direct SQL schema collection is marked unsupported in this snapshot,
+while scanner schema, item details, definitions, KQL schema, report pages and
+object lineage are complete. A complete collection state still does not mean
+that every item has a value. Sensitivity metadata was collected, but none of
+the 68 eligible items had a label.
 
 This split between collection status and value coverage is important. It lets a
 reviewer distinguish "the scanner did not provide this metadata" from "the
@@ -332,9 +337,9 @@ then exposes filters for access level, source and risk flags.
 
 ![Access Review in the example deployment, with effective level, origin and grant count.](fabric-atlas-whitepaper/assets/09-access-review.png){ width=100% }
 
-The captured workspace contained two resolved principals and 49 reachable
-principal and item pairs. Forty-three pairs had direct or mixed item-level
-evidence. The filtered matrix can be exported as CSV.
+The captured workspace contained two resolved principals and 78 reachable
+principal and item pairs. Seventy pairs had direct or mixed item-level evidence.
+The filtered matrix can be exported as CSV.
 
 Review decisions are personal. A user can mark a pair as Reviewed, Accepted or
 Needs action and add a note. Rayfin row policies bind those records to the
@@ -351,7 +356,7 @@ grant count.
 ![Access Review grouped by principal in the example deployment.](fabric-atlas-whitepaper/assets/09b-access-principals.png){ width=100% }
 
 The example contains two principals. One reaches two items with View access.
-The System Administrator reaches all 47 items with Owner as its strongest
+The System Administrator reaches all 76 items with Owner as its strongest
 effective level. These are access results. Atlas does not treat the item count
 or strongest access badge as proof of documented item ownership.
 
@@ -376,12 +381,12 @@ The report combines four result sets:
 
 ![Departure pack for the System Administrator in the example deployment.](fabric-atlas-whitepaper/assets/09c-departure-pack.png){ width=100% }
 
-In this example, ownership metadata is available for all four applicable items.
-The pack reports four owned and sole-owned items, one urgent orphan risk and a
-blast radius of two. The urgent risk is the AlpineRent Sales Model, which has
-two downstream reports. The reassignment plan states that no eligible successor
-was found for the four items. Atlas keeps that result explicit instead of
-inventing a candidate.
+In this example, ownership metadata is available for all six applicable items.
+The pack reports six owned and sole-owned items, two urgent orphan risks and a
+blast radius of four. The urgent roots are the AlpineRent and Healthcare
+semantic models, each with two downstream consumers. The reassignment plan
+states that no eligible successor was found. Atlas keeps that result explicit
+instead of inventing a candidate.
 
 When eligible owners exist, the reassignment logic first checks the nearest
 upstream owners. If that produces no candidate, it considers the most frequent
@@ -400,11 +405,11 @@ evidence can still be exported.
 Jobs and health groups recent refresh, pipeline and notebook activity. Users
 can search by item or job type, filter by status and save personal views.
 
-![Eight completed runs with no failure in the captured period.](fabric-atlas-whitepaper/assets/10-jobs-health.png){ width=100% }
+![Twenty-five recent runs with success, failure and duration evidence.](fabric-atlas-whitepaper/assets/10-jobs-health.png){ width=100% }
 
-The example deployment recorded eight recent runs, all completed, with an
-average duration of 3 minutes and 38 seconds. Atlas retains the error message
-when an endpoint returns one. An optional job endpoint failure does not
+The example deployment recorded 25 recent runs: 22 completed and three failed,
+with an average duration of 7 minutes and 29 seconds. Atlas retains the error
+message when an endpoint returns one. An optional job endpoint failure does not
 invalidate an otherwise authoritative metadata snapshot, but the missing
 collection state remains visible.
 
@@ -416,8 +421,8 @@ one unstructured JSON payload.
 
 ![Lakehouse configuration grouped into Tables, SQL endpoint, Inventory, General and OneLake sections.](fabric-atlas-whitepaper/assets/11-workspace-configuration.png){ width=100% }
 
-The captured workspace contained 222 configuration facts. The selected
-Lakehouse exposed 21 values in five sections. Schema lists are chunked when
+The captured workspace contained 1,182 configuration facts. The selected
+Lakehouse exposed 32 values in five sections. Schema lists are chunked when
 necessary so complete metadata can fit within bounded SQL text fields.
 
 ### Team notes
@@ -428,10 +433,11 @@ refreshes.
 
 ![Shared team notes in the Workspace Hub of the example deployment.](fabric-atlas-whitepaper/assets/11b-team-notes.png){ width=100% }
 
-Notes are append-only in version 1.x. Readers can verify the authenticated email
-when the stored display label differs from it. Update and delete operations are
-not exposed because Atlas does not yet have a reviewed editing policy and user
-experience for shared notes.
+The fresh deployment had no team notes at capture time, so Figure 19 shows the
+empty feed and the workspace-level note composer. Notes are append-only in
+version 1.x. The stored author label comes from the authenticated email. Update
+and delete operations are not exposed because Atlas does not yet have a
+reviewed editing policy and user experience for shared notes.
 
 ## Architecture and synchronization
 
@@ -445,12 +451,13 @@ flowchart LR
   U["Fabric user"] --> P["Fabric portal"]
   P --> A["Fabric Atlas\nReact and Vite"]
   A <--> AUTH["Fabric brokered\nauthentication"]
-  A --> UDF["Published User Data Function\nsync_all"]
-  UDF --> API["Fabric and Power BI\nmetadata APIs"]
+  A --> O["Resumable browser orchestration\n195-second request deadline"]
+  O --> UDF["Published User Data Function\nsync_all and sync_items"]
+  UDF --> API["Fabric, Power BI, Kusto and SQL\nmetadata endpoints"]
   API --> UDF
-  UDF --> A
+  UDF --> O
   A <--> DATA["Rayfin Data API"]
-  DATA <--> DB[("Fabric SQL database\nvalidated metadata snapshots")]
+  DATA <--> DB[("Fabric SQL database\nsnapshots, sync attempts and notes")]
 
   classDef user fill:#742774,stroke:#742774,color:#ffffff;
   classDef portal fill:#0078d4,stroke:#005a9e,color:#ffffff;
@@ -464,7 +471,7 @@ flowchart LR
   class P portal;
   class A app;
   class AUTH auth;
-  class UDF function;
+  class O,UDF function;
   class API api;
   class DATA,DB data;
 ```
@@ -472,15 +479,25 @@ flowchart LR
 ### Synchronization contract
 
 The User Data Function returns a versioned contract with required sections,
-optional enrichment and metadata capability status. A required-section failure
-rejects the refresh. Optional endpoint failures are retained as evidence but do
-not invalidate an otherwise authoritative snapshot.
+optional enrichment and metadata capability status. The browser first requests
+an authoritative workspace topology, then sends type-grouped `sync_items`
+slices for deeper metadata. A required-section failure or any failed item
+enrichment rejects publication.
 
-The server-side scan shares one 92-second monotonic deadline across API calls,
-response reads, retry waits and processing. It retries bounded throttling and
-transient server responses. Upstream and final payloads are capped at 25 MiB.
-The browser independently streams and caps the response at 26 MiB before JSON
-parsing.
+Each UDF invocation has a 180-second monotonic budget, leaving 20 seconds below
+Fabric's 200-second platform timeout. A global budget expiry, one slow request
+and a `Retry-After` window that does not fit in the remaining slice are separate
+conditions. All three return a continuation instead of pretending the item is
+complete. The browser uses a 195-second deadline, renews expiring tokens between
+slices and supports cancellation before the manifest is published.
+
+The UDF URL is validated before token acquisition. It must be an HTTPS Fabric
+User Data Function endpoint for the configured workspace, and redirects are
+rejected in both browser and server transports. The main Fabric token is
+read-oriented. A separate optional token is requested only for definition
+metadata that requires `Item.ReadWrite.All`; Kusto and SQL tokens remain
+optional. Upstream and final payloads are capped at 25 MiB, and the browser
+independently caps the streamed response before JSON parsing.
 
 ### Immutable snapshots
 
@@ -491,13 +508,17 @@ visible.
 
 ```mermaid
 flowchart LR
-  S["Start sync"] --> C["Collect required and\noptional metadata"]
-  C --> V{"Contract valid and\npayload bounded?"}
-  V -->|No| K["Keep the current\nvalidated snapshot"]
+  S["Create running\nSyncRun"] --> B["Collect authoritative\nbase topology"]
+  B --> C["Resume deep metadata\nthrough sync_items slices"]
+  C --> V{"Contract complete,\nitems valid and bounded?"}
+  V -->|No| F["Mark attempt failed\nand preserve active snapshot"]
   V -->|Yes| W["Write child rows in\nbounded batches"]
-  W --> M["Write Workspace\nmanifest last"]
-  M --> A["Activate the new\nsnapshot"]
-  A --> R["Retain trusted history\nand prune stale rows"]
+  W --> P["Re-read every row through\nproduction pagination"]
+  P --> R{"Reconstructed snapshot\nmatches manifest counts?"}
+  R -->|No| F
+  R -->|Yes| T["Mark SyncRun completed"]
+  T --> M["Write Workspace\nmanifest last"]
+  M --> A["Activate the new snapshot\nand apply retention"]
 
   classDef start fill:#742774,stroke:#742774,color:#ffffff;
   classDef process fill:#eef6fc,stroke:#0078d4,color:#242424;
@@ -506,18 +527,23 @@ flowchart LR
   classDef fallback fill:#f7eff8,stroke:#742774,color:#242424;
 
   class S start;
-  class C,W,M process;
-  class V decision;
-  class A,R safe;
-  class K fallback;
+  class B,C,W,P,T,M process;
+  class V,R decision;
+  class A safe;
+  class F fallback;
 ```
 
-If a write fails, the incomplete rows have no visible manifest. Hydration
-ignores them and loads the newest complete trusted snapshot. The previous
-catalog therefore remains available during a failed refresh.
+If collection, cancellation, persistence or reconstruction fails, the child
+rows have no visible manifest. Hydration ignores them and loads the newest
+complete trusted snapshot. Writes use batches of eight requests, and every
+persisted entity is read back through the same cursor pagination path used at
+startup before the visibility marker is created.
 
-Writes use bounded batches of eight requests. Entity groups remain ordered, and
-the SyncRun audit and Workspace manifest do not begin after a failed batch.
+The `SyncRun` row exists before Fabric collection begins. It records the
+correlation ID, start time, terminal state, duration and a bounded failure
+summary. Status updates are retried. Abandoned snapshot rows are eligible for
+cleanup only after a grace period, while the attempt record remains available
+for audit.
 
 ### Retention and writer trust
 
@@ -526,11 +552,12 @@ Cleanup starts only after the new manifest is published. Child rows are deleted
 before their stale manifest, and a cleanup failure does not convert a successful
 sync into a failed one.
 
-The configured synchronization account is the trusted writer. Create and
-delete policies compare the authenticated email with the writer stored on the
-row and with deployment configuration. Former synchronizers can be listed
-explicitly for historical reads and cleanup during a controlled rotation, but
-they cannot publish a new snapshot.
+The configured synchronization account is the trusted writer. Publication
+policies compare the authenticated immutable subject with deployment
+configuration. Email remains the visible contact and historical writer label,
+but it is not the authorization key. Former synchronizers can be listed
+explicitly for historical reads and cleanup during a controlled rotation; they
+cannot publish a new snapshot.
 
 ### Persisted entities
 
@@ -544,10 +571,13 @@ they cannot publish a new snapshot.
 | JobRun | Recent refresh, pipeline or notebook activity |
 | ConfigEntry | Bounded configuration facts and schema chunks |
 | Comment | Shared workspace or item note |
-| SyncRun | Audit record for a completed synchronization |
+| SyncRun | Durable running, completed or failed synchronization attempt |
 | SavedView | Personal navigation and filter preset |
 | AccessReview | Personal review decision for an effective access pair |
+| AccessReviewEvent | Personal append-only access review history |
 | FindingAck | Personal Radar acknowledgement or mute |
+| GovernancePolicy | Shared posture targets for the workspace |
+| GovernanceException | Shared, time-bounded exception with reason and scope |
 
 ## Security and data boundaries
 
@@ -572,7 +602,7 @@ job metadata, configuration facts, snapshot summaries and team notes.
 | Pipeline definitions and expressions | The product records the item and exposed lineage, not orchestration source |
 | User Data Function source | Functions remain visible as items without copying implementation code |
 | Complete report visual and field bindings | The current metadata flow does not expose them reliably |
-| KQL table, function and policy definitions | Atlas does not open a separate KQL catalog connection |
+| KQL rows, query text and policy bodies | Atlas reads schema metadata through Kusto but does not copy business events or executable query content |
 
 The scanner response passes through an explicit allowlist before persistence.
 Unexpected fields are not serialized by default.
@@ -583,6 +613,12 @@ Fabric brokered authentication runs the application under the signed-in Entra
 identity. The token used for live synchronization must match the current
 Fabric user and tenant. Sync tokens use session storage so a later user cannot
 silently inherit the first account from a persistent browser cache.
+
+Snapshot publication is bound to the configured Entra subject, which is stable
+across email changes. Team-note author IDs are also bound to the authenticated
+subject, while the displayed author label comes from the authenticated email.
+External identity is stored as true, false or unknown so absent evidence is not
+presented as proof that a principal is internal.
 
 | State | Read scope | Write scope |
 |---|---|---|
@@ -602,9 +638,11 @@ treat the Fabric App audience as the catalog read boundary.
 Atlas favours explicit failure over success-shaped fallbacks:
 
 * A required sync section failure rejects the refresh.
+* A failed item enrichment rejects the complete candidate snapshot.
 * Malformed authoritative lineage or workspace identifiers fail closed.
 * Payloads above the configured bounds are rejected before persistence.
 * An incomplete snapshot never becomes active.
+* Cancellation before manifest publication leaves the current snapshot active.
 * Unknown sensitivity rankings do not create downgrade alerts.
 * Ambiguous DAX references and ambiguous principals are omitted rather than
   guessed.
@@ -621,7 +659,8 @@ A live deployment requires:
 3. A Rayfin deployment with Fabric authentication, data, storage and static
    hosting.
 4. An Entra single-page application registration for delegated sync access.
-5. The documented read-only admin API tenant settings.
+5. A Fabric Administrator for the metadata scanner, plus the documented tenant
+   settings and Entra consent.
 6. The `atlas_sync_functions` User Data Function published in the workspace.
 7. One configured synchronization account.
 
@@ -645,6 +684,7 @@ RAYFIN_PUBLIC_ATLAS_SPA_CLIENT_ID=<entra-client-id>
 RAYFIN_PUBLIC_ATLAS_UDF_URL=https://<host>/functions/sync_all/invoke
 RAYFIN_PUBLIC_ATLAS_WORKSPACE_NAME=<workspace-display-name>
 RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_EMAIL=<authorized-sync-user>
+RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_SUBJECT=<entra-object-id>
 RAYFIN_PUBLIC_ATLAS_SNAPSHOT_RETENTION_COUNT=12
 ```
 
@@ -655,8 +695,10 @@ must be registered as an SPA redirect URI.
 ### First sync and upgrades
 
 The first deployment shows a guided synchronization gate. The same gate appears
-when the major or minor snapshot contract changes. Compatible patch releases
-reuse the existing validated history.
+when the major or minor snapshot contract changes. One sync may require several
+UDF invocations: an authoritative base scan followed by resumable deep-metadata
+slices. The progress display reports the active phase and completed items
+without inventing progress while a Fabric request is still running.
 
 Only the configured synchronizer can publish the first snapshot or a later
 refresh. If another user reaches the gate, Atlas shows the configured account
@@ -689,16 +731,17 @@ returns.
 
 | Fabric element | Current depth | Important boundary |
 |---|---|---|
-| Lakehouse | Item metadata, tables, columns, SQL endpoint context and lineage | Schema-enabled variants may rely on downstream semantic model evidence |
-| Warehouse and SQL Database | Item metadata, scanner schema, access, lineage and jobs | Complete inventory may require SQL catalog connectivity not used by Atlas |
-| SQL endpoint | Item identity, scanner metadata and storage-to-model bridge | No dedicated internal object scan |
+| Lakehouse | Item metadata, tables, columns, SQL endpoint context and lineage | Schema-enabled variants use OneLake listing and SQL endpoint metadata refresh where needed |
+| Warehouse and SQL Database | Item metadata, scanner schema, optional read-only SQL catalog, access, lineage and jobs | SQL schema remains unknown when the optional token or endpoint is unavailable |
+| SQL endpoint | Item identity, scanner metadata, read-only catalog where available and storage-to-model bridge | The generated endpoint is still represented separately from its parent store |
 | Semantic Model | Tables, columns, measures, descriptions, hidden flags, measure DAX and object dependencies | Requires scanner schema and expression options; ambiguous references are discarded |
 | Report | Item metadata, bound model, documented owner and pages | Visual and field bindings are not exposed by this flow |
 | Notebook | Item metadata, lineage, access and recent runs | Source code and cells are not read |
 | Data Pipeline | Item metadata, lineage, access and recent runs | Activities, expressions and definitions are not copied |
 | Dataflow and Datamart | Item metadata, documented owner and official upstream IDs | Query content is not copied and cross-workspace dependencies are omitted |
-| Eventhouse and KQL Database | Top-level item, scanner lineage, access and jobs | Hosted KQL objects are not expanded |
-| Fabric App and User Data Function | Top-level item and exposed relationships | Internal service inventory and function source are not copied |
+| Eventhouse and KQL Database | Item metadata, Kusto tables, columns, functions, materialized views, lineage, access and jobs | Business rows, query text and policy bodies are not copied |
+| Ontology, Graph Model and Data Agent | Definition metadata, selected elements, relationships and object lineage | Definition access uses a separate optional write-scoped token |
+| Fabric App, AppBackend and User Data Function | Top-level item and exposed relationships | Internal service inventory and function source are not copied |
 
 ### Version 1.x scope
 
@@ -727,7 +770,7 @@ governance failure.
 Fabric Atlas is MIT licensed. The deployed About page exposes the current
 version, build identifier, source repository, release history and clone command.
 
-![The About page for version 1.9.2 in the example deployment.](fabric-atlas-whitepaper/assets/12-about.png){ width=100% }
+![The About page for version 1.12.0 in the example deployment.](fabric-atlas-whitepaper/assets/12-about.png){ width=100% }
 
 The front end uses React 19, TypeScript, Vite, Tailwind CSS and Radix
 primitives. Rayfin defines and provisions the authenticated data application.
@@ -756,9 +799,10 @@ npm run build
 ```
 
 The production build is intentionally straightforward for the current
-application size. Version 1.9.2 ships one main application chunk of about 0.9 MB
-minified, or about 0.25 MB gzip. That tradeoff is documented rather than hidden
-behind an ineffective dynamic import.
+application size. Version 1.12.0 ships one main application chunk of about
+1.0 MB minified, or about 0.28 MB gzip, plus a smaller Rayfin dependency chunk.
+That tradeoff is documented rather than hidden behind an ineffective dynamic
+import.
 
 ## Conclusion
 
@@ -813,7 +857,7 @@ be affected.
 | Inferred object hop | Cross-item source connection requiring item lineage and one unique schema match |
 | Radar occurrence | New priority finding or risky change in the latest adjacent snapshot pair |
 | Reachable pair | Principal and item combination with effective access |
-| Trusted writer | Configured synchronization account allowed to publish and prune snapshots |
+| Trusted writer | Configured immutable Entra subject allowed to publish and prune snapshots |
 
 ## References
 
