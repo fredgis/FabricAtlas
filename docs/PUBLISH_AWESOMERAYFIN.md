@@ -1,9 +1,13 @@
 # Publishing Fabric Atlas to Awesome Rayfin
 
-## Status
+## Current contribution
 
-This publication is still under evaluation. No issue or pull request has been
-opened in `microsoft/awesome-rayfin`.
+- Proposal: [microsoft/awesome-rayfin#164](https://github.com/microsoft/awesome-rayfin/issues/164)
+- Pull request: [microsoft/awesome-rayfin#165](https://github.com/microsoft/awesome-rayfin/pull/165)
+- Fork branch: `fredgis/awesome-rayfin:feat/fabric-atlas-template`
+- Template path: `templates/fabric-atlas/`
+- Upstream snapshot: Fabric Atlas `1.12.1`, commit
+  `9f2a2fd62b6a24a5062a4041d7da92fc8e5753ab`
 
 The intended result is a CLI-selectable template under:
 
@@ -141,18 +145,62 @@ npm test
 
 The repository CI currently runs on Ubuntu with Node.js 20.
 
-## Decisions required before implementation
+## Reusable checklist for another template
 
-1. **Node.js version:** Fabric Atlas currently requires Node.js 24, while the
-   Awesome Rayfin validation workflow uses Node.js 20.
-2. **Template identity:** decide whether the deployed Rayfin ID can change from
-   `fabricatlas` to `fabric-atlas`.
-3. **Template scope:** decide which screenshots, whitepaper files and project
-   documentation belong in the scaffolded output.
-4. **UDF onboarding:** confirm that a template requiring separate UDF
-   publication provides an acceptable first-run experience.
-5. **Distribution mode:** choose between a complete gallery template and a
-   lighter resource link to the Fabric Atlas repository.
+Use the same sequence for any future template:
+
+1. Open the required template proposal issue.
+2. Record the upstream repository, version and commit.
+3. Work only in the Awesome Rayfin fork. Do not change the upstream project to
+   satisfy gallery packaging or CI.
+4. Export tracked source files with `git archive` or an equivalent clean
+   snapshot.
+5. Remove anything that does not belong in a generated project:
+   - `.git/`
+   - `node_modules/`
+   - `dist/`
+   - coverage output
+   - `.env.local`
+   - `rayfin/.env`
+   - `rayfin/.deployments.json`
+   - `rayfin/.temp/`
+   - `.playwright-cli/`
+   - `__pycache__/`
+   - `*.pyc`
+   - source-repository workflows and publishing notes
+6. Add the gallery-only overlay:
+   - `package.json.template`
+   - `manifest.json`
+   - gallery-safe identifiers
+   - template-specific README instructions
+   - `UPSTREAM.md`
+7. Add generated-language caches to the template `.gitignore`. For Python,
+   include `__pycache__/`, `*.pyc`, `*.pyo` and `*.pyd`.
+8. Run `node scripts/generate-manifest.mjs`.
+9. Run `node scripts/generate-manifest.mjs --check`.
+10. Scaffold the template into a clean temporary directory.
+11. Inspect the scaffold before installing dependencies. It must not contain
+    deployment state, credentials, caches or compiled output.
+12. Run the template lint, build and test commands.
+13. Commit the template, generated root manifest and generated README row.
+14. Open the pull request with the proposal reference, validation results and
+    AI disclosure.
+
+## Decisions recorded for the current contribution
+
+1. **Node.js version:** the gallery copy keeps the upstream Node.js 24
+   requirement. Fabric Atlas is not changed to match the gallery's Node.js 20
+   workflow.
+2. **Template identity:** the gallery overlay uses `fabric-atlas`; the upstream
+   deployment ID remains unchanged.
+3. **Template scope:** application code, tests, UDF source, operational docs and
+   product screenshots are included. The whitepaper, source `.github` folder
+   and publication notes are excluded.
+4. **UDF onboarding:** the UDF source is included, but the deployer publishes it
+   separately in the target workspace. The template README explains why and
+   lists the required permissions.
+5. **Distribution mode:** the contribution is a complete gallery template, not
+   a resource-only link.
 
 ## Security requirements
 
