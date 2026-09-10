@@ -105,4 +105,3 @@ automatic synchronization between the repositories.
 - [Fabric Toolbox contribution section](https://github.com/microsoft/fabric-toolbox#contributing)
 - [Fabric Atlas installation guide](installation.md)
 - [Fabric Atlas architecture](architecture.md)
-

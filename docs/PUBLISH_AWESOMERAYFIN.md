@@ -174,4 +174,3 @@ The repository CI currently runs on Ubuntu with Node.js 20.
 - [Template guidelines](https://github.com/microsoft/awesome-rayfin/blob/main/docs/template-guidelines.md)
 - [PR template](https://github.com/microsoft/awesome-rayfin/blob/main/.github/PULL_REQUEST_TEMPLATE.md)
 - [Template validation workflow](https://github.com/microsoft/awesome-rayfin/blob/main/.github/workflows/validate-templates.yml)
-
