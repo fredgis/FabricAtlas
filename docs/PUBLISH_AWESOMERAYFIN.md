@@ -8,6 +8,8 @@
 - Template path: `templates/fabric-atlas/`
 - Upstream snapshot: Fabric Atlas `1.12.1`, commit
   `9f2a2fd62b6a24a5062a4041d7da92fc8e5753ab`
+- Pull request status: mergeable, CLA and all template checks passed, awaiting
+  maintainer review and merge
 
 The intended result is a CLI-selectable template under:
 
@@ -189,8 +191,8 @@ Use the same sequence for any future template:
 ## Decisions recorded for the current contribution
 
 1. **Node.js version:** the gallery copy keeps the upstream Node.js 24
-   requirement. Fabric Atlas is not changed to match the gallery's Node.js 20
-   workflow.
+   requirement. The gallery's Node.js 20 validation also passed, without any
+   change to Fabric Atlas.
 2. **Template identity:** the gallery overlay uses `fabric-atlas`; the upstream
    deployment ID remains unchanged.
 3. **Template scope:** application code, tests, UDF source, operational docs and
