@@ -45,7 +45,9 @@ MAX_SQL_CATALOG_ROWS = 50000
 MAX_SQL_RELATIONSHIP_ROWS = 5000
 MAX_SQL_TOKEN_CHARACTERS = 65536
 MAX_SYNC_ITEM_IDS_CHARACTERS = 65536
+MAX_RELATION_ITEM_IDS_PER_SLICE = 4
 MIN_ENRICHMENT_ITEM_BUDGET_SECONDS = 30
+MIN_RELATION_ITEM_BUDGET_SECONDS = 12
 MAX_ARTIFACT_METADATA_ELEMENTS = 2048
 MAX_ARTIFACT_METADATA_COLLECTION = 512
 SQL_COPT_SS_ACCESS_TOKEN = 1256
@@ -1173,6 +1175,85 @@ def _sanitize_item(value):
         if text:
             item[key] = text
     return item
+
+
+def _sanitize_relation_item(value):
+    if not isinstance(value, dict):
+        raise ValueError("item relations response contained an invalid item")
+    item_id = _item_id(value.get("id"))
+    workspace_id = _workspace_id(value.get("workspaceId"))
+    item_type = _bounded_text(value.get("type"), 100)
+    display_name = _bounded_text(value.get("displayName"), 300)
+    if not item_type or not display_name:
+        raise ValueError("item relations response contained incomplete item metadata")
+    return {
+        "id": item_id,
+        "workspaceId": workspace_id,
+        "type": item_type,
+        "displayName": display_name,
+    }
+
+
+def _sanitize_relation_workspace(value):
+    if not isinstance(value, dict):
+        raise ValueError(
+            "item relations response contained an invalid workspace"
+        )
+    workspace_id = _workspace_id(value.get("id"))
+    display_name = _bounded_text(value.get("displayName"), 300)
+    if not display_name:
+        raise ValueError(
+            "item relations response contained incomplete workspace metadata"
+        )
+    return {
+        "id": workspace_id,
+        "displayName": display_name,
+    }
+
+
+def _sanitize_relation_edge(value):
+    if not isinstance(value, dict):
+        raise ValueError(
+            "item relations response contained an invalid relation"
+        )
+    item_id = _item_id(value.get("itemId"))
+    dependency_id = _item_id(value.get("dependentOnItemId"))
+    relation_type = _bounded_text(value.get("relationType"), 100)
+    if not relation_type or item_id == dependency_id:
+        raise ValueError(
+            "item relations response contained incomplete relation metadata"
+        )
+    return {
+        "itemId": item_id,
+        "dependentOnItemId": dependency_id,
+        "relationType": relation_type,
+    }
+
+
+def _sanitize_item_relations_response(value):
+    if not isinstance(value, dict):
+        raise ValueError("item relations response was not an object")
+    raw_items = value.get("items")
+    raw_relations = value.get("relations")
+    raw_workspaces = value.get("workspaces")
+    if not all(
+        isinstance(collection, list)
+        for collection in (raw_items, raw_relations, raw_workspaces)
+    ):
+        raise ValueError(
+            "item relations response omitted a required collection"
+        )
+    return {
+        "items": [_sanitize_relation_item(item) for item in raw_items],
+        "relations": [
+            _sanitize_relation_edge(relation)
+            for relation in raw_relations
+        ],
+        "workspaces": [
+            _sanitize_relation_workspace(workspace)
+            for workspace in raw_workspaces
+        ],
+    }
 
 
 def _sanitize_role_assignment(value):
@@ -5308,6 +5389,161 @@ def _merge_optional_trackers(target, source):
         for code in tracker["codes"]:
             if code not in current["codes"]:
                 current["codes"].append(code)
+
+
+@udf.function()
+def sync_item_relations(
+    fabricToken: str,
+    workspaceId: str,
+    itemIds: str,
+    correlationId: str = "",
+) -> dict:
+    """Return both directions of the Fabric Item Relations API Beta graph."""
+    ws = _workspace_id(workspaceId)
+    correlation_id = _item_id(correlationId) if correlationId else None
+    requested_item_ids = _parse_sync_item_ids(itemIds)
+    if len(requested_item_ids) > MAX_RELATION_ITEM_IDS_PER_SLICE:
+        raise ValueError("item relations batch exceeded the safe item limit")
+
+    out = {
+        "schemaVersion": 1,
+        "source": "fabric-item-relations-api-beta",
+        "apiVersion": "beta",
+        "correlationId": correlation_id,
+        "workspaceId": ws,
+        "directions": ["upstream", "downstream"],
+        "requestedItemIds": requested_item_ids,
+        "completedItemIds": [],
+        "remainingItemIds": [],
+        "itemFailures": {},
+        "items": [],
+        "relations": [],
+        "workspaces": [],
+        "queries": [],
+        "requestCount": 0,
+        "errors": [],
+    }
+    deadline = _ExecutionDeadline()
+    started_at = deadline.clock()
+    items_by_key = {}
+    relations_by_key = {}
+    workspaces_by_id = {}
+
+    with _deadline_scope(deadline):
+        for index, item_id in enumerate(requested_item_ids):
+            if (
+                index > 0
+                and deadline.remaining()
+                <= MIN_RELATION_ITEM_BUDGET_SECONDS
+            ):
+                out["remainingItemIds"] = requested_item_ids[index:]
+                break
+
+            deferred = False
+            for direction in ("upstream", "downstream"):
+                query_started_at = deadline.clock()
+                try:
+                    deadline.checkpoint()
+                    out["requestCount"] += 1
+                    value = _get(
+                        fabricToken,
+                        (
+                            f"{FABRIC}/workspaces/{ws}/items/{item_id}"
+                            f"/relations/{direction}?beta=true"
+                        ),
+                    )
+                    safe = _sanitize_item_relations_response(value)
+                    for item in safe["items"]:
+                        items_by_key[
+                            (item["workspaceId"], item["id"])
+                        ] = item
+                    for relation in safe["relations"]:
+                        relations_by_key[
+                            (
+                                relation["itemId"],
+                                relation["dependentOnItemId"],
+                                relation["relationType"],
+                            )
+                        ] = relation
+                    for workspace in safe["workspaces"]:
+                        workspaces_by_id[workspace["id"]] = workspace
+                    out["queries"].append({
+                        "itemId": item_id,
+                        "direction": direction,
+                        "status": "complete",
+                        "itemCount": len(safe["items"]),
+                        "relationCount": len(safe["relations"]),
+                        "workspaceCount": len(safe["workspaces"]),
+                        "durationMs": max(
+                            0,
+                            int(
+                                (deadline.clock() - query_started_at)
+                                * 1000
+                            ),
+                        ),
+                    })
+                except SLICE_RETRY_ERRORS:
+                    out["remainingItemIds"] = requested_item_ids[index:]
+                    deferred = True
+                    break
+                except Exception as error:
+                    code = _safe_error_code(error, optional=True)
+                    failures = out["itemFailures"].setdefault(item_id, {})
+                    failures[direction] = code
+                    out["errors"].append(
+                        f"{direction}:{item_id}:{code}"
+                    )
+                    out["queries"].append({
+                        "itemId": item_id,
+                        "direction": direction,
+                        "status": "failed",
+                        "code": code,
+                        "durationMs": max(
+                            0,
+                            int(
+                                (deadline.clock() - query_started_at)
+                                * 1000
+                            ),
+                        ),
+                    })
+
+            if deferred:
+                break
+            out["completedItemIds"].append(item_id)
+
+    out["items"] = sorted(
+        items_by_key.values(),
+        key=lambda value: (
+            value["workspaceId"],
+            value["displayName"].casefold(),
+            value["id"],
+        ),
+    )
+    out["relations"] = sorted(
+        relations_by_key.values(),
+        key=lambda value: (
+            value["dependentOnItemId"],
+            value["itemId"],
+            value["relationType"].casefold(),
+        ),
+    )
+    out["workspaces"] = sorted(
+        workspaces_by_id.values(),
+        key=lambda value: (
+            value["displayName"].casefold(),
+            value["id"],
+        ),
+    )
+    out["durationMs"] = max(
+        0,
+        int((deadline.clock() - started_at) * 1000),
+    )
+    out["syncedAt"] = (
+        datetime.datetime.now(datetime.timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
+    return _guard_response_size(out)
 
 
 @udf.function()

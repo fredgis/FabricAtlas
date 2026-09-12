@@ -1,6 +1,6 @@
-id: fabricatlas
-name: FabricAtlas
-version: 1.12.1
+id: fabric-atlas-relations-beta
+name: Fabric Atlas Relations Beta
+version: 1.13.0-beta.1
 services:
   auth:
     enabled: true

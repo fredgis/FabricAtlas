@@ -82,6 +82,20 @@ describe("App", () => {
         ).toBeInTheDocument();
     });
 
+    it("opens the isolated Item Relations Beta page from the sidebar", async () => {
+        renderApp();
+        fireEvent.click(
+            screen.getByRole("button", {
+                name: "Map & Lineage (Beta API)",
+            }),
+        );
+
+        expect(
+            await screen.findByRole("heading", { name: "Map & Lineage" }),
+        ).toBeInTheDocument();
+        expect(window.location.hash).toBe("#map-beta");
+    });
+
     it("opens global search with Ctrl+K", () => {
         renderApp();
         fireEvent.keyDown(window, { key: "k", ctrlKey: true });

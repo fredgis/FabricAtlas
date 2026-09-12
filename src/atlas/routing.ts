@@ -17,6 +17,7 @@ interface AtlasLocation {
 const TABS = new Set<Tab>([
   "overview",
   "map",
+  "map-beta",
   "catalog",
   "assets",
   "governance",
@@ -45,6 +46,7 @@ const KNOWN_PREFIXES = [
   "access.",
   "jobs.",
   "workspace.",
+  "map-beta.",
 ];
 const ASSET_KINDS = new Set<string>(ASSET_OBJECT_KINDS);
 const GOVERNANCE_SECTIONS = new Set([
@@ -118,6 +120,13 @@ const POSTURE_PILLARS = new Set([
   "lineage",
   "operations",
 ]);
+const MAP_BETA_DIFFERENCES = new Set([
+  "all",
+  "matching",
+  "beta-only",
+  "direction-conflict",
+  "cross-workspace",
+]);
 
 function request(
   values: Omit<AtlasFocusRequest, "requestId">,
@@ -189,6 +198,27 @@ export function parseAtlasLocation(
       focus: hasMapState
         ? { requestId: crypto.randomUUID() }
         : undefined,
+    };
+  }
+  if (tab === "map-beta") {
+    return {
+      tab,
+      focus: request({
+        itemId: value(params, "map-beta.item"),
+        query: value(params, "map-beta.q"),
+        filters: filters([
+          ["workspace", value(params, "map-beta.workspace")],
+          ["relation", value(params, "map-beta.relation")],
+          [
+            "difference",
+            allowed(
+              params,
+              "map-beta.difference",
+              MAP_BETA_DIFFERENCES,
+            ),
+          ],
+        ]),
+      }),
     };
   }
   if (tab === "catalog") {
@@ -382,6 +412,12 @@ export function urlForNavigation(
     set(params, "catalog.type", filterValue(focus, "type"));
     set(params, "catalog.posture", filterValue(focus, "posturePillar"));
     set(params, "catalog.item", focus?.itemId);
+  } else if (navigation.tab === "map-beta") {
+    set(params, "map-beta.q", focus?.query);
+    set(params, "map-beta.workspace", filterValue(focus, "workspace"));
+    set(params, "map-beta.relation", filterValue(focus, "relation"));
+    set(params, "map-beta.difference", filterValue(focus, "difference"));
+    set(params, "map-beta.item", focus?.itemId);
   } else if (navigation.tab === "assets") {
     set(params, "assets.q", focus?.query);
     set(params, "assets.kind", filterValue(focus, "kind"));

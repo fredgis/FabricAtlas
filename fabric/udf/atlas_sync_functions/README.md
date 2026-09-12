@@ -40,6 +40,15 @@ item. Repeated no-progress attempts are bounded so a deterministic oversized or
 stalled item cannot leave the browser in an infinite loop. No partial slice
 publishes a Rayfin workspace manifest.
 
+The experimental `sync_item_relations` function queries the preview Fabric Item
+Relations API in both directions for at most four root items per invocation.
+It preserves every returned item type and relation type as an open string,
+including values not yet documented by the preview contract. Each result also
+contains the returned workspace records, per-root query evidence, bounded
+failure codes, completed IDs and remaining IDs. The Beta client keeps this
+graph in memory and never writes it to the authoritative Atlas lineage
+entities.
+
 For schema-enabled lakehouses, the lakehouse `/tables` endpoint may return a
 schema wrapper or no usable result. The UDF flattens schema/table responses when
 available and otherwise follows real Fabric metadata IDs through **Lakehouse →
@@ -90,6 +99,7 @@ and [Get Pages In Group](https://learn.microsoft.com/rest/api/power-bi/reports/g
 | `ping` | `name` | smoke test |
 | `sync_all` | `fabricToken, workspaceId, correlationId?, definitionToken?, kustoToken?, sqlToken?, storageToken?, deferEnrichment?` | Schema v2 payload with workspace data, required/optional section status, metadata capabilities and safe errors |
 | `sync_items` | `fabricToken, workspaceId, itemIds, correlationId?, definitionToken?, kustoToken?, sqlToken?, storageToken?` | Resumable deep metadata slice with completed and remaining item IDs |
+| `sync_item_relations` | `fabricToken, workspaceId, itemIds, correlationId?` | Schema v1 Beta relation slice with both API directions, raw items, workspaces, relations, query evidence and continuation IDs |
 
 Required sections are `workspace`, `items`, `roleAssignments`, `scanner`,
 `schema`, `lineage`, `access` and `config`. Optional sections are `jobs`,
@@ -98,8 +108,14 @@ authoritative when every required section completes.
 
 ## Publish or update
 
+> On `experiment/item-relations-api`, create and publish a separate User Data
+> Function item for this source. Do not update the production
+> `atlas_sync_functions` item. The Beta app retargets the configured
+> `sync_all` invoke URL to `sync_item_relations` on the same isolated UDF item.
+
 1. Open your workspace in the Fabric portal.
-2. Open the item **`atlas_sync_functions`** (User Data Function).
+2. Open the target User Data Function. For the experiment, use a distinct item
+   such as **`atlas_item_relations_beta_functions`**.
 3. In the editor, make sure the code matches [`function_app.py`](./function_app.py)
    (paste it if the editor is empty) and that `requirements.txt` keeps the
    pinned `fabric-user-data-functions` version from this directory.

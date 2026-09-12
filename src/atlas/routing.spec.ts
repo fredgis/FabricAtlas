@@ -2,6 +2,43 @@ import { describe, expect, it } from "vitest";
 import { parseAtlasLocation, urlForNavigation } from "./routing";
 
 describe("Atlas routing", () => {
+  it("round-trips namespaced Item Relations Beta filters", () => {
+    const url = urlForNavigation(
+      { pathname: "/", search: "?ctid=tenant" },
+      {
+        tab: "map-beta",
+        focus: {
+          requestId: "ignored",
+          itemId:
+            "11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222",
+          query: "sales",
+          filters: {
+            workspace: "11111111-1111-4111-8111-111111111111",
+            relation: "Datasource",
+            difference: "cross-workspace",
+          },
+        },
+      },
+    );
+
+    expect(url).toContain("map-beta.q=sales");
+    expect(url).toContain("map-beta.relation=Datasource");
+    expect(url).toContain("map-beta.difference=cross-workspace");
+    expect(parseAtlasLocation({
+      hash: "#map-beta",
+      search: url.slice(url.indexOf("?"), url.indexOf("#")),
+    })).toMatchObject({
+      tab: "map-beta",
+      focus: {
+        query: "sales",
+        filters: {
+          relation: "Datasource",
+          difference: "cross-workspace",
+        },
+      },
+    });
+  });
+
   it("round-trips namespaced governance state", () => {
     const url = urlForNavigation(
       { pathname: "/", search: "?ctid=tenant" },

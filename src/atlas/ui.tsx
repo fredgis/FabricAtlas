@@ -7,7 +7,6 @@ import {
   avatarColor,
   initials,
   type Health,
-  type ItemType,
   type PrincipalKind,
 } from "./model";
 
@@ -79,7 +78,7 @@ export function PrincipalAvatar({
 }
 
 /** Colored rounded square with the 2-letter Fabric item-type code. */
-export function TypeGlyph({ type, size = 32 }: { type: ItemType; size?: number }) {
+export function TypeGlyph({ type, size = 32 }: { type: string; size?: number }) {
   const meta = typeMeta(type);
   return (
     <span

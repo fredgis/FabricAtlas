@@ -229,6 +229,12 @@ const FABRIC_DISCOVERY_SCOPES = [
   "https://analysis.windows.net/powerbi/api/Tenant.Read.All",
 ];
 
+const FABRIC_ITEM_RELATIONS_SCOPES = [
+  "https://analysis.windows.net/powerbi/api/UserDataFunction.Execute.All",
+  "https://analysis.windows.net/powerbi/api/Workspace.Read.All",
+  "https://analysis.windows.net/powerbi/api/Item.Read.All",
+];
+
 export interface SyncRequestTokens {
   fabricToken: string;
   definitionToken?: string;
@@ -317,6 +323,22 @@ async function acquireFabricSyncToken(
     assertSyncActive(signal);
     return token;
   }
+}
+
+export async function acquireFabricItemRelationsToken(
+  identity: SyncIdentity,
+  allowPopup = true,
+  signal?: AbortSignal,
+): Promise<string> {
+  assertSyncActive(signal);
+  const token = await acquireToken(
+    identity,
+    FABRIC_ITEM_RELATIONS_SCOPES,
+    "Fabric Item Relations API",
+    allowPopup,
+  );
+  assertSyncActive(signal);
+  return token;
 }
 
 async function renewSyncTokens(

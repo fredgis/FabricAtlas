@@ -4,6 +4,27 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0-beta.1] - Unreleased
+
+### Added
+
+- An isolated **Map & Lineage (Beta API)** page that collects both upstream
+  and downstream Fabric Item Relations for every item in the current snapshot.
+- Cross-workspace nodes, raw item and relation types, relation-class styling,
+  query evidence, cancellation, filters and comparison with the current Atlas
+  item graph.
+- A bounded `sync_item_relations` UDF contract that preserves unknown preview
+  values, records per-direction failures and resumes before the Fabric
+  execution deadline.
+
+### Deployment
+
+- The experiment uses the distinct Rayfin application ID
+  `fabric-atlas-relations-beta` and must be deployed with a separate AppBackend,
+  SQL Database, hosting URL and User Data Function.
+- The experiment remains on `experiment/item-relations-api` and is not intended
+  for merge into `main`.
+
 ## [1.12.1] - 2026-09-10
 
 ### Fixed

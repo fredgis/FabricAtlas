@@ -62,6 +62,7 @@ import {
 
 import { OverviewView } from "./atlas/views/Overview";
 import { MapView } from "./atlas/views/Map";
+import { MapBetaView } from "./atlas/views/MapBeta";
 import { CatalogView } from "./atlas/views/Catalog";
 import { AssetCatalogView } from "./atlas/views/AssetCatalog";
 import { AccessView } from "./atlas/views/Access";
@@ -82,6 +83,11 @@ const NAV_GROUPS: {
     items: [
       { id: "overview", label: "Overview", icon: BarChart3 },
       { id: "map", label: "Map & lineage", icon: Waypoints },
+      {
+        id: "map-beta",
+        label: "Map & Lineage (Beta API)",
+        icon: Waypoints,
+      },
       { id: "catalog", label: "Catalog", icon: FolderTree },
       { id: "assets", label: "Asset Catalog", icon: Boxes },
     ],
@@ -521,6 +527,12 @@ function App() {
             >
               {tab === "overview" && <OverviewView onOpen={navigate} />}
               {tab === "map" && <MapView />}
+              {tab === "map-beta" && (
+                <MapBetaView
+                  focus={focus}
+                  onStateChange={replaceViewState}
+                />
+              )}
               {tab === "catalog" && (
                 <CatalogView
                   focus={focus}

@@ -92,6 +92,12 @@ export interface StagedLayout {
   }>;
 }
 
+export interface StagedLayoutItem {
+  fabricId: string;
+  displayName: string;
+  itemType: string;
+}
+
 export const LINEAGE_STAGE_LABELS = [
   "Orchestrate",
   "Transform",
@@ -714,7 +720,10 @@ export function normalizeLineageEdges(items: Item[], edges: Edge[]): Edge[] {
   return normalized;
 }
 
-function connectedComponents(items: Item[], index: LineageIndex): string[][] {
+function connectedComponents(
+  items: StagedLayoutItem[],
+  index: LineageIndex,
+): string[][] {
   const components: string[][] = [];
   const visited = new Set<string>();
   for (const item of items) {
@@ -739,7 +748,7 @@ function connectedComponents(items: Item[], index: LineageIndex): string[][] {
 }
 
 export function buildStagedLayout(
-  items: Item[],
+  items: StagedLayoutItem[],
   edges: Edge[],
   options?: {
     nodeWidth?: number;
@@ -781,8 +790,8 @@ export function buildStagedLayout(
   components.forEach((component, componentIndex) => {
     const componentItems = component
       .map((id) => itemById.get(id))
-      .filter((item): item is Item => !!item);
-    const stages: Item[][] = Array.from(
+      .filter((item): item is StagedLayoutItem => !!item);
+    const stages: StagedLayoutItem[][] = Array.from(
       { length: LINEAGE_STAGE_LABELS.length },
       () => [],
     );

@@ -912,7 +912,12 @@ class RequestReliabilityTests(unittest.TestCase):
                 )
 
     def test_public_surface_excludes_debug_data_endpoints(self):
-        for name in ("ping", "sync_items", "sync_all"):
+        for name in (
+            "ping",
+            "sync_item_relations",
+            "sync_items",
+            "sync_all",
+        ):
             self.assertTrue(callable(getattr(function_app, name)))
         for name in (
             "list_items",
@@ -948,6 +953,173 @@ class RequestReliabilityTests(unittest.TestCase):
             ),
             "response-size-exceeded",
         )
+
+    def test_item_relations_preserve_unknown_types_and_raw_relations(self):
+        item_id = "11111111-1111-4111-8111-111111111111"
+        dependency_id = "22222222-2222-4222-8222-222222222222"
+        workspace_id = "33333333-3333-4333-8333-333333333333"
+
+        safe = function_app._sanitize_item_relations_response({
+            "items": [{
+                "id": item_id,
+                "workspaceId": workspace_id,
+                "type": "FutureFabricItem",
+                "displayName": "Future item",
+            }],
+            "relations": [{
+                "itemId": item_id,
+                "dependentOnItemId": dependency_id,
+                "relationType": "FutureRelation",
+            }],
+            "workspaces": [{
+                "id": workspace_id,
+                "displayName": "Future workspace",
+            }],
+        })
+
+        self.assertEqual(safe["items"][0]["type"], "FutureFabricItem")
+        self.assertEqual(
+            safe["relations"][0]["relationType"],
+            "FutureRelation",
+        )
+
+    def test_sync_item_relations_collects_both_api_directions(self):
+        workspace_id = "11111111-1111-4111-8111-111111111111"
+        item_id = "22222222-2222-4222-8222-222222222222"
+        upstream_id = "33333333-3333-4333-8333-333333333333"
+        downstream_id = "44444444-4444-4444-8444-444444444444"
+        external_workspace_id = "55555555-5555-4555-8555-555555555555"
+        requested_urls = []
+
+        def get(_token, url):
+            requested_urls.append(url)
+            if "/relations/upstream?beta=true" in url:
+                return {
+                    "items": [{
+                        "id": upstream_id,
+                        "workspaceId": external_workspace_id,
+                        "type": "Lakehouse",
+                        "displayName": "External lakehouse",
+                    }],
+                    "relations": [{
+                        "itemId": item_id,
+                        "dependentOnItemId": upstream_id,
+                        "relationType": "Datasource",
+                    }],
+                    "workspaces": [{
+                        "id": external_workspace_id,
+                        "displayName": "External workspace",
+                    }],
+                }
+            if "/relations/downstream?beta=true" in url:
+                return {
+                    "items": [{
+                        "id": downstream_id,
+                        "workspaceId": workspace_id,
+                        "type": "Report",
+                        "displayName": "Operations report",
+                    }],
+                    "relations": [{
+                        "itemId": downstream_id,
+                        "dependentOnItemId": item_id,
+                        "relationType": "Association",
+                    }],
+                    "workspaces": [{
+                        "id": workspace_id,
+                        "displayName": "Current workspace",
+                    }],
+                }
+            raise AssertionError(url)
+
+        with mock.patch.object(function_app, "_get", side_effect=get):
+            result = function_app.sync_item_relations(
+                "token",
+                workspace_id,
+                json.dumps([item_id]),
+                correlationId="66666666-6666-4666-8666-666666666666",
+            )
+
+        self.assertEqual(result["completedItemIds"], [item_id])
+        self.assertEqual(result["remainingItemIds"], [])
+        self.assertEqual(result["requestCount"], 2)
+        self.assertEqual(len(result["queries"]), 2)
+        self.assertEqual(len(result["items"]), 2)
+        self.assertEqual(len(result["relations"]), 2)
+        self.assertEqual(len(result["workspaces"]), 2)
+        self.assertEqual(result["itemFailures"], {})
+        self.assertTrue(
+            all("?beta=true" in url for url in requested_urls)
+        )
+
+    def test_sync_item_relations_keeps_partial_failures_explicit(self):
+        workspace_id = "11111111-1111-4111-8111-111111111111"
+        item_id = "22222222-2222-4222-8222-222222222222"
+
+        def get(_token, url):
+            if "/relations/upstream?beta=true" in url:
+                raise urllib.error.HTTPError(
+                    url,
+                    403,
+                    "Forbidden",
+                    {},
+                    None,
+                )
+            return {
+                "items": [],
+                "relations": [],
+                "workspaces": [],
+            }
+
+        with mock.patch.object(function_app, "_get", side_effect=get):
+            result = function_app.sync_item_relations(
+                "token",
+                workspace_id,
+                json.dumps([item_id]),
+            )
+
+        self.assertEqual(result["completedItemIds"], [item_id])
+        self.assertEqual(
+            result["itemFailures"],
+            {item_id: {"upstream": "authorization-failed"}},
+        )
+        self.assertEqual(result["requestCount"], 2)
+        self.assertEqual(
+            [query["status"] for query in result["queries"]],
+            ["failed", "complete"],
+        )
+
+    def test_sync_item_relations_returns_continuation_on_timing_failure(self):
+        workspace_id = "11111111-1111-4111-8111-111111111111"
+        item_id = "22222222-2222-4222-8222-222222222222"
+
+        with mock.patch.object(
+            function_app,
+            "_get",
+            side_effect=function_app.RequestTimeout("slow"),
+        ):
+            result = function_app.sync_item_relations(
+                "token",
+                workspace_id,
+                json.dumps([item_id]),
+            )
+
+        self.assertEqual(result["completedItemIds"], [])
+        self.assertEqual(result["remainingItemIds"], [item_id])
+        self.assertEqual(result["itemFailures"], {})
+
+    def test_sync_item_relations_rejects_oversized_batches(self):
+        workspace_id = "11111111-1111-4111-8111-111111111111"
+        item_ids = [
+            f"00000000-0000-4000-8000-{index:012d}"
+            for index in range(5)
+        ]
+
+        with self.assertRaisesRegex(ValueError, "safe item limit"):
+            function_app.sync_item_relations(
+                "token",
+                workspace_id,
+                json.dumps(item_ids),
+            )
 
 
 class MetadataBoundaryTests(unittest.TestCase):
