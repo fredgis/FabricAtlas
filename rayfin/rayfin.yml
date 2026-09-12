@@ -8,6 +8,8 @@ services:
       enabled: true
     allowedRedirectUris:
       - http://localhost:5173
+      - http://127.0.0.1:5173
+      - https://pearl-sand-f51b67600e-centralus.webapp.fabricapps.net
   data:
     enabled: true
     dialect: mssql
