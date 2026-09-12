@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildItemRelationsBetaGraph,
   classifyItemRelation,
   compareItemRelationsWithCurrent,
+  itemRelationsUdfUrl,
   itemRelationsNodeKey,
   parseItemRelationsBetaSlice,
   type ItemRelationsBetaCollection,
@@ -14,6 +15,14 @@ const rootId = "22222222-2222-4222-8222-222222222222";
 const dependencyId = "33333333-3333-4333-8333-333333333333";
 const externalWorkspaceId = "44444444-4444-4444-8444-444444444444";
 const correlationId = "55555555-5555-4555-8555-555555555555";
+const functionId = "66666666-6666-4666-8666-666666666666";
+const configuredUdfUrl =
+  `https://workspace.z6b.userdatafunctions.fabric.microsoft.com/v1/workspaces/${workspaceId}` +
+  `/userDataFunctions/${functionId}/functions/sync_all/invoke`;
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 function sliceValue() {
   return {
@@ -76,6 +85,17 @@ function sliceValue() {
 }
 
 describe("Item Relations Beta response contract", () => {
+  it("uses the Rayfin public UDF setting and retargets the Beta function", () => {
+    vi.stubEnv("VITE_RAYFIN_ATLAS_UDF_URL", configuredUdfUrl);
+
+    expect(itemRelationsUdfUrl(workspaceId)).toBe(
+      configuredUdfUrl.replace(
+        "/functions/sync_all/invoke",
+        "/functions/sync_item_relations/invoke",
+      ),
+    );
+  });
+
   it("accepts wrapped responses and preserves unknown API values", () => {
     const parsed = parseItemRelationsBetaSlice(
       JSON.stringify({ output: sliceValue() }),

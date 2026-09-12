@@ -5,6 +5,7 @@ import {
   tokenNeedsRefresh,
   type SyncIdentity,
 } from "./live-sync";
+import { getUdfUrl, validateUdfUrl } from "./config";
 import type { Edge, Item } from "./model";
 
 const UUID_PATTERN =
@@ -518,33 +519,18 @@ export function parseItemRelationsBetaSlice(
   };
 }
 
-function itemRelationsUdfUrl(): string {
-  const rawUrl = import.meta.env.VITE_ATLAS_UDF_URL?.trim();
+export function itemRelationsUdfUrl(
+  workspaceId: string,
+  configuredUrl = getUdfUrl(),
+): string {
+  const rawUrl = configuredUrl?.trim();
   if (!rawUrl) {
     throw new Error(
       "The Fabric Atlas UDF URL is not configured for this deployment.",
     );
   }
-  let url: URL;
-  try {
-    url = new URL(rawUrl);
-  } catch {
-    throw new Error("The Fabric Atlas UDF URL is invalid.");
-  }
-  if (
-    url.protocol !== "https:" ||
-    !url.hostname.toLowerCase().endsWith(".fabric.microsoft.com")
-  ) {
-    throw new Error(
-      "The Fabric Atlas UDF URL must use a trusted Fabric host.",
-    );
-  }
-  const suffix = /\/functions\/(?:sync_all|sync_items)\/invoke\/?$/i;
-  if (!suffix.test(url.pathname)) {
-    throw new Error(
-      "The Fabric Atlas UDF URL must target a published sync function.",
-    );
-  }
+  const url = new URL(validateUdfUrl(rawUrl, workspaceId));
+  const suffix = /\/functions\/sync_all\/invoke\/?$/i;
   url.pathname = url.pathname.replace(
     suffix,
     "/functions/sync_item_relations/invoke",
@@ -604,7 +590,7 @@ async function invokeRelationsSlice(
 ): Promise<ItemRelationsBetaSlice> {
   const linked = linkedTimeoutSignal(signal);
   try {
-    const response = await fetch(itemRelationsUdfUrl(), {
+    const response = await fetch(itemRelationsUdfUrl(workspaceId), {
       method: "POST",
       signal: linked.signal,
       headers: {
