@@ -590,7 +590,7 @@ export function MapBetaView({
           <h2 className="mt-m text-400 font-semibold">
             No Beta relation evidence collected
           </h2>
-          <p className="mt-s w-full max-w-xl text-300 leading-300 text-muted-foreground">
+          <p className="mx-auto mt-s w-full max-w-prose text-center text-300 leading-300 text-muted-foreground">
             Run the on-demand collection to query both Item Relations API
             directions for every item in the current Atlas snapshot.
           </p>
