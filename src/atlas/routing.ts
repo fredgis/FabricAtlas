@@ -127,6 +127,7 @@ const MAP_BETA_DIFFERENCES = new Set([
   "direction-conflict",
   "cross-workspace",
 ]);
+const MAP_BETA_IMPACT = new Set(["focused"]);
 
 function request(
   values: Omit<AtlasFocusRequest, "requestId">,
@@ -215,6 +216,14 @@ export function parseAtlasLocation(
               params,
               "map-beta.difference",
               MAP_BETA_DIFFERENCES,
+            ),
+          ],
+          [
+            "impact",
+            allowed(
+              params,
+              "map-beta.impact",
+              MAP_BETA_IMPACT,
             ),
           ],
         ]),
@@ -417,6 +426,7 @@ export function urlForNavigation(
     set(params, "map-beta.workspace", filterValue(focus, "workspace"));
     set(params, "map-beta.relation", filterValue(focus, "relation"));
     set(params, "map-beta.difference", filterValue(focus, "difference"));
+    set(params, "map-beta.impact", filterValue(focus, "impact"));
     set(params, "map-beta.item", focus?.itemId);
   } else if (navigation.tab === "assets") {
     set(params, "assets.q", focus?.query);

@@ -16,6 +16,7 @@ describe("Atlas routing", () => {
             workspace: "11111111-1111-4111-8111-111111111111",
             relation: "Datasource",
             difference: "cross-workspace",
+            impact: "focused",
           },
         },
       },
@@ -24,6 +25,7 @@ describe("Atlas routing", () => {
     expect(url).toContain("map-beta.q=sales");
     expect(url).toContain("map-beta.relation=Datasource");
     expect(url).toContain("map-beta.difference=cross-workspace");
+    expect(url).toContain("map-beta.impact=focused");
     expect(parseAtlasLocation({
       hash: "#map-beta",
       search: url.slice(url.indexOf("?"), url.indexOf("#")),
@@ -34,6 +36,7 @@ describe("Atlas routing", () => {
         filters: {
           relation: "Datasource",
           difference: "cross-workspace",
+          impact: "focused",
         },
       },
     });

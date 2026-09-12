@@ -13,6 +13,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Cross-workspace nodes, raw item and relation types, relation-class styling,
   query evidence, cancellation, filters and comparison with the current Atlas
   item graph.
+- Stable selection, node dragging, mouse panning, transitive impact focus,
+  reduced default zoom and a resizable or collapsible details inspector.
+- Shared Beta scans persisted as chunked snapshots in the dedicated
+  `ItemRelationsBetaSnapshot` table and restored when the page is reopened.
 - A bounded `sync_item_relations` UDF contract that preserves unknown preview
   values, records per-direction failures and resumes before the Fabric
   execution deadline.

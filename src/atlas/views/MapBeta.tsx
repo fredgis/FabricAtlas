@@ -4,13 +4,18 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
   AlertTriangle,
   GitCompareArrows,
   LoaderCircle,
   Network,
+  PanelRightClose,
+  PanelRightOpen,
   RefreshCw,
+  RotateCcw,
   Search,
   X,
   ZoomIn,
@@ -28,8 +33,21 @@ import {
 } from "../item-relations-beta";
 import {
   buildStagedLayout,
+  createLineageIndex,
+  getLineageImpact,
+  lineageEdgeKey,
   LINEAGE_STAGE_LABELS,
 } from "../lineage";
+import {
+  loadItemRelationsBetaSnapshot,
+  saveItemRelationsBetaSnapshot,
+} from "../item-relations-beta-persistence";
+import { ResizableInspector } from "../components/ResizableInspector";
+import { useDisplayPreference } from "../display-preferences";
+import {
+  MAP_INSPECTOR_DEFAULT_WIDTH,
+  isMapInspectorWidth,
+} from "../map-inspector";
 import type {
   AtlasFocusRequest,
   AtlasNavigation,
@@ -41,6 +59,12 @@ const NODE_WIDTH = 220;
 const NODE_HEIGHT = 82;
 const COLUMN_GAP = 282;
 const ROW_GAP = 108;
+const DEFAULT_ZOOM = 0.8;
+
+interface Point {
+  x: number;
+  y: number;
+}
 
 type DifferenceFilter =
   | "all"
@@ -160,12 +184,25 @@ export function MapBetaView({
   onStateChange?: (navigation: AtlasNavigation) => void;
 } = {}) {
   const { data, currentUser, canSync, isPreview } = useAtlas();
+  const inspectorWidth = useDisplayPreference(
+    currentUser.id,
+    data.workspace.fabricId,
+    "map-inspector-width",
+    MAP_INSPECTOR_DEFAULT_WIDTH,
+    isMapInspectorWidth,
+  );
   const [collection, setCollection] =
     useState<ItemRelationsBetaCollection | null>(null);
   const [status, setStatus] = useState<
     "idle" | "loading" | "ready" | "error"
   >("idle");
   const [error, setError] = useState<string>();
+  const [savedScanLoading, setSavedScanLoading] = useState(!isPreview);
+  const [persistenceState, setPersistenceState] = useState<
+    "idle" | "saving" | "saved"
+  >("idle");
+  const [persistenceError, setPersistenceError] = useState<string>();
+  const [persistenceNotice, setPersistenceNotice] = useState<string>();
   const [progress, setProgress] =
     useState<ItemRelationsBetaProgress | null>(null);
   const [query, setQuery] = useState(focus?.query ?? "");
@@ -181,13 +218,61 @@ export function MapBetaView({
   const [selectedKey, setSelectedKey] = useState(
     focus?.itemId ?? "",
   );
-  const [zoom, setZoom] = useState(1);
+  const [impactMode, setImpactMode] = useState(
+    filterText(focus, "impact") === "focused",
+  );
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  const [drag, setDrag] = useState<Record<string, Point>>({});
+  const [isPanning, setIsPanning] = useState(false);
   const abortController = useRef<AbortController | undefined>(undefined);
+  const mapRef = useRef<HTMLDivElement>(null);
+  const mapPanning = useRef<{
+    pointerId: number;
+    pointer: Point;
+    scrollLeft: number;
+    scrollTop: number;
+  } | null>(null);
+  const nodeDragging = useRef<{
+    id: string;
+    origin: Point;
+    pointer: Point;
+    moved: boolean;
+  } | null>(null);
+  const suppressNodeClick = useRef(false);
 
   useEffect(
     () => () => abortController.current?.abort(),
     [],
   );
+
+  useEffect(() => {
+    let active = true;
+    void loadItemRelationsBetaSnapshot(
+      isPreview,
+      data.workspace.fabricId,
+    )
+      .then((saved) => {
+        if (!active || !saved) return;
+        setCollection(saved);
+        setStatus("ready");
+        setPersistenceState("saved");
+      })
+      .catch((cause) => {
+        if (!active) return;
+        setPersistenceError(
+          cause instanceof Error
+            ? cause.message
+            : "The saved Item Relations scan could not be loaded.",
+        );
+      })
+      .finally(() => {
+        if (active) setSavedScanLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [data.workspace.fabricId, isPreview]);
 
   useEffect(() => {
     onStateChange?.({
@@ -197,7 +282,10 @@ export function MapBetaView({
         itemId: selectedKey || undefined,
         query: query.trim() || undefined,
         filters:
-          workspaceFilter || relationFilter || difference !== "all"
+          workspaceFilter ||
+          relationFilter ||
+          difference !== "all" ||
+          impactMode
             ? {
                 ...(workspaceFilter
                   ? { workspace: workspaceFilter }
@@ -206,12 +294,14 @@ export function MapBetaView({
                   ? { relation: relationFilter }
                   : {}),
                 ...(difference !== "all" ? { difference } : {}),
+                ...(impactMode ? { impact: "focused" } : {}),
               }
             : undefined,
       },
     });
   }, [
     difference,
+    impactMode,
     onStateChange,
     query,
     relationFilter,
@@ -373,10 +463,56 @@ export function MapBetaView({
           columnGap: COLUMN_GAP,
           rowGap: ROW_GAP,
           componentGap: 60,
-          focusId: resolvedSelectedKey || undefined,
         },
       ),
-    [resolvedSelectedKey, visibleGraph.edges, visibleGraph.nodes],
+    [visibleGraph.edges, visibleGraph.nodes],
+  );
+  const effectivePositions = useMemo(() => {
+    const positions = new Map(layout.positions);
+    Object.entries(drag).forEach(([id, point]) =>
+      positions.set(id, point),
+    );
+    return positions;
+  }, [drag, layout.positions]);
+  const graphBounds = useMemo(() => {
+    let width = layout.width;
+    let height = layout.height;
+    effectivePositions.forEach((point) => {
+      width = Math.max(width, point.x + NODE_WIDTH + 48);
+      height = Math.max(height, point.y + NODE_HEIGHT + 48);
+    });
+    return { width, height };
+  }, [effectivePositions, layout.height, layout.width]);
+  const visibleLineageEdges = useMemo(
+    () =>
+      visibleGraph.edges.map((edge) => ({
+        source: edge.sourceKey,
+        target: edge.targetKey,
+        relation: edge.relationType,
+      })),
+    [visibleGraph.edges],
+  );
+  const visibleLineageIndex = useMemo(
+    () => createLineageIndex(visibleLineageEdges),
+    [visibleLineageEdges],
+  );
+  const impact = useMemo(
+    () =>
+      getLineageImpact(
+        visibleLineageIndex,
+        resolvedSelectedKey,
+        impactMode ? Number.POSITIVE_INFINITY : 1,
+      ),
+    [impactMode, resolvedSelectedKey, visibleLineageIndex],
+  );
+  const impactNodeKeys = useMemo(
+    () =>
+      new Set([
+        resolvedSelectedKey,
+        ...impact.upstream.ids,
+        ...impact.downstream.ids,
+      ]),
+    [impact.downstream.ids, impact.upstream.ids, resolvedSelectedKey],
   );
   const selectedNode = resolvedSelectedKey
     ? nodeByKey.get(resolvedSelectedKey)
@@ -417,6 +553,8 @@ export function MapBetaView({
     abortController.current = controller;
     setStatus("loading");
     setError(undefined);
+    setPersistenceError(undefined);
+    setPersistenceNotice(undefined);
     setProgress({
       completedItems: 0,
       totalItems: data.items.length,
@@ -434,6 +572,25 @@ export function MapBetaView({
       if (controller.signal.aborted) return;
       setCollection(result);
       setStatus("ready");
+      setPersistenceState("saving");
+      try {
+        const persisted = await saveItemRelationsBetaSnapshot(
+          isPreview,
+          result,
+          currentUser.email,
+        );
+        if (controller.signal.aborted) return;
+        setPersistenceState("saved");
+        setPersistenceNotice(persisted.cleanupWarning);
+      } catch (cause) {
+        if (controller.signal.aborted) return;
+        setPersistenceState("idle");
+        setPersistenceError(
+          cause instanceof Error
+            ? cause.message
+            : "The Item Relations scan could not be saved.",
+        );
+      }
     } catch (caught) {
       if (
         controller.signal.aborted ||
@@ -458,6 +615,104 @@ export function MapBetaView({
   const cancel = () => {
     abortController.current?.abort();
     abortController.current = undefined;
+  };
+
+  const mapPanStart = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const target = event.target;
+    if (
+      target instanceof Element &&
+      target.closest("button, a, input, select, textarea, [role='button']")
+    ) {
+      return;
+    }
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    mapPanning.current = {
+      pointerId: event.pointerId,
+      pointer: { x: event.clientX, y: event.clientY },
+      scrollLeft: event.currentTarget.scrollLeft,
+      scrollTop: event.currentTarget.scrollTop,
+    };
+    setIsPanning(true);
+  };
+
+  const mapPanMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const current = mapPanning.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.currentTarget.scrollLeft =
+      current.scrollLeft - (event.clientX - current.pointer.x);
+    event.currentTarget.scrollTop =
+      current.scrollTop - (event.clientY - current.pointer.y);
+  };
+
+  const mapPanEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (mapPanning.current?.pointerId !== event.pointerId) return;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    mapPanning.current = null;
+    setIsPanning(false);
+  };
+
+  const nodePointerDown = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    id: string,
+  ) => {
+    const origin = effectivePositions.get(id);
+    if (!origin) return;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    nodeDragging.current = {
+      id,
+      origin,
+      pointer: { x: event.clientX, y: event.clientY },
+      moved: false,
+    };
+  };
+
+  const nodePointerMove = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) => {
+    const current = nodeDragging.current;
+    if (!current) return;
+    const dx = (event.clientX - current.pointer.x) / zoom;
+    const dy = (event.clientY - current.pointer.y) / zoom;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) current.moved = true;
+    setDrag((positions) => ({
+      ...positions,
+      [current.id]: {
+        x: Math.max(12, current.origin.x + dx),
+        y: Math.max(46, current.origin.y + dy),
+      },
+    }));
+  };
+
+  const nodePointerUp = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) => {
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    const moved = nodeDragging.current?.moved;
+    nodeDragging.current = null;
+    suppressNodeClick.current = Boolean(moved);
+    window.setTimeout(() => {
+      suppressNodeClick.current = false;
+    }, 0);
+  };
+
+  const selectNode = (
+    event: ReactMouseEvent<HTMLButtonElement>,
+    node: ItemRelationsBetaNode,
+  ) => {
+    if (suppressNodeClick.current) return;
+    setSelectedKey(
+      node.key === resolvedSelectedKey ? "" : node.key,
+    );
+  };
+
+  const resetGraph = () => {
+    setDrag({});
+    setZoom(DEFAULT_ZOOM);
+    window.requestAnimationFrame(() =>
+      mapRef.current?.scrollTo({ top: 0, left: 0 }),
+    );
   };
 
   const actionDisabled =
@@ -581,7 +836,46 @@ export function MapBetaView({
         </div>
       )}
 
-      {!collection && status !== "loading" ? (
+      {persistenceError && (
+        <div
+          role="alert"
+          className="flex items-start gap-s rounded-lg border border-destructive/40 bg-destructive/10 px-m py-m text-300 text-foreground"
+        >
+          <AlertTriangle
+            className="icon-size-200 mt-xs shrink-0 text-destructive"
+            aria-hidden="true"
+          />
+          <div>
+            <strong>Saved Beta scan unavailable.</strong>{" "}
+            {persistenceError}
+          </div>
+        </div>
+      )}
+
+      {persistenceNotice && (
+        <div
+          role="status"
+          className="rounded-lg border border-status-warning/40 bg-status-warning/10 px-m py-s text-200 text-foreground"
+        >
+          {persistenceNotice}
+        </div>
+      )}
+
+      {savedScanLoading && !collection && status !== "loading" ? (
+        <section
+          aria-live="polite"
+          aria-busy="true"
+          className="flex min-h-[420px] flex-col items-center justify-center rounded-xl border border-border bg-card px-l py-xl text-center"
+        >
+          <LoaderCircle
+            className="icon-size-400 animate-spin text-brand"
+            aria-hidden="true"
+          />
+          <h2 className="mt-m text-400 font-semibold">
+            Loading the saved Beta relation scan
+          </h2>
+        </section>
+      ) : !collection && status !== "loading" ? (
         <section className="flex min-h-[420px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card px-l py-xl text-center">
           <Network
             className="icon-size-500 text-brand"
@@ -617,6 +911,13 @@ export function MapBetaView({
               <div className="mt-xs text-200 text-muted-foreground">
                 {collection.sliceCount} UDF slices ·{" "}
                 {(collection.durationMs / 1000).toFixed(1)} seconds
+              </div>
+              <div className="mt-xs text-200 font-medium text-brand-foreground">
+                {persistenceState === "saving"
+                  ? "Saving shared Beta scan"
+                  : persistenceState === "saved"
+                    ? "Shared Beta scan saved"
+                    : "Shared Beta scan not saved"}
               </div>
             </div>
             <div>
@@ -674,8 +975,8 @@ export function MapBetaView({
             </div>
           )}
 
-          <section className="grid gap-m xl:grid-cols-[minmax(0,1fr)_320px]">
-            <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-card shadow-fabric-2">
+          <section className="flex min-h-0 flex-col gap-m xl:flex-row">
+            <div className="min-w-0 flex-1 overflow-hidden rounded-xl border border-border bg-card shadow-fabric-2">
               <div className="grid gap-s border-b border-border bg-secondary/60 p-m sm:grid-cols-2 xl:grid-cols-4">
                 <label className="min-w-0">
                   <span className="mb-xs block text-200 font-semibold text-muted-foreground">
@@ -791,11 +1092,35 @@ export function MapBetaView({
                     ),
                   )}
                 </div>
-                <div className="flex items-center gap-xs">
+                <div className="flex flex-wrap items-center gap-xs">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={impactMode}
+                    onClick={() =>
+                      setImpactMode((current) => !current)
+                    }
+                    className={cn(
+                      "flex min-h-11 items-center gap-s rounded-md border px-m text-200 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      impactMode
+                        ? "border-lineage-upstream/50 bg-lineage-upstream/10 text-lineage-upstream"
+                        : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "relative h-[16px] w-[28px] rounded-full bg-muted after:absolute after:left-[3px] after:top-[3px] after:h-[10px] after:w-[10px] after:rounded-full after:bg-white after:transition-transform",
+                        impactMode &&
+                          "bg-lineage-upstream after:translate-x-[12px]",
+                      )}
+                      aria-hidden="true"
+                    />
+                    Impact mode
+                  </button>
                   <button
                     type="button"
                     onClick={() =>
-                      setZoom((value) => Math.max(0.65, value - 0.1))
+                      setZoom((value) => Math.max(0.5, value - 0.1))
                     }
                     aria-label="Zoom out"
                     className="flex h-11 w-11 items-center justify-center rounded-md border border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -821,6 +1146,32 @@ export function MapBetaView({
                       aria-hidden="true"
                     />
                   </button>
+                  <button
+                    type="button"
+                    onClick={resetGraph}
+                    aria-label="Reset graph position and zoom"
+                    title="Reset graph position and zoom"
+                    className="flex h-11 w-11 items-center justify-center rounded-md border border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <RotateCcw
+                      className="icon-size-200"
+                      aria-hidden="true"
+                    />
+                  </button>
+                  {!inspectorOpen && (
+                    <button
+                      type="button"
+                      onClick={() => setInspectorOpen(true)}
+                      aria-label="Show details inspector"
+                      title="Show details inspector"
+                      className="flex h-11 w-11 items-center justify-center rounded-md border border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <PanelRightOpen
+                        className="icon-size-200"
+                        aria-hidden="true"
+                      />
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -849,22 +1200,32 @@ export function MapBetaView({
                 </div>
               ) : (
                 <div
-                  className="atlas-map-grid max-h-[720px] min-h-[520px] overflow-auto bg-background"
+                  ref={mapRef}
+                  onPointerDown={mapPanStart}
+                  onPointerMove={mapPanMove}
+                  onPointerUp={mapPanEnd}
+                  onPointerCancel={mapPanEnd}
+                  className={cn(
+                    "atlas-map-grid max-h-[720px] min-h-[520px] touch-none overflow-auto bg-background",
+                    isPanning
+                      ? "cursor-grabbing select-none"
+                      : "cursor-grab",
+                  )}
                   aria-label={`Item Relations graph with ${visibleGraph.nodes.length} items and ${visibleGraph.edges.length} relations`}
                 >
                   <div
                     className="relative"
                     style={{
-                      width: layout.width * zoom,
-                      height: layout.height * zoom,
+                      width: graphBounds.width * zoom,
+                      height: graphBounds.height * zoom,
                       minWidth: "100%",
                     }}
                   >
                     <div
                       className="absolute left-0 top-0 origin-top-left"
                       style={{
-                        width: layout.width,
-                        height: layout.height,
+                        width: graphBounds.width,
+                        height: graphBounds.height,
                         transform: `scale(${zoom})`,
                       }}
                     >
@@ -883,7 +1244,7 @@ export function MapBetaView({
                           className="pointer-events-none absolute left-s rounded-xl border border-dashed border-border/70"
                           style={{
                             top: group.y,
-                            width: layout.width - 16,
+                            width: graphBounds.width - 16,
                             height: group.height,
                           }}
                           aria-hidden="true"
@@ -895,8 +1256,8 @@ export function MapBetaView({
                       ))}
                       <svg
                         className="absolute inset-0 overflow-visible"
-                        width={layout.width}
-                        height={layout.height}
+                        width={graphBounds.width}
+                        height={graphBounds.height}
                         aria-hidden="true"
                       >
                         <defs>
@@ -921,12 +1282,22 @@ export function MapBetaView({
                           )}
                         </defs>
                         {visibleGraph.edges.map((edge) => {
-                          const path = edgePath(edge, layout.positions);
+                          const path = edgePath(
+                            edge,
+                            effectivePositions,
+                          );
                           if (!path) return null;
                           const style = RELATION_STYLES[edge.relationClass];
-                          const selected =
-                            edge.sourceKey === resolvedSelectedKey ||
-                            edge.targetKey === resolvedSelectedKey;
+                          const key = lineageEdgeKey({
+                            source: edge.sourceKey,
+                            target: edge.targetKey,
+                            relation: edge.relationType,
+                          });
+                          const upstream =
+                            impact.upstream.edgeKeys.has(key);
+                          const downstream =
+                            impact.downstream.edgeKeys.has(key);
+                          const selected = upstream || downstream;
                           return (
                             <g key={edge.id}>
                               <path
@@ -936,8 +1307,13 @@ export function MapBetaView({
                                 strokeWidth={selected ? 3 : 2}
                                 strokeDasharray={style.dash}
                                 opacity={
-                                  resolvedSelectedKey && !selected
-                                    ? 0.28
+                                  selected
+                                    ? 0.96
+                                    : impactMode &&
+                                        resolvedSelectedKey
+                                      ? 0.08
+                                      : resolvedSelectedKey
+                                        ? 0.3
                                     : 0.84
                                 }
                                 markerEnd={`url(#beta-arrow-${edge.relationClass})`}
@@ -961,25 +1337,44 @@ export function MapBetaView({
                         })}
                       </svg>
                       {visibleGraph.nodes.map((node) => {
-                        const position = layout.positions.get(node.key);
+                        const position = effectivePositions.get(node.key);
                         if (!position) return null;
                         const selected =
                           node.key === resolvedSelectedKey;
+                        const upstream =
+                          impact.upstream.ids.has(node.key);
+                        const downstream =
+                          impact.downstream.ids.has(node.key);
+                        const dimmed =
+                          impactMode &&
+                          Boolean(resolvedSelectedKey) &&
+                          !impactNodeKeys.has(node.key);
                         return (
                           <button
                             key={node.key}
                             type="button"
-                            onClick={() =>
-                              setSelectedKey(selected ? "" : node.key)
+                            onClick={(event) =>
+                              selectNode(event, node)
                             }
+                            onPointerDown={(event) =>
+                              nodePointerDown(event, node.key)
+                            }
+                            onPointerMove={nodePointerMove}
+                            onPointerUp={nodePointerUp}
+                            onPointerCancel={nodePointerUp}
                             aria-pressed={selected}
                             className={cn(
-                              "absolute flex items-center gap-s rounded-lg border bg-card p-s text-left shadow-fabric-2 transition-[border-color,box-shadow,opacity] hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                              "absolute flex touch-none items-center gap-s rounded-lg border bg-card p-s text-left shadow-fabric-2 transition-[border-color,box-shadow,opacity] hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                               node.isLocal
                                 ? "border-border"
                                 : "border-dashed border-lineage-upstream",
+                              upstream &&
+                                "border-lineage-upstream ring-1 ring-lineage-upstream/25",
+                              downstream &&
+                                "border-lineage-downstream ring-1 ring-lineage-downstream/25",
                               selected &&
                                 "border-primary ring-2 ring-primary/25",
+                              dimmed && "opacity-20",
                             )}
                             style={{
                               ...graphNodeStyle(),
@@ -1010,7 +1405,53 @@ export function MapBetaView({
               )}
             </div>
 
-            <aside className="min-w-0 rounded-xl border border-border bg-card p-m shadow-fabric-2">
+            {inspectorOpen && (
+              <ResizableInspector
+                width={inspectorWidth.value}
+                onWidthChange={inspectorWidth.setValue}
+                error={inspectorWidth.error}
+                className="overflow-hidden rounded-xl border border-border bg-card shadow-fabric-2"
+              >
+              <aside
+                aria-label="Item Relations details inspector"
+                className="flex min-h-0 flex-1 flex-col"
+              >
+                <div className="flex items-center justify-between gap-s border-b border-border px-m py-s">
+                  <span className="text-200 font-semibold text-muted-foreground">
+                    Details
+                  </span>
+                  <div className="flex items-center gap-xs">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        inspectorWidth.setValue(
+                          MAP_INSPECTOR_DEFAULT_WIDTH,
+                        )
+                      }
+                      aria-label="Reset inspector width"
+                      title="Reset inspector width"
+                      className="flex h-11 w-11 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <RotateCcw
+                        className="icon-size-200"
+                        aria-hidden="true"
+                      />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInspectorOpen(false)}
+                      aria-label="Hide details inspector"
+                      title="Hide details inspector"
+                      className="flex h-11 w-11 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <PanelRightClose
+                        className="icon-size-200"
+                        aria-hidden="true"
+                      />
+                    </button>
+                  </div>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto p-m">
               {selectedNode ? (
                 <>
                   <div className="flex items-start gap-s">
@@ -1046,6 +1487,29 @@ export function MapBetaView({
                       </dd>
                     </div>
                   </dl>
+                  <div className="mt-m grid grid-cols-2 gap-s">
+                    <div className="rounded-md border border-lineage-upstream/35 bg-lineage-upstream/10 p-s">
+                      <div className="text-200 text-muted-foreground">
+                        Upstream impact
+                      </div>
+                      <div className="mt-xs text-400 font-bold tabular-nums text-lineage-upstream">
+                        {impact.upstream.ids.size}
+                      </div>
+                    </div>
+                    <div className="rounded-md border border-lineage-downstream/35 bg-lineage-downstream/10 p-s">
+                      <div className="text-200 text-muted-foreground">
+                        Downstream impact
+                      </div>
+                      <div className="mt-xs text-400 font-bold tabular-nums text-lineage-downstream">
+                        {impact.downstream.ids.size}
+                      </div>
+                    </div>
+                  </div>
+                  <p className="mt-s text-200 text-muted-foreground">
+                    {impactMode
+                      ? "Transitive impact is highlighted."
+                      : "Direct neighbors are highlighted. Enable Impact mode for the full path."}
+                  </p>
                   <h3 className="mt-m text-300 font-semibold">
                     API relationships ({selectedRelations.length})
                   </h3>
@@ -1188,7 +1652,10 @@ export function MapBetaView({
                   </p>
                 </>
               )}
-            </aside>
+                </div>
+              </aside>
+              </ResizableInspector>
+            )}
           </section>
         </>
       ) : null}

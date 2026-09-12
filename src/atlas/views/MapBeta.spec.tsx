@@ -10,6 +10,8 @@ import { SAMPLE_DATA } from "../model";
 
 const mocks = vi.hoisted(() => ({
   collect: vi.fn(),
+  loadSnapshot: vi.fn(),
+  saveSnapshot: vi.fn(),
 }));
 
 vi.mock("../item-relations-beta", async (importOriginal) => {
@@ -66,6 +68,11 @@ vi.mock("../store", () => ({
     canSync: true,
     isPreview: false,
   }),
+}));
+
+vi.mock("../item-relations-beta-persistence", () => ({
+  loadItemRelationsBetaSnapshot: mocks.loadSnapshot,
+  saveItemRelationsBetaSnapshot: mocks.saveSnapshot,
 }));
 
 import { MapBetaView } from "./MapBeta";
@@ -140,6 +147,10 @@ function collection() {
 describe("MapBetaView", () => {
   beforeEach(() => {
     mocks.collect.mockReset();
+    mocks.loadSnapshot.mockReset();
+    mocks.saveSnapshot.mockReset();
+    mocks.loadSnapshot.mockResolvedValue(null);
+    mocks.saveSnapshot.mockResolvedValue({});
   });
 
   it("collects, filters, and exposes raw relation evidence", async () => {
@@ -147,7 +158,7 @@ describe("MapBetaView", () => {
     render(<MapBetaView />);
 
     expect(
-      screen.getByRole("heading", {
+      await screen.findByRole("heading", {
         name: "No Beta relation evidence collected",
       }),
     ).toBeInTheDocument();
@@ -161,14 +172,32 @@ describe("MapBetaView", () => {
         /Item Relations graph with 3 items and 2 relations/i,
       ),
     ).toBeInTheDocument();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: /Local model/i }),
+    expect(mocks.saveSnapshot).toHaveBeenCalledWith(
+      false,
+      collection(),
+      "atlas@example.com",
     );
+    expect(screen.getByText("80%")).toBeInTheDocument();
+
+    const model = screen.getByRole("button", { name: /Local model/i });
+    const originalTop = model.style.top;
+    fireEvent.click(model);
+    expect(model.style.top).toBe(originalTop);
     expect(
       screen.getByRole("heading", { name: "API relationships (2)" }),
     ).toBeInTheDocument();
     expect(screen.getAllByText("Raw API fields")).toHaveLength(2);
+
+    const impact = screen.getByRole("switch", { name: "Impact mode" });
+    fireEvent.click(impact);
+    expect(impact).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Hide details inspector" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Show details inspector" }),
+    ).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Relation type"), {
       target: { value: "Association" },
@@ -182,6 +211,9 @@ describe("MapBetaView", () => {
     mocks.collect.mockRejectedValue(new Error("Preview endpoint unavailable."));
     render(<MapBetaView />);
 
+    await screen.findByRole("heading", {
+      name: "No Beta relation evidence collected",
+    });
     fireEvent.click(
       screen.getByRole("button", { name: "Collect API relations" }),
     );
@@ -194,5 +226,63 @@ describe("MapBetaView", () => {
     expect(
       screen.getByRole("button", { name: "Collect API relations" }),
     ).toBeEnabled();
+  });
+
+  it("reloads a persisted scan without another API collection", async () => {
+    mocks.loadSnapshot.mockResolvedValue(collection());
+    render(<MapBetaView />);
+
+    expect(
+      await screen.findByLabelText(
+        /Item Relations graph with 3 items and 2 relations/i,
+      ),
+    ).toBeInTheDocument();
+    expect(mocks.collect).not.toHaveBeenCalled();
+    expect(screen.getByText("Shared Beta scan saved")).toBeInTheDocument();
+  });
+
+  it("pans the canvas and drags nodes without changing the layout", async () => {
+    mocks.loadSnapshot.mockResolvedValue(collection());
+    render(<MapBetaView />);
+    const canvas = await screen.findByLabelText(
+      /Item Relations graph with 3 items and 2 relations/i,
+    );
+    Object.defineProperty(canvas, "scrollLeft", {
+      value: 0,
+      writable: true,
+    });
+    Object.defineProperty(canvas, "scrollTop", {
+      value: 0,
+      writable: true,
+    });
+
+    fireEvent.pointerDown(canvas, {
+      button: 0,
+      clientX: 200,
+      clientY: 200,
+      pointerId: 1,
+    });
+    fireEvent.pointerMove(canvas, {
+      clientX: 150,
+      clientY: 170,
+      pointerId: 1,
+    });
+    expect(canvas.scrollLeft).toBe(50);
+    expect(canvas.scrollTop).toBe(30);
+
+    const model = screen.getByRole("button", { name: /Local model/i });
+    const originalLeft = model.style.left;
+    fireEvent.pointerDown(model, {
+      clientX: 100,
+      clientY: 100,
+      pointerId: 2,
+    });
+    fireEvent.pointerMove(model, {
+      clientX: 140,
+      clientY: 100,
+      pointerId: 2,
+    });
+    fireEvent.pointerUp(model, { pointerId: 2 });
+    await waitFor(() => expect(model.style.left).not.toBe(originalLeft));
   });
 });
