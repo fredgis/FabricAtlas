@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildItemRelationsBetaGraph,
+  buildItemRelationsRequestBody,
   classifyItemRelation,
   compareItemRelationsWithCurrent,
   itemRelationsUdfUrl,
@@ -85,6 +86,22 @@ function sliceValue() {
 }
 
 describe("Item Relations Beta response contract", () => {
+  it("sends the direct UDF argument object expected by Fabric", () => {
+    expect(
+      buildItemRelationsRequestBody(
+        workspaceId,
+        "fabric-token",
+        [rootId],
+        correlationId,
+      ),
+    ).toEqual({
+      workspaceId,
+      fabricToken: "fabric-token",
+      itemIds: JSON.stringify([rootId]),
+      correlationId,
+    });
+  });
+
   it("uses the Rayfin public UDF setting and retargets the Beta function", () => {
     vi.stubEnv("VITE_RAYFIN_ATLAS_UDF_URL", configuredUdfUrl);
 

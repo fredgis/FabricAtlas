@@ -1,5 +1,6 @@
 import {
   acquireFabricItemRelationsToken,
+  buildSyncRequestBody,
   isUdfTimeoutFailure,
   readBoundedResponseText,
   tokenNeedsRefresh,
@@ -100,6 +101,19 @@ export interface ItemRelationsBetaProgress {
   totalItems: number;
   requestCount: number;
   sliceCount: number;
+}
+
+export function buildItemRelationsRequestBody(
+  workspaceId: string,
+  token: string,
+  itemIds: string[],
+  correlationId: string,
+): Record<string, string> {
+  return buildSyncRequestBody(workspaceId, {
+    fabricToken: token,
+    itemIds: JSON.stringify(itemIds),
+    correlationId,
+  });
 }
 
 export interface ItemRelationsBetaNode {
@@ -598,14 +612,14 @@ async function invokeRelationsSlice(
         "Content-Type": "application/json",
         "X-Correlation-ID": correlationId,
       },
-      body: JSON.stringify({
-        arguments: {
-          fabricToken: token,
+      body: JSON.stringify(
+        buildItemRelationsRequestBody(
           workspaceId,
-          itemIds: JSON.stringify(itemIds),
+          token,
+          itemIds,
           correlationId,
-        },
-      }),
+        ),
+      ),
     });
     if (!response.ok) {
       if (
