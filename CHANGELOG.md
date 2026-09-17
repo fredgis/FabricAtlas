@@ -4,6 +4,17 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.3] - 2026-09-17
+
+### Fixed
+
+- Transient Rayfin GraphQL internal errors and request timeouts are retried
+  with bounded backoff during snapshot publication.
+- Every snapshot row now receives a stable client-generated UUID before its
+  first mutation. Atlas verifies that UUID before retrying, preventing
+  duplicate rows when a timed-out request completed on the server.
+- Final Workspace manifest creation uses the same idempotent mutation path.
+
 ## [1.12.2] - 2026-09-17
 
 ### Fixed
