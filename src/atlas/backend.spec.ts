@@ -596,8 +596,7 @@ describe("Rayfin snapshot persistence", () => {
 
     await runFabricSync(false, identity);
 
-    expect(maximumActive).toBeGreaterThan(1);
-    expect(maximumActive).toBeLessThanOrEqual(8);
+    expect(maximumActive).toBe(2);
     expect(mocks.data.FabricItem.create).toHaveBeenCalledTimes(20);
   });
 
@@ -623,8 +622,8 @@ describe("Rayfin snapshot persistence", () => {
       "batch failed",
     );
 
-    expect(mocks.data.FabricItem.create).toHaveBeenCalledTimes(8);
-    expect(settled).toBe(8);
+    expect(mocks.data.FabricItem.create).toHaveBeenCalledTimes(4);
+    expect(settled).toBe(4);
     expect(mocks.data.Principal.create).not.toHaveBeenCalled();
     expect(
       mocks.data.SyncRun.create.mock.calls.map(([row]) => row.status),

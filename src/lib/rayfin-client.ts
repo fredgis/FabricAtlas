@@ -8,6 +8,7 @@
 import { RayfinClient } from "@microsoft/rayfin-client";
 
 let _client: RayfinClient | undefined;
+const RAYFIN_REQUEST_TIMEOUT_MS = 120_000;
 
 function sessionAuthStorage(): Storage | false {
     try {
@@ -34,6 +35,7 @@ export function getRayfinClient(): RayfinClient {
             publishableKey,
             authStorage: sessionAuthStorage(),
             useProxy: false,
+            timeout: RAYFIN_REQUEST_TIMEOUT_MS,
         });
     }
 

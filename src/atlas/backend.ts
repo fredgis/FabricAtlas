@@ -54,7 +54,7 @@ import {
 export type SyncProgressReporter = (progress: number, stage: string) => void;
 
 type Row = Record<string, unknown>;
-const SNAPSHOT_WRITE_BATCH_SIZE = 8;
+const SNAPSHOT_WRITE_BATCH_SIZE = 2;
 const SYNC_RUN_UPDATE_RETRY_DELAYS_MS = [0, 100, 400];
 const PERSISTED_TEXT_LIMITS = {
   reference: {
