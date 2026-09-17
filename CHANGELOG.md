@@ -25,6 +25,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - Snapshot publication now limits Rayfin GraphQL writes to two concurrent
   mutations and allows up to 120 seconds for Fabric DAB requests.
+- Transient internal errors and timeouts are retried with stable row UUIDs,
+  including verification when a timed-out mutation committed successfully.
 
 ### Deployment
 
