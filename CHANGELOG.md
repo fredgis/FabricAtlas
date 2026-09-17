@@ -4,6 +4,17 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.4] - 2026-09-17
+
+### Fixed
+
+- Snapshot publication restores the eight-request fast path, then retries only
+  failed mutations sequentially with their stable row IDs.
+- The Rayfin request timeout returns to 30 seconds so stalled GraphQL calls do
+  not hold cancellation for two minutes.
+- Cancel immediately reports that synchronization is stopping, aborts retry
+  delays and prevents new retries or progress updates after cancellation.
+
 ## [1.12.3] - 2026-09-17
 
 ### Fixed
