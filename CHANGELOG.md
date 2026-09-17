@@ -4,6 +4,16 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.2] - 2026-09-17
+
+### Fixed
+
+- Snapshot publication now limits Rayfin GraphQL writes to two concurrent
+  mutations instead of eight, preventing Fabric Data API Builder saturation
+  during large workspace synchronization.
+- Rayfin data requests allow up to 120 seconds so valid long-running mutations
+  are not abandoned by the previous 30-second client timeout.
+
 ## [1.12.1] - 2026-09-10
 
 ### Fixed
