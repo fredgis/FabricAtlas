@@ -251,6 +251,76 @@ describe("Rayfin snapshot persistence", () => {
     ).toBe(false);
   });
 
+  it("retries transient GraphQL snapshot mutations with a stable row ID", async () => {
+    const atlas = structuredClone(SAMPLE_DATA);
+    atlas.items = [atlas.items[0]];
+    atlas.principals = [];
+    atlas.grants = [];
+    atlas.jobs = [];
+    atlas.edges = [];
+    atlas.config = [];
+    atlas.schema = {};
+    atlas.itemMetadata = {};
+    atlas.objectEdges = [];
+    mocks.mapSyncToAtlas.mockReturnValue(atlas);
+    let firstId: unknown;
+    mocks.data.FabricItem.create.mockImplementation(async (row) => {
+      firstId ??= (row as Record<string, unknown>).id;
+      if (mocks.data.FabricItem.create.mock.calls.length === 1) {
+        throw new Error("GraphQL errors: Internal server error");
+      }
+      expect((row as Record<string, unknown>).id).toBe(firstId);
+      const stored = row as Record<string, unknown>;
+      mocks.data.FabricItem.rows.push(stored);
+      return stored;
+    });
+    vi.useFakeTimers();
+    try {
+      const sync = runFabricSync(false, identity);
+      await vi.runAllTimersAsync();
+      await expect(sync).resolves.toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(firstId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+    expect(mocks.data.FabricItem.create).toHaveBeenCalledTimes(2);
+    expect(mocks.data.Workspace.create).toHaveBeenCalledOnce();
+  });
+
+  it("accepts a timed-out mutation that committed before retry", async () => {
+    const atlas = structuredClone(SAMPLE_DATA);
+    atlas.items = [atlas.items[0]];
+    atlas.principals = [];
+    atlas.grants = [];
+    atlas.jobs = [];
+    atlas.edges = [];
+    atlas.config = [];
+    atlas.schema = {};
+    atlas.itemMetadata = {};
+    atlas.objectEdges = [];
+    mocks.mapSyncToAtlas.mockReturnValue(atlas);
+    mocks.data.FabricItem.create.mockImplementationOnce(async (row) => {
+      const stored = row as Record<string, unknown>;
+      mocks.data.FabricItem.rows.push(stored);
+      throw new Error("Request timed out after 120000ms");
+    });
+    vi.useFakeTimers();
+    try {
+      const sync = runFabricSync(false, identity);
+      await vi.runAllTimersAsync();
+      await expect(sync).resolves.toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(mocks.data.FabricItem.create).toHaveBeenCalledOnce();
+    expect(mocks.data.FabricItem.rows).toHaveLength(1);
+    expect(mocks.data.Workspace.create).toHaveBeenCalledOnce();
+  });
+
   it("persists and reloads the authenticated comment display name", async () => {
     const comment = {
       id: "33333333-3333-4333-8333-333333333333",
