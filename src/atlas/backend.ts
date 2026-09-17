@@ -55,6 +55,7 @@ export type SyncProgressReporter = (progress: number, stage: string) => void;
 
 type Row = Record<string, unknown>;
 const SNAPSHOT_WRITE_BATCH_SIZE = 2;
+const SNAPSHOT_WRITE_RETRY_DELAYS_MS = [0, 1_000, 3_000, 8_000];
 const SYNC_RUN_UPDATE_RETRY_DELAYS_MS = [0, 100, 400];
 const PERSISTED_TEXT_LIMITS = {
   reference: {
@@ -203,6 +204,100 @@ function assertSyncActive(signal?: AbortSignal): void {
   if (signal?.aborted) {
     throw new SyncCancelledError("Synchronization cancelled.");
   }
+}
+
+function snapshotWriteErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isRetryableSnapshotWriteError(error: unknown): boolean {
+  const status = Number(
+    (error as { status?: unknown } | null)?.status,
+  );
+  return (
+    [408, 429, 500, 502, 503, 504].includes(status) ||
+    /GraphQL errors:\s*Internal server error/i.test(
+      snapshotWriteErrorMessage(error),
+    ) ||
+    /Request timed out after \d+ms/i.test(
+      snapshotWriteErrorMessage(error),
+    ) ||
+    /HTTP (?:Error )?(?:408|429|5\d\d)\b/i.test(
+      snapshotWriteErrorMessage(error),
+    )
+  );
+}
+
+async function snapshotWriteDelay(
+  milliseconds: number,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (!milliseconds) return;
+  await new Promise<void>((resolve) =>
+    setTimeout(resolve, milliseconds),
+  );
+  assertSyncActive(signal);
+}
+
+async function snapshotRowExists(
+  api: EntityApi,
+  id: string,
+): Promise<boolean> {
+  try {
+    const rows = await readWithRetry(api, ["id"], {
+      id: { eq: id },
+    });
+    return rows.some(
+      (row) =>
+        String(row.id ?? "").toLowerCase() === id.toLowerCase(),
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function createSnapshotRow(
+  entity: string,
+  api: EntityApi,
+  row: Row,
+  signal?: AbortSignal,
+): Promise<void> {
+  const id = String(row.id ?? "");
+  let lastError: unknown;
+  for (
+    let attempt = 0;
+    attempt < SNAPSHOT_WRITE_RETRY_DELAYS_MS.length;
+    attempt += 1
+  ) {
+    assertSyncActive(signal);
+    await snapshotWriteDelay(
+      SNAPSHOT_WRITE_RETRY_DELAYS_MS[attempt],
+      signal,
+    );
+    if (attempt > 0 && id && (await snapshotRowExists(api, id))) {
+      return;
+    }
+    try {
+      await api.create(row);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (id && (await snapshotRowExists(api, id))) return;
+      if (!isRetryableSnapshotWriteError(error)) throw error;
+      if (attempt + 1 < SNAPSHOT_WRITE_RETRY_DELAYS_MS.length) {
+        console.warn(
+          "[atlas] retrying transient snapshot mutation",
+          entity,
+          attempt + 1,
+        );
+      }
+    }
+  }
+  if (id && (await snapshotRowExists(api, id))) return;
+  throw new Error(
+    `${entity} snapshot write failed after retries: ${snapshotWriteErrorMessage(lastError)}`,
+    { cause: lastError },
+  );
 }
 
 interface EntityQuery {
@@ -612,14 +707,23 @@ async function persistSync(
       assertSyncActive(signal);
       const payloads = rows
         .slice(offset, offset + SNAPSHOT_WRITE_BATCH_SIZE)
-        .map((row) => ({
-          workspace_id: wid,
-          snapshotId,
-          writerEmail,
-          ...row,
-        }));
+        .map((row) => {
+          const id =
+            typeof row.id === "string" && row.id
+              ? row.id
+              : crypto.randomUUID();
+          return {
+            workspace_id: wid,
+            snapshotId,
+            writerEmail,
+            ...row,
+            id,
+          };
+        });
       const results = await Promise.allSettled(
-        payloads.map((row) => data[entity].create(row)),
+        payloads.map((row) =>
+          createSnapshotRow(entity, data[entity], row, signal),
+        ),
       );
       const failure = results.find(
         (result): result is PromiseRejectedResult =>
@@ -996,7 +1100,12 @@ async function persistSync(
     syncSummary,
   );
   assertSyncActive(signal);
-  await data.Workspace.create(manifest);
+  await createSnapshotRow(
+    "Workspace",
+    data.Workspace,
+    { ...manifest, id: crypto.randomUUID() },
+    signal,
+  );
   reportProgress?.(99, "Applying snapshot retention");
   try {
     await pruneSnapshots(data, wid, snapshotId, writerEmail);
