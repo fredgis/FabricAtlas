@@ -20,11 +20,11 @@ describe("Rayfin client", () => {
     mocks.config = undefined;
   });
 
-  it("allows long-running Fabric GraphQL mutations to finish", async () => {
+  it("bounds stalled Fabric GraphQL requests for responsive cancellation", async () => {
     const { getRayfinClient } = await import("./rayfin-client");
 
     getRayfinClient();
 
-    expect(mocks.config).toMatchObject({ timeout: 120_000 });
+    expect(mocks.config).toMatchObject({ timeout: 30_000 });
   });
 });

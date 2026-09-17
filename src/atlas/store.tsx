@@ -56,6 +56,7 @@ import {
   type GovernanceException,
 } from "./governance-exceptions";
 import { POSTURE_TARGETS } from "./posture";
+import { SyncCancelledError } from "./live-sync";
 
 export interface CurrentUser {
   id: string;
@@ -586,7 +587,12 @@ export function AtlasProvider({
         isPreview,
         currentUser,
         (progress, stage) => {
-          if (operationGeneration.current !== generation) return;
+          if (
+            operationGeneration.current !== generation ||
+            abortController.signal.aborted
+          ) {
+            return;
+          }
           reportedProgress = Math.max(reportedProgress, progress);
           setSyncProgress(reportedProgress);
           setSyncStage(stage);
@@ -594,6 +600,13 @@ export function AtlasProvider({
         abortController.signal,
       );
       if (operationGeneration.current !== generation) return;
+      if (abortController.signal.aborted) {
+        setSyncError(undefined);
+        setSyncProgress(0);
+        setSyncStage("Ready to sync");
+        setSyncStartedAt(undefined);
+        return;
+      }
       const previous = dataRef.current;
       const next = fresh ?? clone(previous);
       if (fresh) {
@@ -659,6 +672,16 @@ export function AtlasProvider({
       succeeded = true;
     } catch (err) {
       if (operationGeneration.current !== generation) return;
+      if (
+        err instanceof SyncCancelledError ||
+        abortController.signal.aborted
+      ) {
+        setSyncError(undefined);
+        setSyncProgress(0);
+        setSyncStage("Ready to sync");
+        setSyncStartedAt(undefined);
+        return;
+      }
       setSyncError(err instanceof Error ? err.message : String(err));
       setSyncProgress(0);
       setSyncStage("Sync failed");
@@ -681,7 +704,11 @@ export function AtlasProvider({
   }, [canSync, isPreview, currentUser]);
 
   const cancelSync = useCallback(() => {
-    syncAbortController.current?.abort();
+    const controller = syncAbortController.current;
+    if (!controller || controller.signal.aborted) return;
+    controller.abort();
+    setSyncProgress(0);
+    setSyncStage("Cancelling synchronization");
   }, []);
 
   const addComment = useCallback(

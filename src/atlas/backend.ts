@@ -54,8 +54,8 @@ import {
 export type SyncProgressReporter = (progress: number, stage: string) => void;
 
 type Row = Record<string, unknown>;
-const SNAPSHOT_WRITE_BATCH_SIZE = 2;
-const SNAPSHOT_WRITE_RETRY_DELAYS_MS = [0, 1_000, 3_000, 8_000];
+const SNAPSHOT_WRITE_BATCH_SIZE = 8;
+const SNAPSHOT_WRITE_RETRY_DELAYS_MS = [1_000, 3_000, 8_000];
 const SYNC_RUN_UPDATE_RETRY_DELAYS_MS = [0, 100, 400];
 const PERSISTED_TEXT_LIMITS = {
   reference: {
@@ -233,56 +233,68 @@ async function snapshotWriteDelay(
   signal?: AbortSignal,
 ): Promise<void> {
   if (!milliseconds) return;
-  await new Promise<void>((resolve) =>
-    setTimeout(resolve, milliseconds),
-  );
   assertSyncActive(signal);
+  await new Promise<void>((resolve, reject) => {
+    const finish = () => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    };
+    const timeout = setTimeout(finish, milliseconds);
+    const abort = () => {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", abort);
+      reject(new SyncCancelledError("Synchronization cancelled."));
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+  });
 }
 
 async function snapshotRowExists(
   api: EntityApi,
   id: string,
+  signal?: AbortSignal,
 ): Promise<boolean> {
+  assertSyncActive(signal);
   try {
     const rows = await readWithRetry(api, ["id"], {
       id: { eq: id },
     });
+    assertSyncActive(signal);
     return rows.some(
       (row) =>
         String(row.id ?? "").toLowerCase() === id.toLowerCase(),
     );
   } catch {
+    assertSyncActive(signal);
     return false;
   }
 }
 
-async function createSnapshotRow(
+async function recoverSnapshotRow(
   entity: string,
   api: EntityApi,
   row: Row,
+  initialError: unknown,
   signal?: AbortSignal,
 ): Promise<void> {
   const id = String(row.id ?? "");
-  let lastError: unknown;
-  for (
-    let attempt = 0;
-    attempt < SNAPSHOT_WRITE_RETRY_DELAYS_MS.length;
-    attempt += 1
-  ) {
+  let lastError = initialError;
+  for (let attempt = 0; attempt < SNAPSHOT_WRITE_RETRY_DELAYS_MS.length; attempt += 1) {
     assertSyncActive(signal);
     await snapshotWriteDelay(
       SNAPSHOT_WRITE_RETRY_DELAYS_MS[attempt],
       signal,
     );
-    if (attempt > 0 && id && (await snapshotRowExists(api, id))) {
+    if (id && (await snapshotRowExists(api, id, signal))) {
       return;
     }
     try {
       await api.create(row);
       return;
     } catch (error) {
+      assertSyncActive(signal);
       lastError = error;
-      if (id && (await snapshotRowExists(api, id))) return;
+      if (id && (await snapshotRowExists(api, id, signal))) return;
       if (!isRetryableSnapshotWriteError(error)) throw error;
       if (attempt + 1 < SNAPSHOT_WRITE_RETRY_DELAYS_MS.length) {
         console.warn(
@@ -293,11 +305,28 @@ async function createSnapshotRow(
       }
     }
   }
-  if (id && (await snapshotRowExists(api, id))) return;
+  if (id && (await snapshotRowExists(api, id, signal))) return;
   throw new Error(
     `${entity} snapshot write failed after retries: ${snapshotWriteErrorMessage(lastError)}`,
     { cause: lastError },
   );
+}
+
+async function createSnapshotRow(
+  entity: string,
+  api: EntityApi,
+  row: Row,
+  signal?: AbortSignal,
+): Promise<void> {
+  try {
+    await api.create(row);
+  } catch (error) {
+    assertSyncActive(signal);
+    const id = String(row.id ?? "");
+    if (id && (await snapshotRowExists(api, id, signal))) return;
+    if (!isRetryableSnapshotWriteError(error)) throw error;
+    await recoverSnapshotRow(entity, api, row, error, signal);
+  }
 }
 
 interface EntityQuery {
@@ -721,15 +750,32 @@ async function persistSync(
           };
         });
       const results = await Promise.allSettled(
-        payloads.map((row) =>
-          createSnapshotRow(entity, data[entity], row, signal),
-        ),
+        payloads.map((row) => data[entity].create(row)),
       );
-      const failure = results.find(
-        (result): result is PromiseRejectedResult =>
-          result.status === "rejected",
-      );
-      if (failure) throw failure.reason;
+      const retryRows: Array<{ row: Row; error: unknown }> = [];
+      for (let index = 0; index < results.length; index += 1) {
+        const result = results[index];
+        if (result.status === "fulfilled") continue;
+        assertSyncActive(signal);
+        const row = payloads[index];
+        const id = String(row.id ?? "");
+        if (id && (await snapshotRowExists(data[entity], id, signal))) {
+          continue;
+        }
+        if (!isRetryableSnapshotWriteError(result.reason)) {
+          throw result.reason;
+        }
+        retryRows.push({ row, error: result.reason });
+      }
+      for (const retry of retryRows) {
+        await recoverSnapshotRow(
+          entity,
+          data[entity],
+          retry.row,
+          retry.error,
+          signal,
+        );
+      }
       assertSyncActive(signal);
     }
   };
