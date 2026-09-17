@@ -321,6 +321,58 @@ describe("Rayfin snapshot persistence", () => {
     expect(mocks.data.Workspace.create).toHaveBeenCalledOnce();
   });
 
+  it("retries failed rows sequentially after a concurrent fast path", async () => {
+    const atlas = structuredClone(SAMPLE_DATA);
+    atlas.items = Array.from({ length: 8 }, (_, index) => ({
+      ...atlas.items[0],
+      fabricId: `item-${index}`,
+      displayName: `Item ${index}`,
+    }));
+    atlas.principals = [];
+    atlas.grants = [];
+    atlas.jobs = [];
+    atlas.edges = [];
+    atlas.config = [];
+    atlas.schema = {};
+    atlas.itemMetadata = {};
+    atlas.objectEdges = [];
+    mocks.mapSyncToAtlas.mockReturnValue(atlas);
+    const attempts = new Map<string, number>();
+    let activeRetries = 0;
+    let maximumActiveRetries = 0;
+    mocks.data.FabricItem.create.mockImplementation(async (row) => {
+      const id = String((row as Record<string, unknown>).id);
+      const attempt = (attempts.get(id) ?? 0) + 1;
+      attempts.set(id, attempt);
+      await Promise.resolve();
+      if (attempt === 1) {
+        throw new Error("GraphQL errors: Internal server error");
+      }
+      activeRetries += 1;
+      maximumActiveRetries = Math.max(
+        maximumActiveRetries,
+        activeRetries,
+      );
+      await Promise.resolve();
+      activeRetries -= 1;
+      const stored = row as Record<string, unknown>;
+      mocks.data.FabricItem.rows.push(stored);
+      return stored;
+    });
+    vi.useFakeTimers();
+    try {
+      const sync = runFabricSync(false, identity);
+      const assertion = expect(sync).resolves.toBeTruthy();
+      await vi.runAllTimersAsync();
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(maximumActiveRetries).toBe(1);
+    expect(mocks.data.FabricItem.create).toHaveBeenCalledTimes(16);
+  });
+
   it("persists and reloads the authenticated comment display name", async () => {
     const comment = {
       id: "33333333-3333-4333-8333-333333333333",
@@ -666,7 +718,7 @@ describe("Rayfin snapshot persistence", () => {
 
     await runFabricSync(false, identity);
 
-    expect(maximumActive).toBe(2);
+    expect(maximumActive).toBe(8);
     expect(mocks.data.FabricItem.create).toHaveBeenCalledTimes(20);
   });
 
@@ -692,8 +744,8 @@ describe("Rayfin snapshot persistence", () => {
       "batch failed",
     );
 
-    expect(mocks.data.FabricItem.create).toHaveBeenCalledTimes(4);
-    expect(settled).toBe(4);
+    expect(mocks.data.FabricItem.create).toHaveBeenCalledTimes(8);
+    expect(settled).toBe(8);
     expect(mocks.data.Principal.create).not.toHaveBeenCalled();
     expect(
       mocks.data.SyncRun.create.mock.calls.map(([row]) => row.status),

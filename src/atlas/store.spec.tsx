@@ -8,6 +8,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ATLAS_CONFIG } from "./config";
 import { buildAtlasHistory, snapshotFromData } from "./history";
+import { SyncCancelledError } from "./live-sync";
 import { SAMPLE_DATA } from "./model";
 import { AtlasProvider, useAtlas } from "./store";
 
@@ -349,6 +350,7 @@ describe("AtlasProvider synchronization", () => {
 
   it("cancels an active synchronization through its abort signal", async () => {
     let aborted = false;
+    let rejectSync: ((error: Error) => void) | undefined;
     backend.runFabricSync.mockImplementation(
       async (
         _isPreview: boolean,
@@ -357,11 +359,11 @@ describe("AtlasProvider synchronization", () => {
         signal: AbortSignal,
       ) =>
         new Promise((_resolve, reject) => {
+          rejectSync = reject;
           signal.addEventListener(
             "abort",
             () => {
               aborted = true;
-              reject(new Error("Synchronization cancelled."));
             },
             { once: true },
           );
@@ -383,11 +385,18 @@ describe("AtlasProvider synchronization", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel sync" }));
 
+    expect(screen.getByTestId("stage")).toHaveTextContent(
+      "Cancelling synchronization",
+    );
+    expect(screen.getByTestId("syncing")).toHaveTextContent("true");
+    await act(async () => {
+      rejectSync?.(new SyncCancelledError("Synchronization cancelled."));
+    });
     await waitFor(() =>
       expect(screen.getByTestId("syncing")).toHaveTextContent("false"),
     );
     expect(aborted).toBe(true);
-    expect(screen.getByTestId("stage")).toHaveTextContent("Sync failed");
+    expect(screen.getByTestId("stage")).toHaveTextContent("Ready to sync");
   });
 
   it("uses the authenticated email as the persisted comment identity", async () => {

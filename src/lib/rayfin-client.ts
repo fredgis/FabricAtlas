@@ -8,7 +8,7 @@
 import { RayfinClient } from "@microsoft/rayfin-client";
 
 let _client: RayfinClient | undefined;
-const RAYFIN_REQUEST_TIMEOUT_MS = 120_000;
+const RAYFIN_REQUEST_TIMEOUT_MS = 30_000;
 
 function sessionAuthStorage(): Storage | false {
     try {
