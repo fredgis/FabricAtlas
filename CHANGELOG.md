@@ -21,6 +21,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   values, records per-direction failures and resumes before the Fabric
   execution deadline.
 
+### Fixed
+
+- Snapshot publication now limits Rayfin GraphQL writes to two concurrent
+  mutations and allows up to 120 seconds for Fabric DAB requests.
+
 ### Deployment
 
 - The experiment uses the distinct Rayfin application ID
