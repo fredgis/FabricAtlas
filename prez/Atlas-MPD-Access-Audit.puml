@@ -1,0 +1,72 @@
+@startuml
+hide empty methods
+hide circle
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Segoe UI
+skinparam defaultFontSize 18
+skinparam shadowing false
+skinparam roundCorner 0
+skinparam linetype ortho
+skinparam nodesep 38
+skinparam ranksep 45
+skinparam classAttributeIconSize 0
+skinparam classBackgroundColor #FFFFFF
+skinparam classBorderColor #117865
+skinparam classFontColor #0C695A
+skinparam classFontSize 21
+skinparam classFontStyle bold
+skinparam classAttributeFontColor #242424
+skinparam classAttributeFontSize 18
+skinparam ArrowColor #616161
+skinparam ArrowFontColor #242424
+skinparam noteBackgroundColor #EFF6FC
+skinparam noteBorderColor #0078D4
+skinparam noteFontColor #242424
+skinparam classBorderColor #0078D4
+skinparam classFontColor #0078D4
+skinparam classFontSize 22
+skinparam classAttributeFontSize 19
+skinparam nodesep 60
+skinparam ranksep 55
+class "dbo.Principals" as Principal <<table>> {
+  id [PK] : UNIQUEIDENTIFIER  NOT NULL
+  workspace_id : UNIQUEIDENTIFIER  NOT NULL
+  snapshotId : UNIQUEIDENTIFIER  NULL
+  principalId : NVARCHAR(150)  NOT NULL
+  displayName : NVARCHAR(200)  NOT NULL
+  kind [CK] : NVARCHAR(16)  NOT NULL
+  external : BIT  NULL
+}
+class "dbo.AccessGrants" as AccessGrant <<table>> {
+  id [PK] : UNIQUEIDENTIFIER  NOT NULL
+  workspace_id : UNIQUEIDENTIFIER  NOT NULL
+  snapshotId : UNIQUEIDENTIFIER  NULL
+  principalRef : NVARCHAR(150)  NOT NULL
+  itemFabricId : NVARCHAR(100)  NULL
+  accessLevel [CK] : NVARCHAR(5)  NOT NULL
+  source [CK] : NVARCHAR(13)  NOT NULL
+}
+class "dbo.JobRuns" as JobRun <<table>> {
+  id [PK] : UNIQUEIDENTIFIER  NOT NULL
+  workspace_id : UNIQUEIDENTIFIER  NOT NULL
+  snapshotId : UNIQUEIDENTIFIER  NULL
+  itemFabricId : NVARCHAR(100)  NOT NULL
+  status [CK] : NVARCHAR(9)  NOT NULL
+  startedAt : DATETIME2  NULL
+  durationSec : INT  NULL
+}
+class "dbo.SyncRuns" as SyncRun <<table>> {
+  id [PK] : UNIQUEIDENTIFIER  NOT NULL
+  workspace_id : UNIQUEIDENTIFIER  NOT NULL
+  snapshotId : UNIQUEIDENTIFIER  NULL
+  correlationId : UNIQUEIDENTIFIER  NULL
+  status [CK] : NVARCHAR(9)  NOT NULL
+  startedAt : DATETIME2  NOT NULL
+  finishedAt : DATETIME2  NULL
+  itemsSynced : INT  NULL
+}
+Principal -[hidden]right- AccessGrant
+Principal -[hidden]down- JobRun
+AccessGrant -[hidden]down- SyncRun
+JobRun -[hidden]right- SyncRun
+@enduml

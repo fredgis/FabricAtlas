@@ -15,6 +15,7 @@ the last validated snapshot in Fabric so everyone sees the same state.
 [Install](docs/installation.md) ·
 [Architecture](docs/architecture.md) ·
 [Whitepaper](docs/fabric-atlas-whitepaper.pdf) ·
+[Technical presentation](prez/Fabric-Atlas-Dev-Architecture.pdf) ·
 [Functionalities](#functionalities) ·
 [Roadmap](#roadmap) ·
 [Changelog](CHANGELOG.md) ·
@@ -45,6 +46,14 @@ are not product defaults or a reference architecture.
 
 [Read the PDF](docs/fabric-atlas-whitepaper.pdf) ·
 [Read the Markdown version](docs/fabric-atlas-whitepaper.md)
+
+## Technical presentation
+
+The [Fabric Atlas development and architecture presentation](prez/Fabric-Atlas-Dev-Architecture.pdf)
+explains the C4 architecture, resumable User Data Function refresh, immutable
+snapshot publication, Rayfin entity model, UML view, and physical MSSQL model.
+The editable [PowerPoint deck](prez/Fabric-Atlas-Dev-Architecture.pptx) and
+PlantUML sources are available in [`prez/`](prez/).
 
 ## What it does
 

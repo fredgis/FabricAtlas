@@ -1,0 +1,82 @@
+@startuml
+hide empty methods
+hide circle
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Segoe UI
+skinparam defaultFontSize 18
+skinparam shadowing false
+skinparam roundCorner 0
+skinparam linetype ortho
+skinparam nodesep 38
+skinparam ranksep 45
+skinparam classAttributeIconSize 0
+skinparam classBackgroundColor #FFFFFF
+skinparam classBorderColor #117865
+skinparam classFontColor #0C695A
+skinparam classFontSize 21
+skinparam classFontStyle bold
+skinparam classAttributeFontColor #242424
+skinparam classAttributeFontSize 18
+skinparam ArrowColor #616161
+skinparam ArrowFontColor #242424
+skinparam noteBackgroundColor #EFF6FC
+skinparam noteBorderColor #0078D4
+skinparam noteFontColor #242424
+skinparam nodesep 48
+skinparam ranksep 50
+class Workspace <<entity>> {
+  + id : string {UUID, PK}
+  + fabricId : string
+  + snapshotId : string [0..1] {UUID}
+  + writerEmail : string [0..1]
+}
+class FabricItem <<entity>> {
+  + id : string {UUID, PK}
+  + workspace_id : string {UUID}
+  + snapshotId : string [0..1] {UUID}
+  + fabricId : string
+  + displayName : string
+  + itemType : string
+  + health : ItemHealth
+}
+class Principal <<entity>> {
+  + id : string {UUID, PK}
+  + principalId : string
+  + displayName : string
+  + kind : PrincipalKind
+}
+class AccessGrant <<entity>> {
+  + id : string {UUID, PK}
+  + principalRef : string
+  + itemFabricId : string [0..1]
+  + accessLevel : AccessLevel
+}
+class LineageEdge <<entity>> {
+  + id : string {UUID, PK}
+  + sourceFabricId : string
+  + targetFabricId : string
+  + relation : string
+  + broken : boolean
+}
+class JobRun <<entity>> {
+  + id : string {UUID, PK}
+  + itemFabricId : string
+  + status : JobStatus
+  + startedAt : Date [0..1]
+}
+class ConfigEntry <<entity>> {
+  + id : string {UUID, PK}
+  + itemFabricId : string
+  + section : string
+  + label : string
+  + value : string [0..1]
+}
+Workspace "1" -down- "0..*" FabricItem
+FabricItem "0..1" -right- "0..*" AccessGrant
+Principal "0..1" -down- "0..*" AccessGrant
+FabricItem "0..1" -down- "0..*" LineageEdge
+FabricItem "0..1" -left- "0..*" JobRun
+FabricItem "0..1" -down- "0..*" ConfigEntry
+Workspace -[hidden]right- Principal
+LineageEdge -[hidden]right- ConfigEntry
+@enduml
