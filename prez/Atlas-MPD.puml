@@ -1,0 +1,169 @@
+@startuml
+top to bottom direction
+hide circle
+skinparam backgroundColor #FFFFFF
+skinparam defaultFontName Segoe UI
+skinparam defaultFontSize 14
+skinparam shadowing false
+skinparam roundCorner 0
+skinparam linetype ortho
+skinparam nodesep 24
+skinparam ranksep 34
+skinparam entityBackgroundColor #FFFFFF
+skinparam entityBorderColor #0078D4
+skinparam entityFontColor #0078D4
+skinparam entityFontSize 16
+skinparam entityAttributeFontColor #242424
+skinparam entityAttributeFontSize 13
+skinparam ArrowColor #616161
+skinparam ArrowFontColor #616161
+skinparam packageBackgroundColor #FAFAFA
+skinparam packageBorderColor #D1D1D1
+
+title Fabric Atlas | Physical data model (MSSQL)
+
+package "Snapshot catalog" {
+  entity "dbo.Workspaces" as Workspace {
+    * id : UNIQUEIDENTIFIER
+    --
+    fabricId : NVARCHAR(100)
+    snapshotId : UNIQUEIDENTIFIER?
+    writerEmail : NVARCHAR(160)?
+  }
+  entity "dbo.FabricItems" as FabricItem {
+    * id : UNIQUEIDENTIFIER
+    --
+    workspace_id : UNIQUEIDENTIFIER
+    snapshotId : UNIQUEIDENTIFIER?
+    fabricId : NVARCHAR(100)
+    itemType : NVARCHAR(60)
+  }
+  entity "dbo.Principals" as Principal {
+    * id : UNIQUEIDENTIFIER
+    --
+    workspace_id : UNIQUEIDENTIFIER
+    snapshotId : UNIQUEIDENTIFIER?
+    principalId : NVARCHAR(150)
+  }
+  entity "dbo.AccessGrants" as AccessGrant {
+    * id : UNIQUEIDENTIFIER
+    --
+    workspace_id : UNIQUEIDENTIFIER
+    snapshotId : UNIQUEIDENTIFIER?
+    principalRef : NVARCHAR(150)
+    itemFabricId : NVARCHAR(100)?
+  }
+  entity "dbo.LineageEdges" as LineageEdge {
+    * id : UNIQUEIDENTIFIER
+    --
+    workspace_id : UNIQUEIDENTIFIER
+    snapshotId : UNIQUEIDENTIFIER?
+    sourceFabricId : NVARCHAR(100)
+    targetFabricId : NVARCHAR(100)
+  }
+  entity "dbo.JobRuns" as JobRun {
+    * id : UNIQUEIDENTIFIER
+    --
+    workspace_id : UNIQUEIDENTIFIER
+    snapshotId : UNIQUEIDENTIFIER?
+    itemFabricId : NVARCHAR(100)
+  }
+  entity "dbo.ConfigEntries" as ConfigEntry {
+    * id : UNIQUEIDENTIFIER
+    --
+    workspace_id : UNIQUEIDENTIFIER
+    snapshotId : UNIQUEIDENTIFIER?
+    itemFabricId : NVARCHAR(100)
+    section : NVARCHAR(80)
+  }
+  entity "dbo.SyncRuns" as SyncRun {
+    * id : UNIQUEIDENTIFIER
+    --
+    workspace_id : UNIQUEIDENTIFIER
+    snapshotId : UNIQUEIDENTIFIER?
+    correlationId : UNIQUEIDENTIFIER?
+  }
+}
+
+package "Shared team state" {
+  entity "dbo.Comments" as Comment {
+    * id : UNIQUEIDENTIFIER
+    --
+    workspace_id : UNIQUEIDENTIFIER
+    itemFabricId : NVARCHAR(100)?
+    authorId : NVARCHAR(160)
+  }
+  entity "dbo.GovernancePolicies" as GovernancePolicy {
+    * id : UNIQUEIDENTIFIER
+    --
+    workspace_id : UNIQUEIDENTIFIER
+    recordKey : NVARCHAR(100) <<UQ>>
+  }
+  entity "dbo.GovernanceExceptions" as GovernanceException {
+    * id : UNIQUEIDENTIFIER
+    --
+    workspace_id : UNIQUEIDENTIFIER
+    recordKey : NVARCHAR(80) <<UQ>>
+    findingId : NVARCHAR(300)
+  }
+}
+
+package "Personal state" {
+  entity "dbo.SavedViews" as SavedView {
+    * id : UNIQUEIDENTIFIER
+    --
+    workspace_id : UNIQUEIDENTIFIER
+    user_id : NVARCHAR(160)
+    name : NVARCHAR(120)
+  }
+  entity "dbo.AccessReviews" as AccessReview {
+    * id : UNIQUEIDENTIFIER
+    --
+    workspace_id : UNIQUEIDENTIFIER
+    user_id : NVARCHAR(160)
+    recordKey : NVARCHAR(450) <<UQ>>
+  }
+  entity "dbo.AccessReviewEvents" as AccessReviewEvent {
+    * id : UNIQUEIDENTIFIER
+    --
+    workspace_id : UNIQUEIDENTIFIER
+    user_id : NVARCHAR(160)
+    itemFabricId : UNIQUEIDENTIFIER
+  }
+  entity "dbo.FindingAcks" as FindingAck {
+    * id : UNIQUEIDENTIFIER
+    --
+    workspace_id : UNIQUEIDENTIFIER
+    user_id : NVARCHAR(160)
+    recordKey : NVARCHAR(80) <<UQ>>
+  }
+}
+
+Workspace "1" ..> "0..*" FabricItem
+Workspace "1" ..> "0..*" Principal
+Workspace "1" ..> "0..*" AccessGrant
+Workspace "1" ..> "0..*" LineageEdge
+Workspace "1" ..> "0..*" JobRun
+Workspace "1" ..> "0..*" ConfigEntry
+Workspace "1" ..> "0..*" SyncRun
+Workspace "1" ..> "0..*" Comment
+Workspace "1" ..> "0..*" GovernancePolicy
+Workspace "1" ..> "0..*" GovernanceException
+Workspace "1" ..> "0..*" SavedView
+Workspace "1" ..> "0..*" AccessReview
+Workspace "1" ..> "0..*" AccessReviewEvent
+Workspace "1" ..> "0..*" FindingAck
+
+Principal "0..1" ..> "0..*" AccessGrant : principalRef
+FabricItem "0..1" ..> "0..*" AccessGrant : itemFabricId
+FabricItem "0..1" ..> "0..*" LineageEdge : source / target IDs
+FabricItem "0..1" ..> "0..*" JobRun : itemFabricId
+FabricItem "0..1" ..> "0..*" ConfigEntry : itemFabricId
+FabricItem "0..1" ..> "0..*" Comment : itemFabricId
+
+legend bottom
+  * id is the UNIQUEIDENTIFIER primary key on every table
+  ? means NULL; <<UQ>> means a declared unique constraint
+  Dashed arrows are Atlas logical references, not generated SQL foreign keys
+endlegend
+@enduml
