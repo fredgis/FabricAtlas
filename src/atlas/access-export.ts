@@ -6,6 +6,7 @@ import {
   accessLayerSummary,
   evaluatedAccessLayers,
   unknownAccessLayerSummary,
+  storedPolicySummary,
 } from "./access-coverage";
 
 const FLAG_LABEL: Record<NonNullable<Grant["flag"]>, string> = {
@@ -57,6 +58,7 @@ export function accessRowsToCsv(rows: AccessReviewRow[]): string {
     "Snapshot ID",
     "Snapshot observed at",
     "Assessment limitation",
+    "Stored workspace policy context",
   ];
   const lines = rows.map((row) =>
     [
@@ -83,6 +85,7 @@ export function accessRowsToCsv(rows: AccessReviewRow[]): string {
       row.coverage.snapshotId ?? "Not recorded",
       row.coverage.observedAt ?? "Not recorded",
       GRANT_ONLY_NOTICE,
+      storedPolicySummary(row.coverage),
     ]
       .map(csvCell)
       .join(","),

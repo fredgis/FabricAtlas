@@ -33,6 +33,24 @@ authenticated reads; only the configured synchronization administrator can
 write them. `WorkspaceScope` follows the same shared-read, administrator-write
 boundary and stores selected workspaces only.
 
+## AccessPolicyEvidence
+
+Optional immutable workspace-policy context, separate from grant truth and from
+the required snapshot manifest. Shared authenticated reads; create requires the
+configured synchronizer subject and caller email matching `writerEmail`; delete
+is synchronizer-only; update is disabled.
+
+`id`, `workspace_id`, `snapshotId`, `collectionId`, `writerEmail`, `schemaVersion`,
+`kind`, `source`, `collectorIdentity`, `coverage`, `reason`, `attemptedAt`,
+`observedAt?`, `inboundPublicAction?`, `outboundPublicAction?`,
+`externalSharesBypassAction?`
+
+Only explicit `Allow`/`Deny` network setting values are stored, not principal
+decisions, policy rules, tokens or business rows. A blocked central evaluation
+entry has no observed timestamp or decision. See
+[access-policy-evidence.md](access-policy-evidence.md) for verified contracts,
+omitted fields and the default-off live gate.
+
 ## Workspace
 
 The manifest for a complete synchronized snapshot.

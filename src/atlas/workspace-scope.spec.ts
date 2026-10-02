@@ -211,5 +211,6 @@ describe("workspace scope", () => {
       removeWorkspaceScope(false, admin, OTHER_ID),
     ).rejects.toThrow("reviewed archival and deletion workflow");
     expect(mocks.delete).not.toHaveBeenCalled();
+    expect(mocks.sharedExecute).toHaveBeenCalledTimes(13);
   });
 });

@@ -1,4 +1,7 @@
 import type { Grant, WorkspaceInfo } from "./model";
+import {
+  policyEvidenceSummary, type AccessPolicyEvidence,
+} from "../../rayfin/functions/src/policy-evidence-contract";
 
 export type AccessEvidenceState =
   | "observed"
@@ -32,6 +35,24 @@ export interface AccessEvidenceCoverage {
   workspaceId?: string;
   snapshotId?: string;
   observedAt?: string;
+  policyEvidence?: AccessPolicyEvidence[];
+}
+
+export function withStoredPolicyEvidence(
+  coverage: AccessEvidenceCoverage, records: AccessPolicyEvidence[],
+): AccessEvidenceCoverage {
+  const scoped = records.filter((record) =>
+    record.workspace_id === coverage.workspaceId?.toLowerCase() && record.snapshotId === coverage.snapshotId?.toLowerCase(),
+  );
+  if (!scoped.length) return coverage;
+  return {
+    ...coverage,
+    policyEvidence: scoped,
+    layers: coverage.layers.map((layer) => layer.layer === "fabric-policies" ? {
+      ...layer, state: "unsupported",
+      reason: "Central evaluation has no verified public endpoint/request/response contract. Stored workspace settings are context only.",
+    } : layer),
+  };
 }
 
 export const ACCESS_LAYER_LABEL: Record<AccessEvidenceLayer, string> = {
@@ -157,6 +178,9 @@ export function evaluatedAccessLayers(coverage: AccessEvidenceCoverage): string 
     .map((layer) =>
       `${ACCESS_LAYER_LABEL[layer.layer]}${layer.state === "partial" ? " (partial evidence)" : ""}`,
     );
+  if (coverage.policyEvidence?.some((record) => record.coverage === "observed" || record.coverage === "partial")) {
+    evaluated.push("Workspace policy settings (context read only; principal applicability not evaluated)");
+  }
   return [...new Set(evaluated)].join("; ") || "Not evaluated";
 }
 
@@ -166,6 +190,10 @@ export function accessLayerSummary(coverage: AccessEvidenceCoverage): string {
       `${ACCESS_LAYER_LABEL[layer.layer]}: ${ACCESS_EVIDENCE_LABEL[layer.state]}`,
     )
     .join("; ");
+}
+
+export function storedPolicySummary(coverage: AccessEvidenceCoverage): string {
+  return policyEvidenceSummary(coverage.policyEvidence ?? []);
 }
 
 export function unknownAccessLayers(

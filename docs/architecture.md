@@ -111,6 +111,7 @@ See [data-model.md](data-model.md) for fields.
 | `LineageEdge` | Directed dependency between two items |
 | `Principal` | Users, groups, service principals, guests |
 | `AccessGrant` | Recorded workspace/item grants and their sources, not fully evaluated data access |
+| `AccessPolicyEvidence` | Optional workspace policy context and blocked central-evaluation coverage, never grant decisions |
 | `JobRun` | Refresh / pipeline / notebook run history |
 | `ConfigEntry` | Flat key/value config facts per item (drives the expandable tree) |
 | `Comment` | Team notes on the workspace or an item |
@@ -804,20 +805,27 @@ downloads contain the selected metadata, excluded and remaining paths, snapshot
 provenance and limits; no tokens, credentials or unmodeled policy results are
 exported. This view has no permission mutation or Fabric write-back route.
 
-No Fabric Policies reads, OneLake role reads, DLP reads, restriction entities or
-new collectors are added. Personal decisions in Review matrix and Principals
-remain bound to existing grant evidence and do not certify restriction coverage.
+The additive `AccessPolicyEvidence` entity and optional
+`workspaceCollectAccessPolicyEvidence` Function now store only verified Core
+workspace networking and inbound external-share exception settings. Those are
+context reads, not central Fabric Policies evaluation or principal/item access.
+The central evaluation contract remains unverified and is explicitly blocked.
+Both browser and server collection gates default off. No OneLake role or DLP
+read, Fabric mutation, or grant-truth change is introduced. Personal decisions
+in Review matrix and Principals remain grant-bound and do not certify restriction
+coverage. See [access-policy-evidence.md](access-policy-evidence.md) for exact
+public sources, omitted fields, ownership policies, bounds and the closed live gate.
 
 Source grants must not be confused with access to Atlas. All selected workspace
 metadata remains shared with the authenticated app audience; delegated connector
 visibility does not retroactively filter materialized snapshots for each viewer.
 Personal review decisions and saved views remain subject-scoped.
 
-Remaining Phase 6 work: verify the Fabric Policies Preview tenant/region/identity
-contract, add persisted restriction evidence and bounded read-only adapters,
-integrate per-source provenance/observation times and stable collector grant
-identities, and validate supported policy applicability before expanding the
-grant-only assessment. OneLake and DLP remain manual/unsupported until verified public contracts
+Remaining live/contract gates: validate actual workspace-settings collection
+identity/tenant behavior, obtain a public central Fabric Policies operation
+contract, and verify principal-specific applicability before expanding this
+grant-only assessment. Stable collector grant identities remain unavailable in
+the current grant payload. OneLake and DLP remain manual/unsupported until verified public contracts
 exist; the fictional restriction counts and principals in the concept image are
 never production fixtures.
 

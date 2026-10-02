@@ -56,8 +56,21 @@ import {
 } from './catalog-search.js';
 import { workspaceCollectPowerBiScanner } from './workspace-powerbi-scanner.js';
 import type { ScannerExpectedItemsInput, ScannerStageEnvelope } from './powerbi-scanner-projection.js';
+import { workspaceCollectAccessPolicyEvidence, type PolicyCollectionResult } from './workspace-policy-evidence.js';
 
 const udf = new UserDataFunctions();
+
+udf.func(
+  'workspaceCollectAccessPolicyEvidence',
+  async (
+    ctx: RayfinContext<AtlasSchema, AudienceType.Fabric>,
+    protocolVersion: 1,
+    workspaceId: SyncUuidInput,
+    snapshotId: SyncUuidInput,
+  ): Promise<PolicyCollectionResult> =>
+    workspaceCollectAccessPolicyEvidence(ctx, protocolVersion, workspaceId, snapshotId),
+  [],
+);
 
 udf.func('syncGraphStart', async (ctx: RayfinContext<AtlasSchema>, input: GraphStartInput): Promise<GraphResponse> =>
   graphStart(ctx, input), []);

@@ -20,6 +20,13 @@ import { AccessEvidenceInspector } from "../components/AccessEvidenceInspector";
 import { AccessWhatIf } from "../components/AccessWhatIf";
 import { useDesktopEvidence } from "../use-desktop-evidence";
 import { ACCESS_SOURCE_LABEL as SOURCE_LABEL, WHAT_IF_NOTICE } from "../access-what-if";
+import { isFeatureEnabled } from "../feature-flags";
+import {
+  collectStoredPolicyEvidence, useStoredPolicyEvidence, type PolicyEvidenceLoader,
+} from "../access-policy-evidence-source";
+import {
+  POLICY_DOCS, POLICY_LABELS, POLICY_LIMITATION,
+} from "../../../rayfin/functions/src/policy-evidence-contract";
 import {
   appendAccessReviewEvent,
   clearAccessReview,
@@ -45,6 +52,8 @@ import {
   matchesAccessCoverage,
   parseAccessCoverageFilter,
   unknownAccessLayerSummary,
+  withStoredPolicyEvidence,
+  storedPolicySummary,
   type AccessCoverageFilter,
 } from "../access-coverage";
 import {
@@ -675,6 +684,7 @@ function reviewSummary(
     `Evaluated layers: ${evaluatedAccessLayers(row.coverage)}`,
     `Layer evidence: ${accessLayerSummary(row.coverage)}`,
     `Unknown or incomplete layers: ${unknownAccessLayerSummary(row.coverage)}`,
+    `Stored policy context: ${storedPolicySummary(row.coverage)}`,
     `Workspace ID: ${row.coverage.workspaceId ?? "Not recorded"}`,
     `Snapshot ID: ${row.coverage.snapshotId ?? "Not recorded"}`,
     `Snapshot observed at: ${row.coverage.observedAt ?? "Not recorded"}`,
@@ -895,6 +905,27 @@ export function AccessReviewDetailPanel({
             </button>
           )}
         </section>
+
+        {row.coverage.policyEvidence?.length ? (
+          <section aria-labelledby="stored-policy-context-heading">
+            <h3 id="stored-policy-context-heading" className="text-300 font-semibold">Stored workspace policy context</h3>
+            <p className="mt-s text-200 leading-300">{POLICY_LIMITATION}</p>
+            <ul className="mt-m grid gap-s">
+              {row.coverage.policyEvidence.map((record) => (
+                <li key={record.id} className="rounded-lg border border-border p-m text-200 leading-300">
+                  <p className="font-semibold">{POLICY_LABELS[record.kind]} · {record.coverage}</p>
+                  {record.inboundPublicAction && <p>Inbound public-network default: {record.inboundPublicAction}</p>}
+                  {record.outboundPublicAction && <p>Outbound public-network default: {record.outboundPublicAction}</p>}
+                  {record.externalSharesBypassAction && <p>External-share network bypass default: {record.externalSharesBypassAction}</p>}
+                  <p>Observation: {record.observedAt ?? "Not observed"} · Attempt: {record.attemptedAt}</p>
+                  <p>Reason: {record.reason} · Identity: {record.collectorIdentity}</p>
+                  <a href={POLICY_DOCS[record.kind]} target="_blank" rel="noopener noreferrer"
+                    className="atlas-control inline-flex items-center text-brand-foreground underline">Verified source contract</a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
 
         {!readOnly && (
         <section
@@ -1175,6 +1206,7 @@ export interface AccessViewProps {
   initialPrincipalId?: string;
   initialFilters?: SavedViewFilters;
   onStateChange?: (navigation: AtlasNavigation) => void;
+  policyEvidenceLoader?: PolicyEvidenceLoader;
 }
 
 export function AccessView({
@@ -1182,6 +1214,7 @@ export function AccessView({
   initialPrincipalId,
   initialFilters,
   onStateChange,
+  policyEvidenceLoader,
 }: AccessViewProps = {}) {
   const {
     data,
@@ -1192,13 +1225,24 @@ export function AccessView({
     savedViewsError,
     addSavedView,
     removeSavedView,
+    canSync,
   } = useAtlas();
+  const policyEnabled = isFeatureEnabled("fabric-policies");
+  const [policyRefresh, setPolicyRefresh] = useState(0);
+  const [policyCollecting, setPolicyCollecting] = useState(false);
+  const [policyMessage, setPolicyMessage] = useState("");
+  const policyState = useStoredPolicyEvidence(
+    data.workspace.fabricId, data.workspace.snapshotId,
+    policyEnabled && (!isPreview || !!policyEvidenceLoader), policyEvidenceLoader, policyRefresh,
+  );
   const rows = useMemo(
     () =>
       buildAccessReviewRows(data).filter(
         (row) => row.effectiveAccess !== "none",
-      ),
-    [data],
+      ).map((row) => ({
+        ...row, coverage: withStoredPolicyEvidence(row.coverage, policyState.records),
+      })),
+    [data, policyState.records],
   );
   const summary = useMemo(() => summarizeAccessReview(rows), [rows]);
   const reviewScopeKey = `${isPreview ? "preview" : "live"}\u0000${data.workspace.fabricId}\u0000${currentUser.id}`;
@@ -1869,6 +1913,37 @@ export function AccessView({
           </span>
         </div>
       </Card>
+
+      {policyEnabled && (
+        <Card className="p-l">
+          <h2 className="text-300 font-semibold">Optional policy evidence</h2>
+          <p className="mt-s text-200 leading-300">{POLICY_LIMITATION}</p>
+          <p role="status" className="mt-s text-200 text-muted-foreground">
+            {policyState.status === "loading" ? "Loading stored evidence…" :
+              policyState.status === "unavailable" ? "Stored evidence unavailable; grant truth is unchanged." :
+              policyState.records.length ? `${policyState.records.length} stored context records for this snapshot.` :
+              "No stored evidence for this snapshot. Restrictions remain unknown."}
+            {policyMessage ? ` ${policyMessage}` : ""}
+          </p>
+          {!isPreview && canSync && mode !== "what-if" && (
+            <button type="button" disabled={policyCollecting || !data.workspace.snapshotId}
+              onClick={() => {
+                setPolicyCollecting(true);
+                setPolicyMessage("");
+                void collectStoredPolicyEvidence(data.workspace.fabricId, data.workspace.snapshotId!)
+                  .then((result) => {
+                    setPolicyMessage(result.status === "off" ? "Server collection gate is off; no Fabric requests or evidence writes were made." :
+                      "Workspace policy context stored. Central evaluation remains blocked.");
+                    setPolicyRefresh((value) => value + 1);
+                  }).catch(() => setPolicyMessage("Optional collection unavailable; the catalog was not changed."))
+                  .finally(() => setPolicyCollecting(false));
+              }}
+              className="atlas-control mt-m rounded-lg border border-border px-m text-300 font-semibold hover:bg-accent disabled:opacity-50">
+              {policyCollecting ? "Collecting context…" : "Collect workspace policy context (read-only Fabric)"}
+            </button>
+          )}
+        </Card>
+      )}
 
       {reviewError && !selectedRow && (
         <div

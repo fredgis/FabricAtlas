@@ -50,11 +50,13 @@ describe('durable synchronization data policies', () => {
       statement.declarationList.declarations).find((declaration) => declaration.name.getText() === 'schema')!
       .initializer as ts.ArrayLiteralExpression;
     const names = schemaList.elements.map((element) => element.getText());
-    expect(names).toHaveLength(24);
-    expect(names.slice(-9, -6)).toEqual(ENTITIES);
-    expect(names.at(-6)).toBe('WorkspaceScope');
-    expect(names.at(-5)).toBe('SynchronizerAuthority');
-    expect(names.slice(-4, -1)).toEqual(['SyncRootRun', 'SyncPayloadManifest', 'SyncPayloadChunk']);
+    expect(names).toHaveLength(25);
+    expect(names).toContain('AccessPolicyEvidence');
+    const priorNames = names.filter((name) => name !== 'AccessPolicyEvidence');
+    expect(priorNames.slice(-9, -6)).toEqual(ENTITIES);
+    expect(priorNames.at(-6)).toBe('WorkspaceScope');
+    expect(priorNames.at(-5)).toBe('SynchronizerAuthority');
+    expect(priorNames.slice(-4, -1)).toEqual(['SyncRootRun', 'SyncPayloadManifest', 'SyncPayloadChunk']);
     expect(names.at(-1)).toBe('ItemRelationsEvidenceSnapshot');
     expect(names.slice(0, 3)).toEqual(['Workspace', 'FabricItem', 'LineageEdge']);
     for (const entity of ENTITIES) {

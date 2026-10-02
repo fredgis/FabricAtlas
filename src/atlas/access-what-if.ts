@@ -3,6 +3,7 @@ import {
   ACCESS_LAYER_LABEL,
   GRANT_ONLY_NOTICE,
   unknownAccessLayerSummary,
+  storedPolicySummary,
   type GrantEvidenceLayer,
 } from "./access-coverage";
 import { csvCell } from "./access-export";
@@ -159,6 +160,7 @@ export function accessWhatIfToMarkdown(result: AccessWhatIfResult): string {
     "Other data-plane and row/column restrictions: Not evaluated",
     `Assessment coverage: ${ACCESS_EVIDENCE_LABEL[coverage.state]}`,
     "Restrictions: Not evaluated",
+    `Stored policy context (not modeled): ${storedPolicySummary(coverage)}`,
     "",
     whatIfOutcomeDescription(result),
     "",
@@ -176,7 +178,7 @@ export function accessWhatIfToCsv(result: AccessWhatIfResult): string {
     "Principal", "Principal ID", "Principal resolution", "Item", "Item ID", "Current highest recorded grant",
     "Simulated highest recorded grant", "Modeled layers", "Unknown or incomplete layers",
     "Excluded recorded paths", "Remaining recorded paths", "Restrictions", "Coverage",
-    "Workspace ID", "Snapshot ID", "Snapshot observed at", "Limitation",
+    "Workspace ID", "Snapshot ID", "Snapshot observed at", "Limitation", "Policy context (not modeled)",
   ];
   const values = [
     result.row.principalRef, result.row.principalId ?? "Not recorded", result.row.principalResolution,
@@ -188,6 +190,7 @@ export function accessWhatIfToCsv(result: AccessWhatIfResult): string {
     "Not evaluated", ACCESS_EVIDENCE_LABEL[coverage.state],
     coverage.workspaceId ?? "Not recorded", coverage.snapshotId ?? "Not recorded",
     coverage.observedAt ?? "Not recorded", `${WHAT_IF_NOTICE} ${GRANT_ONLY_NOTICE}`,
+    storedPolicySummary(coverage),
   ];
   return [headers, values].map((line) => line.map(csvCell).join(",")).join("\r\n");
 }

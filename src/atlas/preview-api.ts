@@ -50,14 +50,15 @@ export const PREVIEW_API_REGISTRY: Record<
     id: "fabric-policies",
     productName: "Policies in Fabric",
     maturity: "preview",
-    apiVersion: "Public REST contract, version not stated",
+    apiVersion: "Workspace settings REST v1; central evaluation contract unverified",
     documentationUrl:
       "https://learn.microsoft.com/en-us/fabric/governance/fabric-policies-rest-api",
     evidenceBoundary:
-      "Policy evaluation evidence does not prove that every data-plane restriction was collected.",
+      "Verified workspace settings are context only. Central evaluation remains blocked until its operation contract is published and verified.",
     limitations: [
       "OneLake role membership and DLP restriction state have no public read API.",
       "Tenant and region availability must be verified.",
+      "The conceptual evaluation guide does not specify an endpoint, request/response schema or operation-specific permission contract.",
     ],
     lastVerifiedAt: "2026-10-02",
   },

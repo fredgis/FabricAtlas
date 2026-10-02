@@ -71,6 +71,7 @@ const SHARED_WORKSPACE_ENTITIES = [
   ["GovernancePolicy", "workspace_id"],
   ["GovernanceException", "workspace_id"],
   ["SyncJob", "workspace_id"],
+  ["AccessPolicyEvidence", "workspace_id"],
 ] as const;
 
 function scopeApi(): ScopeApi {
