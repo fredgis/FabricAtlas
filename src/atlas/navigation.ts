@@ -18,7 +18,8 @@ export type GovernanceSection =
   | "changes"
   | "history"
   | "coverage"
-  | "posture";
+  | "posture"
+  | "policies-ai";
 
 export type WorkspaceSection =
   | "workspace"

@@ -69,6 +69,8 @@ import {
 import { useAtlas } from "../store";
 import { Card, SectionLabel, cn } from "../ui";
 import { SensitivityView } from "./Sensitivity";
+import { PoliciesAiSection } from "./PoliciesAi";
+import { buildAiGovernanceInventory } from "../policies-ai";
 
 const SEVERITY_META: Record<
   GovernanceSeverity,
@@ -247,6 +249,7 @@ export function GovernanceCenterView({
 }) {
   const {
     data,
+    isPreview,
     history,
     historyLoading,
     historyError,
@@ -635,6 +638,13 @@ export function GovernanceCenterView({
       ).length,
       icon: Gauge,
     },
+    {
+      id: "policies-ai",
+      label: "Policies & AI",
+      detail: "Observed metadata, not an exposure verdict",
+      count: buildAiGovernanceInventory(data).length,
+      icon: ShieldCheck,
+    },
   ];
 
   const currentFilters = useMemo<SavedViewFilters>(
@@ -932,7 +942,7 @@ export function GovernanceCenterView({
 
         <Tabs.List
           aria-label="Governance Center sections"
-          className="grid gap-s border-t border-border bg-secondary/55 p-s sm:grid-cols-2 xl:grid-cols-5"
+          className="grid gap-s border-t border-border bg-secondary/55 p-s sm:grid-cols-2 xl:grid-cols-3"
         >
           {tabs.map(({ id, label, detail, count, icon: Icon }) => (
             <Tabs.Trigger key={id} value={id} asChild>
@@ -1112,6 +1122,27 @@ export function GovernanceCenterView({
           />
         </motion.div>
       </Tabs.Content>
+      <Tabs.Content value="policies-ai" asChild>
+        <div>
+          <PoliciesAiSection
+            data={data}
+            previous={historyIsCurrent ? history.snapshots.find((snapshot) => snapshot.snapshotId === canonicalSnapshotIds[1]) : undefined}
+            current={historyIsCurrent ? history.snapshots.find((snapshot) => snapshot.snapshotId === canonicalSnapshotIds[0]) : undefined}
+            historyLoading={historyLoading}
+            historyError={historyError}
+            isPreview={isPreview}
+            onNavigate={onNavigate}
+            onCompare={(previousId, currentId) => {
+              setPreviousSnapshotId(previousId);
+              setCurrentSnapshotId(currentId);
+              setChangeSearch("");
+              setChangeDomain("schema");
+              setSection("changes");
+            }}
+          />
+        </div>
+      </Tabs.Content>
+
     </div>
     </Tabs.Root>
   );

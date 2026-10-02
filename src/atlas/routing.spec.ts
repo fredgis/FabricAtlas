@@ -2,6 +2,16 @@ import { describe, expect, it } from "vitest";
 import { parseAtlasLocation, urlForNavigation } from "./routing";
 
 describe("Atlas routing", () => {
+  it("round-trips the Policies & AI local tab without introducing a new app route", () => {
+    const url = urlForNavigation({ pathname: "/", search: "" }, {
+      tab: "governance", focus: { requestId: "ignored", governanceSection: "policies-ai",
+        filters: { section: "policies-ai" } },
+    });
+    expect(url).toBe("/?governance.section=policies-ai#governance");
+    expect(parseAtlasLocation({ hash: "#governance", search: "?governance.section=policies-ai" }))
+      .toMatchObject({ tab: "governance", focus: { governanceSection: "policies-ai" } });
+  });
+
   it("round-trips namespaced governance state", () => {
     const url = urlForNavigation(
       { pathname: "/", search: "?ctid=tenant" },

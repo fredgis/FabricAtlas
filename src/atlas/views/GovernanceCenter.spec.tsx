@@ -31,6 +31,7 @@ describe("GovernanceCenterView", () => {
     expect(screen.getByRole("tab", { name: /History/ })).toBeVisible();
     expect(screen.getByRole("tab", { name: /Coverage/ })).toBeVisible();
     expect(screen.getByRole("tab", { name: /Posture/ })).toBeVisible();
+    expect(screen.getByRole("tab", { name: /Policies & AI/ })).toBeVisible();
     expect(
       screen.getByRole("heading", {
         name: "Your governance baseline is ready",
@@ -68,6 +69,17 @@ describe("GovernanceCenterView", () => {
 
     fireEvent.click(actions[0]);
     expect(onNavigate).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens Policies & AI and persists the real local tab in navigation state", async () => {
+    const onStateChange = vi.fn();
+    render(<AtlasProvider isPreview><GovernanceCenterView onNavigate={vi.fn()} onStateChange={onStateChange} /></AtlasProvider>);
+    fireEvent.click(screen.getByRole("tab", { name: /Policies & AI/ }));
+    expect(screen.getByRole("heading", { name: "Policies & AI evidence" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Watchlists unavailable" })).toBeDisabled();
+    await waitFor(() => expect(onStateChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      focus: expect.objectContaining({ governanceSection: "policies-ai", filters: { section: "policies-ai" } }),
+    })));
   });
 
   it("shows the two-snapshot requirement in Change Center preview", async () => {

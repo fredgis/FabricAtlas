@@ -60,6 +60,7 @@ const GOVERNANCE_SECTIONS = new Set([
   "history",
   "coverage",
   "posture",
+  "policies-ai",
 ]);
 const GOVERNANCE_SEVERITIES = new Set([
   "all",
