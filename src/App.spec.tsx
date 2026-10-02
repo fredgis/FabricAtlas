@@ -19,6 +19,10 @@ import { workspaceDetailLabel } from "@/atlas/workspace-display";
 import { AtlasProvider } from "@/atlas/store";
 import { ThemeContext } from "@/hooks/theme.context";
 
+vi.mock("@/atlas/components/PostureRadar", () => ({
+    PostureRadar: () => <figure aria-label="Governance posture radar" />,
+}));
+
 function renderApp() {
     return render(
         <ThemeContext.Provider value={{ isDark: false, toggleTheme: () => undefined }}>

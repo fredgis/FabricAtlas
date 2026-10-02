@@ -22,6 +22,12 @@ function choosePair(id = mixedRow.id) {
   fireEvent.change(screen.getByRole("combobox", { name: "Recorded grant pair" }), {
     target: { value: id },
   });
+  showAdvancedPaths();
+}
+
+function showAdvancedPaths() {
+  const summary = screen.getByText("Advanced: paths, provenance and limits");
+  if (!summary.closest("details")?.open) fireEvent.click(summary);
 }
 
 afterEach(() => {
@@ -31,6 +37,18 @@ afterEach(() => {
 });
 
 describe("read-only grant What-if UI", () => {
+  it("shows strongest grants and modeled layers first, keeping detailed paths collapsed", () => {
+    render(<AccessWhatIf rows={rows} row={mixedRow} onSelect={vi.fn()} onInspect={vi.fn()} />);
+    expect(screen.getByText("Current strongest recorded grant")).toBeVisible();
+    expect(screen.getByText("Simulated result")).toBeVisible();
+    expect(screen.getByRole("region", { name: "Modeled grant layers" })).toBeVisible();
+    expect(screen.getByText("Advanced: paths, provenance and limits").closest("details")).not.toHaveAttribute("open");
+    expect(screen.getByRole("checkbox", { name: /Item grants/ })).not.toBeVisible();
+    expect(screen.getByText(/No Fabric permissions are changed/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Export What-if CSV" })).toBeVisible();
+    showAdvancedPaths();
+    expect(screen.getByRole("checkbox", { name: /Item grants/ })).toBeVisible();
+  });
   it("copies grant evidence without personal decisions or notes in the read-only inspector", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
@@ -90,11 +108,13 @@ describe("read-only grant What-if UI", () => {
 
   it("resets exclusions on pair, source snapshot and mode changes", () => {
     const rendered = render(<AccessWhatIf rows={rows} row={mixedRow} onSelect={vi.fn()} onInspect={vi.fn()} />);
+    showAdvancedPaths();
     fireEvent.click(screen.getByRole("button", { name: "Exclude all recorded item grants" }));
     expect(screen.getByRole("checkbox", { name: /Item grants/ })).toBeChecked();
     rendered.rerender(<AccessWhatIf rows={rows} row={{
       ...mixedRow, coverage: { ...mixedRow.coverage, snapshotId: "new-snapshot" },
     }} onSelect={vi.fn()} onInspect={vi.fn()} />);
+    showAdvancedPaths();
     expect(screen.getByRole("checkbox", { name: /Item grants/ })).not.toBeChecked();
     rendered.unmount();
     renderView();
@@ -106,6 +126,7 @@ describe("read-only grant What-if UI", () => {
     fireEvent.click(screen.getByRole("button", { name: "Exclude all workspace-inherited grants" }));
     fireEvent.click(screen.getByRole("button", { name: "Review matrix" }));
     fireEvent.click(screen.getByRole("button", { name: "What-if" }));
+    showAdvancedPaths();
     expect(screen.getAllByRole("checkbox").every((input) => !(input as HTMLInputElement).checked)).toBe(true);
   });
 
@@ -116,7 +137,7 @@ describe("read-only grant What-if UI", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Evidence coverage" }), { target: { value: "denied" } });
     expect(screen.getByText(/No recorded grant pairs match the filters/)).toBeVisible();
     expect(screen.queryByRole("button", { name: "Export What-if Markdown" })).not.toBeInTheDocument();
-    expect(screen.queryByText("Simulated highest recorded grant")).not.toBeInTheDocument();
+    expect(screen.queryByText("Simulated result")).not.toBeInTheDocument();
   });
 
   it("downloads honest Markdown and CSV scenario summaries without altering source rows", async () => {

@@ -1,19 +1,16 @@
-import { useMemo } from "react";
+import { lazy, Suspense, useMemo } from "react";
 import type {
   AtlasNavigation,
   Tab,
 } from "@/atlas/navigation";
 import {
-  Activity,
   AlertTriangle,
   ArrowRight,
   Boxes,
   Clock3,
-  FolderTree,
   LockKeyhole,
   ShieldCheck,
   Users,
-  Waypoints,
 } from "lucide-react";
 import { useAtlas } from "../store";
 import {
@@ -34,6 +31,9 @@ import { workspaceDetailLabel } from "../workspace-display";
 import { summarizeHealth } from "../health-summary";
 import { ScoreMeter } from "../components/ScoreMeter";
 import { scoreBand } from "../components/score-style";
+import { PageHeader } from "../components/PageHeader";
+
+const PostureRadar = lazy(() => import("../components/PostureRadar").then((module) => ({ default: module.PostureRadar })));
 
 const JOB_TONE: Record<JobStatus, string> = {
   completed: "bg-status-healthy",
@@ -298,145 +298,29 @@ export function OverviewView({
   return (
     <section
       aria-labelledby="overview-title"
-      className="atlas-content-frame flex flex-col gap-xxl"
+      className="atlas-content-frame flex min-w-0 flex-col gap-l"
     >
-      <Card className="atlas-overview-hero overflow-hidden">
-        <div className="grid lg:grid-cols-5">
-          <div className="flex flex-col justify-between gap-xl p-l sm:p-xxl lg:col-span-3">
-            <div>
-              <p className="text-200 font-semibold text-brand-foreground">Workspace overview</p>
-              <h1
-                id="overview-title"
-                className="atlas-overview-title mt-s break-words font-heading text-600 font-semibold leading-600 sm:text-hero-700 sm:leading-hero-700"
-              >
-                {data.workspace.displayName || "Fabric workspace"}
-              </h1>
-              <p className="atlas-overview-copy mt-s text-300 leading-300 text-muted-foreground">
-                Review this workspace's inventory, governance gaps and recent activity.
-              </p>
-              {workspaceDetails.length > 0 && (
-                <p className="mt-s text-200 text-muted-foreground">
-                  {workspaceDetails.join(" · ")}
-                </p>
-              )}
-              <dl className="mt-xl flex flex-wrap gap-x-xxl gap-y-m" aria-label="Workspace inventory">
-                {[
-                  ["Fabric items", items.length],
-                  ["Tables, columns & measures", assetCount],
-                  ["Lineage links", edges.length],
-                ].map(([label, value]) => (
-                  <div key={label}>
-                    <dt className="text-200 text-muted-foreground">{label}</dt>
-                    <dd className="mt-xs font-numeric text-500 font-semibold tabular-nums">{value}</dd>
-                  </div>
-                ))}
-              </dl>
+      <PageHeader title={data.workspace.displayName || "Fabric workspace"} titleId="overview-title"
+        purpose="Inventory, governance gaps and recent activity."
+        actions={<nav aria-label="Overview destinations" className="flex flex-wrap gap-s">
+          {([["map", "Map & lineage"], ["catalog", "Catalog"], ["access", "Access"]] as const).map(([tab, label]) => (
+            <button key={tab} type="button" onClick={() => onOpen(tab)}
+              className="atlas-control rounded-md border border-border bg-card px-m text-200 font-semibold hover:bg-accent">{label}</button>
+          ))}
+        </nav>} />
+      <div className="flex flex-wrap items-center justify-between gap-l border-y border-border px-l py-m">
+        <dl className="flex flex-wrap gap-x-xxl gap-y-s" aria-label="Workspace inventory">
+          {[["Fabric items", items.length], ["Tables, columns & measures", assetCount], ["Lineage links", edges.length]].map(([label, value]) => (
+            <div key={label} className="flex items-baseline gap-s">
+              <dt className="text-200 text-muted-foreground">{label}</dt>
+              <dd className="font-numeric text-300 font-semibold">{value}</dd>
             </div>
-
-            <nav
-              aria-label="Overview destinations"
-              className="atlas-toolbar flex flex-wrap"
-            >
-              <button
-                type="button"
-                onClick={() => onOpen("map")}
-                className="group inline-flex items-center justify-between gap-s rounded-md bg-primary px-l py-m text-300 font-semibold text-primary-foreground shadow-fabric-2 transition-colors hover:bg-primary-hover"
-              >
-                <span className="inline-flex items-center gap-s">
-                  <Waypoints className="icon-size-200" aria-hidden="true" />
-                  Map &amp; lineage
-                </span>
-                <ArrowRight
-                  className="icon-size-200 transition-transform group-hover:translate-x-xs motion-reduce:transition-none"
-                  aria-hidden="true"
-                />
-              </button>
-              <button
-                type="button"
-                onClick={() => onOpen("catalog")}
-                className="group inline-flex items-center justify-between gap-s rounded-md border border-border bg-card px-l py-m text-300 font-semibold transition-colors hover:border-primary/40 hover:bg-accent"
-              >
-                <span className="inline-flex items-center gap-s">
-                  <FolderTree className="icon-size-200" aria-hidden="true" />
-                  Catalog
-                </span>
-                <ArrowRight
-                  className="icon-size-200 text-muted-foreground transition-transform group-hover:translate-x-xs motion-reduce:transition-none"
-                  aria-hidden="true"
-                />
-              </button>
-              <button
-                type="button"
-                onClick={() => onOpen("access")}
-                className="group inline-flex items-center justify-between gap-s rounded-md border border-border bg-card px-l py-m text-300 font-semibold transition-colors hover:border-primary/40 hover:bg-accent"
-              >
-                <span className="inline-flex items-center gap-s">
-                  <ShieldCheck className="icon-size-200" aria-hidden="true" />
-                  Access
-                </span>
-                <ArrowRight
-                  className="icon-size-200 text-muted-foreground transition-transform group-hover:translate-x-xs motion-reduce:transition-none"
-                  aria-hidden="true"
-                />
-              </button>
-            </nav>
-          </div>
-
-          <aside className="flex flex-col justify-center gap-xl border-t border-border p-l sm:p-xxl lg:col-span-2 lg:border-l lg:border-t-0">
-            <div className="flex items-center gap-l">
-              <span
-                className={`relative flex icon-size-600 shrink-0 items-center justify-center rounded-full border ${pulse.className}`}
-                aria-hidden="true"
-              >
-                <Activity className="icon-size-300" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <h2 className="text-300 font-semibold">Assessed item health</h2>
-                <div className="mt-xs flex flex-wrap items-baseline gap-s">
-                  <span className="atlas-score font-numeric text-600 font-semibold leading-600" data-score-band={scoreBand(healthPercentage)}>
-                    {healthPercentage == null ? "Not assessed" : `${healthPercentage}%`}
-                  </span>
-                  <span className="text-300 font-semibold">{pulse.label}</span>
-                </div>
-                <p className="mt-xs text-200 text-muted-foreground">
-                  {health.assessed
-                    ? `${health.healthy} of ${health.assessed} assessed items healthy`
-                    : "No collected health status is available yet."}
-                </p>
-                <div className="mt-m">
-                  <ScoreMeter label="Assessed item health" value={healthPercentage} />
-                </div>
-                <p className="mt-s text-200 text-muted-foreground">
-                  Health coverage: <span className="atlas-score font-semibold" data-score-band={scoreBand(health.coveragePercentage)}>{health.coveragePercentage == null ? "Not applicable" : `${health.coveragePercentage}%`}</span>
-                  {" "}({health.assessed} of {health.total} items assessed).
-                  {health.unknown > 0 && ` ${health.unknown} unknown statuses are excluded from the health score.`}
-                </p>
-              </div>
-            </div>
-
-            <div className="h-px bg-border" />
-
-            <div className="flex items-center gap-l">
-              <span className="flex icon-size-600 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <Clock3 className="icon-size-300" aria-hidden="true" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-200 text-muted-foreground">Last synchronized</p>
-                <div className="mt-xs text-400 font-semibold">
-                  {syncFreshness}
-                </div>
-                <p className="mt-xs truncate text-200 text-muted-foreground">
-                  {latestSync?.triggeredBy
-                    ? `Triggered by ${latestSync.triggeredBy}`
-                    : latestSync
-                      ? `Latest run ${latestSync.status}`
-                      : "No sync runs recorded"}
-                </p>
-              </div>
-            </div>
-          </aside>
-        </div>
-      </Card>
+          ))}
+        </dl>
+        <span className="text-200 text-muted-foreground" title={[...workspaceDetails, latestSync?.triggeredBy].filter(Boolean).join(" · ")}>
+          Last synchronized: {syncFreshness}
+        </span>
+      </div>
 
       <section aria-labelledby="posture-targets-title">
         <div className="mb-m flex items-end justify-between gap-l">
@@ -476,7 +360,12 @@ export function OverviewView({
             {governancePolicyError} Open posture to retry. Raw scores remain visible below.
           </p>
         )}
-        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-3 xl:grid-cols-6">
+        <Card className="grid min-w-0 items-center gap-l p-m lg:grid-cols-2">
+          <Suspense fallback={<p role="status" className="p-l text-200 text-muted-foreground">Loading posture chart…</p>}>
+            <PostureRadar pillars={posture.pillars} selectedPillar="documentation" targetsAvailable={targetsAvailable}
+              onSelect={(pillar) => onOpen({ tab: "governance", focus: { requestId: crypto.randomUUID(), governanceSection: "posture", filters: { pillar } } })} />
+          </Suspense>
+          <div className="divide-y divide-border">
           {posture.pillars.map((pillar) => {
             const previous = previousPosture?.pillars.find(
               (candidate) => candidate.pillar === pillar.pillar,
@@ -499,18 +388,18 @@ export function OverviewView({
                     },
                   })
                 }
-                className="min-w-0 bg-card p-m text-left transition-colors hover:bg-accent focus-visible:ring-inset focus-visible:ring-offset-0"
+                className="grid w-full min-w-0 grid-cols-[1fr_auto] items-center gap-x-l gap-y-xs p-s text-left transition-colors hover:bg-accent focus-visible:ring-inset focus-visible:ring-offset-0"
               >
                 <div className="text-200 font-semibold capitalize">
                   {pillar.pillar}
                 </div>
-                <div className="atlas-score mt-xs font-numeric text-500 font-semibold" data-score-band={scoreBand(pillar.score)}>
+                <div className="atlas-score font-numeric text-400 font-semibold" data-score-band={scoreBand(pillar.score)}>
                   {pillar.score == null ? "N/A" : `${pillar.score}%`}
                 </div>
-                <div className="mt-s">
+                <div>
                   <ScoreMeter label={`${pillar.pillar} posture score`} value={pillar.score} />
                 </div>
-                <div className="mt-xs text-200 text-muted-foreground">
+                <div className="text-200 text-muted-foreground">
                   {targetsAvailable ? `Target ${pillar.target}%` : "Target unavailable"}
                   {delta == null
                     ? ""
@@ -519,7 +408,16 @@ export function OverviewView({
               </button>
             );
           })}
-        </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-m border-t border-border p-s lg:col-span-2">
+            <span className="text-200 font-semibold">Assessed item health</span>
+            <span className="atlas-score font-numeric text-300 font-semibold" data-score-band={scoreBand(healthPercentage)}>
+              {healthPercentage == null ? "Not assessed" : `${healthPercentage}%`}
+            </span>
+            <div className="min-w-0 flex-1"><ScoreMeter label="Assessed item health" value={healthPercentage} /></div>
+            <span className="text-200 text-muted-foreground">{pulse.label} · {health.assessed} of {health.total} items assessed</span>
+          </div>
+        </Card>
       </section>
 
       <section aria-labelledby="priority-signals-title">
@@ -534,7 +432,7 @@ export function OverviewView({
           </span>
         </div>
         <Card className="overflow-hidden">
-          <div className="grid sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid sm:grid-cols-2">
             {riskSignals.map((signal) => {
               const Icon = signal.icon;
               return (
@@ -543,10 +441,10 @@ export function OverviewView({
                   key={signal.label}
                   onClick={() => onOpen(signal.target)}
                   aria-label={`${signal.label}: ${signal.value}. ${signal.detail}`}
-                  className="group flex items-center gap-m border-b border-border p-l text-left transition-colors hover:bg-accent sm:odd:border-r xl:border-b-0 xl:border-r xl:last:border-r-0"
+                  className="group flex items-center gap-m border-b border-border p-m text-left transition-colors hover:bg-accent sm:odd:border-r"
                 >
                   <span
-                    className={`flex icon-size-600 shrink-0 items-center justify-center rounded-xl bg-muted ${signal.tone}`}
+                    className={`flex icon-size-400 shrink-0 items-center justify-center ${signal.tone}`}
                   >
                     <Icon className="icon-size-200" aria-hidden="true" />
                   </span>
@@ -556,7 +454,7 @@ export function OverviewView({
                         {signal.label}
                       </span>
                       <span
-                        className={`font-numeric text-500 font-bold tabular-nums ${signal.tone}`}
+                        className={`font-numeric text-400 font-semibold tabular-nums ${signal.tone}`}
                       >
                         {signal.value}
                       </span>
@@ -576,7 +474,9 @@ export function OverviewView({
         </Card>
       </section>
 
-      <section aria-labelledby="governance-coverage-title">
+      <details className="rounded-lg border border-border">
+        <summary className="min-h-[var(--atlas-touch-target)] cursor-pointer px-l py-m text-300 font-semibold hover:bg-accent">Metadata coverage</summary>
+        <section aria-labelledby="governance-coverage-title" className="p-m">
         <div className="mb-m flex items-end justify-between gap-l">
           <div>
             <h2
@@ -681,7 +581,8 @@ export function OverviewView({
             </div>
           )}
         </Card>
-      </section>
+        </section>
+      </details>
 
       <section aria-labelledby="activity-mix-title">
         <div className="mb-m flex items-end justify-between gap-l">

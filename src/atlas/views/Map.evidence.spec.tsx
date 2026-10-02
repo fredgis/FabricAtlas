@@ -192,11 +192,35 @@ describe("Map & lineage unified evidence", () => {
     expect(new URL(window.location.href).searchParams.get("lineage")).toBe("items");
   });
 
+  it("restores the selected Lakehouse object view and inspector schema after Preview", async () => {
+    renderMap({ itemRelationsEnabled: true, loadItemRelationsEvidence: loadEvidence });
+    fireEvent.click(screen.getByLabelText(/^alpinerent_lakehouse, Lakehouse, healthy/));
+    fireEvent.click(screen.getByRole("button", { name: "objects" }));
+    expect(screen.getByRole("region", { name: "Selected object lineage relationships" })).toBeInTheDocument();
+    fireEvent.click(previewCheckbox());
+    await screen.findByText("Shared reference lakehouse");
+    expect(screen.getByRole("button", { name: "objects" })).toBeDisabled();
+    fireEvent.click(previewCheckbox());
+    expect(new URL(window.location.href).searchParams.get("lineage")).toBe("objects");
+    expect(screen.getByRole("region", { name: "Selected object lineage relationships" })).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Schema" }), { key: "Enter" });
+    expect(within(screen.getByRole("complementary", { name: "Item details inspector" }))
+      .getByRole("button", { name: /revenue_by_month/ })).toBeVisible();
+  });
+
+  it("keeps a Preview-only item inventory visible when no relations have been collected", async () => {
+    const { container } = renderMap({ itemRelationsEnabled: true, loadItemRelationsEvidence: loadNothing });
+    fireEvent.click(previewCheckbox());
+    await screen.findByText("No persisted Item Relations evidence for this workspace.");
+    expect(container.querySelectorAll("svg g:not([data-evidence-source]) > path")).toHaveLength(0);
+    expect(screen.getByLabelText(/^alpinerent_lakehouse, Lakehouse, healthy/)).toBeVisible();
+  });
+
   it("makes the real Preview switch and its authority boundary visible even while off", async () => {
     renderMap({ itemRelationsEnabled: true, loadItemRelationsEvidence: loadNothing });
     const toggle = previewCheckbox();
     expect(toggle).toHaveAttribute("aria-checked", "false");
-    expect(toggle).toHaveAccessibleDescription("Preview draws only Item Relations API lineage. Atlas snapshot lineage remains available when Preview is off and in Evidence.");
+    expect(toggle).toHaveAccessibleDescription("Preview shows item relations only. Turn it off to return to your Atlas view.");
     expect(toggle).toHaveClass("min-h-[var(--atlas-touch-target)]");
     expect(screen.getByRole("tablist", { name: "Map and lineage views" })).toHaveClass("atlas-line-tabs");
     expect(screen.getByText("80%")).toBeVisible();
@@ -266,9 +290,12 @@ describe("Map & lineage unified evidence", () => {
       ),
     ).toBeInTheDocument();
     expect(loader).toHaveBeenCalledWith(WORKSPACE, expect.any(AbortSignal));
-    expect(
-      screen.getByRole("note", { name: "Preview API information" }),
-    ).toBeInTheDocument();
+    const notice = screen.getByRole("note", { name: "Preview API information" });
+    expect(notice).not.toBeVisible();
+    fireEvent.click(screen.getByLabelText("Help: Map & lineage"));
+    expect(notice).toBeVisible();
+    fireEvent.keyDown(screen.getByLabelText("Help: Map & lineage"), { key: "Escape" });
+    expect(notice).not.toBeVisible();
     expect(new URL(window.location.href).searchParams.get("preview")).toBe(
       "item-relations",
     );
@@ -290,6 +317,15 @@ describe("Map & lineage unified evidence", () => {
     await waitFor(() =>
       expect(container.querySelectorAll(BETA_EDGES)).toHaveLength(4),
     );
+    for (const group of container.querySelectorAll(BETA_EDGES)) {
+      const coordinates = group.querySelector("path")!.getAttribute("d")!.match(/-?\d+(?:\.\d+)?/g)!.map(Number);
+      expect(coordinates[0]).toBeLessThan(coordinates[6]);
+      expect(group.querySelector("path")).toHaveAttribute("marker-end", expect.stringMatching(/^url\(#atlas-/));
+    }
+    for (const marker of container.querySelectorAll("marker")) {
+      expect(marker).toHaveAttribute("refX", "7");
+      expect(marker).toHaveAttribute("markerUnits", "userSpaceOnUse");
+    }
     expect(container.querySelectorAll("svg g:not([data-evidence-source]) > path")).toHaveLength(0);
     expect(lakehouse()).toHaveAccessibleName(
       "alpinerent_lakehouse, Lakehouse, healthy, direction conflict to review",

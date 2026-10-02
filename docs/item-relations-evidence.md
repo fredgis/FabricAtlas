@@ -78,6 +78,14 @@ Matching is case-insensitive; the raw `relationType` is always kept. Every
 graph edge also keeps the raw relation, `itemKey`, `dependentOnKey` and each
 query observation that reported it.
 
+The Preview graph uses these normalized directions for layout rather than
+Atlas's item-type columns. An upstream item appears to the left of its consumer
+even when the raw API IDs or the item types suggest the reverse. Stored external
+neighbours reserve positions before expansion. Cycles retain their original
+evidence, so a cycle necessarily has a return edge. Preview temporarily selects
+Items mode and restores the previous Atlas item/object mode when switched off.
+Missing Preview evidence shows inventory without any Atlas edges.
+
 ### Prior-evidence preservation
 
 Each query is one root item and one direction. A failed query can still carry a

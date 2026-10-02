@@ -80,6 +80,7 @@ import { SensitivityView } from "./Sensitivity";
 import { PoliciesAiSection } from "./PoliciesAi";
 import { buildAiGovernanceInventory } from "../policies-ai";
 import { groupFindingsByRule } from "../finding-groups";
+import { PageHeader } from "../components/PageHeader";
 
 const PostureRadar = lazy(() => import("../components/PostureRadar").then(
   (module) => ({ default: module.PostureRadar }),
@@ -297,7 +298,7 @@ export function GovernanceCenterView({
     focus?.governanceSection ??
     (typeof focus?.filters?.section === "string"
       ? (focus.filters.section as GovernanceSection)
-      : "findings");
+      : "posture");
   const [section, setSection] = useState<GovernanceSection>(initialSection);
   const [findingSearch, setFindingSearch] = useState(
     typeof focus?.filters?.search === "string" ? focus.filters.search : "",
@@ -600,6 +601,15 @@ export function GovernanceCenterView({
     icon: typeof ShieldCheck;
   }> = [
     {
+      id: "posture",
+      label: "Posture",
+      detail: "Targets by governance pillar",
+      count: currentPosture.pillars.filter(
+        (pillar) => pillar.score != null && pillar.score < pillar.target,
+      ).length,
+      icon: Gauge,
+    },
+    {
       id: "findings",
       label: "Findings",
       detail: "Actionable governance checks",
@@ -626,16 +636,6 @@ export function GovernanceCenterView({
       detail: "Metadata and protection gaps",
       count: coverage.metrics.filter((metric) => metric.state !== "complete").length,
       icon: Layers3,
-    },
-    {
-      id: "posture",
-      label: "Posture",
-      detail: "Targets by governance pillar",
-      count: currentPosture.pillars.filter(
-        (pillar) =>
-          pillar.score != null && pillar.score < pillar.target,
-      ).length,
-      icon: Gauge,
     },
     {
       id: "policies-ai",
@@ -739,13 +739,7 @@ export function GovernanceCenterView({
     }
   };
 
-  return (
-    <Tabs.Root
-      value={section}
-      onValueChange={(value) => setSection(value as GovernanceSection)}
-      asChild
-    >
-    <div className="atlas-content-frame flex flex-col gap-l p-l sm:p-xxl">
+  const priorityChanges = (
       <RadarPanel
         radar={radar}
         entries={radarEntries}
@@ -851,24 +845,13 @@ export function GovernanceCenterView({
           );
         }}
       />
+  );
+  return (
+    <Tabs.Root value={section} onValueChange={(value) => setSection(value as GovernanceSection)} asChild>
+    <div className="atlas-content-frame flex flex-col gap-l p-l sm:p-xxl">
       <Card className="min-w-0 overflow-hidden">
-        <div className="atlas-page-header atlas-fabric-hero">
-          <div className="flex flex-col gap-m lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-start gap-m">
-              <span className="atlas-brand-mark flex icon-size-600 shrink-0 items-center justify-center rounded-xl text-primary-foreground">
-                <ShieldCheck className="icon-size-300" aria-hidden="true" />
-              </span>
-              <div>
-                <SectionLabel>Govern / workspace assurance</SectionLabel>
-                <h1 className="mt-xxs font-heading text-500 font-bold leading-500">
-                  Governance Center
-                </h1>
-                <p className="mt-xxs text-200 text-muted-foreground">
-                  Review changes, controls and evidence across your workspace.
-                </p>
-              </div>
-            </div>
-            <div className="atlas-toolbar flex flex-wrap items-center gap-s">
+        <PageHeader title="Governance Center" purpose="Posture, findings and changes in this workspace."
+          actions={<>
               <SavedViewsMenu
                 views={savedViews.filter(
                   (view) => view.section === "governance",
@@ -883,7 +866,7 @@ export function GovernanceCenterView({
               />
               <span
                 className={cn(
-                  "rounded-full border px-m py-s text-200 font-semibold",
+                  "rounded-md border px-s py-xs text-200 font-semibold",
                   hasNewPriorityAlert
                     ? "border-signal-warning-foreground/20 bg-signal-warning-background text-signal-warning-foreground"
                     : "border-border bg-card text-muted-foreground",
@@ -893,9 +876,8 @@ export function GovernanceCenterView({
                   ? `${allRadarEntries.length} new priority alert${allRadarEntries.length === 1 ? "" : "s"}`
                   : "No new priority alert"}
               </span>
-            </div>
-          </div>
-        </div>
+          </>}
+        />
 
         <Tabs.List
           aria-label="Governance Center sections"
@@ -1061,6 +1043,12 @@ export function GovernanceCenterView({
       </Tabs.Content>
       </div>
       </Card>
+      <details className="rounded-lg border border-border">
+        <summary className="min-h-[var(--atlas-touch-target)] cursor-pointer px-l py-m text-300 font-semibold hover:bg-accent">
+          Latest priority changes{allRadarEntries.length ? ` (${allRadarEntries.length})` : ""}
+        </summary>
+        {priorityChanges}
+      </details>
     </div>
     </Tabs.Root>
   );

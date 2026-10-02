@@ -12,6 +12,10 @@ import { ThemeContext } from "@/hooks/theme.context";
 
 const SECOND_WORKSPACE = "9a2a1b5e-58e3-4c43-9a8f-1f7c6f3f2a10";
 
+vi.mock("@/atlas/components/PostureRadar", () => ({
+    PostureRadar: () => <figure aria-label="Governance posture radar" />,
+}));
+
 vi.mock("@/atlas/workspace-scope", async (importOriginal) => {
     const actual =
         await importOriginal<typeof import("@/atlas/workspace-scope")>();

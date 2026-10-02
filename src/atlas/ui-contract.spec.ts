@@ -12,6 +12,22 @@ function sourceFiles(directory: string): string[] {
 }
 
 describe("UI class contract", () => {
+  it("uses the compact shared header on every main screen", () => {
+    const root = resolve(process.cwd(), "src", "atlas", "views");
+    for (const view of ["Overview", "Map", "Catalog", "AssetCatalog", "GovernanceCenter", "Access", "Jobs", "WorkspaceHub", "About", "Sensitivity", "Config", "Comments"]) {
+      expect(readFileSync(join(root, `${view}.tsx`), "utf8"), view).toContain("<PageHeader");
+    }
+  });
+  it("keeps active-workspace switching in the global selector, not page bodies", () => {
+    const root = resolve(process.cwd(), "src", "atlas");
+    const bodies = [
+      ...sourceFiles(join(root, "views")).filter((file) => !file.endsWith("FirstSync.tsx")),
+      join(root, "components", "WorkspaceSynchronizationPanel.tsx"),
+    ];
+    for (const file of bodies) {
+      expect(readFileSync(file, "utf8"), relative(root, file)).not.toMatch(/<WorkspaceSelector|useWorkspaceSwitch|selectWorkspace\(/);
+    }
+  });
   it("keeps the custom type scale next to a text colour", () => {
     expect(cn("rounded-md text-200 font-semibold", "text-foreground")).toBe(
       "rounded-md text-200 font-semibold text-foreground",

@@ -295,7 +295,7 @@ body,
   --atlas-control-padding: 6px;
   --atlas-row-padding: 10px;
   --atlas-page-spacing: 24px;
-  --atlas-header-padding: 16px;
+  --atlas-header-padding: 12px;
   --atlas-card-min-height: 168px;
   --atlas-touch-target: 44px;
   --atlas-posture-chart-height: 360px;
@@ -313,7 +313,7 @@ body,
   --atlas-control-padding: 4px;
   --atlas-row-padding: 6px;
   --atlas-page-spacing: 16px;
-  --atlas-header-padding: 12px;
+  --atlas-header-padding: 8px;
   --atlas-card-min-height: 136px;
 }
 
@@ -338,6 +338,26 @@ body,
   gap: var(--spacing-m);
   padding-block: var(--atlas-header-padding);
   padding-inline: var(--spacing-l);
+}
+
+.atlas-help-trigger {
+  min-width: var(--atlas-control-height);
+  min-height: var(--atlas-control-height);
+}
+
+.atlas-help-trigger::-webkit-details-marker {
+  display: none;
+}
+
+.atlas-help-popover {
+  width: min(var(--atlas-field-width), 80vw);
+}
+
+@media (max-width: 640px) {
+  .atlas-help-trigger {
+    min-width: var(--atlas-touch-target);
+    min-height: var(--atlas-touch-target);
+  }
 }
 
 .atlas-row {

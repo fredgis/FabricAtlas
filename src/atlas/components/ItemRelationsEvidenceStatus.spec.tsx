@@ -38,6 +38,11 @@ function renderStatus(currentSnapshotId: string) {
 }
 
 describe("ItemRelationsEvidenceStatus", () => {
+  it("does not promise Atlas fallback when Preview evidence is missing", () => {
+    render(<ItemRelationsEvidenceStatus state={{ status: "empty" }} model={model} onRetry={() => undefined} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Atlas links stay hidden while Preview is on.");
+    expect(screen.getByRole("status")).not.toHaveTextContent("show Atlas snapshot lineage only");
+  });
   it("says when evidence was collected with an earlier Atlas snapshot", () => {
     renderStatus(CURRENT_SNAPSHOT);
 

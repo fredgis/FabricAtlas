@@ -3,6 +3,16 @@ import { describe, expect, it, vi } from "vitest";
 import { AtlasProvider, useAtlas } from "../store";
 import { OverviewView } from "./Overview";
 import { SAMPLE_DATA } from "../model";
+import type { PillarScore, PosturePillar } from "../posture";
+
+vi.mock("../components/PostureRadar", () => ({
+  PostureRadar: ({ pillars, onSelect }: { pillars: PillarScore[]; onSelect: (pillar: PosturePillar) => void }) => (
+    <figure aria-label="Governance posture radar">
+      <output aria-label="Radar scores">{pillars.map((pillar) => `${pillar.pillar}:${pillar.score}`).join(",")}</output>
+      <button onClick={() => onSelect("lineage")}>Review radar lineage</button>
+    </figure>
+  ),
+}));
 
 function GovernanceTargetButton() {
   const { governanceTargets, saveGovernanceTargets } = useAtlas();
@@ -16,12 +26,19 @@ function GovernanceTargetButton() {
 }
 
 describe("OverviewView navigation", () => {
-  it("keeps real inventory and navigation in the restrained hero with semantic score meters", () => {
+  it("shows real posture, compact inventory and direct navigation without competing hero cards", async () => {
     const onOpen = vi.fn();
     render(<AtlasProvider isPreview><OverviewView onOpen={onOpen} /></AtlasProvider>);
     const inventory = screen.getByLabelText("Workspace inventory");
     expect(within(inventory).getAllByRole("definition")[0]).toHaveTextContent(String(SAMPLE_DATA.items.length));
     expect(screen.getByRole("heading", { name: SAMPLE_DATA.workspace.displayName })).toBeVisible();
+    expect(screen.getByRole("heading", { name: SAMPLE_DATA.workspace.displayName }).closest("[data-slot='page-header']")).not.toBeNull();
+    expect(await screen.findByRole("figure", { name: "Governance posture radar" })).toBeVisible();
+    expect(screen.getByLabelText("Radar scores")).toHaveTextContent(/documentation:\d/);
+    fireEvent.click(screen.getByRole("button", { name: "Review radar lineage" }));
+    expect(onOpen).toHaveBeenLastCalledWith(expect.objectContaining({
+      tab: "governance", focus: expect.objectContaining({ governanceSection: "posture", filters: { pillar: "lineage" } }),
+    }));
     const destinations = screen.getByRole("navigation", { name: "Overview destinations" });
     fireEvent.click(within(destinations).getByRole("button", { name: "Map & lineage" }));
     expect(onOpen).toHaveBeenLastCalledWith("map");

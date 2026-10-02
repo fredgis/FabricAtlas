@@ -24,6 +24,7 @@ import {
 import { useAtlas } from "../store";
 import { isCatalogLayout, useDisplayPreference } from "../display-preferences";
 import { CatalogTable } from "../components/CatalogTable";
+import { PageHeader } from "../components/PageHeader";
 import { ItemCoveragePanel } from "../components/ItemCoveragePanel";
 import {
   Avatar,
@@ -324,39 +325,16 @@ export function CatalogView({
   return (
     <div className="atlas-content-frame p-xxl">
       <header className="mb-l overflow-hidden rounded-xl border border-border bg-card shadow-fabric-2">
-        <div className="atlas-page-header flex flex-col lg:flex-row lg:items-center">
-          <div className="min-w-0 flex-1">
-            <SectionLabel>Workspace inventory</SectionLabel>
-            <div className="mt-xs flex flex-wrap items-baseline gap-s">
-              <h1 className="text-600 font-bold leading-600">Catalog</h1>
-              <span className="text-300 text-muted-foreground">
-                {data.workspace.displayName}
-              </span>
-            </div>
-          </div>
-          <dl className="grid grid-cols-3 divide-x divide-border rounded-xl border border-border bg-secondary">
-            <div className="px-l py-s text-center">
-              <dt className="text-100 font-semibold uppercase tracking-wide text-muted-foreground">
-                Items
-              </dt>
-              <dd className="font-numeric text-400 font-bold">{items.length}</dd>
-            </div>
-            <div className="px-l py-s text-center">
-              <dt className="text-100 font-semibold uppercase tracking-wide text-muted-foreground">
-                Types
-              </dt>
-              <dd className="font-numeric text-400 font-bold">{groups.length}</dd>
-            </div>
-            <div className="px-l py-s text-center">
-              <dt className="text-100 font-semibold uppercase tracking-wide text-muted-foreground">
-                Showing
-              </dt>
-              <dd className="font-numeric text-400 font-bold">
-                {visible.length}
-              </dd>
-            </div>
-          </dl>
-        </div>
+        <PageHeader title="Catalog" purpose="Browse this workspace's items and metadata."
+          actions={<dl className="flex flex-wrap gap-l">
+            {[["Items", items.length], ["Types", groups.length], ["Showing", visible.length]].map(([label, value]) => (
+              <div key={label} className="flex items-baseline gap-s">
+                <dt className="text-200 text-muted-foreground">{label}</dt>
+                <dd className="font-numeric text-300 font-semibold">{value}</dd>
+              </div>
+            ))}
+          </dl>}
+        />
         {hasActiveFilters && <div className="atlas-toolbar flex flex-wrap items-center border-t border-border bg-secondary px-l py-s">
           <Search className="icon-size-200 text-muted-foreground" />
           <span className="text-200 text-muted-foreground">

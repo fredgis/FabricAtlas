@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ATLAS_CONFIG } from "./config";
@@ -6,6 +6,7 @@ import { loadFromDb, runFabricSync } from "./backend";
 import { createItemRelationsEvidence } from "./item-relations-evidence";
 import type { CompatibilityPlan, RawSync } from "./live-sync";
 import { AtlasProvider, useAtlas } from "./store";
+import { MapView } from "./views/Map";
 
 const fixture = vi.hoisted(() => ({
   client: {} as { data: Record<string, unknown>; functions: Record<string, unknown> },
@@ -28,8 +29,8 @@ const user = { id: ADMIN, name: "Collector", email: "collector@example.test" };
 const complete = () => ({ status: "complete" as const });
 const unsupported = (code: string) => ({ status: "unsupported" as const, code });
 const estate = (workspaceId: string) => workspaceId === FIRST
-  ? { lake: "10000000-0000-4000-8000-000000000001", model: "10000000-0000-4000-8000-000000000002", ontology: "10000000-0000-4000-8000-000000000003", name: "First", table: "gold.FirstSales" }
-  : { lake: "20000000-0000-4000-8000-000000000001", model: "20000000-0000-4000-8000-000000000002", ontology: "20000000-0000-4000-8000-000000000003", name: "Second", table: "gold.SecondSales" };
+  ? { lake: "10000000-0000-4000-8000-000000000001", model: "10000000-0000-4000-8000-000000000002", ontology: "10000000-0000-4000-8000-000000000003", mirror: "10000000-0000-4000-8000-000000000004", name: "First", table: "gold.FirstSales" }
+  : { lake: "20000000-0000-4000-8000-000000000001", model: "20000000-0000-4000-8000-000000000002", ontology: "20000000-0000-4000-8000-000000000003", mirror: "20000000-0000-4000-8000-000000000004", name: "Second", table: "gold.SecondSales" };
 const table = (workspaceId: string) => ({
   name: estate(workspaceId).table, source: "Downstream semantic model", objectType: "Table",
   columns: [{ name: "Id", dataType: "Int64" }], measures: [],
@@ -95,13 +96,33 @@ function installBoundaries() {
       return {
         schemaVersion: 2, syncMode: "base", correlationId: input.correlationId,
         workspace: { id: input.workspaceId, displayName: e.name },
-        items: [{ id: e.lake, type: "Lakehouse", displayName: `${e.name} lake` }, { id: e.model, type: "SemanticModel", displayName: `${e.name} model` }, { id: e.ontology, type: "Ontology", displayName: `${e.name} ontology` }],
+        items: [{ id: e.lake, type: "Lakehouse", displayName: `${e.name} lake` }, { id: e.model, type: "SemanticModel", displayName: `${e.name} model` }, { id: e.ontology, type: "Ontology", displayName: `${e.name} ontology` }, { id: e.mirror, type: "MirroredDatabase", displayName: `${e.name} Oracle mirror` }],
         roleAssignments: [{ role: "Admin", principal: { id: ADMIN, displayName: "Collector", type: "User" } }],
         jobs: [], lineage: [], access: [], config: [], objectEdges: [], schema: {}, artifactMetadata: {},
-        itemMetadata: Object.fromEntries([e.lake, e.model, e.ontology].map((id) => [id, { scannerMatched: false, ownerAvailable: false }])),
+        itemMetadata: Object.fromEntries([e.lake, e.model, e.ontology, e.mirror].map((id) => [id, { scannerMatched: false, ownerAvailable: false }])),
         sections: Object.fromEntries(["workspace", "items", "roleAssignments", "jobs", "scanner", "schema", "lineage", "access", "config", "definitions", "kqlSchema", "sqlSchema"].map((name) => [name, ["workspace", "items", "roleAssignments", "jobs"].includes(name) ? complete() : missing])),
         capabilities: Object.fromEntries(["endorsement", "sensitivity", "tags", "ownership", "definitionEnrichment", "kqlSchema", "sqlSchema", "objectLineage"].map((name) => [name, missing])),
         errors: [], syncedAt: NOW,
+      };
+    }),
+    workspaceCollectSourceProvenance: invoke((input) => {
+      const e = estate(String(input.workspaceId));
+      return {
+        ...context(input, "source-provenance"), collectedAt: NOW, summary: { status: "complete", code: "partial-unsupported" },
+        items: (input.items as { id: string; type: string }[]).map((item) => item.type === "Lakehouse" ? {
+          ...item, status: "complete", code: "partial-unsupported",
+          shortcuts: { ...complete(), truncated: false, shortcuts: [
+            { name: "MirrorOrders", path: "Tables/silver", targetType: "OneLake", oneLake: { workspaceId: input.workspaceId, itemId: e.mirror, path: "Tables/OPS/ORDERS" } },
+          ] },
+          materializedLakeViews: { ...unsupported("read-write-permission-required"), definitions: [], truncated: false },
+        } : {
+          ...item, ...complete(), mirroring: {
+            ...complete(), properties: complete(), replication: { ...complete(), state: "Running" },
+            definition: { ...complete(), sourceType: "Oracle", connectionId: ADMIN,
+              externalStorages: [], tableSelection: "selected", tables: [{ schema: "OPS", table: "ORDERS" }], tablesTruncated: false },
+          },
+        }),
+        password: "PROVENANCE_SECRET_CANARY", businessRows: ["BUSINESS_DATA_CANARY"],
       };
     }),
     workspaceCollectSqlMetadata: invoke((input) => ({
@@ -164,12 +185,14 @@ function Harness() {
     <output data-testid="schema">{JSON.stringify(atlas.data.schema)}</output>
     <output data-testid="grants">{JSON.stringify(atlas.data.grants)}</output>
     <output data-testid="note-error">{noteError}</output>
+    <MapView key={atlas.activeWorkspaceId} itemRelationsEnabled={false} />
   </>;
 }
 
 describe("two-workspace collection, publication and hydration", () => {
   beforeEach(() => {
     localStorage.clear();
+    window.history.replaceState(null, "", "/#map");
     vi.unstubAllEnvs();
     fixture.unavailable = false;
     fixture.compatibility.mockReset();
@@ -185,16 +208,38 @@ describe("two-workspace collection, publication and hydration", () => {
     await runFabricSync(false, user, undefined, undefined, FIRST);
     await runFabricSync(false, user, undefined, undefined, SECOND);
     const reloaded = await loadFromDb(false, SECOND);
-    expect(reloaded?.schema?.[estate(SECOND).lake]).toEqual([table(SECOND)]);
+    expect(reloaded?.schema?.[estate(SECOND).lake]).toEqual(expect.arrayContaining([
+      table(SECOND),
+      expect.objectContaining({ name: "silver.MirrorOrders", objectType: "Shortcut", columns: [] }),
+    ]));
     expect(reloaded?.schema?.[estate(FIRST).lake]).toBeUndefined();
     expect(reloaded?.grants.filter((grant) => grant.source === "directShare")).toHaveLength(1);
     expect(reloaded?.workspace.syncSections?.definitions).toEqual(complete());
     expect(reloaded?.workspace.syncSections?.sqlSchema).toEqual(unsupported("token-unavailable"));
     expect(reloaded?.workspace.syncSections?.storageSchema).toEqual({ status: "complete", code: "partial-unsupported" });
+    for (const workspaceId of [FIRST, SECOND]) {
+      const hydrated = await loadFromDb(false, workspaceId);
+      const e = estate(workspaceId);
+      expect(hydrated?.edges).toContainEqual(expect.objectContaining({
+        source: e.mirror, target: e.lake, relation: "onelake-shortcut",
+      }));
+      expect(hydrated?.schema?.[e.mirror]).toEqual([
+        expect.objectContaining({ name: "OPS.ORDERS", objectType: "Mirrored table", columns: [] }),
+      ]);
+      expect(hydrated?.config).toContainEqual(expect.objectContaining({
+        itemFabricId: e.mirror, label: "mirroring-source",
+        value: expect.stringContaining(`provider=Oracle; connection=${ADMIN}`),
+      }));
+      expect(hydrated?.workspace.syncSections?.sourceProvenance).toEqual({ status: "complete", code: "partial-unsupported" });
+      expect(JSON.stringify(hydrated)).not.toMatch(/PROVENANCE_SECRET_CANARY|BUSINESS_DATA_CANARY/);
+    }
 
     render(<AtlasProvider isPreview={false} currentUser={user}><Harness /></AtlasProvider>);
     await waitFor(() => expect(screen.getByTestId("hydrating")).toHaveTextContent("false"));
     expect(screen.getByTestId("schema")).toHaveTextContent("gold.FirstSales");
+    fireEvent.click(screen.getByRole("button", { name: /^First lake, Lakehouse/ }));
+    fireEvent.click(screen.getByRole("button", { name: "objects" }));
+    expect(screen.getByRole("button", { name: /^gold.FirstSales, 1 columns/ })).toBeVisible();
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Second workspace" })); });
     await waitFor(() => expect(screen.getByTestId("workspace")).toHaveTextContent(SECOND));
     await waitFor(() => expect(screen.getByTestId("hydrating")).toHaveTextContent("false"));
@@ -202,6 +247,17 @@ describe("two-workspace collection, publication and hydration", () => {
     expect(screen.getByTestId("schema")).not.toHaveTextContent("gold.FirstSales");
     expect(screen.getByTestId("grants")).toHaveTextContent(estate(SECOND).model);
     expect(screen.getByTestId("grants")).not.toHaveTextContent(estate(FIRST).model);
+    fireEvent.click(screen.getByRole("button", { name: "items" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Second lake, Lakehouse/ }));
+    fireEvent.click(screen.getByRole("button", { name: "objects" }));
+    expect(screen.getByRole("button", { name: /^gold.SecondSales, 1 columns/ })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /^gold.FirstSales, 1 columns/ })).not.toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("tab", { name: "Schema" }), { key: "Enter" });
+    const inspector = within(screen.getByRole("complementary", { name: "Item details inspector" }));
+    expect(inspector.getByRole("button", { name: "gold.SecondSales" })).toBeVisible();
+    expect(inspector.getByRole("button", { name: "silver.MirrorOrders" })).toBeVisible();
+    fireEvent.click(inspector.getByRole("button", { name: "gold.SecondSales" }));
+    expect(inspector.getByText("Id")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Post foreign target" }));
     await waitFor(() => expect(screen.getByTestId("note-error")).toHaveTextContent("The selected note target is not in the active workspace."));
     expect(data.Comment.rows).toHaveLength(0);
@@ -215,7 +271,7 @@ describe("two-workspace collection, publication and hydration", () => {
       .rejects.toThrow("Storage schema inventory was unavailable");
     const reloaded = await loadFromDb(false, SECOND);
     expect(reloaded?.workspace.snapshotId).toBe(previous?.workspace.snapshotId);
-    expect(reloaded?.schema?.[estate(SECOND).lake]).toEqual([table(SECOND)]);
+    expect(reloaded?.schema?.[estate(SECOND).lake]).toContainEqual(table(SECOND));
     expect(data.Workspace.rows).toHaveLength(1);
   });
 });

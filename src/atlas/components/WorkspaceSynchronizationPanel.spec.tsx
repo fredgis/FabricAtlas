@@ -115,11 +115,12 @@ describe("WorkspaceSynchronizationPanel", () => {
       screen.getByRole("button", { name: "Actions for Second workspace" }),
     );
     expect(
-      screen.getByRole("menuitem", { name: "Open in Atlas" }),
+      screen.getByRole("menuitem", { name: "Synchronize now" }),
     ).toHaveAttribute("aria-disabled", "true");
     expect(
-      screen.getByRole("menuitem", { name: "Open in Atlas" }),
+      screen.getByRole("menuitem", { name: "Synchronize now" }),
     ).toHaveAccessibleDescription("Paused until the current run finishes");
+    expect(screen.queryByRole("menuitem", { name: "Open in Atlas" })).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
 
     fireEvent.click(screen.getByRole("button", { name: "View run" }));
@@ -154,7 +155,7 @@ describe("WorkspaceSynchronizationPanel", () => {
     expect(screen.queryByRole("button", { name: /Resume/ })).toBeNull();
   });
 
-  it("switches the active workspace from the shared scope", () => {
+  it("keeps sync scope and Fabric links without duplicating the global workspace selector", () => {
     const value = context();
     renderPanel(value);
 
@@ -170,9 +171,10 @@ describe("WorkspaceSynchronizationPanel", () => {
       "href",
       expect.stringContaining(`/groups/${OTHER}/list`),
     );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Open in Atlas" }));
-    expect(value.selectWorkspace).toHaveBeenCalledWith(OTHER);
-    expect(screen.queryByRole("menu")).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Open in Atlas" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: /workspace/i })).toBeNull();
+    expect(screen.getByRole("checkbox", { name: "Select Second workspace" })).toBeVisible();
+    expect(value.selectWorkspace).not.toHaveBeenCalled();
   });
 
   it("restricts scope management to the synchronizer behind the Functions flag", async () => {

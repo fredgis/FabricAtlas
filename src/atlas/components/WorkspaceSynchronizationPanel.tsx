@@ -9,7 +9,6 @@ import {
 import {
   AlertTriangle,
   ArrowDown,
-  ArrowRightLeft,
   Ban,
   Calendar,
   CircleCheck,
@@ -42,7 +41,6 @@ import {
   type RecentRunRow,
   type ScopeWorkspaceRow,
 } from "../workspace-sync";
-import { useWorkspaceSwitch } from "../workspace-switch";
 import { LINK_BUTTON, PRIMARY_BUTTON, SECONDARY_BUTTON } from "./button-styles";
 import { ErrorDetail } from "./ErrorDetail";
 import { RowActionsMenu, type RowMenuAction } from "./RowActionsMenu";
@@ -223,7 +221,6 @@ function SelectedWorkspacesCard() {
     configured,
     isPreview,
   } = useAtlas();
-  const switchWorkspace = useWorkspaceSwitch();
   const [scopeOpen, setScopeOpen] = useState(false);
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
   const switchHintId = useId();
@@ -268,16 +265,6 @@ function SelectedWorkspacesCard() {
         disabled: pausedReason != null,
         disabledReason: pausedReason,
         onSelect: () => void syncWorkspaces([row.id]),
-      });
-    }
-    if (!row.active) {
-      actions.push({
-        id: "open",
-        label: "Open in Atlas",
-        icon: ArrowRightLeft,
-        disabled: syncing,
-        disabledReason: syncing ? "Paused until the current run finishes" : undefined,
-        onSelect: () => switchWorkspace(row.id),
       });
     }
     const portalUrl = fabricPortalWorkspaceUrl(row.id);

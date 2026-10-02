@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import * as Tabs from "@radix-ui/react-tabs";
-import { Settings } from "lucide-react";
+import { PageHeader } from "../components/PageHeader";
 import {
   DEFAULT_WORKSPACE_SECTION,
   isWorkspaceSection,
@@ -60,22 +60,7 @@ export function WorkspaceHubView({
       asChild
     >
       <div className="atlas-content-frame flex min-w-0 flex-col gap-l">
-        <header className="flex items-center gap-l">
-          <span
-            aria-hidden="true"
-            className="flex icon-size-700 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-fabric-2"
-          >
-            <Settings className="icon-size-400" />
-          </span>
-          <div className="min-w-0">
-            <h1 className="font-heading text-600 font-bold leading-600">
-              Workspace Hub
-            </h1>
-            <p className="mt-xxs text-300 leading-300 text-muted-foreground">
-              Manage workspace scope and synchronization.
-            </p>
-          </div>
-        </header>
+        <PageHeader title="Workspace Hub" purpose="Manage scope, synchronization and team notes." />
 
         <Tabs.List
           aria-label="Workspace Hub sections"

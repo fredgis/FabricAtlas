@@ -1,16 +1,20 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AboutView } from "./About";
 
 describe("AboutView", () => {
-  it("shows runtime versions and every gated capability", () => {
-    render(<AboutView />);
-
-    expect(
-      screen.getByRole("heading", { name: "Deployment coverage" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Rayfin SDK")).toBeInTheDocument();
-    expect(screen.getByText("1.36.2")).toBeInTheDocument();
+  afterEach(() => vi.unstubAllEnvs());
+  it("keeps runtime and sync mode visible with technical contracts collapsed", () => {
+    const { container } = render(<AboutView />);
+    expect(screen.getByRole("heading", { name: "About Fabric Atlas" }).closest("[data-slot='page-header']")).not.toBeNull();
+    const runtime = within(screen.getByLabelText("Runtime"));
+    expect(runtime.getByText("Rayfin SDK")).toBeVisible();
+    expect(runtime.getByText("1.36.2")).toBeVisible();
+    expect(runtime.getByText("Rayfin collectors + Python compatibility · browser-run")).toBeVisible();
+    expect(container.querySelectorAll("details")).toHaveLength(1);
+    expect(container.querySelector("details")).not.toHaveAttribute("open");
+    expect(screen.getByRole("heading", { name: "Fabric Apps backend Functions" })).not.toBeVisible();
+    fireEvent.click(screen.getByText("Technical contracts"));
     expect(screen.getByText("Functions API")).toBeInTheDocument();
     expect(
       screen.getByRole("heading", {
@@ -23,30 +27,22 @@ describe("AboutView", () => {
   });
 
   it("groups capabilities by state instead of a binary Enabled/Disabled list", () => {
-    const { container } = render(<AboutView />);
+    render(<AboutView />);
 
     expect(screen.queryByText("Enabled")).toBeNull();
     expect(screen.queryByText("Disabled")).toBeNull();
 
-    const active = screen.getByRole("region", { name: /^Implemented · active/ });
-    expect(
-      within(active).getByRole("heading", { name: "Fabric Apps backend Functions" }),
-    ).toBeInTheDocument();
-    expect(within(active).getByRole("heading", { name: "Fabric IQ Ontology" })).toBeInTheDocument();
-
-    const available = screen.getByRole("region", { name: /^Available · off/ });
-    expect(
-      within(available).getByRole("heading", { name: "Fabric Item Relations" }),
-    ).toBeInTheDocument();
-    expect(within(available).getByText("VITE_ATLAS_FEATURE_ITEM_RELATIONS")).toBeInTheDocument();
-    expect(within(available).getByText(/^Beta · Fabric REST v1/)).toBeInTheDocument();
-
-    const collapsed = [...container.querySelectorAll("details")];
-    expect(collapsed.map((group) => group.querySelector("summary h3")?.textContent)).toEqual([
-      "Portal only (1)",
-      "Deferred · contract blocked (3)",
-      "Private Preview · not collected (1)",
-    ]);
-    for (const group of collapsed) expect(group).not.toHaveAttribute("open");
+    const active = screen.getByRole("region", { name: "Active" });
+    expect(active).toHaveTextContent("Fabric Apps backend Functions");
+    expect(active).toHaveTextContent("Fabric IQ Ontology");
+    expect(screen.getByRole("region", { name: "Optional / Off" })).toHaveTextContent("Fabric Item Relations");
+    expect(screen.getByRole("region", { name: "Blocked / Deferred" })).toHaveTextContent("Spark");
+    fireEvent.click(screen.getByText("Technical contracts"));
+    expect(screen.getByText("VITE_ATLAS_FEATURE_ITEM_RELATIONS")).toBeVisible();
+  });
+  it("reports the explicit Python rollback instead of claiming Rayfin is active", () => {
+    vi.stubEnv("VITE_ATLAS_COLLECTOR_ROLLBACK", "true");
+    render(<AboutView />);
+    expect(screen.getByText("Python rollback · browser-run")).toBeVisible();
   });
 });

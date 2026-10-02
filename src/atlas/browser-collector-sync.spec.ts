@@ -61,6 +61,12 @@ function harness() {
   });
   const functions = {
     workspaceCollectCore: fn("core", () => core()),
+    workspaceCollectSourceProvenance: fn("provenance", (input) => ({
+      ...common("source-provenance", (input.items as { id: string; type: string }[]).map((item) => ({
+        ...item, ...complete(), shortcuts: { ...complete(), shortcuts: [], truncated: false },
+      }))),
+      collectedAt: NOW, summary: complete(),
+    })),
     workspaceCollectDefinitions: fn("definitions", () => ({
       ...common("definitions", [{ id: ONTOLOGY, type: "Ontology", ...complete() }]),
       artifactMetadata: { [ONTOLOGY]: { kind: "ontology", entities: [], relationships: [], bindings: [], contextualizations: [] } },
@@ -157,7 +163,7 @@ describe("active browser collector composition", () => {
   it("calls all supported Rayfin stages serially and plans only exact Python gaps", async () => {
     const h = harness();
     const result = await collectBrowserWorkspace(WS, identity, RUN, undefined, undefined, h.deps);
-    expect(h.sequence).toEqual(["core", "definitions", "sql", "kql", "powerbi", "python-scanner", "python-items", "relations"]);
+    expect(h.sequence).toEqual(["core", "provenance", "definitions", "sql", "kql", "powerbi", "python-scanner", "python-items", "relations"]);
     expect(h.maxActive()).toBe(1);
     expect(h.legacy).not.toHaveBeenCalled();
     expect(h.compatibility.mock.calls[0][0].schemaItemIds).toEqual([]);
@@ -228,6 +234,32 @@ describe("active browser collector composition", () => {
     const h = storageHarness(type, false);
     await expect(collectBrowserWorkspace(WS, identity, RUN, undefined, undefined, h.deps))
       .rejects.toThrow("Storage schema inventory was unavailable. The previous snapshot was preserved.");
+  });
+  it("merges usable partial Lakehouse REST inventory with the scanner fallback", async () => {
+    const h = storageHarness("Lakehouse");
+    const original = h.compatibility.getMockImplementation()!;
+    h.compatibility.mockImplementation(async (plan) => {
+      const result = await original(plan);
+      if (plan.stage === "items") {
+        result.schema = { [SQL]: [table("silver.Orders", "Fabric Lakehouse Tables REST")] };
+        result.sections!.lakehouseTables = { status: "complete", code: "partial-unsupported" };
+      }
+      return result;
+    });
+    const result = await collectBrowserWorkspace(WS, identity, RUN, undefined, undefined, h.deps);
+    expect(result.raw.schema?.[SQL]?.map((entry) => entry.name)).toEqual(["dbo.Orders", "silver.Orders"]);
+    expect(result.raw.sections?.lakehouseTables).toEqual({ status: "complete", code: "partial-unsupported" });
+    expect(result.raw.sections?.storageSchema).toEqual({ status: "complete", code: "partial-unsupported" });
+  });
+  it("rejects foreign or truncated provenance instead of publishing misleading coverage", async () => {
+    for (const invalid of [{ workspaceId: FOREIGN }, { stopCode: "deadline-exhausted" }]) {
+      const h = harness();
+      h.functions.workspaceCollectSourceProvenance.invoke.mockResolvedValueOnce({
+        ...common("source-provenance", [{ id: KQL, type: "KQLDatabase", ...complete() }]),
+        collectedAt: NOW, summary: complete(), ...invalid,
+      });
+      await expect(collectBrowserWorkspace(WS, identity, RUN, undefined, undefined, h.deps)).rejects.toThrow("invalid");
+    }
   });
   it("differentially preserves catalog identities, roles and source-to-consumer scanner bindings", async () => {
     const h = harness();

@@ -18,20 +18,27 @@ vi.mock("../components/PostureRadar", () => ({
   ),
 }));
 
-function renderView() {
+function renderView(findings = false) {
   const onNavigate = vi.fn();
   render(
     <AtlasProvider isPreview>
       <GovernanceCenterView onNavigate={onNavigate} />
     </AtlasProvider>,
   );
+  if (findings) fireEvent.click(screen.getByRole("tab", { name: /Findings/ }));
   return onNavigate;
 }
 
 describe("GovernanceCenterView", () => {
-  it("groups findings, changes, history and coverage in one view", () => {
+  it("opens on Posture and keeps the other governance sections available", async () => {
     renderView();
 
+    const tabs = within(screen.getByRole("tablist", { name: "Governance Center sections" })).getAllByRole("tab");
+    expect(tabs[0]).toHaveTextContent("Posture");
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByRole("button", { name: "Select lineage in radar" })).toBeVisible();
+    expect(screen.getByText("Latest priority changes").closest("details")).not.toHaveAttribute("open");
+    fireEvent.click(screen.getByText("Latest priority changes"));
     expect(
       screen.getByRole("heading", { name: "Governance Center" }),
     ).toBeInTheDocument();
@@ -62,7 +69,7 @@ describe("GovernanceCenterView", () => {
   });
 
   it("groups findings by rule with compact presets and collapsed instances", () => {
-    renderView();
+    renderView(true);
     expect(screen.getByRole("group", { name: "Finding presets" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "All findings" })).toHaveAttribute("aria-pressed", "true");
 
@@ -141,7 +148,7 @@ describe("GovernanceCenterView", () => {
   });
 
   it("opens evidence from an actionable finding", () => {
-    const onNavigate = renderView();
+    const onNavigate = renderView(true);
     const actions = screen.getAllByRole("button", { name: "Open evidence" });
     expect(actions.length).toBeGreaterThan(0);
 
@@ -244,7 +251,7 @@ describe("GovernanceCenterView", () => {
   });
 
   it("adds a shared exception without hiding the raw finding", async () => {
-    renderView();
+    renderView(true);
     const evidenceCount = screen.getAllByRole("button", {
       name: "Open evidence",
     }).length;

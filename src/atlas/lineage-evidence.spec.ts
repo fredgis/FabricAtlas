@@ -9,6 +9,7 @@ import { snapshotFromData } from "./history";
 import {
   buildLineageEvidence,
   buildPreviewOverlay,
+  layoutPreviewGraph,
   lineageChangesBetween,
   relationshipMatches,
 } from "./lineage-evidence";
@@ -92,6 +93,23 @@ function evidence() {
 }
 
 describe("unified lineage evidence", () => {
+  it("lays out normalized Preview directions left-to-right, including reversed API evidence and external sources", () => {
+    const model = buildLineageEvidence({ items, edges, workspaceId: WORKSPACE, evidence: evidence() });
+    const overlay = buildPreviewOverlay(model, WORKSPACE, {
+      visibleItemIds: new Set(items.map((entry) => entry.fabricId)),
+      laneX: 0, nodeWidth: 220, rowGap: 100, top: 46,
+    });
+    const layout = layoutPreviewGraph(items, overlay, WORKSPACE, { nodeWidth: 220, nodeHeight: 76, columnGap: 292, rowGap: 100 });
+    const position = (key: string) => layout.positions.get(
+      key.startsWith(`${WORKSPACE}:`) ? key.slice(WORKSPACE.length + 1) : key,
+    )!;
+    for (const edge of overlay.edges) {
+      expect(position(edge.sourceKey).x + 220).toBeLessThan(position(edge.targetKey).x);
+    }
+    expect(layout.positions.get(MODEL)!.x).toBeLessThan(layout.positions.get(LAKEHOUSE)!.x);
+    expect(layout.positions).toEqual(layoutPreviewGraph([...items].reverse(), overlay, WORKSPACE,
+      { nodeWidth: 220, nodeHeight: 76, columnGap: 292, rowGap: 100 }).positions);
+  });
   it("normalizes Atlas snapshot lineage and labels it as the only source without Preview", () => {
     const frozen = Object.freeze(edges.map((edge) => Object.freeze({ ...edge })));
     const model = buildLineageEvidence({

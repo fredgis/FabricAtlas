@@ -30,7 +30,7 @@ Rayfin Data API (Data API Builder)  ──  Fabric SQL database (mssql)
   SQL database. Auth is Fabric brokered (`src/services/rayfin-auth.service.ts`).
 - Rayfin Functions live in `rayfin/functions/`, a separate npm package that `rayfin up` builds and
   deploys with application authentication. The active browser Sync calls the bounded Core,
-  definition, Item Relations, KQL, SQL and Power BI definition collectors serially, then uses the
+  definition, source provenance, Item Relations, KQL, SQL and Power BI definition collectors serially, then uses the
   existing validated manifest-last writer. Exact unsupported or unverified gaps are delegated to
   the Python `sync_compatibility` function; the explicit rollback flag restores the previous
   Python collector path. This cutover does not provide background execution or scheduling.
@@ -78,12 +78,28 @@ Rayfin Data API (Data API Builder)  ──  Fabric SQL database (mssql)
   `Item Relations API evidence (Preview)` switch appears only when the `item-relations` flag
   is on, and reads a persisted, validated `ItemRelationsEvidenceSnapshot` envelope for the
   active workspace. Missing or failed Preview reads do not draw Atlas fallback, and Preview
-  disables object mode. The Data flow relations and Control relations switches are unchanged.
+  temporarily uses Items mode, restoring the prior Atlas mode when turned off.
+  While evidence is loading or unavailable, real inventory nodes and an explicit
+  status remain visible without Atlas links. Preview positions follow normalized
+  source-to-consumer API direction, including external upstream nodes; stored
+  neighbours reserve positions before expansion. Cycles keep their evidence and
+  cannot run entirely left-to-right. Arrow tips stop outside card borders at every
+  zoom. The Data flow relations and Control relations switches are unchanged.
   Changes holds the
   lineage time machine and breaking change guard; X-Ray holds the semantic model DAX dependency
   explorer. See [lineage-depth.md](lineage-depth.md) for rules, limits and deferred capabilities.
 - `ItemRelationsEvidenceSnapshot` stores non-authoritative Item Relations evidence written after a
   published snapshot by the active bounded collector. It is never read into `LineageEdge`.
+
+## Page layout
+
+Main screens reuse `PageHeader` for a compact title, purpose and primary actions.
+The global workspace selector is the only active-workspace control; First Sync,
+Manage scope, batch synchronization and comparison filters retain their own roles.
+Governance opens on Posture. Overview reuses the real posture radar and score
+meters, with secondary coverage collapsed. Access What-if keeps results and
+modeled layers first, with paths and limitations in Advanced. About keeps runtime,
+sync mode and capability groups visible, with technical contracts collapsed.
 
 ## Phase 12 compatibility decisions (2026-10-02)
 

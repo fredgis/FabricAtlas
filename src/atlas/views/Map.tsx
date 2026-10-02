@@ -46,6 +46,7 @@ import {
 import { ResizableInspector } from "../components/ResizableInspector";
 import { SemanticXRayPanel } from "../components/SemanticXRayPanel";
 import { ToggleSwitch } from "../components/ToggleSwitch";
+import { PageHeader } from "../components/PageHeader";
 import { isFeatureEnabled } from "../feature-flags";
 import {
   ITEM_RELATIONS_FEATURE_ID,
@@ -60,6 +61,7 @@ import {
 import {
   buildLineageEvidence,
   buildPreviewOverlay,
+  layoutPreviewGraph,
   isDrawnPreviewEdge,
   type RelationshipAgreement,
   type RelationshipEvidence,
@@ -93,6 +95,7 @@ import {
   isMapInspectorWidth,
 } from "../map-inspector";
 import { DEFAULT_MAP_ZOOM, stepMapZoom } from "../map-zoom";
+import { LINEAGE_ARROW_TIP, lineageCurve } from "../map-geometry";
 import { useAtlas } from "../store";
 import {
   Avatar,
@@ -140,7 +143,6 @@ const DOWN = "var(--color-lineage-downstream)";
 const PREVIEW = "var(--color-lineage-upstream)";
 const CONFLICT = "var(--color-status-warning)";
 const PREVIEW_PARAM = "item-relations";
-const PREVIEW_LANE_GAP = 24;
 const PREVIEW_LANE_TOP = 46;
 
 type Mode = "items" | "objects";
@@ -282,15 +284,6 @@ function initialSelected(items: Item[], index: LineageIndex): string {
         a.item.displayName.localeCompare(b.item.displayName),
     );
   return ranked[0]?.item.fabricId ?? "";
-}
-
-function curve(source: Point, target: Point, width = NODE_W, height = NODE_H): string {
-  const x1 = source.x + width;
-  const y1 = source.y + height / 2;
-  const x2 = target.x;
-  const y2 = target.y + height / 2;
-  const bend = Math.max(42, Math.abs(x2 - x1) * 0.32);
-  return `M${x1},${y1} C${x1 + bend},${y1} ${x2 - bend},${y2} ${x2},${y2}`;
 }
 
 function matchesItemFilters(
@@ -568,7 +561,8 @@ export function MapView({
   const [expandedObjectItemIds, setExpandedObjectItemIds] = useState<
     Set<string>
   >(() => new Set(startingId ? [startingId] : []));
-  const [drag, setDrag] = useState<Record<string, Point>>({});
+  const [atlasDrag, setAtlasDrag] = useState<Record<string, Point>>({});
+  const [previewDrag, setPreviewDrag] = useState<Record<string, Point>>({});
   const [dragId, setDragId] = useState<string | null>(null);
   const [objectDrag, setObjectDrag] = useState<Record<string, Point>>({});
   const [objectDragId, setObjectDragId] = useState<string | null>(null);
@@ -587,6 +581,8 @@ export function MapView({
   const [relationshipId, setRelationshipId] = useState("");
   const [expandedKeys, setExpandedKeys] = useState<string[]>(initialExpandedKeys);
   const previewActive = itemRelationsEnabled && includePreview;
+  const drag = previewActive ? previewDrag : atlasDrag;
+  const setDrag = previewActive ? setPreviewDrag : setAtlasDrag;
   const mode: Mode = previewActive ? "items" : requestedMode;
   const previewState = useItemRelationsEvidence(
     data.workspace.fabricId,
@@ -750,11 +746,12 @@ export function MapView({
     [items],
   );
   const visibleItems = useMemo(() => {
-    const candidates = previewActive
+    const observed = previewActive
       ? items.filter((item) =>
           graphLineageIndex.incidentIds.has(item.fabricId) ||
           evidenceModel.previewGraph?.nodes.some((node) => node.id === item.fabricId.toLowerCase() && node.queried))
       : items;
+    const candidates = observed.length ? observed : items;
     if (
       typeFilter === "all" &&
       healthFilter === "all" &&
@@ -777,7 +774,7 @@ export function MapView({
       ),
     [graphEdges, visibleIds],
   );
-  const layout = useMemo(
+  const atlasLayout = useMemo(
     () =>
       buildStagedLayout(visibleItems, visibleEdges, {
         nodeWidth: NODE_W,
@@ -789,13 +786,12 @@ export function MapView({
       }),
     [resolvedFocusId, visibleEdges, visibleItems],
   );
-  const posOf = (id: string) => drag[id] ?? layout.positions.get(id) ?? { x: 0, y: 0 };
-  const previewOverlay = useMemo(
+  const storedPreviewOverlay = useMemo(
     () =>
-      previewEvidence && mode === "items"
+      previewActive && previewEvidence && mode === "items"
         ? buildPreviewOverlay(evidenceModel, data.workspace.fabricId, {
             visibleItemIds: visibleIds,
-            laneX: layout.width + PREVIEW_LANE_GAP,
+            laneX: 0,
             nodeWidth: NODE_W,
             rowGap: NODE_ROW_GAP,
             top: PREVIEW_LANE_TOP,
@@ -806,28 +802,35 @@ export function MapView({
       data.workspace.fabricId,
       evidenceModel,
       expandedKeys,
-      layout.width,
       mode,
+      previewActive,
       previewEvidence,
       visibleIds,
     ],
   );
+  const previewLayout = useMemo(() => layoutPreviewGraph(
+    visibleItems, storedPreviewOverlay, data.workspace.fabricId,
+    { nodeWidth: NODE_W, nodeHeight: NODE_H, columnGap: NODE_COLUMN_GAP, rowGap: NODE_ROW_GAP },
+    evidenceModel,
+  ), [data.workspace.fabricId, evidenceModel, storedPreviewOverlay, visibleItems]);
+  const layout = previewActive ? previewLayout : atlasLayout;
+  const posOf = (id: string) => drag[id] ?? layout.positions.get(id) ?? { x: 0, y: 0 };
+  const previewOverlay = storedPreviewOverlay && {
+    ...storedPreviewOverlay,
+    laneNodes: storedPreviewOverlay.laneNodes.map((node) => ({
+      ...node, ...previewLayout.positions.get(node.key),
+      column: Math.round(((previewLayout.positions.get(node.key)?.x ?? 28) - 28) / NODE_COLUMN_GAP),
+    })),
+  };
   const bounds = useMemo(() => {
     let width = layout.width;
     let height = layout.height;
-    if (previewOverlay && previewOverlay.laneNodes.length > 0) {
-      width = Math.max(
-        width,
-        layout.width + PREVIEW_LANE_GAP + previewOverlay.laneWidth,
-      );
-      height = Math.max(height, previewOverlay.laneHeight + 48);
-    }
     Object.values(drag).forEach((point) => {
       width = Math.max(width, point.x + NODE_W + 48);
       height = Math.max(height, point.y + NODE_H + 48);
     });
     return { width, height };
-  }, [drag, layout.height, layout.width, previewOverlay]);
+  }, [drag, layout.height, layout.width]);
   const incidentRelationships = useMemo(() => {
     if (!previewEvidence || !activeId) return [];
     const key = itemRelationsNodeKey(data.workspace.fabricId, activeId);
@@ -1564,24 +1567,13 @@ export function MapView({
 
   return (
     <div className="flex h-full min-h-[720px] min-w-0 flex-col xl:min-h-0">
-      <div className="atlas-page-header flex shrink-0 flex-wrap items-start justify-between border-b border-border">
-        <div className="min-w-0">
-          <div className="text-200 font-semibold uppercase tracking-[0.12em] text-brand-foreground">
-            Workspace topology
-          </div>
-          <div className="mt-xs flex flex-wrap items-center gap-m">
-            <h1 className="text-600 font-bold leading-600">Map &amp; lineage</h1>
-            {previewActive && (
-              <span className="inline-flex items-center rounded-md border border-lineage-upstream/50 bg-lineage-upstream/5 px-s py-xxs text-200 font-semibold text-lineage-upstream">
-                Beta evidence · evaluation
-              </span>
-            )}
-          </div>
-          <p className="mt-xs text-300 text-muted-foreground">
-            Trace dependencies and inspect the evidence behind each relationship.
-          </p>
-        </div>
-        <dl aria-label="Map summary" className="flex flex-wrap gap-s">
+      <PageHeader title="Map & lineage" purpose="Trace item and object dependencies."
+        className="shrink-0 border-b border-border"
+        help={<>
+          <p>Arrows run from source to consumer. Atlas includes saved object inventory; Preview supports item relations only.</p>
+          {itemRelationsEnabled && <PreviewApiNotice featureIds={[ITEM_RELATIONS_FEATURE_ID]} className="mt-m" />}
+        </>}
+        actions={<dl aria-label="Map summary" className="flex flex-wrap gap-l">
           {[
             ["Items", previewActive && lineageView === "graph" ? visibleItems.length + laneByKey.size : items.length, false],
             ["Relationships", relationshipCount, false],
@@ -1598,8 +1590,8 @@ export function MapView({
             <div
               key={String(label)}
               className={cn(
-                "flex min-w-[120px] flex-col-reverse rounded-lg border bg-card px-l py-m shadow-fabric-2",
-                warning ? "border-status-warning/40" : "border-border",
+                "flex items-baseline gap-s",
+                warning && "text-status-warning",
               )}
             >
               <dt
@@ -1612,7 +1604,7 @@ export function MapView({
               </dt>
               <dd
                 className={cn(
-                  "font-numeric text-500 font-bold leading-500",
+                  "font-numeric text-300 font-semibold",
                   warning && "text-status-warning",
                 )}
               >
@@ -1620,8 +1612,8 @@ export function MapView({
               </dd>
             </div>
           ))}
-        </dl>
-      </div>
+        </dl>}
+      />
 
       <Tabs.Root
         value={lineageView}
@@ -1644,12 +1636,11 @@ export function MapView({
           ))}
         </Tabs.List>
         {itemRelationsEnabled && (
-          <div className="my-s flex max-w-full flex-wrap items-center gap-x-s rounded-lg border border-lineage-upstream/30 bg-lineage-upstream/5 px-s">
+          <div className="my-xs flex max-w-full flex-wrap items-center gap-x-s rounded-lg border border-lineage-upstream/30 bg-lineage-upstream/5 px-s">
           <ToggleSwitch
             checked={includePreview}
             onChange={(checked) => {
               setIncludePreview(checked);
-              if (checked) setMode("items");
               setRelationshipId("");
             }}
             label="Item Relations API evidence (Preview)"
@@ -1657,15 +1648,14 @@ export function MapView({
             describedBy="map-preview-boundary"
           />
           <span aria-hidden="true" className="rounded-md bg-card px-s py-xxs text-200 font-semibold text-lineage-upstream">{includePreview ? "On" : "Off"}</span>
-          <p id="map-preview-boundary" className="w-full px-s pb-s text-200 text-muted-foreground">
-            Preview draws only Item Relations API lineage. Atlas snapshot lineage remains available when Preview is off and in Evidence.
+          <p id="map-preview-boundary" className="sr-only">
+            Preview shows item relations only. Turn it off to return to your Atlas view.
           </p>
           </div>
         )}
       </div>
       {previewActive && (
         <div className="flex flex-col gap-s border-b border-border bg-secondary px-l py-s">
-          <PreviewApiNotice featureIds={[ITEM_RELATIONS_FEATURE_ID]} />
           <ItemRelationsEvidenceStatus
             state={previewState}
             model={evidenceModel}
@@ -1749,6 +1739,7 @@ export function MapView({
               key={value}
               type="button"
               disabled={previewActive && value === "objects"}
+              aria-current={mode === value ? "true" : undefined}
               title={previewActive && value === "objects" ? "Item Relations does not provide object lineage." : undefined}
               onClick={() => {
                 setMode(value);
@@ -1767,6 +1758,7 @@ export function MapView({
             </button>
           ))}
         </div>
+        {previewActive && <span className="text-200 text-muted-foreground">Items only in Preview; object lineage stays in Atlas.</span>}
         <label className="relative min-w-[180px] flex-1 sm:max-w-[280px]">
           <Search
             size={14}
@@ -2048,11 +2040,18 @@ export function MapView({
             isPanning ? "cursor-grabbing select-none" : "cursor-grab",
           )}
         >
+          {mode === "items" && previewActive && !previewOverlay?.edges.length && (
+            <p role="status" className="sticky left-0 top-0 z-20 w-fit rounded-lg border border-border bg-card px-m py-s text-200 text-muted-foreground">
+              {previewState.status === "loading" ? "Loading Preview relations. Atlas links are hidden."
+                : visibleItems.length ? "No Preview relations to draw. Showing items without Atlas links."
+                  : "No items match this view."}
+            </p>
+          )}
           {mode === "objects" && (
             <div className="sticky left-[16px] top-[12px] z-20 max-w-[500px] rounded-lg border border-border bg-card px-[10px] py-[7px] text-[11px] text-muted-foreground shadow-fabric-4">
               {objects.verifiedMetadata
                 ? "Verified object metadata is shown from the selected item snapshot."
-                : "Object metadata is exact; field-to-report usage remains item-level because Fabric does not expose visual field bindings through the current APIs."}
+                : "Stored object inventory. Consumer links are item-level unless a verified object binding was collected."}
               {objects.truncated
                 ? ` The view is limited to ${MAX_VISIBLE_OBJECT_EDGES} edges. Narrow the source, object or kind filter for the remaining relationships.`
                 : ""}
@@ -2083,11 +2082,13 @@ export function MapView({
                   <div
                     className="pointer-events-none absolute inset-x-0 top-[9px] z-[2] grid"
                     style={{
-                      gridTemplateColumns: `repeat(${LINEAGE_STAGE_LABELS.length}, 285px)`,
+                      gridTemplateColumns: `repeat(${previewActive ? layout.stageCount : LINEAGE_STAGE_LABELS.length}, ${NODE_COLUMN_GAP}px)`,
                       paddingLeft: 28,
                     }}
                   >
-                    {LINEAGE_STAGE_LABELS.map((label) => (
+                    {(previewActive
+                      ? Array.from({ length: layout.stageCount }, (_, index) => index === 0 ? "Sources" : `Consumers ${index}`)
+                      : LINEAGE_STAGE_LABELS).map((label) => (
                       <div
                         key={label}
                         className="flex items-center gap-[7px] pr-[20px] text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground"
@@ -2117,8 +2118,9 @@ export function MapView({
                           id={`atlas-${id}`}
                           markerWidth="7"
                           markerHeight="7"
-                          refX="6.2"
+                          refX={LINEAGE_ARROW_TIP}
                           refY="3.5"
+                          markerUnits="userSpaceOnUse"
                           orient="auto"
                         >
                           <path d="M0 0 7 3.5 0 7Z" fill={fill} />
@@ -2146,7 +2148,7 @@ export function MapView({
                           <title>{edge.relation}</title>
                           <path
                             className={active && !edge.broken ? "atlas-flow" : undefined}
-                            d={curve(source, target)}
+                            d={lineageCurve(source, target, NODE_W, NODE_H, zoom).path}
                             fill="none"
                             stroke={color}
                             strokeWidth={active ? 2.6 : 1.5}
@@ -2197,10 +2199,11 @@ export function MapView({
                             {`Item Relations API (Beta): ${edge.relation.relationType}`}
                           </title>
                           <path
-                            d={curve(
+                            d={lineageCurve(
                               overlayPoint(relationship, overlayEdge.sourceKey),
                               overlayPoint(relationship, overlayEdge.targetKey),
-                            )}
+                              NODE_W, NODE_H, zoom,
+                            ).path}
                             fill="none"
                             stroke={conflict ? CONFLICT : PREVIEW}
                             strokeWidth={selectedEdge ? 2.8 : 1.8}
@@ -2478,8 +2481,9 @@ export function MapView({
                         id="atlas-object-downstream"
                         markerWidth="7"
                         markerHeight="7"
-                        refX="6.2"
+                        refX={LINEAGE_ARROW_TIP}
                         refY="3.5"
+                        markerUnits="userSpaceOnUse"
                         orient="auto"
                       >
                         <path d="M0 0 7 3.5 0 7Z" fill={DOWN} />
@@ -2488,8 +2492,9 @@ export function MapView({
                         id="atlas-object-upstream"
                         markerWidth="7"
                         markerHeight="7"
-                        refX="6.2"
+                        refX={LINEAGE_ARROW_TIP}
                         refY="3.5"
+                        markerUnits="userSpaceOnUse"
                         orient="auto"
                       >
                         <path d="M0 0 7 3.5 0 7Z" fill={UP} />
@@ -2498,8 +2503,9 @@ export function MapView({
                         id="atlas-object-neutral"
                         markerWidth="7"
                         markerHeight="7"
-                        refX="6.2"
+                        refX={LINEAGE_ARROW_TIP}
                         refY="3.5"
+                        markerUnits="userSpaceOnUse"
                         orient="auto"
                       >
                         <path d="M0 0 7 3.5 0 7Z" fill="var(--color-lineage-neutral)" />
@@ -2525,7 +2531,7 @@ export function MapView({
                           <title>{edge.relation}</title>
                           <path
                             className={active ? "atlas-flow" : undefined}
-                            d={curve(source, target, OBJECT_W, OBJECT_H)}
+                            d={lineageCurve(source, target, OBJECT_W, OBJECT_H, zoom).path}
                             fill="none"
                             stroke={color}
                             strokeWidth={active ? 2.6 : edge.structural ? 1.3 : 1.8}

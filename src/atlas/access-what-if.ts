@@ -115,8 +115,8 @@ export function whatIfOutcomeDescription(result: AccessWhatIfResult): string {
   }
   if (!result.excluded.length) return "No recorded grant paths are excluded.";
   return result.outcome === "unchanged"
-    ? "Remaining recorded grant paths keep the highest recorded grant unchanged. Removing the selected paths does not remove those recorded grants."
-    : "The highest recorded grant is reduced in this scenario. Remaining recorded paths are listed below; actual access is not evaluated.";
+    ? "Remaining paths keep the highest recorded grant unchanged."
+    : "The highest recorded grant is reduced in this scenario. Actual access is not evaluated.";
 }
 
 function pathSummary(path: AccessGrantPath): string {

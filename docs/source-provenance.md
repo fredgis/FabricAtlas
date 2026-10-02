@@ -11,8 +11,10 @@ partner adapters, and it never matches anything by name.
 `workspaceCollectSourceProvenance` in
 `rayfin/functions/src/workspace-source-provenance.ts` declares only the Fabric
 audience, runs behind the `SynchronizerAuthority` gate and uses the Fabric
-application identity. It is **adapter only**: the browser does not call it
-yet, nothing is written to Rayfin and nothing becomes authoritative lineage.
+application identity. The active browser composition calls it serially in
+batches of up to eight supported items for each selected workspace. The stage
+itself is read-only; the existing validated snapshot writer persists the
+allowlisted projection.
 
 ```ts
 await client.functions.workspaceCollectSourceProvenance.invoke({
@@ -85,6 +87,22 @@ observed. Its `destinationEnforcement` is always `not-verified`:
 Access Review keeps its own restriction layers (OneLake security, Purview DLP,
 Fabric Policies) as unsupported or unavailable; provenance never upgrades them.
 
+## Snapshot projection
+
+`source-provenance-snapshot.ts` keeps same-workspace, explicit-ID shortcut,
+landing-zone and mirrored SQL endpoint edges in item lineage. Their direction
+is preserved instead of inferred from item types. Cross-workspace targets and
+external connections remain provenance configuration, not invented local items.
+Configuration records collection time, source identifiers, binding fields,
+shortcut paths and per-section coverage. Missing IDs remain unresolved.
+
+Table shortcuts and explicitly selected mirrored tables enter object inventory
+without inferred columns or row values. An `all` mirroring selection does not
+claim to enumerate tables. SQL, scanner and Python compatibility schema are
+merged with that inventory; usable partial Lakehouse REST tables are retained
+with their partial coverage. No business rows, source database names, external
+URLs, credentials or raw payloads are persisted.
+
 ## Real-tenant verification (2026-10-02)
 
 Run with a delegated user token against the four reference workspaces:
@@ -103,8 +121,8 @@ identity support for every route used here.
 
 ## Deferred
 
-- Publishing provenance into snapshots and Map & lineage: waits for the
-  durable snapshot cutover and a reviewed persistence shape.
+- Cross-workspace and external-connection graph nodes remain outside the local
+  snapshot graph; their explicit source references are available in Configuration.
 - Partner-specific adapters (BigQuery, Salesforce, lakeFS, Business Central,
   Snowflake role replication): no stable common provenance API. Their Fabric
   mirroring or shortcut surface is covered generically when Fabric returns
@@ -117,5 +135,6 @@ identity support for every route used here.
 ```powershell
 npx --no-install rayfin functions init
 npm test -- src\atlas\workspace-source-provenance.spec.ts src\atlas\source-provenance.spec.ts src\atlas\durable-sync.spec.ts src\lib\rayfin-client.spec.ts
+npm test -- src\atlas\source-provenance-snapshot.spec.ts src\atlas\browser-collector-sync.spec.ts src\atlas\browser-collector-persistence.spec.tsx
 npm --prefix rayfin\functions run build
 ```

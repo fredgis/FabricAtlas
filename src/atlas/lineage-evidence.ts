@@ -10,7 +10,7 @@ import {
 } from "./item-relations-evidence";
 import type { AtlasChange, HistoricalSnapshot } from "./history";
 import { compareSnapshots } from "./history";
-import { lineageEdgeKey, normalizeLineageEdges } from "./lineage";
+import { lineageEdgeKey, normalizeLineageEdges, type StagedLayout } from "./lineage";
 import type { Edge, Item } from "./model";
 
 // Unified, read-only view of lineage evidence by source. Atlas snapshot edges
@@ -460,6 +460,64 @@ export function buildPreviewOverlay(
     laneHeight:
       columns > 0 ? options.top + Math.max(...rowsPerColumn) * options.rowGap : 0,
     expansions,
+  };
+}
+
+/** Preview ranks follow normalized API edges, never Atlas item-type stages. */
+export function layoutPreviewGraph(
+  items: readonly Item[],
+  overlay: PreviewOverlay | undefined,
+  workspaceId: string,
+  { nodeWidth, nodeHeight, columnGap, rowGap }: {
+    nodeWidth: number; nodeHeight: number; columnGap: number; rowGap: number;
+  },
+  model?: LineageEvidenceModel,
+): StagedLayout {
+  const nodes = new Map(items.map((item) => [
+    itemRelationsNodeKey(workspaceId, item.fabricId), { id: item.fabricId, label: item.displayName },
+  ]));
+  for (const node of overlay?.laneNodes ?? []) nodes.set(node.key, { id: node.key, label: node.endpoint.displayName });
+  // Reserve positions for stored neighbours before expansion, including upstream neighbours.
+  for (const node of model?.previewGraph?.nodes ?? []) {
+    if (!node.inSnapshot) nodes.set(node.key, { id: node.key, label: node.displayName ?? node.id });
+  }
+  const outgoing = new Map<string, string[]>();
+  const incoming = new Map([...nodes.keys()].map((key) => [key, 0]));
+  const rankedEdges = model
+    ? model.relationships.flatMap((relationship) => relationship.preview.filter(isDrawnPreviewEdge)
+      .map((entry) => ({ entry, sourceKey: entry.edge.sourceKey, targetKey: entry.edge.targetKey })))
+    : overlay?.edges ?? [];
+  for (const edge of rankedEdges) {
+    // A cycle cannot run entirely left-to-right; keep its evidence without using it to rank nodes.
+    if (edge.entry.edge.inCycle || !nodes.has(edge.sourceKey) || !nodes.has(edge.targetKey)) continue;
+    outgoing.set(edge.sourceKey, [...(outgoing.get(edge.sourceKey) ?? []), edge.targetKey]);
+    incoming.set(edge.targetKey, (incoming.get(edge.targetKey) ?? 0) + 1);
+  }
+  const ordered = [...nodes.keys()].sort((left, right) =>
+    nodes.get(left)!.label.localeCompare(nodes.get(right)!.label) || left.localeCompare(right));
+  const ranks = new Map(ordered.map((key) => [key, 0]));
+  const queue = ordered.filter((key) => incoming.get(key) === 0);
+  for (let head = 0; head < queue.length; head++) {
+    const key = queue[head];
+    for (const target of outgoing.get(key) ?? []) {
+      ranks.set(target, Math.max(ranks.get(target)!, ranks.get(key)! + 1));
+      incoming.set(target, incoming.get(target)! - 1);
+      if (incoming.get(target) === 0) queue.push(target);
+    }
+  }
+  const rows = new Map<number, number>();
+  const positions: StagedLayout["positions"] = new Map();
+  for (const key of ordered) {
+    const rank = ranks.get(key)!;
+    const row = rows.get(rank) ?? 0;
+    rows.set(rank, row + 1);
+    positions.set(nodes.get(key)!.id, { x: 28 + rank * columnGap, y: 62 + row * rowGap });
+  }
+  const stageCount = Math.max(1, ...ranks.values()) + 1;
+  return {
+    positions, groups: [], stageCount,
+    width: 56 + (stageCount - 1) * columnGap + nodeWidth,
+    height: Math.max(520, 90 + (Math.max(1, ...rows.values()) - 1) * rowGap + nodeHeight),
   };
 }
 

@@ -81,20 +81,20 @@ describe("RelationshipEvidencePane", () => {
 });
 
 describe("LineageSourceLegend", () => {
-  it("lists the mockup sources in order and only shows Beta entries with evidence", () => {
+  it("shows only the active graph source in the legend", () => {
     const { rerender } = render(<LineageSourceLegend mode="items" previewIncluded />);
     expect(
       within(screen.getByRole("group", { name: "Lineage legend" }))
         .getAllByRole("listitem")
         .map((item) => item.textContent),
     ).toEqual([
-      "Atlas snapshot (verified)",
       "Item Relations API (Beta, observed)",
       "Conflict (review needed)",
       "Upstream path",
     ]);
     expect(screen.getByText("Sources and paths")).toBeVisible();
-    expect(screen.getByText("Dashed Beta evidence is observed, not authoritative.")).toBeVisible();
+    expect(screen.getByText("Only Item Relations API (Beta) lineage is drawn; it is not authoritative.")).toBeVisible();
+    expect(screen.queryByText("Atlas snapshot (verified)")).not.toBeInTheDocument();
 
     rerender(<LineageSourceLegend mode="items" previewIncluded={false} />);
     expect(screen.queryByText("Item Relations API (Beta, observed)")).not.toBeInTheDocument();

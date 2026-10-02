@@ -67,9 +67,7 @@ export function ItemRelationsEvidenceStatus({
             No persisted Item Relations evidence for this workspace.
           </span>{" "}
           <span className="text-muted-foreground">
-            The graph, evidence and changes show Atlas snapshot lineage only.
-            Evidence is stored only after a synchronization collects it with
-            the Item Relations collector enabled.
+            Sync to collect it. Atlas links stay hidden while Preview is on.
           </span>
         </p>
       </div>

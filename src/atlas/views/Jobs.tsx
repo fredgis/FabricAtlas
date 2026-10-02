@@ -3,7 +3,6 @@ import {
   Activity,
   Ban,
   CheckCircle2,
-  Clock3,
   Gauge,
   FilterX,
   Loader2,
@@ -18,7 +17,8 @@ import { fabricPortalContext, monitorHubUrl } from "../observability";
 import { SavedViewsMenu } from "../components/SavedViewsMenu";
 import { searchJobId } from "../search";
 import { useAtlas } from "../store";
-import { Card, SectionLabel, TypeGlyph, cn } from "../ui";
+import { PageHeader } from "../components/PageHeader";
+import { Card, TypeGlyph, cn } from "../ui";
 import { relativeTime, type Item, type Job, type JobStatus } from "../model";
 
 const STATUS: Record<
@@ -232,42 +232,23 @@ export function JobsView({
 
   return (
     <div className="atlas-content-frame flex flex-col gap-xl p-xl lg:p-xxl">
-      <header className="atlas-page-header">
-        <SectionLabel>Operations / run history</SectionLabel>
-        <div className="mt-s flex flex-col gap-s lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h1 className="font-heading text-600 leading-600 font-bold">
-              Jobs &amp; health
-            </h1>
-            <p className="mt-xs text-300 leading-300 text-muted-foreground">
-              Refreshes, pipeline runs and notebook activity across this workspace.
-            </p>
-          </div>
-          <div className="flex items-center gap-s text-200 leading-200 text-muted-foreground">
-            <Clock3 className="icon-size-200" aria-hidden="true" />
-            Ordered by most recent start time
-          </div>
-        </div>
-      </header>
+      <PageHeader title="Jobs & health" purpose="Refreshes, pipeline runs and notebook activity, newest first." />
 
       <section
         aria-label="Job health summary"
-        className="grid grid-cols-1 gap-m sm:grid-cols-2 xl:grid-cols-5"
+        className="flex flex-wrap gap-x-xxl gap-y-s border-y border-border px-l py-m"
       >
-        {metrics.map(({ label, value, icon: Icon, valueClassName }) => (
-          <Card key={label} className="border-t border-t-primary/40 p-l">
-            <div className="flex items-center justify-between gap-s">
-              <SectionLabel>{label}</SectionLabel>
-              <Icon className="icon-size-200 text-muted-foreground" aria-hidden="true" />
-            </div>
+        {metrics.map(({ label, value, valueClassName }) => (
+          <div key={label} className="flex items-baseline gap-s">
+            <span className="text-200 text-muted-foreground">{label}</span>
             <div
-              className={`mt-m font-numeric text-hero-700 leading-hero-700 font-bold tabular-nums ${
+              className={`font-numeric text-300 font-semibold tabular-nums ${
                 valueClassName ?? "text-foreground"
               }`}
             >
               {value}
             </div>
-          </Card>
+          </div>
         ))}
       </section>
 

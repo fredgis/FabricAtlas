@@ -134,6 +134,9 @@ const AUTHORITATIVE_DIRECTION_RELATIONS = new Set([
   "dashboard report",
   "dashboard dataset",
 ]);
+const PROVENANCE_DIRECTION_RELATIONS = new Set([
+  "onelake-shortcut", "mirroring-landing-zone", "mirrored-sql-endpoint",
+]);
 
 export function lineageEdgeKey(edge: Edge): string {
   return `${edge.source}\u0000${edge.target}\u0000${edge.relation}`;
@@ -678,6 +681,7 @@ export function normalizeLineageEdges(items: Item[], edges: Edge[]): Edge[] {
     const authoritativeDirection = AUTHORITATIVE_DIRECTION_RELATIONS.has(
       edge.relation.trim().toLowerCase(),
     );
+    const provenanceDirection = PROVENANCE_DIRECTION_RELATIONS.has(edge.relation.trim().toLowerCase());
     const preferredDirection = isPreferredSourceConsumerPair(source, target);
     const preferredReverseDirection = isPreferredSourceConsumerPair(
       target,
@@ -694,14 +698,14 @@ export function normalizeLineageEdges(items: Item[], edges: Edge[]): Edge[] {
       !authoritativeDirection &&
       source.itemType === "Notebook" &&
       target.itemType === "DataPipeline";
-    if (preferredReverseDirection || reverseByStage || reversePipeline) {
+    if (!provenanceDirection && (preferredReverseDirection || reverseByStage || reversePipeline)) {
       [source, target] = [target, source];
     }
 
     const next: Edge = {
       source: source.fabricId,
       target: target.fabricId,
-      relation: normalizedRelation(source, target, edge.relation),
+      relation: provenanceDirection ? edge.relation : normalizedRelation(source, target, edge.relation),
       broken: edge.broken,
     };
     const key = lineageEdgeKey(next);

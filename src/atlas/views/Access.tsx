@@ -74,6 +74,7 @@ import type { AccessLevel, Grant } from "../model";
 import type { AtlasNavigation } from "../navigation";
 import type { SavedViewFilters } from "../saved-views";
 import { useAtlas } from "../store";
+import { PageHeader } from "../components/PageHeader";
 import { Card, PrincipalAvatar, SectionLabel, TypeGlyph, cn } from "../ui";
 
 type AccessMode = "matrix" | "principals" | "what-if";
@@ -1671,19 +1672,9 @@ export function AccessView({
   return (
     <div className="atlas-content-frame flex flex-col gap-l p-l sm:p-xxl">
       <Card className="overflow-hidden border-primary/25">
-        <div className="atlas-page-header atlas-fabric-hero flex flex-col gap-l border-b border-border p-l lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl">
-            <SectionLabel>Governance / recorded grants</SectionLabel>
-            <h1 className="mt-xs text-600 font-bold leading-600">
-              Access Review
-            </h1>
-            <p className="mt-xs text-300 leading-300 text-muted-foreground">
-              Review recorded principal and item grants, trace their sources,
-              and check evidence coverage.
-            </p>
-          </div>
-
-          <div
+        <PageHeader title="Access Review" purpose="Review recorded grants or try a local removal scenario."
+          className="border-b border-border"
+          actions={<div
             className="inline-flex max-w-full flex-wrap self-start rounded-lg border border-border bg-card p-xs shadow-sm"
             role="group"
             aria-label="Access review mode"
@@ -1729,39 +1720,23 @@ export function AccessView({
             >
               What-if
             </button>
-          </div>
-        </div>
+          </div>}
+        />
         {/* The What-if limits stay as its accessible description; the What-if panel shows them visibly. */}
         <p id="access-what-if-reason" className="sr-only">
           {WHAT_IF_NOTICE}
         </p>
 
-        <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+        <dl className="flex flex-wrap gap-x-xl gap-y-s px-l py-s">
           {metrics.map((metric) => {
-            const Icon = metric.icon;
             return (
-              <div key={metric.label} className="flex items-start gap-m p-l">
-                <span
-                  className={cn(
-                    "flex icon-size-600 shrink-0 items-center justify-center rounded-xl",
-                    metric.className,
-                  )}
-                >
-                  <Icon className="icon-size-300" aria-hidden="true" />
-                </span>
-                <div className="min-w-0">
-                  <div className="font-numeric text-500 font-bold leading-500 tabular-nums">
-                    {metric.value}
-                  </div>
-                  <div className="text-300 font-semibold">{metric.label}</div>
-                  <div className="text-200 leading-200 text-muted-foreground">
-                    {metric.detail}
-                  </div>
-                </div>
+              <div key={metric.label} className="flex items-baseline gap-s" title={metric.detail}>
+                <dt className="text-200 text-muted-foreground">{metric.label}</dt>
+                <dd className="font-numeric text-300 font-semibold">{metric.value}</dd>
               </div>
             );
           })}
-        </div>
+        </dl>
       </Card>
 
       <Card className="overflow-hidden">

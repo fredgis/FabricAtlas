@@ -7,9 +7,11 @@ import {
 import { validateCoreCollectorEnvelope } from "./core-collector-parity";
 import { createItemRelationsEvidence, parseItemRelationsEvidence } from "./item-relations-evidence";
 import type { ItemRelationsShadowCollection } from "./item-relations-collector-shadow";
+import { sourceProvenanceSnapshot } from "./source-provenance-snapshot";
 
 type Name = "workspaceCollectCore" | "workspaceCollectDefinitions" | "workspaceCollectItemRelations"
-  | "workspaceCollectKqlMetadata" | "workspaceCollectSqlMetadata" | "workspaceCollectPowerBi";
+  | "workspaceCollectKqlMetadata" | "workspaceCollectSqlMetadata" | "workspaceCollectPowerBi"
+  | "workspaceCollectSourceProvenance";
 export type BrowserCollectorClient = {
   functions: { [N in Name]: {
     invoke(input: AppFunctionsSchema[N]["input"], options?: { timeoutMs?: number }): Promise<AppFunctionsSchema[N]["output"]>;
@@ -33,6 +35,7 @@ export interface BrowserCollectorDependencies {
 const DEFINITIONS = new Set(["Ontology", "GraphModel", "DataAgent"]);
 const SQL = new Set(["SQLDatabase", "Warehouse", "Lakehouse", "SQLEndpoint"]);
 const KQL = new Set(["Eventhouse", "KQLDatabase", "KQLQueryset", "KQLDashboard"]);
+const PROVENANCE = new Set(["Lakehouse", "Warehouse", "KQLDatabase", "MirroredDatabase"]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STOP = new Set(["deadline-exhausted", "request-timeout", "cancelled", "response-size-exceeded", "request-budget-exhausted"]);
 const SOURCE_SECTION = "Collector capability";
@@ -178,6 +181,22 @@ export async function collectBrowserWorkspace(
     assertSyncActive(signal);
     const batch = items.slice(offset, offset + 8);
     progress?.(12 + Math.floor(offset / Math.max(1, items.length) * 35), `Collecting Rayfin metadata (${offset}/${items.length})`);
+    const provenance = batch.filter((item) => PROVENANCE.has(item.type));
+    if (provenance.length) {
+      const result = await call("workspaceCollectSourceProvenance", { protocolVersion: 1, workspaceId, items: provenance, correlationId });
+      validateStage(result, "source-provenance", workspaceId, correlationId, provenance);
+      successful(result.summary);
+      if (result.stopCode && STOP.has(result.stopCode)) fail();
+      for (const item of result.items) {
+        for (const section of [item, item.shortcuts, item.mirroring, item.materializedLakeViews]) {
+          if (section) successful(section);
+        }
+        sources[`sourceProvenance:${item.id}`] = item.status === "complete"
+          ? { source: "rayfin", ...(item.code ? { code: item.code } : {}) }
+          : { source: "unsupported", code: item.code ?? "provenance-unavailable" };
+      }
+      merge(sourceProvenanceSnapshot(result, known));
+    }
     const definitions = batch.filter((item) => DEFINITIONS.has(item.type));
     if (definitions.length) {
       const result = await call("workspaceCollectDefinitions", { protocolVersion: 1, workspaceId, items: definitions, correlationId });
@@ -320,8 +339,10 @@ export async function collectBrowserWorkspace(
       for (const item of remaining) {
         if (item.type !== "Lakehouse" || !item.collectors.includes("lakehouseTables")) continue;
         const collected = result.sections?.lakehouseTables;
-        if (!collected || !successful(collected)) delete schema[item.id];
-        else if (Array.isArray(schema[item.id])) knownStorageSchemas.add(item.id);
+        if (!collected || collected.status !== "complete") delete schema[item.id];
+        else if (Array.isArray(schema[item.id]) && (!collected.code || schema[item.id].length > 0)) {
+          knownStorageSchemas.add(item.id);
+        }
       }
       merge({ ...result, schema });
       remaining = result.remainingItemIds.map((id) => expected.get(id)!);
@@ -335,8 +356,9 @@ export async function collectBrowserWorkspace(
     sources[`storageSchema:${itemId}`] = { source: "python-compatibility", code: "bounded-storage-fallback" };
   }
   if (storageFallbackIds.size) {
-    const partial = [...storageFallbackIds].some((id) =>
-      raw.schema?.[id]?.some((table) => table.source === "Downstream semantic model"));
+    const partial = /partial|truncated/.test(raw.sections?.lakehouseTables?.code ?? "") ||
+      [...storageFallbackIds].some((id) =>
+        raw.schema?.[id]?.some((table) => table.source === "Downstream semantic model"));
     raw.sections!.storageSchema = { status: "complete", ...(partial ? { code: "partial-unsupported" } : {}) };
   }
   let itemRelationsCollection: ItemRelationsShadowCollection | undefined;
