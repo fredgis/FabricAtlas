@@ -55,6 +55,32 @@ Rayfin Data API (Data API Builder)  ──  Fabric SQL database (mssql)
   wired to a screen or to synchronization, and never writes `LineageEdge`. See
   [item-relations-evidence.md](item-relations-evidence.md).
 
+## Phase 12 compatibility decisions (2026-10-02)
+
+The [dated decision record](fabcon-phase-12-decisions.md) closes the seven
+Phase 12 investigations with adopt/defer outcomes, primary-source citations,
+a distribution compatibility matrix and the completed Ossie mapping study.
+These are documentation decisions, not new collectors or a synchronization
+cutover.
+
+The existing capacity-backed Fabric Apps deployment remains the baseline, with
+Fabric SSO and managed MSSQL. Pro/PPU and F0 announcements do not establish a
+capacity-free Atlas stack. Org Apps can include Fabric Apps (Preview), but Atlas
+rollout awaits live related-item access/revocation checks. Workload Hub packaging
+awaits lifecycle, consent and tenant-isolation validation.
+
+IQ Sharing and Semantic Views adapters remain deferred without verified public
+metadata contracts. Apache Ossie has public specifications and a converter, but
+identity, conversion fidelity and content boundaries prevent direct adoption.
+Spark runtime lineage remains deferred: private-preview partner documentation
+does not establish a Microsoft public capture contract.
+
+PostgreSQL migration has no measured justification and is not a supported
+Fabric-managed Rayfin dialect. Enabling the storage service does not approve
+attachments; a concrete artifact workflow must first define provenance,
+retention and deletion. Q remains outside core implementation. Shared catalog
+reads, append-only team notes and user-scoped personal state are unchanged.
+
 ## Data model
 
 Twenty declared entities capture the workspace, team context, personal review state and local

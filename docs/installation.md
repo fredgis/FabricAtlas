@@ -41,6 +41,25 @@ brokered authentication. It runs as an item inside a Microsoft Fabric workspace.
 | Create the SPA, add redirects and grant delegated consent | Entra application/consent administrator or application owner with sufficient directory permissions |
 | Deploy the Rayfin app into the target workspace | Workspace contributor or higher with Fabric App creation rights |
 
+### Distribution decision (2026-10-02)
+
+The capacity-backed deployment above remains the Atlas baseline. Fabric Apps
+hosting eligibility alone does not prove that the app database, synchronization,
+scanner, SQL/KQL metadata access and optional monitoring can operate without
+Fabric capacity. Pro/PPU and F0 capacity-free Atlas claims remain deferred.
+
+[Org Apps documentation](https://learn.microsoft.com/en-us/power-bi/explore-reports/org-app-items)
+explicitly allows Fabric Apps (Preview) as included items. It manages the
+included app's Read and Execute grants, but not access to that app's related
+items. Atlas rollout through Org Apps is deferred until live access and
+revocation tests cover both. Workload Hub packaging is also deferred pending
+lifecycle, consent and tenant-isolation validation.
+
+See the [Phase 12 compatibility matrix and decisions](fabcon-phase-12-decisions.md)
+for primary sources, complete-stack requirements and reopening conditions.
+No deployment, tenant setting or application permission changes follow from
+closing this documentation checklist.
+
 ## 1. Clone and install
 
 ```bash
