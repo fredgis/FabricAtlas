@@ -15,6 +15,10 @@ jobs, configuration and team notes. It never stores workspace business data.
 - `src/atlas/store.tsx` owns hydration, synchronization and comments.
 - `src/atlas/lineage.ts` normalizes and lays out lineage graphs.
 - `src/atlas/views/` contains the application pages.
+- `src/atlas/mcp/` defines the read-only Atlas MCP contract and evidence tools;
+  `src/mcp/` is its local stdio entry point. Keep every tool read-only and
+  scoped to selected workspaces, and keep the snapshot, source, coverage and
+  limitation fields in every response.
 - `rayfin/data/` contains the persisted entity model.
 - `rayfin/functions/` contains Rayfin Functions; its `src/types.ts` and
   `runtimemetadata.json` are generated, so never edit them by hand.
@@ -46,6 +50,7 @@ jobs, configuration and team notes. It never stores workspace business data.
 src/
   atlas/
     views/          UI pages
+    mcp/            read-only Atlas MCP contract and evidence tools
     backend.ts      Rayfin persistence
     live-sync.ts    Fabric UDF client
     lineage.ts      lineage normalization and layout
@@ -54,6 +59,7 @@ src/
   components/       authentication shell components
   hooks/            auth and theme hooks
   lib/              Rayfin client
+  mcp/              local stdio entry point for Atlas MCP
   services/         authentication services
 rayfin/              Rayfin app and entity configuration
 fabric/              Fabric User Data Function source

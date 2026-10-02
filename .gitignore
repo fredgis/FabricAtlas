@@ -8,6 +8,7 @@ node_modules
 
 # Build output
 dist
+dist-mcp
 
 # Added by Rayfin CLI
 yarn-debug.log*

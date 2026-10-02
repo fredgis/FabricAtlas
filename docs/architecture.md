@@ -893,6 +893,28 @@ deployed app item when its IDs are configured. See
 permissions, retention and cost prerequisites, and the remaining collector
 blockers.
 
+## Phase 11 read-only Atlas MCP
+
+`src/atlas/mcp/` defines a read-only MCP contract over the validated snapshot.
+Eight tools cover workspace scope, snapshot provenance, catalog lookup, known
+impact, lineage evidence, access evidence coverage, operational incidents and
+snapshot changes. They reuse the same search, lineage, Item Relations, access,
+observability and history functions as the UI. Every response carries the
+snapshot ID, sync and retrieval times, sources, coverage and limitations.
+There is no write, remediation, permission or chat tool, and unknown methods
+and tools are refused.
+
+`src/mcp/` is a local stdio entry point built with `npm run build:mcp`. It
+signs in through Rayfin's direct Entra exchange, so only users with Execute
+permission on the Atlas app item get a session. It reads through
+`loadWorkspaceScopes`, `loadFromDb`, `loadHistoryFromDb` and
+`readLatestItemRelationsEvidence`, only for selected workspaces, and never
+reads personal review state. It stays disabled until `ATLAS_MCP_ENABLED`, a
+public client registration and `services.auth.fabric.externalEntraExchange`
+(explicitly `false`) are configured and deployed. See
+[atlas-mcp.md](atlas-mcp.md) for the verified comparison with Fabric Core and
+Fabric IQ MCP, the contract and the remaining gates.
+
 ## Sync
 
 The Sync button calls `runFabricSync` (`src/atlas/backend.ts`). When deployed,

@@ -799,12 +799,27 @@ npm test -- src\atlas\observability.spec.ts src\atlas\operational-incident-store
 npm --prefix rayfin\functions run build
 ```
 
+## Read-only Atlas MCP (gated)
+
+`npm run build:mcp` builds a local stdio MCP server (`dist-mcp/atlas-mcp.mjs`) that answers
+governance questions from the validated snapshot. It is disabled by default and cannot sign in
+until `services.auth.fabric.externalEntraExchange` is enabled and deployed with `npx rayfin up`
+and a public client registration with delegated `Item.Execute.All` exists. Review
+[atlas-mcp.md](atlas-mcp.md) before enabling it. Validate the local build with:
+
+```powershell
+npm test -- src\atlas\mcp src\mcp
+npm run build:mcp
+```
+
 ## Scripts
 
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | Vite dev server (preview mode with sample data) |
 | `npm run build` | Type-check and build the production bundle to `dist/` |
+| `npm run build:mcp` | Build the gated, read-only Atlas MCP stdio server to `dist-mcp/` |
+| `npm run mcp:atlas` | Start the built Atlas MCP server (exits unless `ATLAS_MCP_ENABLED=true`) |
 | `npm run typecheck` | Run the full TypeScript project check |
 | `npm run lint` | ESLint |
 | `npm run test` | Vitest |

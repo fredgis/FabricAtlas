@@ -22,6 +22,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "prebuild:mcp": "rayfin env --framework vite",
+    "build:mcp": "vite build --config vite.mcp.config.ts",
+    "mcp:atlas": "node dist-mcp/atlas-mcp.mjs",
     "benchmark:definitions": "npm run --silent build --prefix rayfin/functions && node scripts/benchmark-bulk-definitions.mjs",
     "benchmark:definitions:live": "npm run --silent build --prefix rayfin/functions && node scripts/benchmark-live-definitions.mjs",
     "test:fabric": "node scripts/open-fabric-portal.mjs"
@@ -46,6 +49,7 @@
     "tailwindcss": "^4.3.0"
   },
   "devDependencies": {
+    "@azure/msal-node": "5.6.0",
     "@eslint/js": "^9.21.0",
     "@microsoft/rayfin-cli": "1.36.2",
     "@microsoft/rayfin-mcp": "1.36.2",

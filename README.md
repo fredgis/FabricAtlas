@@ -47,6 +47,42 @@ are not product defaults or a reference architecture.
 [Read the PDF](docs/fabric-atlas-whitepaper.pdf) ·
 [Read the Markdown version](docs/fabric-atlas-whitepaper.md)
 
+## Read-only Atlas MCP
+
+Atlas includes an optional local stdio MCP server for deterministic, read-only
+access to validated catalog, lineage, access, incident and snapshot evidence.
+Build it after generating the deployed Rayfin environment:
+
+```powershell
+npx rayfin env --framework vite
+npm run build:mcp
+```
+
+Example `.vscode/mcp.json` configuration:
+
+```json
+{
+  "servers": {
+    "fabric-atlas": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${workspaceFolder}/dist-mcp/atlas-mcp.mjs"],
+      "env": {
+        "ATLAS_MCP_ENABLED": "true",
+        "ATLAS_MCP_CLIENT_ID": "<public-client-id>",
+        "ATLAS_MCP_TENANT_ID": "<tenant-id>"
+      }
+    }
+  }
+}
+```
+
+The public client uses device-code authentication. The signed-in user must
+belong to the Fabric app audience, and tools can read only the
+administrator-selected Atlas workspace scope. No tool changes Fabric,
+permissions or Atlas data. See [Atlas MCP](docs/atlas-mcp.md) for setup gates,
+tool contracts and limitations.
+
 ## Technical presentation
 
 The [Fabric Atlas development and architecture presentation](prez/Fabric-Atlas-Dev-Architecture.pdf)
