@@ -214,6 +214,24 @@ function assertSyncActive(signal?: AbortSignal): void {
   }
 }
 
+async function boundedShadowSummary(
+  promise: Promise<string | undefined>,
+  fallback: string,
+  milliseconds = 180_000,
+): Promise<string | undefined> {
+  let timer: number | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<string>((resolve) => {
+        timer = window.setTimeout(() => resolve(fallback), milliseconds);
+      }),
+    ]);
+  } finally {
+    if (timer != null) window.clearTimeout(timer);
+  }
+}
+
 function snapshotWriteErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -697,19 +715,25 @@ export async function runFabricSync(
       attempt.workspaceId,
       attempt.id,
     );
-    const definitionShadow = coreShadow.then((coreEnvelope) =>
-      runDefinitionCollectorShadow(
-        attempt.workspaceId,
-        attempt.id,
-        coreEnvelope,
+    const definitionShadow = boundedShadowSummary(
+      coreShadow.then((coreEnvelope) =>
+        runDefinitionCollectorShadow(
+          attempt.workspaceId,
+          attempt.id,
+          coreEnvelope,
+        ),
       ),
+      "Definitions shadow timed-out",
     );
-    const itemRelationsShadow = coreShadow.then((coreEnvelope) =>
-      runItemRelationsCollectorShadow(
-        attempt.workspaceId,
-        attempt.id,
-        coreEnvelope,
+    const itemRelationsShadow = boundedShadowSummary(
+      coreShadow.then((coreEnvelope) =>
+        runItemRelationsCollectorShadow(
+          attempt.workspaceId,
+          attempt.id,
+          coreEnvelope,
+        ),
       ),
+      "Item Relations shadow timed-out",
     );
     const raw = await invokeSyncAll(
       attempt.workspaceId,
@@ -727,8 +751,10 @@ export async function runFabricSync(
     } else if (coreCollectorShadowEnabled()) {
       attempt.coreParitySummary = "Core parity unavailable";
     }
-    attempt.definitionShadowSummary = await definitionShadow;
-    attempt.itemRelationsShadowSummary = await itemRelationsShadow;
+    [
+      attempt.definitionShadowSummary,
+      attempt.itemRelationsShadowSummary,
+    ] = await Promise.all([definitionShadow, itemRelationsShadow]);
     reportProgress?.(62, "Workspace metadata complete");
     const atlas = mapSyncToAtlas(raw, WS_FALLBACK);
     reportProgress?.(66, "Building the governance catalog");

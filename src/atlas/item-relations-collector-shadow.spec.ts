@@ -118,7 +118,7 @@ describe("Item Relations collector shadow", () => {
         },
       ),
     ).resolves.toBe(
-      "Item Relations shadow complete=1; failed=1; relations=1; externalWorkspaces=1; codes=item-not-found",
+      "Item Relations shadow complete=1; failed=1; relations=1; externalWorkspaces=1; sampled=1/1; codes=item-not-found",
     );
     expect(invoke).toHaveBeenCalledWith(
       {

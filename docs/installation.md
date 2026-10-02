@@ -386,13 +386,18 @@ VITE_ATLAS_ITEM_RELATIONS_COLLECTOR_SHADOW=true
 
 The existing Python sync and the Rayfin Core Function then start under the same
 correlation ID. Supported definition items from the Core inventory are passed
-to `workspaceCollectDefinitions` in bounded batches. All Core item IDs are
-passed to `workspaceCollectItemRelations` in batches of 16 with two browser-side
-invocations at a time. Only the Python result can publish the snapshot. Atlas
+to `workspaceCollectDefinitions` in bounded batches. The browser parity probe
+passes a deterministic sample of at most 16 Core item IDs to
+`workspaceCollectItemRelations`. Only the Python result can publish the snapshot. Atlas
 stores bounded Core, definition and Item Relations status summaries in
 `SyncRun`; it never stores or logs the raw shadow payloads.
 Leave the flag unset in stable deployments until the real comparison gate
 passes.
+
+Definition and Item Relations shadows share a three-minute browser deadline.
+They may report a timeout, but cannot delay authoritative Python snapshot
+publication indefinitely. Full-workspace Item Relations collection belongs to
+the durable server orchestration, not the browser parity probe.
 
 ## Fabric definition stage
 

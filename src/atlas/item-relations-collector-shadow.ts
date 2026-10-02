@@ -8,6 +8,7 @@ import type { ItemRelationsEvidenceEnvelope } from "../../rayfin/functions/src/w
 
 const BATCH_SIZE = 16;
 const CONCURRENCY = 2;
+const MAX_SHADOW_ITEMS = 16;
 
 interface ItemRelationsShadowClient {
   functions: {
@@ -106,7 +107,8 @@ export async function runItemRelationsCollectorShadow(
   const enabled =
     dependencies.enabled ?? itemRelationsCollectorShadowEnabled();
   if (!enabled || !coreEnvelope) return undefined;
-  const itemIds = coreEnvelope.items.map((item) => item.id);
+  const allItemIds = coreEnvelope.items.map((item) => item.id);
+  const itemIds = allItemIds.slice(0, MAX_SHADOW_ITEMS);
   if (itemIds.length === 0) return "Item Relations shadow no-targets";
   const client =
     dependencies.client ??
@@ -159,6 +161,7 @@ export async function runItemRelationsCollectorShadow(
     `failed=${failed}`,
     `relations=${relationCount}`,
     `externalWorkspaces=${externalWorkspaces}`,
+    `sampled=${itemIds.length}/${allItemIds.length}`,
     codes ? `codes=${codes}` : undefined,
   ]
     .filter((value): value is string => !!value)
