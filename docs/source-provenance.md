@@ -103,6 +103,13 @@ merged with that inventory; usable partial Lakehouse REST tables are retained
 with their partial coverage. No business rows, source database names, external
 URLs, credentials or raw payloads are persisted.
 
+Unavailable SQL, scanner and Lakehouse table inventory does not block publication
+of otherwise valid workspace metadata. A shortcut-only Lakehouse has partial
+storage coverage, not complete table/column coverage. An item with no collected
+inventory has unsupported coverage and no fabricated tables. Per-item status and
+source configuration survive publication and hydration; required-section failures
+still prevent publication.
+
 ## Real-tenant verification (2026-10-02)
 
 Run with a delegated user token against the four reference workspaces:

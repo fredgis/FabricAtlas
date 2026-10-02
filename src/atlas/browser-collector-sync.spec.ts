@@ -219,21 +219,99 @@ describe("active browser collector composition", () => {
     expect(JSON.stringify(result.raw.sections)).not.toContain("collector-not-migrated");
     expect(JSON.stringify(result.raw.capabilities)).not.toContain("collector-not-migrated");
   });
-  it.each(["Lakehouse", "Warehouse"] as const)("restores bounded scanner schema when %s SQL structure is unavailable", async (type) => {
+  it.each([
+    ["Lakehouse", "Power BI admin scanner"], ["Warehouse", "Power BI admin scanner"],
+    ["Lakehouse", "Downstream semantic model"], ["Warehouse", "Downstream semantic model"],
+  ] as const)("restores bounded %s schema from %s when SQL structure is unavailable", async (type, source) => {
     const h = storageHarness(type);
+    const original = h.compatibility.getMockImplementation()!;
+    h.compatibility.mockImplementation(async (plan) => {
+      const result = await original(plan);
+      if (plan.stage === "scanner") {
+        result.schema = { [SQL]: [table("dbo.Orders", source)] };
+        result.sections!.storageSchema = source === "Downstream semantic model"
+          ? { status: "complete", code: "partial-unsupported" } : complete();
+      }
+      return result;
+    });
     const result = await collectBrowserWorkspace(WS, identity, RUN, undefined, undefined, h.deps);
 
-    expect(result.raw.schema?.[SQL]).toEqual([table("dbo.Orders", "Power BI admin scanner")]);
+    expect(result.raw.schema?.[SQL]).toEqual([table("dbo.Orders", source)]);
     expect(result.raw.sections?.sqlSchema).toEqual(unsupported("token-unavailable"));
     expect(result.raw.capabilities?.sqlSchema).toEqual(unsupported("token-unavailable"));
     expect(h.compatibility.mock.calls[0][0].schemaItemIds).toEqual([SQL]);
     expect(h.functions.workspaceCollectSqlMetadata.invoke).toHaveBeenCalledTimes(1);
     expect(h.legacy).not.toHaveBeenCalled();
+    expect(result.raw.config).toContainEqual({
+      itemId: SQL, section: "Storage schema coverage", label: "Status",
+      value: source === "Downstream semantic model" ? "complete: partial-unsupported" : "complete",
+    });
   });
-  it.each(["Lakehouse", "Warehouse"] as const)("preserves the previous snapshot when every %s schema source is unavailable", async (type) => {
+  it.each(["Lakehouse", "Warehouse"] as const)("publishes unsupported %s coverage instead of 'Storage schema inventory was unavailable. The previous snapshot was preserved.'", async (type) => {
     const h = storageHarness(type, false);
-    await expect(collectBrowserWorkspace(WS, identity, RUN, undefined, undefined, h.deps))
-      .rejects.toThrow("Storage schema inventory was unavailable. The previous snapshot was preserved.");
+    const collected = collectBrowserWorkspace(WS, identity, RUN, undefined, undefined, h.deps);
+    await expect(collected).resolves.toMatchObject({
+      raw: {
+        sections: { storageSchema: unsupported("storage-schema-unavailable") },
+        capabilities: { storageSchema: unsupported("storage-schema-unavailable") },
+      },
+    });
+    const { raw } = await collected;
+    expect(raw.schema?.[SQL]).toBeUndefined();
+    expect(raw.items).toContainEqual({ id: SQL, type });
+    expect(raw.roleAssignments).toEqual(core().roleAssignments);
+    expect(raw.lineage).toContainEqual({ source: MODEL, target: REPORT, relation: "report" });
+    expect(raw.collectorSources?.[`storageSchema:${SQL}`]).toEqual({ source: "unsupported", code: "storage-schema-unavailable" });
+    expect(raw.config).toContainEqual({
+      itemId: SQL, section: "Storage schema coverage", label: "Status", value: "unsupported: storage-schema-unavailable",
+    });
+    validateRawSync(raw, WS);
+  });
+  it("reports mixed storage availability per item without discarding the collected warehouse", async () => {
+    const h = harness();
+    const collectedCore = core();
+    collectedCore.items = collectedCore.items.map((item) => ({
+      ...item, type: item.id === SQL ? "Lakehouse" : item.id === ONTOLOGY ? "Warehouse" : item.type,
+    }));
+    h.functions.workspaceCollectCore.invoke.mockResolvedValueOnce(collectedCore);
+    h.functions.workspaceCollectSqlMetadata.invoke.mockResolvedValueOnce({
+      ...common("sql-metadata", [
+        { id: ONTOLOGY, type: "Warehouse", ...complete() },
+        { id: SQL, type: "Lakehouse", ...complete() },
+      ]),
+      catalogs: { [ONTOLOGY]: complete(), [SQL]: unsupported("token-unavailable") },
+      schema: { [ONTOLOGY]: [table("dbo.CollectedOrders", "Fabric SQL system catalog")] },
+      artifactMetadata: {}, config: [], sections: { sqlSchema: { status: "complete", code: "partial-unsupported" } },
+    });
+    const original = h.compatibility.getMockImplementation()!;
+    h.compatibility.mockImplementation(async (plan) => {
+      const result = await original(plan);
+      result.schema = {};
+      if (plan.stage === "scanner") result.sections!.storageSchema = unsupported("scanner-schema-unavailable");
+      else result.sections!.lakehouseTables = unsupported("endpoint-unsupported");
+      return result;
+    });
+    const { raw } = await collectBrowserWorkspace(WS, identity, RUN, undefined, undefined, h.deps);
+    expect(raw.schema?.[SQL]).toBeUndefined();
+    expect(raw.schema?.[ONTOLOGY]).toEqual([table("dbo.CollectedOrders", "Fabric SQL system catalog")]);
+    expect(raw.sections?.storageSchema).toEqual({ status: "complete", code: "partial-unsupported" });
+    expect(raw.config).toEqual(expect.arrayContaining([
+      { itemId: ONTOLOGY, section: "Storage schema coverage", label: "Status", value: "complete" },
+      { itemId: SQL, section: "Storage schema coverage", label: "Status", value: "unsupported: storage-schema-unavailable" },
+    ]));
+    validateRawSync(raw, WS);
+  });
+  it("does not call an empty unsupported scanner result a verified empty storage inventory", async () => {
+    const h = storageHarness("Warehouse", false);
+    const original = h.compatibility.getMockImplementation()!;
+    h.compatibility.mockImplementation(async (plan) => {
+      const result = await original(plan);
+      if (plan.stage === "scanner") result.schema = { [SQL]: [] };
+      return result;
+    });
+    const { raw } = await collectBrowserWorkspace(WS, identity, RUN, undefined, undefined, h.deps);
+    expect(raw.schema?.[SQL]).toBeUndefined();
+    expect(raw.sections?.storageSchema).toEqual(unsupported("storage-schema-unavailable"));
   });
   it("merges usable partial Lakehouse REST inventory with the scanner fallback", async () => {
     const h = storageHarness("Lakehouse");

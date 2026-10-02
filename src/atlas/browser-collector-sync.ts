@@ -177,6 +177,7 @@ export async function collectBrowserWorkspace(
   const schemaFallbackIds: string[] = [];
   const storageFallbackIds = new Set<string>();
   const knownStorageSchemas = new Set<string>();
+  const partialStorageSchemas = new Set<string>();
   for (let offset = 0; offset < items.length; offset += 8) {
     assertSyncActive(signal);
     const batch = items.slice(offset, offset + 8);
@@ -294,10 +295,22 @@ export async function collectBrowserWorkspace(
     if (!successful(status(scanner.sections?.[name]))) fail();
   }
   sources.scanner = { source: "python-compatibility", code: "service-principal-scanner-not-live-validated" };
-  merge({ ...scanner, jobs: [], schema: scanner.schema });
+  const scannerSchema = { ...scanner.schema };
   for (const itemId of storageFallbackIds) {
-    if (Array.isArray(scanner.schema?.[itemId])) knownStorageSchemas.add(itemId);
+    const tables = scannerSchema[itemId];
+    if (!Array.isArray(tables)) continue;
+    const coverage = scanner.sections?.storageSchema;
+    if (tables.length || (coverage?.status === "complete" && !coverage.code)) {
+      knownStorageSchemas.add(itemId);
+      if (/partial|truncated/.test(coverage?.code ?? "") ||
+        tables.some((table) => table.source === "Downstream semantic model")) {
+        partialStorageSchemas.add(itemId);
+      }
+    } else {
+      delete scannerSchema[itemId];
+    }
   }
+  merge({ ...scanner, jobs: [], schema: scannerSchema });
   raw.itemMetadata = { ...core.itemMetadata, ...scanner.itemMetadata };
   raw.sections = { ...raw.sections, scanner: scanner.sections!.scanner, access: scanner.sections!.access,
     lineage: scanner.sections!.lineage, schema: { status: "complete" }, config: { status: "complete" } };
@@ -342,6 +355,9 @@ export async function collectBrowserWorkspace(
         if (!collected || collected.status !== "complete") delete schema[item.id];
         else if (Array.isArray(schema[item.id]) && (!collected.code || schema[item.id].length > 0)) {
           knownStorageSchemas.add(item.id);
+          if (storageFallbackIds.has(item.id) && /partial|truncated/.test(collected.code ?? "")) {
+            partialStorageSchemas.add(item.id);
+          }
         }
       }
       merge({ ...result, schema });
@@ -349,17 +365,37 @@ export async function collectBrowserWorkspace(
     }
     if (remaining.length) fail();
   }
-  for (const itemId of storageFallbackIds) {
-    if (!knownStorageSchemas.has(itemId)) {
-      throw new Error("Storage schema inventory was unavailable. The previous snapshot was preserved.");
-    }
-    sources[`storageSchema:${itemId}`] = { source: "python-compatibility", code: "bounded-storage-fallback" };
-  }
-  if (storageFallbackIds.size) {
-    const partial = /partial|truncated/.test(raw.sections?.lakehouseTables?.code ?? "") ||
-      [...storageFallbackIds].some((id) =>
-        raw.schema?.[id]?.some((table) => table.source === "Downstream semantic model"));
-    raw.sections!.storageSchema = { status: "complete", ...(partial ? { code: "partial-unsupported" } : {}) };
+  const storageCoverage = items.filter((item) => item.type === "Lakehouse" || item.type === "Warehouse").map((item): Status => {
+    const knownSchema = knownStorageSchemas.has(item.id);
+    const hasInventory = (raw.schema?.[item.id]?.length ?? 0) > 0;
+    const available = knownSchema || hasInventory;
+    const partial = available && (!knownSchema || partialStorageSchemas.has(item.id));
+    const coverage: Status = !available
+      ? { status: "unsupported", code: "storage-schema-unavailable" }
+      : { status: "complete", ...(partial ? { code: "partial-unsupported" } : {}) };
+    sources[`storageSchema:${item.id}`] = !available
+      ? { source: "unsupported", code: "storage-schema-unavailable" }
+      : !knownSchema
+        ? { source: "rayfin", code: "source-provenance-only" }
+        : storageFallbackIds.has(item.id)
+          ? { source: "python-compatibility", code: "bounded-storage-fallback" }
+          : { source: "rayfin" };
+    if (!available) delete raw.schema![item.id];
+    raw.config!.push({
+      itemId: item.id, section: "Storage schema coverage", label: "Status",
+      value: `${coverage.status}${coverage.code ? `: ${coverage.code}` : ""}`,
+    });
+    return coverage;
+  });
+  if (storageCoverage.length) {
+    // Optional storage inventory must not discard complete catalog, access and lineage evidence.
+    const collected = storageCoverage.filter((coverage) => coverage.status === "complete");
+    const coverage: Status = collected.length === 0
+      ? { status: "unsupported", code: "storage-schema-unavailable" }
+      : { status: "complete", ...(collected.length < storageCoverage.length || collected.some((entry) => entry.code)
+        ? { code: "partial-unsupported" } : {}) };
+    raw.sections!.storageSchema = coverage;
+    raw.capabilities!.storageSchema = { ...coverage };
   }
   let itemRelationsCollection: ItemRelationsShadowCollection | undefined;
   const evidence = [];

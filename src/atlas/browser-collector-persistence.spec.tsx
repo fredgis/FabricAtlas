@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ATLAS_CONFIG } from "./config";
 import { loadFromDb, runFabricSync } from "./backend";
 import { createItemRelationsEvidence } from "./item-relations-evidence";
@@ -190,6 +190,7 @@ function Harness() {
 }
 
 describe("two-workspace collection, publication and hydration", () => {
+  afterEach(() => vi.useRealTimers());
   beforeEach(() => {
     localStorage.clear();
     window.history.replaceState(null, "", "/#map");
@@ -263,15 +264,52 @@ describe("two-workspace collection, publication and hydration", () => {
     expect(data.Comment.rows).toHaveLength(0);
   });
 
-  it("does not replace a published snapshot when all storage schema sources become unavailable", async () => {
-    const data = installBoundaries();
+  it("publishes a partial FGI-ORACLE-like snapshot when optional storage schema becomes unavailable", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(NOW));
+    installBoundaries();
     const previous = await runFabricSync(false, user, undefined, undefined, SECOND);
+    vi.setSystemTime(new Date(Date.parse(NOW) + 60_000));
     fixture.unavailable = true;
     await expect(runFabricSync(false, user, undefined, undefined, SECOND))
-      .rejects.toThrow("Storage schema inventory was unavailable");
+      .resolves.toMatchObject({ workspace: { fabricId: SECOND } });
+    const reloaded = await loadFromDb(false, SECOND);
+    const e = estate(SECOND);
+    expect(reloaded?.workspace.snapshotId).not.toBe(previous?.workspace.snapshotId);
+    expect(reloaded?.items.map((item) => item.fabricId)).toEqual(expect.arrayContaining([e.lake, e.mirror, e.model]));
+    expect(reloaded?.schema?.[e.lake]).toEqual([
+      expect.objectContaining({ name: "silver.MirrorOrders", objectType: "Shortcut", columns: [] }),
+    ]);
+    expect(reloaded?.schema?.[e.lake]).not.toContainEqual(table(SECOND));
+    expect(reloaded?.schema?.[e.mirror]).toEqual([
+      expect.objectContaining({ name: "OPS.ORDERS", objectType: "Mirrored table", columns: [] }),
+    ]);
+    expect(reloaded?.edges).toContainEqual(expect.objectContaining({ source: e.mirror, target: e.lake, relation: "onelake-shortcut" }));
+    expect(reloaded?.grants.filter((grant) => grant.source === "directShare")).toHaveLength(1);
+    expect(reloaded?.workspace.syncSections?.storageSchema).toEqual({ status: "complete", code: "partial-unsupported" });
+    expect(reloaded?.config).toContainEqual(expect.objectContaining({
+      itemFabricId: e.lake, section: "Storage schema coverage", label: "Status", value: "complete: partial-unsupported",
+    }));
+    expect(reloaded?.config).toContainEqual(expect.objectContaining({
+      itemFabricId: e.lake, section: "Collector capability", label: "storageSchema", value: "rayfin: source-provenance-only",
+    }));
+    expect(JSON.stringify(reloaded)).not.toMatch(/PROVENANCE_SECRET_CANARY|BUSINESS_DATA_CANARY/);
+  });
+  it("still preserves the published snapshot when required access evidence is incomplete", async () => {
+    installBoundaries();
+    const previous = await runFabricSync(false, user, undefined, undefined, SECOND);
+    fixture.unavailable = true;
+    const original = fixture.compatibility.getMockImplementation()!;
+    fixture.compatibility.mockImplementation(async (workspaceId: string, correlationId: string, plan: CompatibilityPlan) => {
+      const result = await original(workspaceId, correlationId, plan) as RawSync;
+      if (plan.stage === "scanner") result.sections!.access = { status: "failed", code: "scanner-user-information-unavailable" };
+      return result;
+    });
+    await expect(runFabricSync(false, user, undefined, undefined, SECOND)).rejects.toThrow(
+      "Collector metadata was incomplete or invalid. The previous snapshot was preserved.",
+    );
     const reloaded = await loadFromDb(false, SECOND);
     expect(reloaded?.workspace.snapshotId).toBe(previous?.workspace.snapshotId);
     expect(reloaded?.schema?.[estate(SECOND).lake]).toContainEqual(table(SECOND));
-    expect(data.Workspace.rows).toHaveLength(1);
   });
 });

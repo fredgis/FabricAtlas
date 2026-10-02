@@ -37,8 +37,13 @@ Rayfin Data API (Data API Builder)  ──  Fabric SQL database (mssql)
   Composition preserves distinct scanner item grants and removes repeated grants. Active
   stage statuses replace Core migration placeholders. Unavailable Lakehouse/Warehouse SQL
   structure requests bounded scanner schema fallback, including an explicitly labelled
-  downstream-model subset without additional storage requests. If no storage inventory source
-  is available, the previous published snapshot is retained instead of publishing empty schema.
+  downstream-model subset without additional storage requests. Storage schema is optional:
+  missing inventory publishes unsupported per-item coverage without discarding valid catalog,
+  access or lineage evidence. Shortcut-only or derived inventory remains explicitly partial.
+  `Storage schema coverage` configuration rows record each Lakehouse/Warehouse status;
+  workspace storage coverage is unsupported when none is collected and partial when mixed.
+  Incomplete required sections, mismatched identities, malformed payloads and interrupted
+  collection still preserve the previous published snapshot. No stale or invented tables fill gaps.
   The Phase 2 `syncStart`, `syncContinue`, `syncStatus` and `syncCancel` functions remain a
   fail-closed durable-execution probe. Phase 3 also registers
   `workspaceDiscover`, which uses an application-identity Fabric token and returns only bounded
