@@ -51,6 +51,8 @@ const mocks = vi.hoisted(() => {
 const coreShadow = vi.hoisted(() => ({
   startCoreCollectorShadow: vi.fn(),
   completeCoreCollectorShadow: vi.fn(),
+  coreCollectorShadowEnabled: vi.fn(),
+  coreCollectorParitySummary: vi.fn(),
 }));
 
 vi.mock("@/lib/rayfin-client", () => ({
@@ -233,6 +235,10 @@ describe("Rayfin snapshot persistence", () => {
       .mockReturnValue(structuredClone(SAMPLE_DATA));
     coreShadow.startCoreCollectorShadow.mockReset().mockResolvedValue(undefined);
     coreShadow.completeCoreCollectorShadow.mockReset();
+    coreShadow.coreCollectorShadowEnabled.mockReset().mockReturnValue(false);
+    coreShadow.coreCollectorParitySummary
+      .mockReset()
+      .mockReturnValue("Core parity core-match");
   });
 
   it("does not publish a Workspace marker when an individual write fails", async () => {
@@ -440,6 +446,19 @@ describe("Rayfin snapshot persistence", () => {
     coreShadow.startCoreCollectorShadow.mockResolvedValue(shadowEnvelope);
     const raw = { schemaVersion: 2, syncMode: "complete" };
     mocks.invokeSyncAll.mockResolvedValue(raw);
+    coreShadow.completeCoreCollectorShadow.mockReturnValue({
+      authoritative: false,
+      equal: false,
+      coreEqual: true,
+      coverageEqual: false,
+      discrepancyCount: 4,
+      truncated: false,
+      counts: {
+        rayfin: { items: 14, roleAssignments: 3, jobs: 8 },
+        python: { items: 14, roleAssignments: 3, jobs: 8 },
+      },
+      discrepancies: [],
+    });
 
     await runFabricSync(false, identity);
 
@@ -451,6 +470,12 @@ describe("Rayfin snapshot persistence", () => {
     expect(coreShadow.completeCoreCollectorShadow).toHaveBeenCalledWith(
       shadowEnvelope,
       raw,
+    );
+    expect(mocks.data.SyncRun.update).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        summary: expect.stringContaining("Core parity core-match"),
+      }),
     );
   });
 

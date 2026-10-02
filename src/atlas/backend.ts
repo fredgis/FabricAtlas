@@ -25,6 +25,8 @@ import {
 } from "./live-sync";
 import {
   completeCoreCollectorShadow,
+  coreCollectorParitySummary,
+  coreCollectorShadowEnabled,
   startCoreCollectorShadow,
 } from "./core-collector-shadow";
 import { normalizeLineageEdges } from "./lineage";
@@ -525,6 +527,7 @@ interface SyncAttempt {
   startedAt: Date;
   data: Record<string, EntityApi>;
   user: SyncIdentity;
+  coreParitySummary?: string;
 }
 
 function textOrFallback(value: unknown, fallback: string): string {
@@ -697,7 +700,15 @@ export async function runFabricSync(
       signal,
       attempt.id,
     );
-    completeCoreCollectorShadow(await coreShadow, raw);
+    const coreParity = completeCoreCollectorShadow(
+      await coreShadow,
+      raw,
+    );
+    if (coreParity) {
+      attempt.coreParitySummary = coreCollectorParitySummary(coreParity);
+    } else if (coreCollectorShadowEnabled()) {
+      attempt.coreParitySummary = "Core parity unavailable";
+    }
     reportProgress?.(62, "Workspace metadata complete");
     const atlas = mapSyncToAtlas(raw, WS_FALLBACK);
     reportProgress?.(66, "Building the governance catalog");
@@ -1152,7 +1163,12 @@ async function persistSync(
   // marker is written. That final marker is the atomic visibility switch:
   // orphaned rows from a failed attempt are never selected by hydration.
   reportProgress?.(97, "Finalizing the workspace snapshot");
-  const syncSummary = `${atlas.items.length} items · ${atlas.edges.length} lineage edges · ${atlas.principals.length} principals · ${atlas.jobs.length} jobs`;
+  const syncSummary = [
+    `${atlas.items.length} items · ${atlas.edges.length} lineage edges · ${atlas.principals.length} principals · ${atlas.jobs.length} jobs`,
+    attempt.coreParitySummary,
+  ]
+    .filter((value): value is string => !!value)
+    .join(" · ");
   await updateSyncAttempt(
     attempt,
     "completed",

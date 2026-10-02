@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   completeCoreCollectorShadow,
+  coreCollectorParitySummary,
   startCoreCollectorShadow,
 } from "./core-collector-shadow";
 import {
@@ -120,6 +121,9 @@ describe("Core collector shadow", () => {
       report,
     );
     expect(JSON.stringify(report)).not.toContain("Python-only");
+    expect(coreCollectorParitySummary(report!)).toBe(
+      "Core parity core-match; coverage=match; differences=0; items=1/1; roles=1/1; jobs=0/0",
+    );
   });
 
   it("surfaces only a bounded error type when invocation fails", async () => {

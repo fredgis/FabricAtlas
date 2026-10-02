@@ -98,3 +98,26 @@ export function completeCoreCollectorShadow(
     return undefined;
   }
 }
+
+export function coreCollectorParitySummary(
+  report: CoreParityReport,
+): string {
+  const fields = report.discrepancies
+    .slice(0, 6)
+    .map((entry) =>
+      `${entry.collection}.${entry.field ?? entry.kind}`,
+    )
+    .join(",");
+  return [
+    `Core parity ${report.coreEqual ? "core-match" : "core-mismatch"}`,
+    `coverage=${report.coverageEqual ? "match" : "different"}`,
+    `differences=${report.discrepancyCount}`,
+    `items=${report.counts.rayfin.items}/${report.counts.python.items}`,
+    `roles=${report.counts.rayfin.roleAssignments}/${report.counts.python.roleAssignments}`,
+    `jobs=${report.counts.rayfin.jobs}/${report.counts.python.jobs}`,
+    fields ? `fields=${fields}` : undefined,
+  ]
+    .filter((value): value is string => !!value)
+    .join("; ")
+    .slice(0, 420);
+}
