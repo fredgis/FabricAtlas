@@ -322,10 +322,12 @@ workspace discovery with the AppBackend application identity. In current Fabric 
 that identity follows the AppBackend owner. The owner must retain access to every workspace that
 the Atlas administrator needs to evaluate.
 
-The Function is not a general app-audience workspace browser. It first exercises the
-synchronizer-only `SyncCommand` read policy using the caller's Rayfin token. Other authenticated
-users fail closed before the Fabric request. Successful responses contain only workspace ID,
-display name, type and capacity ID, with bounded pagination, retries and response size.
+The Function is not a general app-audience workspace browser. It first reads the deterministic
+`SynchronizerAuthority` sentinel using the caller's Rayfin token. The first authorized invocation
+creates it through the same synchronizer-only policy. Other authenticated users either cannot
+read or cannot create the sentinel and fail closed before the Fabric request. Successful responses
+contain only workspace ID, display name, type and capacity ID, with bounded pagination, retries
+and response size.
 
 `WorkspaceScope` persists only the rows the administrator selects. Its rows are shared with the
 authenticated app audience; all mutations require the configured synchronizer subject. Removal is
@@ -341,6 +343,38 @@ The store can switch and rehydrate an active selected workspace, and every backe
 that workspace ID explicitly. The visible selector and multi-workspace synchronization action are
 not added yet. The configured deployment workspace remains the fallback until an explicit scope
 is persisted.
+
+## Fabric Core collector stage
+
+`workspaceCollectCore` also declares the Fabric audience and runs behind the same
+synchronizer-only gate. It is a read-only dual-run stage for comparison with the Python UDF: it is
+not wired to the Sync button, writes no Rayfin rows and must not be published as a snapshot. Its
+excluded sections and capabilities are `unsupported` with `collector-not-migrated`, so
+`validateRawSync` rejects it by design; validate it with `validateCoreCollectorEnvelope` instead.
+Typed callers pass the correlation explicitly:
+
+```ts
+await client.functions.workspaceCollectCore.invoke({
+  protocolVersion: 1,
+  workspaceId,
+  correlationId: null,
+});
+```
+
+The defaulted nullable parameter keeps the generated type and runtime metadata aligned, so this
+Function does not have the `syncStatus.jobId` optional-input limitation. The AppBackend owner must
+be able to read the workspace, its items, role assignments and item job instances. A missing
+permission fails only the affected section; job failures never invalidate workspace, item or role
+data. Regenerate and validate the contract with:
+
+```powershell
+npx --no-install rayfin functions init
+npm test -- src\atlas\workspace-collector.spec.ts src\atlas\core-collector-parity.spec.ts src\atlas\durable-sync.spec.ts src\lib\rayfin-client.spec.ts
+npm --prefix rayfin\functions run build
+```
+
+`rayfin functions init` also refreshes Rayfin agent-skill files and `rayfin/.lockfile.json`;
+revert those unrelated changes before committing generated Functions contracts.
 
 ## Scripts
 

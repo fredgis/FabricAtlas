@@ -8,6 +8,10 @@ import { createPingResult, type PingResult } from './ping.js';
 import { SyncOrchestrator } from './sync/orchestrator.js';
 import { safeSyncCall, type SyncResponse, type SyncUuidInput } from './sync/protocol.js';
 import {
+  workspaceCollectCore,
+  type WorkspaceCoreEnvelope,
+} from './workspace-collector.js';
+import {
   workspaceDiscover,
   type WorkspaceDiscoveryResult,
 } from './workspace-discovery.js';
@@ -21,6 +25,21 @@ udf.func(
   async (
     ctx: RayfinContext<AtlasSchema, AudienceType.Fabric>,
   ): Promise<WorkspaceDiscoveryResult> => workspaceDiscover(ctx),
+  [],
+);
+
+// Read-only dual-run Core collector stage; its envelope is never published as a snapshot.
+// A defaulted nullable parameter keeps typegen and runtime binding aligned:
+// typed callers pass null explicitly, and an omitted value binds to null.
+udf.func(
+  'workspaceCollectCore',
+  async (
+    ctx: RayfinContext<AtlasSchema, AudienceType.Fabric>,
+    protocolVersion: 1,
+    workspaceId: SyncUuidInput,
+    correlationId: SyncUuidInput | null = null,
+  ): Promise<WorkspaceCoreEnvelope> =>
+    workspaceCollectCore(ctx, protocolVersion, workspaceId, correlationId),
   [],
 );
 

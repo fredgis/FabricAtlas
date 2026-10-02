@@ -72,6 +72,18 @@ shared Atlas rows still reference the workspace, because dropping only the
 scope row would not revoke app-audience access to catalog data or append-only
 team notes.
 
+## SynchronizerAuthority
+
+A single global sentinel used by Rayfin Functions before they read an
+application-identity Fabric token.
+
+`id`, `createdAt`
+
+Every action requires the configured synchronizer subject. An authorized first
+invocation creates the deterministic sentinel. Later invocations must read it
+through the same policy. A caller whose row-level policy hides the sentinel
+cannot pass merely because an empty query succeeded.
+
 ## FabricItem
 
 One row per Fabric item.

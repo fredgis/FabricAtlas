@@ -55,12 +55,18 @@ The comparison uses these allowlists:
 
 | Records | Compared fields |
 | --- | --- |
-| Workspace | `id`, `displayName`, `description`, `type`, `capacityId`, `capacityRegion` |
-| Items | `id`, `type`, `displayName`, `description`, `workspaceId`, `folderId` |
+| Workspace | `id`, `displayName`, `type`, `capacityId`, `capacityRegion` |
+| Items | `id`, `type`, `displayName`, `workspaceId`, `folderId` |
 | Role assignments | `role`; principal `id`, `displayName`, `type`, `userType`; `userDetails.userPrincipalName`, `userDetails.userType` |
 | Jobs | `itemId`, `id`, `jobType`, `status`, `itemDisplayName`, `itemType`, `invokeType`, `startTimeUtc`, `endTimeUtc`, `createdTimeUtc`, `lastUpdatedTimeUtc` |
 | Sections/capabilities | `status`, `code` for the contract's fixed names |
 | Item metadata | `scannerMatched`, `ownerAvailable` |
+
+The Core collector deliberately omits workspace/item descriptions. The stage
+validator permits bounded optional description text, but the comparison ignores
+it on both sides. Python descriptions therefore do not create false Core
+discrepancies. Optional capacity/folder identifiers normalize case when they
+are UUIDs; other nonempty identifiers retain their text and case.
 
 Items match by canonical ID; roles form multisets keyed by principal ID and
 role. Jobs match by item ID and job ID, or by the fallback tuple

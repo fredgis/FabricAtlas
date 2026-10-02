@@ -309,13 +309,45 @@ describe("compareCoreCollectorParity", () => {
     const python = structuredClone(raw);
     python.workspace.id = otherItemId;
     python.items[0].workspaceId = otherItemId;
-    python.workspace.description = "Different description";
+    python.workspace.displayName = "Different workspace name";
     python.items[0].displayName = "Different name";
     const report = compareCoreCollectorParity(raw, python);
     expect(report.discrepancies.map((entry) => `${entry.collection}.${entry.field}`)).toEqual([
-      "workspace.description", "workspace.id", "items.displayName", "items.workspaceId",
+      "workspace.displayName", "workspace.id", "items.displayName", "items.workspaceId",
     ]);
     expect(JSON.stringify(report)).not.toContain("Different");
+  });
+
+  it("excludes descriptions intentionally omitted by the Core collector", () => {
+    const raw = coreEnvelope();
+    delete raw.workspace.description;
+    const python = structuredClone(raw);
+    python.workspace.description = "Python workspace description";
+    python.items[0].description = "Python item description";
+    expect(compareCoreCollectorParity(raw, python).equal).toBe(true);
+    raw.workspace.description = "A different optional description";
+    raw.items[0].description = "A different optional item description";
+    expect(compareCoreCollectorParity(raw, python).equal).toBe(true);
+    expect(() => validateCoreCollectorEnvelope({
+      ...raw, workspace: { ...raw.workspace, description: { upstreamBody: "not text" } },
+    })).toThrow(/invalid-text/);
+  });
+
+  it("normalizes optional capacity/folder UUIDs while preserving non-UUID identifiers", () => {
+    const raw = coreEnvelope();
+    raw.workspace.capacityId = otherItemId.toUpperCase();
+    raw.items[0].folderId = otherItemId.toUpperCase();
+    const python = structuredClone(raw);
+    python.workspace.capacityId = otherItemId;
+    python.items[0].folderId = otherItemId;
+    expect(compareCoreCollectorParity(raw, python).equal).toBe(true);
+    raw.workspace.capacityId = python.workspace.capacityId = "shared";
+    raw.items[0].folderId = python.items[0].folderId = "root";
+    expect(compareCoreCollectorParity(raw, python).equal).toBe(true);
+    python.items[0].folderId = "Root";
+    expect(compareCoreCollectorParity(raw, python).discrepancies).toMatchObject([
+      { collection: "items", field: "folderId", kind: "value-mismatch" },
+    ]);
   });
 
   it("preserves role multiplicity and compares principal details", () => {
@@ -343,7 +375,7 @@ describe("compareCoreCollectorParity", () => {
     raw.roleAssignments.push({ role: "Viewer", principal: { id: principalId } });
     raw.jobs = [job(), job({ itemId: otherItemId })];
     const python = structuredClone(raw);
-    python.items[0].description = "Changed";
+    python.items[0].displayName = "Changed";
     python.roleAssignments[0].principal.displayName = "Changed";
     python.jobs[0].status = "Failed";
     const expected = compareCoreCollectorParity(raw, python);
@@ -446,13 +478,13 @@ describe("compareCoreCollectorParity", () => {
     raw.items = Array.from({ length: 120 }, (_, index) => ({
       id: `10000000-0000-4000-8000-${index.toString(16).padStart(12, "0")}`,
       type: "Lakehouse",
-      description: "x".repeat(2_000),
+      displayName: "x".repeat(2_000),
     }));
     raw.itemMetadata = Object.fromEntries(raw.items.map((item) => [
       item.id, { scannerMatched: false, ownerAvailable: false },
     ]));
     const python = structuredClone(raw);
-    for (const item of python.items) item.description += "y";
+    for (const item of python.items) item.displayName += "y";
     const report = compareCoreCollectorParity(raw, python, { maxDiscrepancies: 3 });
     expect(report).toMatchObject({ discrepancyCount: 120, truncated: true, coreEqual: false });
     expect(report.discrepancies).toHaveLength(3);

@@ -108,8 +108,8 @@ type Rows = Map<string, Row[]>;
 type Collection = "workspace" | "items" | "roleAssignments" | "jobs" |
   "sections" | "capabilities" | "itemMetadata";
 
-const WORKSPACE_FIELDS = ["id", "displayName", "description", "type", "capacityId", "capacityRegion"] as const;
-const ITEM_FIELDS = ["id", "type", "displayName", "description", "workspaceId", "folderId"] as const;
+const WORKSPACE_FIELDS = ["id", "displayName", "type", "capacityId", "capacityRegion"] as const;
+const ITEM_FIELDS = ["id", "type", "displayName", "workspaceId", "folderId"] as const;
 const PRINCIPAL_FIELDS = ["id", "displayName", "type", "userType"] as const;
 const USER_FIELDS = ["userPrincipalName", "userType"] as const;
 const JOB_TIMESTAMPS = ["startTimeUtc", "endTimeUtc", "createdTimeUtc", "lastUpdatedTimeUtc"] as const;
@@ -188,7 +188,7 @@ function timestamp(value: unknown): string {
 function fields(
   value: RecordValue,
   names: readonly string[],
-  uuids: readonly string[] = [],
+  identities: readonly string[] = [],
   timestamps: readonly string[] = [],
 ): Row {
   return Object.fromEntries(names.map((name) => {
@@ -196,7 +196,7 @@ function fields(
     return [
       name,
       raw == null ? null :
-        uuids.includes(name) ? uuid(raw) :
+        identities.includes(name) ? identity(raw) :
           timestamps.includes(name) ? timestamp(raw) : text(raw),
     ];
   }));
@@ -244,7 +244,10 @@ function project(raw: unknown, coreOnly: boolean): Projection {
   }
   timestamp(input.syncedAt);
   const workspace = record(input.workspace);
-  if (coreOnly) onlyKeys(workspace, WORKSPACE_FIELDS);
+  if (coreOnly) {
+    onlyKeys(workspace, [...WORKSPACE_FIELDS, "description"]);
+    if (workspace.description !== undefined) text(workspace.description);
+  }
   const workspaceId = uuid(workspace.id);
   const workspaceRow = fields(workspace, WORKSPACE_FIELDS, ["id", "capacityId"]);
   const result: Projection = {
@@ -259,7 +262,10 @@ function project(raw: unknown, coreOnly: boolean): Projection {
 
   for (const rawItem of array(input.items)) {
     const item = record(rawItem);
-    if (coreOnly) onlyKeys(item, ITEM_FIELDS);
+    if (coreOnly) {
+      onlyKeys(item, [...ITEM_FIELDS, "description"]);
+      if (item.description !== undefined) text(item.description);
+    }
     const id = uuid(item.id);
     const itemType = text(item.type);
     if (itemType.toLowerCase() === "item") invalid("placeholder-item-type");

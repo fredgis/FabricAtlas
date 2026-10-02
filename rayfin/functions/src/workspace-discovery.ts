@@ -3,6 +3,10 @@ import {
   type RayfinContext,
 } from "@microsoft/fabric-user-data-functions";
 import type { AtlasSchema } from "../../data/schema.js";
+import {
+  requireAtlasSynchronizer,
+  type SynchronizerGuardData,
+} from "./synchronizer-gate.js";
 
 const FABRIC_WORKSPACES_URL = "https://api.fabric.microsoft.com/v1/workspaces";
 const MAX_DISCOVERY_PAGES = 50;
@@ -24,16 +28,6 @@ export interface WorkspaceDiscoveryResult {
   contractVersion: 1;
   workspaces: DiscoveredWorkspace[];
   truncated: boolean;
-}
-
-interface WorkspaceDiscoveryGuardData {
-  SyncCommand: {
-    select: (fields: readonly ["id"]) => {
-      first: (count: number) => {
-        execute: () => Promise<unknown[]>;
-      };
-    };
-  };
 }
 
 type FetchLike = typeof fetch;
@@ -189,17 +183,13 @@ function sanitizeWorkspace(value: unknown): DiscoveredWorkspace {
 }
 
 export async function authorizeWorkspaceDiscovery(
-  data: WorkspaceDiscoveryGuardData,
+  data: SynchronizerGuardData,
 ): Promise<void> {
-  try {
-    // The query returns no command data; its synchronizer-only read policy is the caller gate.
-    await data.SyncCommand.select(["id"]).first(1).execute();
-  } catch {
-    console.warn("[atlas] workspace discovery authorization failed");
-    throw new Error(
-      "Workspace discovery requires the configured Atlas administrator.",
-    );
-  }
+  await requireAtlasSynchronizer(
+    data,
+    "workspace discovery",
+    "Workspace discovery requires the configured Atlas administrator.",
+  );
 }
 
 export async function discoverFabricWorkspaces(

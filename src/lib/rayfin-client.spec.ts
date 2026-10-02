@@ -119,6 +119,7 @@ describe("Rayfin Functions contract", () => {
     expectTypeOf<keyof AppFunctionsSchema>().toEqualTypeOf<
       | "ping"
       | "workspaceDiscover"
+      | "workspaceCollectCore"
       | "syncStart"
       | "syncContinue"
       | "syncStatus"

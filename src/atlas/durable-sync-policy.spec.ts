@@ -50,9 +50,10 @@ describe('durable synchronization data policies', () => {
       statement.declarationList.declarations).find((declaration) => declaration.name.getText() === 'schema')!
       .initializer as ts.ArrayLiteralExpression;
     const names = schemaList.elements.map((element) => element.getText());
-    expect(names).toHaveLength(19);
-    expect(names.slice(-4, -1)).toEqual(ENTITIES);
-    expect(names.at(-1)).toBe('WorkspaceScope');
+    expect(names).toHaveLength(20);
+    expect(names.slice(-5, -2)).toEqual(ENTITIES);
+    expect(names.at(-2)).toBe('WorkspaceScope');
+    expect(names.at(-1)).toBe('SynchronizerAuthority');
     expect(names.slice(0, 3)).toEqual(['Workspace', 'FabricItem', 'LineageEdge']);
     for (const entity of ENTITIES) {
       expect(schemaType.members.filter(ts.isPropertySignature).map((member) => member.name.getText()))

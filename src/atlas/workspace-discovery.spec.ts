@@ -47,10 +47,9 @@ describe("workspace discovery function", () => {
     const execute = vi.fn().mockRejectedValue(new Error("forbidden"));
     await expect(
       authorizeWorkspaceDiscovery({
-        SyncCommand: {
-          select: () => ({
-            first: () => ({ execute }),
-          }),
+        SynchronizerAuthority: {
+          findById: execute,
+          create: vi.fn(),
         },
       }),
     ).rejects.toThrow("configured Atlas administrator");
