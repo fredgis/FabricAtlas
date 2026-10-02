@@ -62,6 +62,15 @@ fail-closed until Atlas has:
 These are orchestration gaps, not reasons to route migrated collectors back
 through Python.
 
+## Scheduled refresh status
+
+Scheduled refresh is disabled while any synchronization step still depends on
+browser-driven Python UDF execution or browser-issued continuation calls.
+Closing the browser can preserve committed checkpoints, but it does not start
+the remaining slices. Atlas must display this limitation directly in Workspace
+Hub and must not advertise background or scheduled refresh until a validated
+non-interactive server driver is available.
+
 ## Fallback removal criteria
 
 Remove each Python function when the corresponding Rayfin capability is:

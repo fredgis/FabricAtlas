@@ -405,6 +405,10 @@ shared scope.
 The v2 multi-workspace graph remains an internal fail-closed framework until collector payload
 adapters and an externally serialized claim path are integrated.
 
+Scheduled refresh remains disabled while any fallback step is driven through
+the browser or Python UDF. Persisted checkpoints support safe resume, not
+unattended continuation.
+
 ### Fabric Core collector stage (dual-run, no cutover)
 
 `workspaceCollectCore` is the first Python-to-Functions collector port. It is a read-only
