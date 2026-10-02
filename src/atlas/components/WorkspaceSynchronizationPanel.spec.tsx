@@ -111,9 +111,16 @@ describe("WorkspaceSynchronizationPanel", () => {
       ).getByText("Collect").closest("li"),
     ).toHaveAttribute("aria-current", "step");
     expect(screen.getByText("Collecting")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Actions for Second workspace" }),
+    );
     expect(
-      screen.getByRole("button", { name: "Open Second workspace" }),
-    ).toBeDisabled();
+      screen.getByRole("menuitem", { name: "Open in Atlas" }),
+    ).toHaveAttribute("aria-disabled", "true");
+    expect(
+      screen.getByRole("menuitem", { name: "Open in Atlas" }),
+    ).toHaveAccessibleDescription("Paused until the current run finishes");
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
 
     fireEvent.click(screen.getByRole("button", { name: "View run" }));
     expect(document.activeElement?.id).toBe(LIVE_RUN_ROW_ID);
@@ -125,19 +132,26 @@ describe("WorkspaceSynchronizationPanel", () => {
     expect(value.cancelSync).toHaveBeenCalledTimes(1);
   });
 
-  it("shows scheduling disabled with its verified reason and no schedule controls", () => {
+  it("shows scheduling disabled with its verified reason on inert schedule controls", () => {
     renderPanel(context());
 
     expect(screen.getByRole("heading", { name: "Schedule" })).toBeInTheDocument();
     expect(screen.getByText("Disabled")).toBeInTheDocument();
     expect(screen.getByText("Manual only")).toBeInTheDocument();
     expect(screen.getByText("Not scheduled")).toBeInTheDocument();
-    expect(
-      screen.getByText(/no documented timer or unattended trigger/),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Edit schedule/ })).toBeNull();
+    const reason = /no documented timer or unattended trigger/;
+    expect(screen.getByText(reason)).toBeInTheDocument();
+
+    const toggle = screen.getByRole("switch", {
+      name: "Scheduled synchronization",
+    });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(toggle).toBeDisabled();
+    expect(toggle).toHaveAccessibleDescription(reason);
+    const edit = screen.getByRole("button", { name: "Edit schedule" });
+    expect(edit).toBeDisabled();
+    expect(edit).toHaveAccessibleDescription(reason);
     expect(screen.queryByRole("button", { name: /Resume/ })).toBeNull();
-    expect(screen.queryByRole("switch")).toBeNull();
   });
 
   it("switches the active workspace from the shared scope", () => {
@@ -147,8 +161,18 @@ describe("WorkspaceSynchronizationPanel", () => {
     expect(screen.getByText("2 selected")).toBeInTheDocument();
     expect(screen.getByText("Last valid snapshot")).toBeInTheDocument();
     expect(screen.getByText("Not loaded")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open Second workspace" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Actions for Second workspace" }),
+    );
+    expect(
+      screen.getByRole("menuitem", { name: "Open in Fabric" }),
+    ).toHaveAttribute(
+      "href",
+      expect.stringContaining(`/groups/${OTHER}/list`),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open in Atlas" }));
     expect(value.selectWorkspace).toHaveBeenCalledWith(OTHER);
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 
   it("restricts scope management to the synchronizer behind the Functions flag", async () => {
@@ -291,14 +315,101 @@ describe("WorkspaceSynchronizationPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sync all" }));
     expect(value.syncWorkspaces).toHaveBeenCalledWith([ACTIVE, OTHER]);
     fireEvent.click(
-      screen.getByRole("button", { name: "Synchronize Second workspace" }),
+      screen.getByRole("button", { name: "Actions for Second workspace" }),
     );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Synchronize now" }));
     expect(value.syncWorkspaces).toHaveBeenLastCalledWith([OTHER]);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: `Actions for ${SAMPLE_DATA.workspace.displayName}`,
+      }),
+    );
+    expect(
+      screen.getByRole("menuitem", { name: "Synchronize now" }),
+    ).not.toHaveAttribute("aria-disabled");
+    expect(screen.queryByRole("menuitem", { name: "Open in Atlas" })).toBeNull();
+  });
+
+  it("synchronizes only the checked workspaces with a mixed select-all state", () => {
+    const value = context();
+    renderPanel(value);
+    const selectAll = screen.getByRole("checkbox", {
+      name: "Select all workspaces",
+    });
+    expect(selectAll).toBeChecked();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Second workspace" }));
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+    expect((selectAll as HTMLInputElement).indeterminate).toBe(true);
+    expect(screen.queryByRole("button", { name: "Sync all" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Sync selected" }));
+    expect(value.syncWorkspaces).toHaveBeenLastCalledWith([ACTIVE]);
+
+    fireEvent.click(selectAll);
+    expect(screen.getByText("2 selected")).toBeInTheDocument();
+    expect((selectAll as HTMLInputElement).indeterminate).toBe(false);
+    fireEvent.click(selectAll);
+    expect(screen.getByText("0 selected")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sync selected" })).toBeDisabled();
+  });
+
+  it("omits row selection when only one workspace is in scope", () => {
+    renderPanel(
+      context({
+        workspaceScopes: [
+          { id: ACTIVE, displayName: SAMPLE_DATA.workspace.displayName, persisted: true },
+        ],
+      }),
+    );
+
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Sync (all|selected)$/ })).toBeNull();
     expect(
       screen.getByRole("button", {
-        name: `Synchronize ${SAMPLE_DATA.workspace.displayName}`,
+        name: `Actions for ${SAMPLE_DATA.workspace.displayName}`,
       }),
-    ).toBeEnabled();
+    ).toBeInTheDocument();
+  });
+
+  it("copies a run ID and full error from the run actions menu", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    renderPanel(
+      context({}, [
+        {
+          id: "failed-run",
+          startedAt: "2026-10-02T12:21:00.000Z",
+          finishedAt: "2026-10-02T12:24:18.000Z",
+          status: "failed",
+          triggeredBy: "Synchronizer",
+          failureMessage: "Fabric returned HTTP 403.",
+        },
+      ]),
+    );
+
+    const table = screen.getByRole("table", {
+      name: "Synchronization runs, newest first",
+    });
+    const [row] = within(table).getAllByRole("row").slice(1);
+    fireEvent.click(
+      within(row).getByRole("button", { name: /^Actions for run started/ }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Copy run ID" }));
+    expect(writeText).toHaveBeenLastCalledWith("failed-run");
+    expect(await screen.findByText("Run ID copied.")).toBeInTheDocument();
+
+    fireEvent.click(
+      within(row).getByRole("button", { name: /^Actions for run started/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Copy error details" }),
+    );
+    expect(writeText).toHaveBeenLastCalledWith("Fabric returned HTTP 403.");
+    expect(await screen.findByText("Error details copied.")).toBeInTheDocument();
   });
 
   it("shows running, queued and failed workspaces and blocks conflicting actions", () => {
@@ -328,9 +439,13 @@ describe("WorkspaceSynchronizationPanel", () => {
     expect(within(rows[1]).getByText("Collecting")).toBeInTheDocument();
     expect(within(rows[2]).getByText("Queued")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sync all" })).toBeDisabled();
-    for (const button of screen.getAllByRole("button", { name: /^Synchronize / })) {
-      expect(button).toBeDisabled();
-    }
+    fireEvent.click(
+      screen.getByRole("button", { name: "Actions for Third workspace" }),
+    );
+    const syncItem = screen.getByRole("menuitem", { name: "Synchronize now" });
+    expect(syncItem).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(syncItem);
+    expect(value.syncWorkspaces).not.toHaveBeenCalled();
     expect(screen.getByText("2 of 3 · Second workspace")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "View run" })).toBeNull();
   });

@@ -420,14 +420,22 @@ opened, or with their outcome from the latest browser batch.
 `Manage scope` uses `workspaceDiscover` and is rendered only for the configured synchronizer while
 the `fabric-app-functions` flag is enabled.
 
-**Sync all** and each row's **Sync** call `syncWorkspaces(ids)` in the store. The store runs the
+The Selected workspaces table follows the issue #42 layout: a checkbox column, status, details
+and a row actions menu (`RowActionsMenu`, a WAI-ARIA menu button with arrow, Home, End and
+Escape handling and no extra dependency). When the synchronizer sees more than one workspace,
+the checkboxes choose which workspaces the header action synchronizes: **Sync all** when every
+row is checked, **Sync selected** otherwise (disabled with none checked). Each row menu offers
+**Synchronize now**, **Open in Atlas** for a non-active workspace and **Open in Fabric**; actions
+that conflict with a running batch stay focusable, marked `aria-disabled` and state why. All of
+them call `syncWorkspaces(ids)` in the store. The store runs the
 existing per-workspace `runFabricSync(targetWorkspaceId)` contract one workspace at a time in this
 browser tab, refuses a second batch while one is in flight, and records each member as queued,
 running, completed, failed or cancelled in `syncQueue`. A failed workspace does not stop the
 batch; cancel stops the running workspace and marks the rest cancelled. Only the active
 workspace's result replaces visible data, history and the first-sync gate state; other workspaces
 publish their own snapshot and are loaded when opened. Workspace switching stays blocked while a
-batch runs.
+batch runs. Recent runs rows have a menu to copy the persisted run ID and, for failures, the
+full error text.
 
 One derivation (`syncRunView` in `src/atlas/sync-run.ts`) feeds every run surface. The header shows
 the compact status (stage and percent, cancelling, or "Sync failed" with a Details control that
@@ -439,8 +447,9 @@ run actions. Long run errors stay in a fixed-layout table and expand into their 
 `SYNC_BACKEND_CAPABILITIES` in `src/atlas/workspace-sync.ts` keeps background runs and scheduled
 runs closed. The UI therefore states that a run executes in the synchronizer's browser tab through
 Rayfin collectors plus exact Python compatibility gaps, shows the schedule as disabled with the
-verified reason and does not render resume or schedule-editing controls. The configured deployment
-workspace remains the fallback until the administrator persists an explicit shared scope.
+verified reason: the schedule switch stays off and, like **Edit schedule**, is natively disabled
+and described by that reason. No resume control is rendered. The configured deployment workspace
+remains the fallback until the administrator persists an explicit shared scope.
 
 The v2 multi-workspace graph remains an internal fail-closed framework until collector payload
 adapters and an externally serialized claim path are integrated.
@@ -888,7 +897,12 @@ persisting, recovered (a newer run was captured) and no-longer-reported
 incidents. Governance Radar lists opened incidents once (replacing the
 failed-run finding of the same run), raises them to critical only when a
 consumer is also failing, and adds them to the exported digest with
-provenance and limits. `src/atlas/incident-feeds.ts` builds the incident
+provenance and limits. The Radar card states how many entries need review and
+groups them into one signal tile per kind (`groupRadarSignals` in
+`src/atlas/radar-signals.ts`: risky change kind, opened job failures, or new
+findings by category) with the exact entry count. Tiles are collapsed
+disclosures; opening one lists its entries with the existing exception, open
+evidence, acknowledge and mute actions. `src/atlas/incident-feeds.ts` builds the incident
 section and Markdown of a Sync Brief and Watchlist events from the same deltas;
 Jobs & health shows the section and copies it as Markdown.
 

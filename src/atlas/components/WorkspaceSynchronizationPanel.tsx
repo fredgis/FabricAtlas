@@ -1,21 +1,31 @@
-import { Fragment, useEffect, useId, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   AlertTriangle,
   ArrowDown,
+  ArrowRightLeft,
   Ban,
   Calendar,
-  CalendarOff,
   CircleCheck,
   CircleDashed,
   CircleX,
   Clock3,
+  Copy,
   Globe,
   Info,
   Layers,
+  Pencil,
   RefreshCw,
   Settings,
   UserRound,
 } from "lucide-react";
+import { fabricPortalWorkspaceUrl } from "../catalog-search";
 import { ATLAS_CONFIG } from "../config";
 import { isFeatureEnabled } from "../feature-flags";
 import { useAtlas } from "../store";
@@ -35,6 +45,7 @@ import {
 import { useWorkspaceSwitch } from "../workspace-switch";
 import { LINK_BUTTON, PRIMARY_BUTTON, SECONDARY_BUTTON } from "./button-styles";
 import { ErrorDetail } from "./ErrorDetail";
+import { RowActionsMenu, type RowMenuAction } from "./RowActionsMenu";
 import { SyncRunDetailed } from "./SyncRunStatus";
 import { WorkspaceScopeDialog } from "./WorkspaceScopeDialog";
 
@@ -165,6 +176,35 @@ function ScopeDetail({ row }: { row: ScopeWorkspaceRow }) {
   }
 }
 
+function SelectAllCheckbox({
+  checked,
+  indeterminate,
+  onChange,
+}: {
+  checked: boolean;
+  indeterminate: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate;
+  }, [indeterminate]);
+  return (
+    <label className="inline-flex min-h-[var(--atlas-touch-target)] cursor-pointer items-center gap-s sm:min-h-[var(--atlas-control-height)]">
+      <input
+        ref={ref}
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="size-l shrink-0 accent-primary"
+      />
+      <span className="text-200 font-semibold text-muted-foreground md:sr-only">
+        Select all workspaces
+      </span>
+    </label>
+  );
+}
+
 function SelectedWorkspacesCard() {
   const {
     workspaceScopes,
@@ -185,6 +225,7 @@ function SelectedWorkspacesCard() {
   } = useAtlas();
   const switchWorkspace = useWorkspaceSwitch();
   const [scopeOpen, setScopeOpen] = useState(false);
+  const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
   const switchHintId = useId();
   const rows = scopeWorkspaceRows({
     scopes: workspaceScopes,
@@ -198,8 +239,54 @@ function SelectedWorkspacesCard() {
   });
   const canManageScope = canSync && isFeatureEnabled("fabric-app-functions");
   const canStart = canSync && (isPreview || configured);
+  const selectable = canStart && rows.length > 1;
+  const checkedIds = rows
+    .filter((row) => !excluded.has(row.id))
+    .map((row) => row.id);
+  const allChecked = checkedIds.length === rows.length;
   const usesFallback =
     workspaceScopes.length === 1 && !workspaceScopes[0].persisted;
+  const pausedReason = syncing
+    ? "Paused until the current run finishes"
+    : workspaceScopesLoading
+      ? "Available once the scope has loaded"
+      : undefined;
+  const toggleRow = (id: string, checked: boolean) =>
+    setExcluded((current) => {
+      const next = new Set(current);
+      if (checked) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const rowActions = (row: ScopeWorkspaceRow): RowMenuAction[] => {
+    const actions: RowMenuAction[] = [];
+    if (canStart) {
+      actions.push({
+        id: "sync",
+        label: "Synchronize now",
+        icon: RefreshCw,
+        disabled: pausedReason != null,
+        disabledReason: pausedReason,
+        onSelect: () => void syncWorkspaces([row.id]),
+      });
+    }
+    if (!row.active) {
+      actions.push({
+        id: "open",
+        label: "Open in Atlas",
+        icon: ArrowRightLeft,
+        disabled: syncing,
+        disabledReason: syncing ? "Paused until the current run finishes" : undefined,
+        onSelect: () => switchWorkspace(row.id),
+      });
+    }
+    const portalUrl = fabricPortalWorkspaceUrl(row.id);
+    if (portalUrl.includes("/groups/")) {
+      actions.push({ id: "fabric", label: "Open in Fabric", href: portalUrl });
+    }
+    return actions;
+  };
+  const cellStart = selectable ? "col-start-2" : "col-start-1";
 
   return (
     <Card className="flex min-w-0 flex-col">
@@ -207,25 +294,25 @@ function SelectedWorkspacesCard() {
         <div className="min-w-0">
           <h2 className="text-400 font-semibold leading-400">Selected workspaces</h2>
           <p className="mt-xxs text-200 leading-200 text-muted-foreground">
-            Workspaces in the shared Atlas synchronization scope.
+            Workspaces included in the current synchronization scope.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-m">
-          <span className="text-300 font-semibold text-primary">
-            {workspaceScopes.length} selected
+          <span className="text-300 font-semibold text-brand-foreground">
+            {selectable ? checkedIds.length : workspaceScopes.length} selected
           </span>
-          {canStart && workspaceScopes.length > 1 && (
+          {selectable && (
             <button
               type="button"
-              onClick={() =>
-                void syncWorkspaces(workspaceScopes.map((scope) => scope.id))
+              onClick={() => void syncWorkspaces(checkedIds)}
+              disabled={
+                syncing || workspaceScopesLoading || checkedIds.length === 0
               }
-              disabled={syncing || workspaceScopesLoading}
               aria-describedby={syncing ? switchHintId : undefined}
               className={PRIMARY_BUTTON}
             >
               <RefreshCw className="icon-size-200" aria-hidden="true" />
-              Sync all
+              {allChecked ? "Sync all" : "Sync selected"}
             </button>
           )}
           {canManageScope && (
@@ -280,17 +367,37 @@ function SelectedWorkspacesCard() {
             Workspaces in the shared synchronization scope
           </caption>
           <colgroup>
+            {selectable && <col className="md:w-[3.25rem]" />}
             <col className="md:w-[34%]" />
-            <col className="md:w-[22%]" />
+            <col className="md:w-[24%]" />
             <col />
-            <col className="md:w-[11rem]" />
+            <col className="md:w-[4rem]" />
           </colgroup>
-          <thead className="hidden md:table-header-group">
-            <tr className="border-b border-border text-left text-200 text-muted-foreground">
-              <th scope="col" className="px-l py-s font-semibold">Workspace</th>
-              <th scope="col" className="px-m py-s font-semibold">Status</th>
-              <th scope="col" className="px-m py-s font-semibold">Details</th>
-              <th scope="col" className="px-l py-s text-right font-semibold">
+          <thead
+            className={
+              selectable
+                ? "block border-b border-border md:table-header-group md:border-b-0"
+                : "hidden md:table-header-group"
+            }
+          >
+            <tr className="flex items-center px-l md:table-row md:border-b md:border-border md:p-0 md:text-left md:text-200 md:text-muted-foreground">
+              {selectable && (
+                <th scope="col" className="text-left md:py-xs md:pl-l md:pr-0">
+                  <SelectAllCheckbox
+                    checked={allChecked}
+                    indeterminate={checkedIds.length > 0 && !allChecked}
+                    onChange={(checked) =>
+                      setExcluded(
+                        checked ? new Set() : new Set(rows.map((row) => row.id)),
+                      )
+                    }
+                  />
+                </th>
+              )}
+              <th scope="col" className={cn("hidden py-s font-semibold md:table-cell", selectable ? "md:px-s" : "md:px-l")}>Workspace</th>
+              <th scope="col" className="hidden px-m py-s font-semibold md:table-cell">Status</th>
+              <th scope="col" className="hidden px-m py-s font-semibold md:table-cell">Details</th>
+              <th scope="col" className="hidden px-s py-s md:table-cell">
                 <span className="sr-only">Actions</span>
               </th>
             </tr>
@@ -299,9 +406,27 @@ function SelectedWorkspacesCard() {
             {rows.map((row) => (
               <tr
                 key={row.id}
-                className="flex flex-wrap items-center gap-x-m gap-y-xs px-l py-m md:table-row md:p-0"
+                className={cn(
+                  "grid items-center gap-x-m gap-y-xs px-l py-m md:table-row md:p-0",
+                  selectable
+                    ? "grid-cols-[auto_minmax(0,1fr)_auto]"
+                    : "grid-cols-[minmax(0,1fr)_auto]",
+                )}
               >
-                <td className="w-full md:w-auto md:px-l md:py-s">
+                {selectable && (
+                  <td className="col-start-1 row-start-1 md:py-s md:pl-l md:pr-0">
+                    <label className="inline-flex min-h-[var(--atlas-touch-target)] cursor-pointer items-center sm:min-h-[var(--atlas-control-height)]">
+                      <input
+                        type="checkbox"
+                        checked={!excluded.has(row.id)}
+                        onChange={(event) => toggleRow(row.id, event.target.checked)}
+                        aria-label={`Select ${row.displayName}`}
+                        className="size-l shrink-0 accent-primary"
+                      />
+                    </label>
+                  </td>
+                )}
+                <td className={cn(cellStart, "row-start-1 min-w-0 md:py-s", selectable ? "md:px-s" : "md:px-l")}>
                   <span className="flex min-w-0 items-center gap-m">
                     <span
                       aria-hidden="true"
@@ -326,40 +451,22 @@ function SelectedWorkspacesCard() {
                     </span>
                   </span>
                 </td>
-                <td className="md:px-m md:py-s">
+                <td className={cn(cellStart, "row-start-2 md:px-m md:py-s")}>
                   <ScopeStatus row={row} />
                 </td>
-                <td className="min-w-0 basis-full text-200 text-muted-foreground md:basis-auto md:px-m md:py-s md:text-300">
+                <td className={cn(cellStart, "row-start-3 min-w-0 text-200 text-muted-foreground md:px-m md:py-s md:text-300")}>
                   <ScopeDetail row={row} />
                 </td>
-                <td className="ml-auto md:px-l md:py-s md:text-right">
-                  <span className="inline-flex flex-wrap justify-end gap-s">
-                    {canStart && (
-                      <button
-                        type="button"
-                        onClick={() => void syncWorkspaces([row.id])}
-                        disabled={syncing || workspaceScopesLoading}
-                        aria-describedby={syncing ? switchHintId : undefined}
-                        aria-label={`Synchronize ${row.displayName}`}
-                        className={SECONDARY_BUTTON}
-                      >
-                        <RefreshCw className="icon-size-200" aria-hidden="true" />
-                        Sync
-                      </button>
-                    )}
-                    {!row.active && (
-                      <button
-                        type="button"
-                        onClick={() => switchWorkspace(row.id)}
-                        disabled={syncing}
-                        aria-describedby={syncing ? switchHintId : undefined}
-                        aria-label={`Open ${row.displayName}`}
-                        className={SECONDARY_BUTTON}
-                      >
-                        Open
-                      </button>
-                    )}
-                  </span>
+                <td
+                  className={cn(
+                    selectable ? "col-start-3" : "col-start-2",
+                    "row-start-1 justify-self-end md:px-s md:py-s md:text-right",
+                  )}
+                >
+                  <RowActionsMenu
+                    label={`Actions for ${row.displayName}`}
+                    actions={rowActions(row)}
+                  />
                 </td>
               </tr>
             ))}
@@ -400,11 +507,18 @@ function SelectedWorkspacesCard() {
 }
 
 function ScheduleCard() {
-  const reason = SYNC_BACKEND_CAPABILITIES.scheduledRuns.reason;
+  const capability = SYNC_BACKEND_CAPABILITIES.scheduledRuns;
+  const reasonId = useId();
   const synchronizer = synchronizerEmail() ?? "Configured synchronizer";
+  const timeZone = browserTimeZone();
   const rows = [
     { icon: Calendar, label: "Frequency", value: "Manual only" },
-    { icon: Globe, label: "Time zone", value: "Not configured" },
+    {
+      icon: Globe,
+      label: "Time zone",
+      value: "Not configured",
+      detail: timeZone ? `Run times shown in ${timeZone}` : undefined,
+    },
     {
       icon: UserRound,
       label: "Run identity",
@@ -416,11 +530,27 @@ function ScheduleCard() {
 
   return (
     <Card className="flex min-w-0 flex-col">
+      {/* Schedule controls stay disabled: no backend scheduler exists yet. */}
       <header className="flex items-center justify-between gap-m border-b border-border p-l">
         <h2 className="text-400 font-semibold leading-400">Schedule</h2>
-        <span className="inline-flex items-center gap-xs rounded-md border border-border bg-muted px-s py-xxs text-200 font-semibold text-muted-foreground">
-          <CalendarOff className="icon-size-100" aria-hidden="true" />
-          Disabled
+        <span className="inline-flex items-center gap-s">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={false}
+            aria-label={capability.label}
+            aria-describedby={reasonId}
+            disabled
+            className="inline-flex min-h-[var(--atlas-touch-target)] items-center sm:min-h-[var(--atlas-control-height)]"
+          >
+            <span
+              aria-hidden="true"
+              className="relative block h-l w-xxxl rounded-full border border-border bg-muted after:absolute after:left-xxs after:top-1/2 after:block after:size-m after:-translate-y-1/2 after:rounded-full after:bg-muted-foreground"
+            />
+          </button>
+          <span aria-hidden="true" className="text-300 font-semibold text-muted-foreground">
+            Disabled
+          </span>
         </span>
       </header>
       <dl className="grid grid-cols-[auto_auto_minmax(0,1fr)] gap-x-m px-l">
@@ -440,18 +570,37 @@ function ScheduleCard() {
           </div>
         ))}
       </dl>
-      <div
-        role="note"
-        className="m-l mt-auto flex items-start gap-s rounded-lg border border-border bg-secondary p-m text-200 leading-200"
-      >
-        <Info className="mt-xxs icon-size-200 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <p>
-          <span className="font-semibold">Scheduling is unavailable. </span>
-          <span className="text-muted-foreground">{reason}</span>
-        </p>
+      <div className="mt-auto flex flex-col gap-m p-l pt-s">
+        <button
+          type="button"
+          disabled
+          aria-describedby={reasonId}
+          className={cn(SECONDARY_BUTTON, "self-start")}
+        >
+          <Pencil className="icon-size-200" aria-hidden="true" />
+          Edit schedule
+        </button>
+        <div
+          role="note"
+          className="flex items-start gap-s rounded-lg border border-border bg-secondary p-m text-200 leading-200"
+        >
+          <Info className="mt-xxs icon-size-200 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <p id={reasonId}>
+            <span className="font-semibold">Scheduling is unavailable. </span>
+            <span className="text-muted-foreground">{capability.reason}</span>
+          </p>
+        </div>
       </div>
     </Card>
   );
+}
+
+function browserTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function RunResult({
@@ -547,8 +696,18 @@ function RecentRunsCard() {
   } = useAtlas();
   const [expanded, setExpanded] = useState(false);
   const [openErrors, setOpenErrors] = useState<Set<string>>(new Set());
+  const [copyStatus, setCopyStatus] = useState("");
   const listId = useId();
   const detailPrefix = useId();
+  const copy = async (text: string, what: string) => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard unavailable");
+      await navigator.clipboard.writeText(text);
+      setCopyStatus(`${what} copied.`);
+    } catch {
+      setCopyStatus("Copy failed: the browser blocked clipboard access.");
+    }
+  };
   const runsActiveWorkspace =
     syncing && (syncWorkspaceId ?? activeWorkspaceId) === activeWorkspaceId;
   const liveStartedAt = runsActiveWorkspace ? syncStartedAt : undefined;
@@ -587,7 +746,7 @@ function RecentRunsCard() {
             aria-expanded={expanded}
             aria-controls={listId}
             onClick={() => setExpanded((value) => !value)}
-            className="inline-flex min-h-[var(--atlas-touch-target)] items-center rounded-md px-s text-300 font-semibold text-primary underline-offset-4 hover:underline sm:min-h-[var(--atlas-control-height)]"
+            className="inline-flex min-h-[var(--atlas-touch-target)] items-center rounded-md px-s text-300 font-semibold text-brand-foreground underline-offset-4 hover:underline sm:min-h-[var(--atlas-control-height)]"
           >
             {expanded
               ? `Show latest ${RECENT_RUNS_PREVIEW_COUNT}`
@@ -620,10 +779,11 @@ function RecentRunsCard() {
             </caption>
             <colgroup>
               <col className="md:w-[16%]" />
-              <col className="md:w-[24%]" />
+              <col className="md:w-[22%]" />
               <col className="md:w-[16%]" />
               <col />
-              <col className="md:w-[13%]" />
+              <col className="md:w-[12%]" />
+              <col className="md:w-[3.5rem]" />
             </colgroup>
             <thead className="hidden md:table-header-group">
               <tr className="border-b border-border text-left text-200 text-muted-foreground">
@@ -637,24 +797,48 @@ function RecentRunsCard() {
                 <th scope="col" className="px-s py-s font-semibold">Scope</th>
                 <th scope="col" className="px-s py-s font-semibold">Result</th>
                 <th scope="col" className="px-s py-s font-semibold">Duration</th>
+                <th scope="col" className="px-s py-s">
+                  <span className="sr-only">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {visible.map((row) => {
                 const detailId = `${detailPrefix}-${row.id}`;
                 const errorOpen = openErrors.has(row.id);
+                const actions: RowMenuAction[] = row.live
+                  ? []
+                  : [
+                      {
+                        id: "copy-id",
+                        label: "Copy run ID",
+                        icon: Copy,
+                        onSelect: () => void copy(row.id, "Run ID"),
+                      },
+                      ...(row.failureMessage
+                        ? [
+                            {
+                              id: "copy-error",
+                              label: "Copy error details",
+                              icon: Copy,
+                              onSelect: () =>
+                                void copy(row.failureMessage!, "Error details"),
+                            },
+                          ]
+                        : []),
+                    ];
                 return (
                   <Fragment key={row.id}>
                     <tr
                       id={row.live ? LIVE_RUN_ROW_ID : undefined}
                       tabIndex={row.live ? -1 : undefined}
                       className={cn(
-                        "flex flex-wrap items-start gap-x-l gap-y-xs px-s py-m md:table-row md:p-0",
+                        "relative flex flex-wrap items-start gap-x-l gap-y-xs px-s py-m md:table-row md:p-0",
                         row.live &&
                           "bg-primary/5 focus:outline-2 focus:outline-offset-[-2px] focus:outline-ring",
                       )}
                     >
-                      <td className={cn("w-full font-semibold md:w-auto md:font-normal", RUN_CELL)}>
+                      <td className={cn("w-full pr-[var(--atlas-touch-target)] font-semibold md:w-auto md:font-normal", RUN_CELL)}>
                         {formatRunStart(row.startedAt)}
                       </td>
                       <td className={cn("min-w-0", RUN_CELL)}>
@@ -687,10 +871,16 @@ function RecentRunsCard() {
                           ? `${formatRunDuration(now - liveStartedAt)} so far`
                           : formatRunDuration(row.durationMs)}
                       </td>
+                      <td className="absolute right-xs top-xs md:static md:px-xs md:py-xs md:text-right md:align-top">
+                        <RowActionsMenu
+                          label={`Actions for run started ${formatRunStart(row.startedAt)}`}
+                          actions={actions}
+                        />
+                      </td>
                     </tr>
                     {errorOpen && row.failureMessage && (
                       <tr className="block md:table-row">
-                        <td colSpan={5} className="block px-s pb-m md:table-cell">
+                        <td colSpan={6} className="block px-s pb-m md:table-cell">
                           <p
                             id={detailId}
                             className="whitespace-pre-wrap break-words rounded-lg border border-destructive/30 bg-destructive/5 p-m text-200 leading-200 text-foreground"
@@ -705,6 +895,9 @@ function RecentRunsCard() {
               })}
             </tbody>
           </table>
+          <p role="status" className="px-s text-200 leading-200 text-muted-foreground empty:hidden">
+            {copyStatus}
+          </p>
         </div>
       )}
 

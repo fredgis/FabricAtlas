@@ -4,8 +4,10 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import type { RadarEntry, RadarRiskKind, RiskyChange } from "../radar";
 import { AtlasProvider } from "../store";
 import { GovernanceCenterView, RadarPanel } from "./GovernanceCenter";
 
@@ -269,5 +271,95 @@ describe("RadarPanel", () => {
     expect(
       screen.getByText("The latest governance comparison is unavailable"),
     ).toBeInTheDocument();
+  });
+
+  function riskEntry(
+    id: string,
+    kind: RadarRiskKind,
+    severity: "critical" | "high",
+    label: string,
+  ): RadarEntry {
+    return {
+      id,
+      severity,
+      title: label,
+      detail: `${label} detail`,
+      occurrenceSnapshotId: "current",
+      risk: { id, kind, severity, detail: "" } as unknown as RiskyChange,
+    };
+  }
+
+  const signalEntries = [
+    riskEntry("grant-a", "external-grant-added", "high", "Guest added to Sales"),
+    riskEntry("grant-b", "external-grant-added", "high", "Partner group added to Finance"),
+    riskEntry("broken", "lineage-broken", "critical", "Sales model lost its source"),
+  ];
+
+  it("summarizes review items as signal tiles with collapsed evidence", () => {
+    render(
+      <RadarPanel {...baseProps} radar={readyRadar} entries={signalEntries} />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "3 changes need review" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Detected between the two latest validated snapshots/),
+    ).toBeInTheDocument();
+    const tiles = within(
+      screen.getByRole("list", { name: "Radar signals" }),
+    ).getAllByRole("button");
+    expect(tiles.map((tile) => tile.textContent)).toEqual([
+      "Lineage broken1 relationship became broken",
+      "New external grants2 grants to external principals",
+    ]);
+    for (const tile of tiles) {
+      expect(tile).toHaveAttribute("aria-expanded", "false");
+    }
+    expect(screen.queryByRole("button", { name: "Acknowledge" })).toBeNull();
+    expect(screen.queryByText("Guest added to Sales")).toBeNull();
+  });
+
+  it("expands one signal at a time and keeps review actions on its entries", () => {
+    const onAcknowledge = vi.fn(async () => undefined);
+    const onOpen = vi.fn();
+    render(
+      <RadarPanel
+        {...baseProps}
+        radar={readyRadar}
+        entries={signalEntries}
+        onAcknowledge={onAcknowledge}
+        onOpen={onOpen}
+      />,
+    );
+
+    const grants = screen.getByRole("button", { name: /New external grants/ });
+    fireEvent.click(grants);
+    expect(grants).toHaveAttribute("aria-expanded", "true");
+    const region = screen.getByRole("region", {
+      name: "New external grants to review",
+    });
+    expect(grants).toHaveAttribute("aria-controls", region.id);
+    expect(within(region).getByText("Guest added to Sales")).toBeInTheDocument();
+    expect(
+      within(region).getAllByRole("button", { name: "Acknowledge" }),
+    ).toHaveLength(2);
+    expect(within(region).queryByText("Sales model lost its source")).toBeNull();
+
+    fireEvent.click(within(region).getAllByRole("button", { name: "Acknowledge" })[0]);
+    expect(onAcknowledge).toHaveBeenCalledWith(signalEntries[0]);
+    fireEvent.click(within(region).getAllByRole("button", { name: "Open evidence" })[1]);
+    expect(onOpen).toHaveBeenCalledWith(signalEntries[1]);
+
+    const broken = screen.getByRole("button", { name: /Lineage broken/ });
+    fireEvent.click(broken);
+    expect(grants).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.getByRole("region", { name: "Lineage broken to review" }),
+    ).toHaveTextContent("Sales model lost its source");
+
+    fireEvent.click(broken);
+    expect(broken).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("region")).toBeNull();
   });
 });

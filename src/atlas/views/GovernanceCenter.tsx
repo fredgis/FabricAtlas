@@ -21,13 +21,14 @@ import {
 } from "lucide-react";
 import * as Tabs from "@radix-ui/react-tabs";
 import { motion } from "framer-motion";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { SavedViewsMenu } from "../components/SavedViewsMenu";
 import { TrendChart } from "../components/TrendChart";
 import { GovernanceExceptionControl } from "../components/GovernanceExceptionControl";
 import { GovernancePolicyEditor } from "../components/GovernancePolicyEditor";
 import { HistoricalChangeDetails } from "../components/HistoricalChangeDetails";
 import { ItemFamilyCoverageSection } from "../components/ItemFamilyCoverageSection";
+import { RadarSignalTiles } from "../components/RadarSignalTiles";
 import { ATLAS_CONFIG } from "../config";
 import {
   buildGovernanceFindings,
@@ -50,6 +51,11 @@ import type {
   GovernanceSection,
 } from "../navigation";
 import type { SavedView, SavedViewFilters } from "../saved-views";
+import {
+  groupRadarSignals,
+  radarReviewHeadline,
+  type RadarSignalId,
+} from "../radar-signals";
 import {
   buildRadar,
   radarEntries as buildRadarEntries,
@@ -1206,6 +1212,10 @@ export function RadarPanel({
   const ready = radar.state === "ready";
   const firstSnapshotBaseline =
     radar.state === "baseline" && radar.reason === "first-snapshot";
+  const signalGroups = useMemo(() => groupRadarSignals(entries), [entries]);
+  const [openSignal, setOpenSignal] = useState<RadarSignalId>();
+  const detailId = useId();
+  const activeSignal = signalGroups.find((group) => group.id === openSignal);
   return (
     <Card className="overflow-hidden border-primary/25 shadow-fabric-4">
       <div className="atlas-page-header atlas-fabric-hero flex flex-col gap-m lg:flex-row lg:items-center">
@@ -1217,12 +1227,16 @@ export function RadarPanel({
           <h2 className="mt-xxs text-400 font-semibold">
             {firstSnapshotBaseline
               ? "Your governance baseline is ready"
-              : "What became risky since the last sync"}
+              : ready
+                ? radarReviewHeadline(entries.length)
+                : "What became risky since the last sync"}
           </h2>
           <p className="mt-xxs text-200 text-muted-foreground">
             {firstSnapshotBaseline
               ? "The first validated snapshot arms the Radar; the next sync will produce risk deltas."
-              : "New high-priority findings and dangerous access, sensitivity, lineage, removal or job failure changes only."}
+              : ready && entries.length > 0
+                ? "Detected between the two latest validated snapshots. Review key signals below."
+                : "New high-priority findings and dangerous access, sensitivity, lineage, removal or job failure changes only."}
           </p>
         </div>
         {ready && entries.length > 0 && (
@@ -1336,76 +1350,92 @@ export function RadarPanel({
             All current high-priority regressions are acknowledged or muted.
           </div>
         ) : (
-          <div className="divide-y divide-border">
-            {entries.map((entry) => (
-              <div
-                key={entry.id}
-                className="atlas-row grid gap-m px-l lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
-              >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-s">
-                    <span
-                      className={cn(
-                        "rounded-full px-s py-xxs text-100 font-semibold uppercase",
-                        entry.severity === "critical"
-                          ? "bg-status-failing/10 text-status-failing"
-                          : "bg-status-warning/10 text-status-warning",
-                      )}
-                    >
-                      {entry.severity}
-                    </span>
-                    <span className="truncate text-300 font-semibold">
-                      {entry.title}
-                    </span>
+          <>
+            <RadarSignalTiles
+              groups={signalGroups}
+              openId={activeSignal?.id}
+              controlsId={detailId}
+              onToggle={(id) =>
+                setOpenSignal((current) => (current === id ? undefined : id))
+              }
+            />
+            <div
+              id={detailId}
+              role={activeSignal ? "region" : undefined}
+              aria-label={activeSignal ? `${activeSignal.title} to review` : undefined}
+              hidden={!activeSignal}
+              className="divide-y divide-border border-t border-border"
+            >
+              {activeSignal?.entries.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="atlas-row grid gap-m px-l lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-s">
+                      <span
+                        className={cn(
+                          "rounded-full px-s py-xxs text-100 font-semibold uppercase",
+                          entry.severity === "critical"
+                            ? "bg-status-failing/10 text-status-failing"
+                            : "bg-status-warning/10 text-status-warning",
+                        )}
+                      >
+                        {entry.severity}
+                      </span>
+                      <span className="truncate text-300 font-semibold">
+                        {entry.title}
+                      </span>
+                    </div>
+                    <p className="mt-xs text-200 text-muted-foreground">
+                      {entry.detail}
+                    </p>
                   </div>
-                  <p className="mt-xs text-200 text-muted-foreground">
-                    {entry.detail}
-                  </p>
+                  <div className="flex flex-wrap gap-s">
+                    <GovernanceExceptionControl
+                      findingId={entry.id}
+                      findingTitle={entry.title}
+                      exception={exceptions.get(entry.id)}
+                      canEdit={canManageExceptions}
+                      loading={exceptionsLoading}
+                      pending={exceptionPendingIds.has(entry.id)}
+                      onSave={onSaveException}
+                      onRemove={onRemoveException}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => onOpen(entry)}
+                      className="atlas-control rounded-lg border border-border px-m font-semibold hover:bg-accent"
+                    >
+                      Open evidence
+                    </button>
+                    <button
+                      type="button"
+                      disabled={loading || pendingIds.has(entry.id)}
+                      onClick={() =>
+                        void onAcknowledge(entry).catch(() => undefined)
+                      }
+                      className="atlas-control inline-flex items-center gap-s rounded-lg border border-status-healthy/30 bg-status-healthy/10 px-m font-semibold text-status-healthy disabled:opacity-50"
+                    >
+                      <CheckCheck className="icon-size-100" />
+                      Acknowledge
+                    </button>
+                    <button
+                      type="button"
+                      disabled={loading || pendingIds.has(entry.id)}
+                      onClick={() =>
+                        void onMute(entry).catch(() => undefined)
+                      }
+                      className="atlas-control inline-flex items-center gap-s rounded-lg border border-border px-m font-semibold text-muted-foreground hover:bg-accent disabled:opacity-50"
+                    >
+                      <VolumeX className="icon-size-100" />
+                      Mute
+                    </button>
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-s">
-                  <GovernanceExceptionControl
-                    findingId={entry.id}
-                    findingTitle={entry.title}
-                    exception={exceptions.get(entry.id)}
-                    canEdit={canManageExceptions}
-                    loading={exceptionsLoading}
-                    pending={exceptionPendingIds.has(entry.id)}
-                    onSave={onSaveException}
-                    onRemove={onRemoveException}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => onOpen(entry)}
-                    className="atlas-control rounded-lg border border-border px-m font-semibold hover:bg-accent"
-                  >
-                    Open evidence
-                  </button>
-                  <button
-                    type="button"
-                    disabled={loading || pendingIds.has(entry.id)}
-                    onClick={() =>
-                      void onAcknowledge(entry).catch(() => undefined)
-                    }
-                    className="atlas-control inline-flex items-center gap-s rounded-lg border border-status-healthy/30 bg-status-healthy/10 px-m font-semibold text-status-healthy disabled:opacity-50"
-                  >
-                    <CheckCheck className="icon-size-100" />
-                    Acknowledge
-                  </button>
-                  <button
-                    type="button"
-                    disabled={loading || pendingIds.has(entry.id)}
-                    onClick={() =>
-                      void onMute(entry).catch(() => undefined)
-                    }
-                    className="atlas-control inline-flex items-center gap-s rounded-lg border border-border px-m font-semibold text-muted-foreground hover:bg-accent disabled:opacity-50"
-                  >
-                    <VolumeX className="icon-size-100" />
-                    Mute
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </>
         )}
         {suppressed.length > 0 && (
           <div className="atlas-row flex flex-wrap items-center gap-s border-t border-border bg-secondary/50 px-l">
