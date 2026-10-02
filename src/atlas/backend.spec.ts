@@ -15,6 +15,10 @@ import {
   snapshotSummaryFromManifest,
 } from "./backend";
 import { ATLAS_CONFIG } from "./config";
+import {
+  createItemRelationsEvidence,
+  recordItemRelationsResponse,
+} from "./item-relations-evidence";
 import { DEPLOYMENT_ID } from "./release";
 
 const mocks = vi.hoisted(() => {
@@ -28,6 +32,7 @@ const mocks = vi.hoisted(() => {
     "ConfigEntry",
     "Comment",
     "SyncRun",
+    "ItemRelationsEvidenceSnapshot",
   ];
   const data = Object.fromEntries(
     names.map((name) => {
@@ -531,6 +536,7 @@ describe("Rayfin snapshot persistence", () => {
       workspaceId,
       correlationId,
       shadowEnvelope,
+      expect.objectContaining({ onCollected: expect.any(Function) }),
     );
     expect(kqlShadow.runKqlCollectorShadow).toHaveBeenCalledWith(
       workspaceId,
@@ -573,6 +579,118 @@ describe("Rayfin snapshot persistence", () => {
         summary: expect.stringContaining("KQL shadow complete=2"),
       }),
     );
+  });
+
+  it("stores collected Item Relations evidence only after the snapshot marker", async () => {
+    const lakehouse = SAMPLE_DATA.items.find((item) => item.itemType === "Lakehouse")!;
+    const model = SAMPLE_DATA.items.find((item) => item.itemType === "SemanticModel")!;
+    const collectedAt = "2026-10-02T10:00:00.000Z";
+    const collection = {
+      evidence: createItemRelationsEvidence(workspaceId, collectedAt, [
+        recordItemRelationsResponse(model.fabricId, "upstream", collectedAt, {
+          items: [
+            {
+              id: lakehouse.fabricId,
+              workspaceId,
+              type: "Lakehouse",
+              displayName: lakehouse.displayName,
+            },
+          ],
+          relations: [
+            {
+              itemId: lakehouse.fabricId,
+              dependentOnItemId: model.fabricId,
+              relationType: "Datasource",
+            },
+          ],
+          workspaces: [],
+        }),
+      ]),
+      sampledItemCount: 1,
+      workspaceItemCount: SAMPLE_DATA.items.length,
+      stopReasons: [],
+    };
+    itemRelationsShadow.runItemRelationsCollectorShadow.mockImplementation(
+      async (
+        _workspaceId: string,
+        _correlationId: string,
+        _core: unknown,
+        dependencies?: { onCollected?: (value: typeof collection) => void },
+      ) => {
+        dependencies?.onCollected?.(collection);
+        return "Item Relations shadow complete=1";
+      },
+    );
+
+    await runFabricSync(false, identity);
+
+    const evidenceApi = mocks.data.ItemRelationsEvidenceSnapshot;
+    const marker = mocks.data.Workspace.create.mock.calls[0][0];
+    const evidenceRows = evidenceApi.create.mock.calls.map(([row]) => row);
+    expect(evidenceRows.at(-1)).toMatchObject({
+      rowType: "manifest",
+      workspace_id: workspaceId,
+      snapshotId: marker.snapshotId,
+      writerEmail: identity.email,
+      queryCount: 1,
+      conflictCount: 1,
+      sampledItemCount: 1,
+      workspaceItemCount: SAMPLE_DATA.items.length,
+    });
+    expect(Math.min(...evidenceApi.create.mock.invocationCallOrder)).toBeGreaterThan(
+      mocks.data.Workspace.create.mock.invocationCallOrder[0],
+    );
+    expect(mocks.data.LineageEdge.create).toHaveBeenCalledTimes(
+      SAMPLE_DATA.edges.length,
+    );
+    expect(
+      mocks.data.LineageEdge.create.mock.calls.some(
+        ([row]) => row.relation === "Datasource",
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps a published sync successful when evidence storage fails", async () => {
+    itemRelationsShadow.runItemRelationsCollectorShadow.mockImplementation(
+      async (
+        _workspaceId: string,
+        _correlationId: string,
+        _core: unknown,
+        dependencies?: { onCollected?: (value: unknown) => void },
+      ) => {
+        dependencies?.onCollected?.({
+          evidence: createItemRelationsEvidence(
+            workspaceId,
+            "2026-10-02T10:00:00.000Z",
+            [],
+          ),
+          sampledItemCount: 0,
+          workspaceItemCount: 0,
+          stopReasons: [],
+        });
+        return "Item Relations shadow complete=0";
+      },
+    );
+    mocks.data.ItemRelationsEvidenceSnapshot.create.mockRejectedValue(
+      new Error("evidence table missing"),
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    await expect(runFabricSync(false, identity)).resolves.toMatchObject({
+      workspace: { snapshotId: expect.any(String) },
+    });
+    expect(mocks.data.Workspace.create).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      "[atlas] Item Relations evidence storage failed",
+      { type: "Error" },
+    );
+    warn.mockRestore();
+  });
+
+  it("stores no evidence when the shadow reports no collection", async () => {
+    await runFabricSync(false, identity);
+
+    expect(mocks.data.ItemRelationsEvidenceSnapshot.create).not.toHaveBeenCalled();
   });
 
   it("publishes the manifest only after all snapshot rows succeed", async () => {

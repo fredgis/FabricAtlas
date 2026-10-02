@@ -7,10 +7,12 @@ import { relativeTime } from "../model";
 export function ItemRelationsEvidenceStatus({
   state,
   model,
+  currentSnapshotId,
   onRetry,
 }: {
   state: ItemRelationsEvidenceState;
   model: LineageEvidenceModel;
+  currentSnapshotId?: string;
   onRetry: () => void;
 }) {
   if (state.status === "off") return null;
@@ -66,13 +68,23 @@ export function ItemRelationsEvidenceStatus({
           </span>{" "}
           <span className="text-muted-foreground">
             The graph, evidence and changes show Atlas snapshot lineage only.
-            Collection stays an explicit administrator action.
+            Evidence is stored only after a synchronization collects it with
+            the Item Relations collector enabled.
           </span>
         </p>
       </div>
     );
   }
   const graph = model.previewGraph;
+  const coverage = state.coverage;
+  const sampled =
+    coverage?.sampledItemCount != null &&
+    coverage.workspaceItemCount != null &&
+    coverage.sampledItemCount < coverage.workspaceItemCount;
+  const earlierSnapshot =
+    !!state.snapshotId &&
+    !!currentSnapshotId &&
+    state.snapshotId.toLowerCase() !== currentSnapshotId.toLowerCase();
   return (
     <div
       role="status"
@@ -80,12 +92,22 @@ export function ItemRelationsEvidenceStatus({
     >
       <span title={state.evidence.collectedAt}>
         Collected {relativeTime(state.evidence.collectedAt)}
+        {earlierSnapshot ? " with an earlier Atlas snapshot" : ""}
       </span>
       {graph && (
         <span>
           {graph.coverage.complete} complete · {graph.coverage.preserved}{" "}
           preserved · {graph.coverage.failed} failed queries
         </span>
+      )}
+      {sampled && (
+        <span className="font-semibold text-foreground">
+          Partial: {coverage.sampledItemCount} of {coverage.workspaceItemCount}{" "}
+          items queried
+        </span>
+      )}
+      {coverage && coverage.stopReasons.length > 0 && (
+        <span>Stopped early: {coverage.stopReasons.join(", ")}</span>
       )}
       <span>{model.counts.agree} agree with Atlas snapshot lineage</span>
       <span

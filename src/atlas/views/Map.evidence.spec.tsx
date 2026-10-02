@@ -83,9 +83,21 @@ function evidenceEnvelope() {
   ]);
 }
 
-const loadEvidence: ItemRelationsEvidenceLoader = async () =>
-  JSON.parse(JSON.stringify(evidenceEnvelope()));
+const loadEvidence: ItemRelationsEvidenceLoader = async () => ({
+  envelope: JSON.parse(JSON.stringify(evidenceEnvelope())),
+  snapshotId: SAMPLE_DATA.workspace.snapshotId,
+  coverage: { stopReasons: [] },
+});
 const loadNothing: ItemRelationsEvidenceLoader = async () => null;
+const loadPartialEvidence: ItemRelationsEvidenceLoader = async () => ({
+  envelope: JSON.parse(JSON.stringify(evidenceEnvelope())),
+  snapshotId: "30000000-0000-4000-8000-000000000001",
+  coverage: {
+    sampledItemCount: 3,
+    workspaceItemCount: SAMPLE_DATA.items.length,
+    stopReasons: ["deadline-exhausted"],
+  },
+});
 
 function renderMap(
   props: Parameters<typeof MapView>[0] = {},
@@ -311,7 +323,7 @@ describe("Map & lineage unified evidence", () => {
     const loader = vi
       .fn<ItemRelationsEvidenceLoader>()
       .mockRejectedValueOnce(new Error("network detail"))
-      .mockResolvedValueOnce({ schemaVersion: 2 });
+      .mockResolvedValueOnce({ envelope: { schemaVersion: 2 } });
     const { container } = renderMap(
       { itemRelationsEnabled: true, loadItemRelationsEvidence: loader },
       "/?preview=item-relations#map",
@@ -335,6 +347,32 @@ describe("Map & lineage unified evidence", () => {
     );
     expect(loader).toHaveBeenCalledTimes(2);
     expect(container.querySelectorAll(BETA_EDGES)).toHaveLength(0);
+  });
+
+  it("labels partial persisted coverage and early collector stops", async () => {
+    renderMap(
+      { itemRelationsEnabled: true, loadItemRelationsEvidence: loadPartialEvidence },
+      "/?preview=item-relations#map",
+    );
+
+    expect(
+      await screen.findByText(
+        `Partial: 3 of ${SAMPLE_DATA.items.length} items queried`,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Stopped early: deadline-exhausted"),
+    ).toBeInTheDocument();
+  });
+
+  it("never reaches the backend for evidence in preview builds", async () => {
+    renderMap({ itemRelationsEnabled: true }, "/?preview=item-relations#map");
+
+    expect(
+      await screen.findByText(
+        "No persisted Item Relations evidence for this workspace.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("explains that Changes need a second snapshot and never track Beta evidence", async () => {

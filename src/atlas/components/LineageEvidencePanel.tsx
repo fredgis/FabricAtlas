@@ -79,6 +79,20 @@ function PreviewCoverage({
           </div>
         ))}
       </dl>
+      {state.coverage?.sampledItemCount != null &&
+        state.coverage.workspaceItemCount != null && (
+          <p className="mt-s text-muted-foreground">
+            Root items queried: {state.coverage.sampledItemCount} of{" "}
+            {state.coverage.workspaceItemCount}.
+            {state.coverage.sampledItemCount <
+            state.coverage.workspaceItemCount
+              ? " Relationships of the remaining items are not covered."
+              : ""}
+            {state.coverage.stopReasons.length > 0
+              ? ` Collection stopped early: ${state.coverage.stopReasons.join(", ")}.`
+              : ""}
+          </p>
+        )}
       {failureCodes.size > 0 && (
         <p className="mt-s text-muted-foreground">
           Failure codes:{" "}

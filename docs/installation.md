@@ -565,9 +565,10 @@ to `workspaceCollectDefinitions` in bounded batches. The browser parity probe
 passes a deterministic sample of at most 16 Core item IDs to
 `workspaceCollectItemRelations`. Only the Python result can publish the snapshot. Atlas
 stores bounded Core, definition and Item Relations status summaries in
-`SyncRun`. The KQL shadow adds only structural table/function/view counts and
-the dated data-plane blocker. Atlas never stores or logs the raw shadow
-payloads.
+`SyncRun`. After the snapshot is published, a successful Item Relations shadow
+collection is also stored as non-authoritative evidence in
+`ItemRelationsEvidenceSnapshot`. The KQL shadow adds only structural table/function/view counts and
+the dated data-plane blocker. Atlas never logs the raw shadow payloads.
 Leave the flag unset in stable deployments until the real comparison gate
 passes.
 
@@ -614,8 +615,8 @@ by hand.
 
 ## Item Relations API (Beta) collector
 
-`workspaceCollectItemRelations` declares the Fabric audience, runs behind the same gate and is not
-called by the browser yet:
+`workspaceCollectItemRelations` declares the Fabric audience, runs behind the same gate and is
+called only by the bounded browser shadow:
 
 ```ts
 await client.functions.workspaceCollectItemRelations.invoke({
@@ -633,12 +634,15 @@ root items. Missing access is recorded per query as `unauthorized` or `insuffici
 The API is Beta and not recommended for production use. Its real-tenant response size,
 pagination and relation coverage are not yet verified; keep it behind the default-off
 `VITE_ATLAS_FEATURE_ITEM_RELATIONS` flag. With the flag on, **Map & lineage** shows the
-`Include Item Relations API evidence (Preview)` checkbox. It reads persisted evidence only, and
-this build has no evidence store, so it reports that no evidence is available. Validate with:
+`Include Item Relations API evidence (Preview)` checkbox, which reads the newest validated
+`ItemRelationsEvidenceSnapshot` envelope for the active workspace. Evidence is written only
+when `VITE_ATLAS_ITEM_RELATIONS_COLLECTOR_SHADOW` is also on, the shadow collection succeeds
+and the Atlas snapshot is published. Deploy the additive entity with a normal `npx rayfin up`
+(no `--force`) before enabling either flag. Validate with:
 
 ```powershell
 npx --no-install rayfin functions init
-npm test -- src\atlas\workspace-item-relations.spec.ts src\atlas\item-relations-evidence.spec.ts src\atlas\durable-sync.spec.ts src\lib\rayfin-client.spec.ts
+npm test -- src\atlas\workspace-item-relations.spec.ts src\atlas\item-relations-evidence.spec.ts src\atlas\item-relations-evidence-store.spec.ts src\atlas\item-relations-evidence-entity.spec.ts src\atlas\item-relations-collector-shadow.spec.ts src\atlas\durable-sync.spec.ts src\lib\rayfin-client.spec.ts
 npm --prefix rayfin\functions run build
 ```
 

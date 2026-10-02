@@ -168,6 +168,31 @@ attempt.
 `finishedAt?`, `status`, `itemsSynced?`, `durationMs?`, `failureCode?`,
 `failureMessage?`, `triggeredBy?`, `summary?`
 
+## ItemRelationsEvidenceSnapshot
+
+Non-authoritative Fabric Item Relations API (Beta) evidence, stored per
+workspace and associated with the Atlas snapshot published by the same
+synchronization. It is never read into `LineageEdge`.
+
+`workspace_id`, `snapshotId`, `evidenceId`, `correlationId?`, `writerEmail`,
+`rowType` (`manifest` or `chunk`), `chunkIndex`, `chunkCount`, `payload`
+(3,500), `collectedAt`, and manifest-only `storageVersion?`, `payloadLength?`,
+`payloadHash?` (64), `queryCount?`, `completeQueryCount?`,
+`preservedQueryCount?`, `failedQueryCount?`, `relationCount?`,
+`unresolvedCount?`, `crossWorkspaceCount?`, `conflictCount?`,
+`sampledItemCount?`, `workspaceItemCount?`, `stopReasons?` (200)
+
+Each envelope is the schema-version 1 evidence contract serialized as JSON and
+split into ordered `chunk` rows; the `manifest` row is written last and carries
+the SHA-256 and derived counts. Readers trust only configured synchronizer
+writers, verify every chunk and the checksum, and ignore envelopes without a
+valid manifest. Reads are shared with the authenticated app audience; creates
+require the configured synchronizer subject and matching `writerEmail`, deletes
+require the synchronizer subject, and there is no update. The three newest
+envelopes per workspace are kept. Old rows are never rewritten; the entity is
+additive and needs no data migration. See
+[item-relations-evidence.md](item-relations-evidence.md#persisted-evidence).
+
 ## Phase 2 durable synchronization probe
 
 These three additive entities are separate from immutable snapshots and the existing `SyncRun`

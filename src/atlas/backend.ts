@@ -30,7 +30,12 @@ import {
   startCoreCollectorShadow,
 } from "./core-collector-shadow";
 import { runDefinitionCollectorShadow } from "./definition-collector-shadow";
-import { runItemRelationsCollectorShadow } from "./item-relations-collector-shadow";
+import { runItemRelationsCollectorShadow, type ItemRelationsShadowCollection } from "./item-relations-collector-shadow";
+import {
+  ITEM_RELATIONS_EVIDENCE_ENTITY,
+  persistItemRelationsEvidence,
+  type ItemRelationsEvidenceApi,
+} from "./item-relations-evidence-store";
 import { runKqlCollectorShadow } from "./kql-collector-shadow";
 import {
   runPowerBiCollectorShadow,
@@ -218,6 +223,8 @@ function assertSyncActive(signal?: AbortSignal): void {
     throw new SyncCancelledError("Synchronization cancelled.");
   }
 }
+
+const ITEM_RELATIONS_SHADOW_TIMEOUT = "Item Relations shadow timed-out";
 
 async function boundedShadowSummary(
   promise: Promise<string | undefined>,
@@ -555,6 +562,7 @@ interface SyncAttempt {
   coreParitySummary?: string;
   definitionShadowSummary?: string;
   itemRelationsShadowSummary?: string;
+  itemRelationsCollection?: ItemRelationsShadowCollection;
   kqlShadowSummary?: string;
   sqlShadowSummary?: string;
   powerBiShadowSummary?: string;
@@ -733,15 +741,21 @@ export async function runFabricSync(
       ),
       "Definitions shadow timed-out",
     );
+    let itemRelationsCollection: ItemRelationsShadowCollection | undefined;
     const itemRelationsShadow = boundedShadowSummary(
       coreShadow.then((coreEnvelope) =>
         runItemRelationsCollectorShadow(
           attempt.workspaceId,
           attempt.id,
           coreEnvelope,
+          {
+            onCollected: (collection) => {
+              itemRelationsCollection = collection;
+            },
+          },
         ),
       ),
-      "Item Relations shadow timed-out",
+      ITEM_RELATIONS_SHADOW_TIMEOUT,
     );
     const kqlShadow = boundedShadowSummary(
       coreShadow.then((coreEnvelope) =>
@@ -802,6 +816,12 @@ export async function runFabricSync(
       sqlShadow,
       powerBiShadow,
     ]);
+    // A timed-out shadow may still finish later; only a collection that
+    // completed within the bounded window is eligible for persistence.
+    attempt.itemRelationsCollection =
+      attempt.itemRelationsShadowSummary === ITEM_RELATIONS_SHADOW_TIMEOUT
+        ? undefined
+        : itemRelationsCollection;
     reportProgress?.(62, "Workspace metadata complete");
     const atlas = mapSyncToAtlas(raw, WS_FALLBACK);
     reportProgress?.(66, "Building the governance catalog");
@@ -827,6 +847,49 @@ export async function runFabricSync(
       console.warn("[atlas] failed to record sync failure", attemptError);
     }
     throw error;
+  }
+}
+
+/**
+ * Stores Item Relations (Beta) evidence after the snapshot marker is visible.
+ * It never throws: Preview evidence must not fail an authoritative sync.
+ */
+async function persistShadowItemRelationsEvidence(
+  attempt: SyncAttempt,
+  atlas: AtlasData,
+): Promise<void> {
+  const collection = attempt.itemRelationsCollection;
+  const api = attempt.data[ITEM_RELATIONS_EVIDENCE_ENTITY] as unknown as
+    | ItemRelationsEvidenceApi
+    | undefined;
+  if (!collection) return;
+  if (!api?.select || !api.create || !api.delete) {
+    console.warn("[atlas] Item Relations evidence entity is not deployed");
+    return;
+  }
+  try {
+    const result = await persistItemRelationsEvidence(
+      {
+        workspaceId: attempt.workspaceId,
+        snapshotId: attempt.snapshotId,
+        correlationId: attempt.id,
+        writerEmail: attempt.writerEmail,
+        collection,
+        snapshot: {
+          items: atlas.items,
+          edges: atlas.edges,
+          workspaceName: atlas.workspace.displayName,
+        },
+      },
+      api,
+    );
+    if (result.status === "skipped") {
+      console.warn("[atlas] Item Relations evidence not stored", result.reason);
+    }
+  } catch (error) {
+    console.warn("[atlas] Item Relations evidence storage failed", {
+      type: error instanceof Error ? error.name : "unknown",
+    });
   }
 }
 
@@ -1281,6 +1344,10 @@ async function persistSync(
     { ...manifest, id: crypto.randomUUID() },
     signal,
   );
+  if (attempt.itemRelationsCollection && !signal?.aborted) {
+    reportProgress?.(98, "Storing Item Relations evidence");
+    await persistShadowItemRelationsEvidence(attempt, atlas);
+  }
   reportProgress?.(99, "Applying snapshot retention");
   try {
     await pruneSnapshots(data, wid, snapshotId, writerEmail);

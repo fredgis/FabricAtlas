@@ -4,17 +4,37 @@ import {
   parseItemRelationsEvidence,
   type ItemRelationsEvidence,
 } from "./item-relations-evidence";
+import { readLatestItemRelationsEvidence } from "./item-relations-evidence-store";
 
-/** Resolves the latest persisted evidence envelope, or `null` when none exists. */
+/** How much of the workspace the stored collection covered. */
+export interface ItemRelationsEvidenceCoverage {
+  sampledItemCount?: number;
+  workspaceItemCount?: number;
+  /** Collector stop reasons; remaining queries were recorded as `not-attempted`. */
+  stopReasons: string[];
+}
+
+/** One persisted envelope plus the Atlas snapshot it was collected with. */
+export interface PersistedItemRelationsEvidence {
+  envelope: unknown;
+  snapshotId?: string;
+  coverage?: ItemRelationsEvidenceCoverage;
+}
+
+/** Resolves the latest persisted evidence, or `null` when none exists. */
 export type ItemRelationsEvidenceLoader = (
   workspaceId: string,
   signal: AbortSignal,
-) => Promise<unknown>;
+) => Promise<PersistedItemRelationsEvidence | null>;
 
-// No reviewed Rayfin entity stores Item Relations evidence yet; the collector
-// shadow persists aggregate counts only. Reporting "none" keeps the UI honest
-// until a dedicated evidence store is added.
-export const loadPersistedItemRelationsEvidence: ItemRelationsEvidenceLoader =
+/** Reads the newest validated envelope from `ItemRelationsEvidenceSnapshot`. */
+export const loadPersistedItemRelationsEvidence: ItemRelationsEvidenceLoader = (
+  workspaceId,
+  signal,
+) => readLatestItemRelationsEvidence(workspaceId, signal);
+
+/** Preview builds have no backend and therefore no persisted evidence. */
+export const loadNoPersistedItemRelationsEvidence: ItemRelationsEvidenceLoader =
   async () => null;
 
 export type ItemRelationsEvidenceState =
@@ -22,7 +42,12 @@ export type ItemRelationsEvidenceState =
   | { status: "loading" }
   | { status: "empty" }
   | { status: "error"; message: string }
-  | { status: "ready"; evidence: ItemRelationsEvidence };
+  | {
+      status: "ready";
+      evidence: ItemRelationsEvidence;
+      snapshotId?: string;
+      coverage?: ItemRelationsEvidenceCoverage;
+    };
 
 interface LoadedEvidence {
   requestKey: string;
@@ -58,7 +83,12 @@ export function useItemRelationsEvidence(
             ? { status: "empty" }
             : {
                 status: "ready",
-                evidence: parseItemRelationsEvidence(value, workspaceId),
+                evidence: parseItemRelationsEvidence(
+                  value.envelope,
+                  workspaceId,
+                ),
+                snapshotId: value.snapshotId,
+                coverage: value.coverage,
               },
         ),
       )

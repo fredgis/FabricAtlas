@@ -65,9 +65,10 @@ Rayfin Data API (Data API Builder)  ──  Fabric SQL database (mssql)
   `src/atlas/lineage-evidence.ts` groups normalized Atlas snapshot edges and optional Item
   Relations evidence by endpoint pair and source; the Graph overlays Beta edges without changing
   the staged layout. The `Include Item Relations API evidence (Preview)` checkbox appears only
-  when the `item-relations` flag is on, and it shows Beta evidence only if a persisted envelope
-  exists. No evidence store is wired yet, so the checkbox currently reports that none is
-  available.
+  when the `item-relations` flag is on, and it shows Beta evidence only from a persisted,
+  validated `ItemRelationsEvidenceSnapshot` envelope for the active workspace.
+- `ItemRelationsEvidenceSnapshot` stores non-authoritative Item Relations evidence written after a
+  published snapshot by the bounded collector shadow. It is never read into `LineageEdge`.
 
 ## Phase 12 compatibility decisions (2026-10-02)
 
@@ -97,8 +98,8 @@ reads, append-only team notes and user-scoped personal state are unchanged.
 
 ## Data model
 
-Twenty declared entities capture the workspace, team context, personal review state and local
-durable synchronization probe.
+The declared entities capture the workspace, team context, personal review state, local
+durable synchronization probe and non-authoritative Preview evidence.
 See [data-model.md](data-model.md) for fields.
 
 | Entity | Holds |
@@ -123,6 +124,7 @@ See [data-model.md](data-model.md) for fields.
 | `SyncCommand` | Synchronizer-only idempotent command identity and outcome |
 | `WorkspaceScope` | Administrator-selected workspaces shared with the app audience |
 | `SynchronizerAuthority` | Synchronizer-only Function caller sentinel |
+| `ItemRelationsEvidenceSnapshot` | Chunked, non-authoritative Item Relations API (Beta) evidence per workspace and snapshot |
 
 ## Phase 2 persistence probe (no cutover)
 

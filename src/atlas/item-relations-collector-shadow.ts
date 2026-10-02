@@ -1,14 +1,33 @@
 import { getRayfinClient } from "@/lib/rayfin-client";
 import type { CoreCollectorEnvelope } from "./core-collector-parity";
 import {
+  createItemRelationsEvidence,
   parseItemRelationsEvidence,
   type ItemRelationsEvidence,
 } from "./item-relations-evidence";
-import type { ItemRelationsEvidenceEnvelope } from "../../rayfin/functions/src/workspace-item-relations";
+import type {
+  ItemRelationsEvidenceEnvelope,
+  ItemRelationsStopReason,
+} from "../../rayfin/functions/src/workspace-item-relations";
 
 const BATCH_SIZE = 16;
 const CONCURRENCY = 2;
 const MAX_SHADOW_ITEMS = 16;
+const STOP_REASONS = new Set<ItemRelationsStopReason>([
+  "deadline-exhausted",
+  "request-budget-exhausted",
+  "cancelled",
+  "throttled",
+  "evidence-budget-exhausted",
+]);
+
+/** Evidence from one shadow run in which every batch returned a valid envelope. */
+export interface ItemRelationsShadowCollection {
+  evidence: ItemRelationsEvidence;
+  sampledItemCount: number;
+  workspaceItemCount: number;
+  stopReasons: ItemRelationsStopReason[];
+}
 
 interface ItemRelationsShadowClient {
   functions: {
@@ -30,6 +49,8 @@ interface ItemRelationsShadowDependencies {
   enabled?: boolean;
   client?: ItemRelationsShadowClient;
   warn?: (message: string, detail: unknown) => void;
+  /** Receives the combined evidence only after a successful real collection. */
+  onCollected?: (collection: ItemRelationsShadowCollection) => void;
 }
 
 export function itemRelationsCollectorShadowEnabled(): boolean {
@@ -61,8 +82,12 @@ async function collectBatches(
   workspaceId: string,
   correlationId: string,
   itemBatches: string[][],
-): Promise<ItemRelationsEvidence[]> {
+): Promise<{
+  evidence: ItemRelationsEvidence[];
+  stopReasons: ItemRelationsStopReason[];
+}> {
   const collected: ItemRelationsEvidence[] = [];
+  const stopReasons = new Set<ItemRelationsStopReason>();
   let index = 0;
   const worker = async () => {
     while (index < itemBatches.length) {
@@ -86,6 +111,9 @@ async function collectBatches(
       if (evidence.queries.length !== itemIds.length * 2) {
         throw new Error("Incomplete Item Relations evidence.");
       }
+      if (envelope.stopReason && STOP_REASONS.has(envelope.stopReason)) {
+        stopReasons.add(envelope.stopReason);
+      }
       collected[batchIndex] = evidence;
     }
   };
@@ -95,7 +123,21 @@ async function collectBatches(
       () => worker(),
     ),
   );
-  return collected;
+  return { evidence: collected, stopReasons: [...stopReasons].sort() };
+}
+
+function combinedEvidence(
+  workspaceId: string,
+  evidence: ItemRelationsEvidence[],
+): ItemRelationsEvidence {
+  const collectedAt = evidence
+    .map((entry) => entry.collectedAt)
+    .sort((left, right) => Date.parse(right) - Date.parse(left))[0];
+  return createItemRelationsEvidence(
+    workspaceId,
+    collectedAt,
+    evidence.flatMap((entry) => entry.queries),
+  );
 }
 
 export async function runItemRelationsCollectorShadow(
@@ -114,13 +156,21 @@ export async function runItemRelationsCollectorShadow(
     dependencies.client ??
     (getRayfinClient() as unknown as ItemRelationsShadowClient);
   let evidence: ItemRelationsEvidence[];
+  let stopReasons: ItemRelationsStopReason[];
+  let collection: ItemRelationsShadowCollection;
   try {
-    evidence = await collectBatches(
+    ({ evidence, stopReasons } = await collectBatches(
       client,
       workspaceId,
       correlationId,
       batches(itemIds),
-    );
+    ));
+    collection = {
+      evidence: combinedEvidence(workspaceId, evidence),
+      sampledItemCount: itemIds.length,
+      workspaceItemCount: allItemIds.length,
+      stopReasons,
+    };
   } catch (error) {
     (dependencies.warn ?? console.warn)(
       "[atlas] Item Relations shadow collection failed",
@@ -128,6 +178,7 @@ export async function runItemRelationsCollectorShadow(
     );
     return "Item Relations shadow unavailable";
   }
+  dependencies.onCollected?.(collection);
 
   const queries = evidence.flatMap((entry) => entry.queries);
   const complete = queries.filter(

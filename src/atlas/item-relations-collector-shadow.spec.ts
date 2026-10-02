@@ -156,4 +156,81 @@ describe("Item Relations collector shadow", () => {
     ).resolves.toBe("Item Relations shadow unavailable");
     expect(JSON.stringify(warn.mock.calls)).not.toContain(marker);
   });
+
+  it("hands over the combined evidence only after a successful collection", async () => {
+    const onCollected = vi.fn();
+    const items = Array.from({ length: 20 }, (_, index) => ({
+      id: `aaaaaaaa-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      type: "Notebook",
+    }));
+    const invoke = vi.fn(async (input: { itemIds: string[] }) => ({
+      ...evidenceEnvelope(),
+      stopReason: "deadline-exhausted" as const,
+      queries: input.itemIds.flatMap((itemId) => [
+        {
+          itemId,
+          direction: "upstream" as const,
+          status: "complete" as const,
+          attemptedAt: "2026-10-02T10:01:00.000Z",
+          observedAt: "2026-10-02T10:01:00.000Z",
+          response: { items: [], relations: [], workspaces: [] },
+        },
+        {
+          itemId,
+          direction: "downstream" as const,
+          status: "failed" as const,
+          attemptedAt: "2026-10-02T10:02:00.000Z",
+          failureCode: "not-attempted" as const,
+        },
+      ]),
+    }));
+
+    await runItemRelationsCollectorShadow(
+      WORKSPACE,
+      CORRELATION,
+      { ...coreEnvelope(), items },
+      {
+        enabled: true,
+        client: { functions: { workspaceCollectItemRelations: { invoke } } },
+        onCollected,
+      },
+    );
+
+    expect(onCollected).toHaveBeenCalledTimes(1);
+    const [collection] = onCollected.mock.calls[0];
+    expect(collection).toMatchObject({
+      sampledItemCount: 16,
+      workspaceItemCount: 20,
+      stopReasons: ["deadline-exhausted"],
+      evidence: { workspaceId: WORKSPACE, collectedAt: "2026-10-02T10:01:00.000Z" },
+    });
+    expect(collection.evidence.queries).toHaveLength(32);
+    expect(collection.evidence).not.toHaveProperty("authoritative");
+  });
+
+  it("hands over nothing when collection fails or has no targets", async () => {
+    const onCollected = vi.fn();
+    const client = {
+      functions: {
+        workspaceCollectItemRelations: {
+          invoke: vi.fn(async () => ({ ...evidenceEnvelope(), queries: [] })),
+        },
+      },
+    };
+
+    await runItemRelationsCollectorShadow(WORKSPACE, CORRELATION, coreEnvelope(), {
+      enabled: true,
+      client,
+      onCollected,
+      warn: vi.fn(),
+    });
+    await runItemRelationsCollectorShadow(
+      WORKSPACE,
+      CORRELATION,
+      { ...coreEnvelope(), items: [] },
+      { enabled: true, client, onCollected },
+    );
+
+    expect(onCollected).not.toHaveBeenCalled();
+  });
 });

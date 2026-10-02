@@ -114,8 +114,8 @@ unknown codes must be updated before they consume collector output.
 `workspaceCollectItemRelations` in
 `rayfin/functions/src/workspace-item-relations.ts` collects this evidence
 server-side. It is read-only and non-authoritative: it writes no Rayfin rows,
-creates no `LineageEdge` values, interprets no direction and is not called by
-the browser yet.
+creates no `LineageEdge` values and interprets no direction. Only the bounded
+browser shadow calls it.
 
 - Input: `protocolVersion: 1`, a strict workspace UUID, 1-16 unique root item
   UUIDs and a strict correlation UUID or `null`. No token, URL, endpoint or
@@ -147,7 +147,8 @@ the browser yet.
 - Envelope: the schema-version 1 evidence plus `authoritative: false`, an
   optional `correlationId` and an optional `stopReason`.
   `parseItemRelationsEvidence` ignores these fields, so callers persist only
-  the parsed contract.
+  the parsed contract. The browser shadow records `stopReason` separately as
+  manifest coverage metadata.
 
 ### Comparison statuses
 
@@ -170,12 +171,13 @@ Not ported from the experiment:
 
 - `sync_item_relations` in the Python UDF, the browser collection loop, UDF
   URL retargeting, Item Relations token scopes and batch splitting. Phase 4
-  replaces collection with the `workspaceCollectItemRelations` Function; the
-  browser shadow call, batching across Function invocations and persistence
-  are not wired yet.
-- `ItemRelationsBetaSnapshot` and its chunked persistence. A separate,
-  additive evidence entity that stores the schema-version 1 envelope is still
-  required; Preview rows stay separate from `LineageEdge`.
+  replaces collection with the `workspaceCollectItemRelations` Function,
+  called by the bounded browser shadow; batching beyond the 16-item sample is
+  not wired yet.
+- `ItemRelationsBetaSnapshot` and its chunked persistence. Replaced by the
+  additive `ItemRelationsEvidenceSnapshot` entity described under
+  [Persisted evidence](#persisted-evidence); Preview rows stay separate from
+  `LineageEdge`.
 - `MapBeta.tsx`, the `map-beta` tab and its navigation entry. They are replaced
   by the single **Map & lineage** screen described below.
 - The `StagedLayoutItem` widening of `buildStagedLayout`. The Phase 5 overlay
@@ -200,10 +202,13 @@ links resolve to `#map` with Preview evidence included.
   retry, or collection time and coverage.
 - **Evidence source.** `useItemRelationsEvidence` loads only persisted
   envelopes through an `ItemRelationsEvidenceLoader` and validates them with
-  `parseItemRelationsEvidence` for the active workspace. The default
-  `loadPersistedItemRelationsEvidence` returns `null` because no evidence
-  entity exists yet, so production shows "No persisted Item Relations
-  evidence" and draws nothing. The UI never collects or invents evidence.
+  `parseItemRelationsEvidence` for the active workspace. Deployed builds use
+  `loadPersistedItemRelationsEvidence`, which reads the newest valid
+  `ItemRelationsEvidenceSnapshot` envelope; preview builds use a loader that
+  returns `null`. Without stored evidence the UI shows "No persisted Item
+  Relations evidence" and draws nothing. The UI never collects or invents
+  evidence. The status line also states partial coverage, collector stop
+  reasons and whether the evidence came from an earlier Atlas snapshot.
 - **Unified model.** `buildLineageEvidence` normalizes snapshot `Edge` values
   from source to consumer, compares them with Preview edges through
   `compareItemRelationsWithLineage`, and groups both by endpoint pair. Each
@@ -226,6 +231,46 @@ links resolve to `#map` with Preview evidence included.
   between the last two snapshots. Beta evidence has no history and is never
   mixed into these changes.
 
+## Persisted evidence
+
+`rayfin/data/ItemRelationsEvidenceSnapshot.ts` is an additive, workspace-scoped
+entity for non-authoritative evidence. `src/atlas/item-relations-evidence-store.ts`
+writes and reads it; nothing in either path touches `LineageEdge`.
+
+- **Shape.** One schema-version 1 envelope (the parsed contract, including raw
+  relation types, query direction, root-item provenance, `attemptedAt`,
+  `observedAt`, failure codes, preserved responses, cross-workspace and
+  unresolved endpoints) is serialized to JSON and split into ordered `chunk`
+  rows of at most 3,200 UTF-16 code units, never inside a surrogate pair. A
+  `manifest` row is written last with `storageVersion` 1, payload length and
+  SHA-256, `snapshotId`, `correlationId` and derived counts: queries
+  (complete, preserved, failed), relations, unresolved, cross-workspace,
+  conflicts with the published snapshot, sampled versus workspace item count
+  and collector stop reasons.
+- **Policies.** Shared authenticated reads, like the synchronized catalog.
+  Creates require `claims.email == writerEmail` and the configured synchronizer
+  subject; deletes require the synchronizer subject. There is no update.
+- **Write path.** `runFabricSync` passes an `onCollected` callback to the
+  bounded Item Relations shadow. It fires only when every Function batch
+  returned a valid envelope; failures, timeouts, disabled flags and empty
+  targets produce nothing. After the Atlas `Workspace` marker is published,
+  `persistItemRelationsEvidence` reads the newest stored envelope, applies
+  `mergeItemRelationsEvidence` so failed and `not-attempted` queries keep the
+  prior response, stores the merged envelope with the published `snapshotId`
+  and keeps the three newest envelopes per workspace. If prior evidence cannot
+  be read, nothing is written. Storage errors are logged without details and
+  never fail the authoritative sync.
+- **Read path.** `readLatestItemRelationsEvidence` reads manifests from trusted
+  writers only, checks chunk count, indexes, envelope ID, writer, length and
+  SHA-256, then `parseItemRelationsEvidence`. It falls back to the next newest
+  of three candidates, returns `null` when nothing is stored and throws a
+  contract error when every stored envelope is invalid.
+- **Gates.** Evidence is stored only on deployments where
+  `VITE_ATLAS_ITEM_RELATIONS_COLLECTOR_SHADOW` is on, and shown only where
+  `VITE_ATLAS_FEATURE_ITEM_RELATIONS` is on. Both default to off. The
+  shadow samples at most 16 root items, so stored evidence is partial and the
+  UI says so.
+
 ## Phase 5 integration checklist
 
 - [x] Pass `normalizeLineageEdges` output to `compareItemRelationsWithLineage`.
@@ -234,8 +279,10 @@ links resolve to `#map` with Preview evidence included.
   visually separate from data flow.
 - [x] Show `unresolved`, `cycles`, coverage counts, failure codes and
   `observedAt` in the evidence inspector.
-- [ ] Persist and load `ItemRelationsEvidence` through a dedicated entity,
+- [x] Persist and load `ItemRelationsEvidence` through a dedicated entity,
   then merge each new collection with `mergeItemRelationsEvidence`. Plug the
   reader in as the `ItemRelationsEvidenceLoader`.
+- [ ] Deploy the additive entity and run a real collection with both flags on
+  in an isolated deployment.
 - [ ] Confirm the `CascadeDelete` and `HiddenInWorkspace` orientations against
   real tenant responses before C is adopted.

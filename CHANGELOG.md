@@ -36,6 +36,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   places endpoints outside the snapshot in a separate lane and keeps every
   snapshot node in place. With no persisted evidence it says so and draws
   nothing.
+- Additive `ItemRelationsEvidenceSnapshot` entity for non-authoritative Item
+  Relations evidence. When the default-off Item Relations collector shadow
+  succeeds, the evidence is merged with the previous envelope (so failed or
+  unfinished queries keep their earlier response), stored in checksummed
+  chunks after the Atlas snapshot is published, and read back by Map &
+  lineage. The status line reports partial coverage, early stops and evidence
+  from an earlier snapshot. `LineageEdge` is never written.
 - Optional OneLake Catalog Search (Preview) discovery in the `Ctrl+K` palette
   behind the default-off `VITE_ATLAS_FEATURE_CATALOG_SEARCH` flag. The
   synchronizer-only `searchCatalogPreview` Function calls the fixed Catalog

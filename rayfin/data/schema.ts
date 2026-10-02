@@ -21,6 +21,7 @@ import { SynchronizerAuthority } from './SynchronizerAuthority.js';
 import { SyncRootRun } from './SyncRootRun.js';
 import { SyncPayloadManifest } from './SyncPayloadManifest.js';
 import { SyncPayloadChunk } from './SyncPayloadChunk.js';
+import { ItemRelationsEvidenceSnapshot } from './ItemRelationsEvidenceSnapshot.js';
 
 /**
  * Schema type map — enables full type-safety through RayfinClient
@@ -50,6 +51,7 @@ export type AtlasSchema = {
   SyncRootRun: SyncRootRun;
   SyncPayloadManifest: SyncPayloadManifest;
   SyncPayloadChunk: SyncPayloadChunk;
+  ItemRelationsEvidenceSnapshot: ItemRelationsEvidenceSnapshot;
 };
 
 export const schema = [
@@ -76,4 +78,5 @@ export const schema = [
   SyncRootRun,
   SyncPayloadManifest,
   SyncPayloadChunk,
+  ItemRelationsEvidenceSnapshot,
 ];

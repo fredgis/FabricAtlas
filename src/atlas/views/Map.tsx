@@ -48,6 +48,7 @@ import {
   itemRelationsNodeKey,
 } from "../item-relations-evidence";
 import {
+  loadNoPersistedItemRelationsEvidence,
   loadPersistedItemRelationsEvidence,
   useItemRelationsEvidence,
   type ItemRelationsEvidenceLoader,
@@ -482,12 +483,17 @@ function InspectorTabButton({
 
 export function MapView({
   itemRelationsEnabled = isFeatureEnabled(ITEM_RELATIONS_FEATURE_ID),
-  loadItemRelationsEvidence = loadPersistedItemRelationsEvidence,
+  loadItemRelationsEvidence,
 }: {
   itemRelationsEnabled?: boolean;
   loadItemRelationsEvidence?: ItemRelationsEvidenceLoader;
 } = {}) {
-  const { data, currentUser } = useAtlas();
+  const { data, currentUser, isPreview } = useAtlas();
+  const evidenceLoader =
+    loadItemRelationsEvidence ??
+    (isPreview
+      ? loadNoPersistedItemRelationsEvidence
+      : loadPersistedItemRelationsEvidence);
   const { items, edges, comments, config, principals, jobs } = data;
   const inspectorWidth = useDisplayPreference(
     currentUser.id,
@@ -553,7 +559,7 @@ export function MapView({
   const previewState = useItemRelationsEvidence(
     data.workspace.fabricId,
     previewActive,
-    loadItemRelationsEvidence,
+    evidenceLoader,
     evidenceAttempt,
   );
   const previewEvidence =
@@ -1506,6 +1512,7 @@ export function MapView({
           <ItemRelationsEvidenceStatus
             state={previewState}
             model={evidenceModel}
+            currentSnapshotId={data.workspace.snapshotId}
             onRetry={() => setEvidenceAttempt((attempt) => attempt + 1)}
           />
         </div>
