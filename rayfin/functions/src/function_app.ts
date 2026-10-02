@@ -86,8 +86,8 @@ udf.func(
   [],
 );
 
-// Read-only KQL structural metadata through Fabric REST only. The KQL schema query is blocked
-// because Rayfin 1.36.2 Functions expose no Kusto audience; it is reported, never collected.
+// Read-only KQL structural metadata: Fabric REST properties plus the documented getDefinition
+// `DatabaseSchema.kql` part. The Kusto data plane stays unused; Rayfin 1.36.2 has no Kusto audience.
 udf.func(
   'workspaceCollectKqlMetadata',
   async (

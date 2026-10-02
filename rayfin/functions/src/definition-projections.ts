@@ -1161,9 +1161,14 @@ function projectDataAgent(response: unknown, state: ProjectionState): DataAgentA
 
 function assertSafeText(text: string, maxLength: number): void {
   if (text.length > maxLength || hasControlCharacter(text)) invalid();
-  if (SENSITIVE_TEXT.some((pattern) => pattern.test(text))) {
+  if (isCredentialLikeText(text)) {
     throw new DefinitionProjectionError("unsafe-content-rejected");
   }
+}
+
+/** True when projected text resembles credentials, bearer tokens, SAS signatures or connection strings. */
+export function isCredentialLikeText(text: string): boolean {
+  return SENSITIVE_TEXT.some((pattern) => pattern.test(text));
 }
 
 function assertSafeMetadata(value: unknown, depth = 0): void {

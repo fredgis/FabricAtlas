@@ -14,14 +14,21 @@ import {
 } from "./fabric-rest.js";
 import { requireAtlasSynchronizer } from "./synchronizer-gate.js";
 import { strictUuid } from "./sync/protocol.js";
+import {
+  KqlSchemaError,
+  extractKqlSchemaScript,
+  parseKqlDatabaseSchema,
+  type KqlSchemaFunction,
+  type KqlSchemaMaterializedView,
+  type KqlSchemaTable,
+} from "./kql-schema.js";
 
 /*
- * Read-only, non-authoritative KQL metadata tranche. It ports only the Fabric
- * REST item properties the Python collector reads for Eventhouses and KQL
- * databases. The KQL schema query needs a Kusto data-plane token, and Rayfin
- * 1.36.2 Functions expose no Kusto audience (only Sql, Storage, Fabric,
- * AzureAI and ADO), so schema collection is reported as an explicit blocker
- * and never as complete. No Kusto endpoint is ever called.
+ * Read-only, non-authoritative KQL metadata stage. Eventhouse and KQL database
+ * properties come from Fabric REST item routes, and KQL database structure
+ * comes from the documented getDefinition `DatabaseSchema.kql` part. The Kusto
+ * data plane is never called: Rayfin 1.36.2 Functions expose no Kusto audience
+ * (only Sql, Storage, Fabric, AzureAI and ADO), which remains a dated blocker.
  */
 
 /** Documented Fabric REST item routes with KQL structural properties. */
@@ -37,17 +44,20 @@ export const KQL_ITEMS_WITHOUT_PROPERTIES: ReadonlySet<string> = new Set([
 ]);
 
 export type KqlCapabilityBlocker = {
-  capability: "kqlSchema";
+  capability: "kqlDataPlaneSchema";
   code: "kusto-audience-unsupported";
   observedOn: "2026-10-02";
   rayfinVersion: "1.36.2";
+  /** The supported structural replacement used instead of the data plane. */
+  replacement: "fabric-kql-database-definition";
 };
 
-export const KQL_SCHEMA_BLOCKER: Readonly<KqlCapabilityBlocker> = {
-  capability: "kqlSchema",
+export const KQL_DATA_PLANE_BLOCKER: Readonly<KqlCapabilityBlocker> = {
+  capability: "kqlDataPlaneSchema",
   code: "kusto-audience-unsupported",
   observedOn: "2026-10-02",
   rayfinVersion: "1.36.2",
+  replacement: "fabric-kql-database-definition",
 };
 
 export const COLLECT_KQL_METADATA_LIMITS = {
@@ -55,12 +65,19 @@ export const COLLECT_KQL_METADATA_LIMITS = {
   // Leaves headroom below the 200-240 second Fabric Functions execution limit.
   executionBudgetMs: 150_000,
   maxItems: 16,
-  maxRequests: 48,
+  maxRequests: 120,
   maxResponseBytes: 1024 * 1024,
   maxDatabaseItemIds: 1_000,
+  maxLroPolls: 12,
+  minPollDelayMs: 1_000,
+  maxPollDelayMs: 5_000,
+  maxDefinitionResponseBytes: 16 * 1024 * 1024,
+  // Projected schema objects across the batch.
+  maxSchemaBytes: 16 * 1024 * 1024,
   minItemStartMs: 5_000,
   maxErrors: 50,
-  maxEnvelopeBytes: 4 * 1024 * 1024,
+  // Hard final guard below the 30 MiB Functions response limit.
+  maxEnvelopeBytes: 24 * 1024 * 1024,
 } as const;
 
 export type CollectKqlMetadataLimits = {
@@ -90,7 +107,12 @@ export type KqlMetadataStatusCode =
   | "item-type-unsupported"
   | "no-structural-properties"
   | "not-attempted"
-  | "kusto-audience-unsupported"
+  | "read-write-permission-required"
+  | "invalid-definition"
+  | "projection-limit-exceeded"
+  | "schema-part-missing"
+  | "forward-compatible-parts-skipped"
+  | "projection-truncated"
   | "partial-unsupported"
   | "not-applicable";
 
@@ -105,18 +127,48 @@ export type KqlEventhouseProperties = {
   databaseItemIds: string[];
 };
 
+/**
+ * Structural schema from the `DatabaseSchema.kql` definition part. Function
+ * bodies, view queries, property bags, mappings, policies and principals are
+ * never returned. Materialized-view columns are query-derived and unavailable.
+ */
+export type KqlDatabaseSchema = {
+  status: "complete" | "unsupported" | "failed";
+  code?: KqlMetadataStatusCode;
+  source?: "fabric-kql-database-definition";
+  tables?: KqlSchemaTable[];
+  functions?: KqlSchemaFunction[];
+  materializedViews?: KqlSchemaMaterializedView[];
+  /** Known non-structural statements that were skipped unread. */
+  ignoredStatements?: number;
+  /** Statements that could not be proven to be supported declarations. */
+  unsupportedStatements?: number;
+  /** A collection limit was reached; the projection is incomplete. */
+  truncated?: true;
+  /** Definition parts other than the reviewed ones; never decoded. */
+  unknownParts?: number;
+};
+
 export type KqlDatabaseProperties = {
   parentEventhouseItemId?: string;
   /** Kusto cluster origin; recorded as metadata and never called. */
   queryServiceUri?: string;
   databaseType?: string;
   databaseName?: string;
-  schema: { status: "unsupported"; code: "kusto-audience-unsupported" };
 };
 
-export type KqlItemEvidence = KqlMetadataStatus & {
+/** The reviewed frontend `kql` artifact metadata contract. */
+export type KqlArtifactMetadata = {
+  kind: "kql";
+  functions: KqlSchemaFunction[];
+  materializedViews: { name: string; sourceTable?: string; columns: never[] }[];
+};
+
+export type KqlItemEvidence = {
   id: string;
   type: string;
+  status: "complete" | "unsupported" | "failed";
+  code?: KqlMetadataStatusCode;
   eventhouse?: KqlEventhouseProperties;
   kqlDatabase?: KqlDatabaseProperties;
 };
@@ -137,10 +189,14 @@ export interface KqlMetadataStageEnvelope {
   correlationId?: string;
   workspaceId: string;
   items: KqlItemEvidence[];
+  /** Structural schema evidence for every requested KQL database, keyed by item ID. */
+  schemas: Record<string, KqlDatabaseSchema>;
+  /** Reviewed `kql` artifact metadata for KQL databases whose schema was parsed. */
+  artifactMetadata: Record<string, KqlArtifactMetadata>;
   config: KqlConfigEntry[];
   sections: { kqlProperties: KqlMetadataStatus; kqlSchema: KqlMetadataStatus };
   capabilities: { kqlSchema: KqlMetadataStatus };
-  /** Dated platform blockers for capabilities this stage cannot collect. */
+  /** Dated platform blockers; the Kusto data plane remains unavailable. */
   blockers: KqlCapabilityBlocker[];
   errors: string[];
   syncedAt: string;
@@ -316,7 +372,7 @@ export function projectKqlDatabase(
   value: unknown,
   request: CollectKqlMetadataRequest,
   item: KqlMetadataItemInput,
-): { properties: KqlDatabaseProperties; config: KqlConfigEntry[] } {
+): { properties: Omit<KqlDatabaseProperties, "schema">; config: KqlConfigEntry[] } {
   if (!isRecord(value)) invalid();
   const properties = itemProperties(value, request, item);
   const parentEventhouseItemId = optionalHexUuid(properties.parentEventhouseItemId);
@@ -332,16 +388,77 @@ export function projectKqlDatabase(
       ...(queryServiceUri ? { queryServiceUri } : {}),
       ...(databaseType ? { databaseType } : {}),
       ...(databaseName ? { databaseName } : {}),
-      schema: { status: "unsupported", code: KQL_SCHEMA_BLOCKER.code },
     },
     config: [
       ...row("Parent Eventhouse item ID", parentEventhouseItemId),
       ...row("Query service URI", queryServiceUri),
       ...row("Database identity", databaseName),
       ...row("Database type", databaseType),
-      { itemId: item.id, section: "Metadata capability", label: "KQL schema", value: KQL_SCHEMA_BLOCKER.code },
     ],
   };
+}
+
+/**
+ * Projects the `DatabaseSchema.kql` definition part. The schema is complete
+ * only when every statement is a supported declaration or a known
+ * non-structural command and no collection limit was reached.
+ */
+export function projectKqlSchema(response: unknown): KqlDatabaseSchema {
+  const { script, unknownParts } = extractKqlSchemaScript(response);
+  if (script === undefined) {
+    return { status: "unsupported", code: "schema-part-missing", ...(unknownParts ? { unknownParts } : {}) };
+  }
+  const parsed = parseKqlDatabaseSchema(script);
+  const code: KqlMetadataStatusCode | undefined = parsed.unsupportedStatements
+    ? "partial-unsupported"
+    : parsed.truncated
+      ? "projection-truncated"
+      : unknownParts
+        ? "forward-compatible-parts-skipped"
+        : undefined;
+  return {
+    status: "complete",
+    ...(code ? { code } : {}),
+    source: "fabric-kql-database-definition",
+    tables: parsed.tables,
+    functions: parsed.functions,
+    materializedViews: parsed.materializedViews,
+    ignoredStatements: parsed.ignoredStatements,
+    unsupportedStatements: parsed.unsupportedStatements,
+    ...(parsed.truncated ? { truncated: true as const } : {}),
+    ...(unknownParts ? { unknownParts } : {}),
+  };
+}
+
+/** Python Config rows for a KQL database schema, derived from names only. */
+function schemaConfig(itemId: string, schema: KqlDatabaseSchema): KqlConfigEntry[] {
+  const rows: KqlConfigEntry[] = [
+    { itemId, section: "Metadata capability", label: "KQL schema", value: schema.code ?? schema.status },
+  ];
+  const row = (section: string, label: string, value: string) => rows.push({ itemId, section, label, value });
+  for (const fn of schema.functions ?? []) row("KQL stored functions", fn.name, "Stored function");
+  for (const view of schema.materializedViews ?? []) row("KQL materialized views", view.name, "Materialized view");
+  for (const table of schema.tables ?? []) row("Tables", table.name, "KQL table");
+  for (const view of schema.materializedViews ?? []) row("Tables", view.name, "KQL materialized view");
+  for (const fn of schema.functions ?? []) row("Tables", fn.name, "KQL function");
+  return rows;
+}
+
+const SCHEMA_UNSUPPORTED_CODES = new Set<KqlMetadataStatusCode>([
+  "endpoint-unsupported",
+  "read-write-permission-required",
+  "encrypted-label-blocked",
+]);
+
+/** Python `_definition_error_code` for the getDefinition request. */
+function schemaErrorCode(error: unknown): KqlMetadataStatusCode {
+  if (error instanceof KqlSchemaError) return error.code;
+  if (!(error instanceof FabricRestError)) return "upstream-failure";
+  if (error.code === "invalid-response") return "invalid-definition";
+  if (error.code === "upstream-http-error" && (error.status === 401 || error.status === 403)) {
+    return "read-write-permission-required";
+  }
+  return fabricSafeErrorCode(error, true);
 }
 
 interface Tracker {
@@ -396,13 +513,73 @@ export async function collectWorkspaceKqlMetadata(
   });
   const budget = new RequestBudget(limits.maxRequests);
   const tracker: Tracker = { success: 0, unsupported: 0, failed: 0, codes: [] };
+  const schemaTracker: Tracker = { success: 0, unsupported: 0, failed: 0, codes: [] };
   const errors: string[] = [];
   const addError = (entry: string) => {
     if (errors.length < limits.maxErrors && !errors.includes(entry)) errors.push(entry);
   };
   const items: KqlItemEvidence[] = [];
   const config: KqlConfigEntry[] = [];
+  const schemas: Record<string, KqlDatabaseSchema> = {};
+  const artifactMetadata: Record<string, KqlArtifactMetadata> = {};
   let stopCode: KqlMetadataStatusCode | undefined;
+  let usedSchemaBytes = 0;
+
+  const preStop = (section: "kqlProperties" | "kqlSchema", target: Tracker): void => {
+    if (stopCode) return;
+    let code: KqlMetadataStatusCode | undefined;
+    if (dependencies.signal?.aborted) code = "cancelled";
+    else if (deadline.remaining() <= limits.minItemStartMs) code = "deadline-exhausted";
+    else if (budget.remaining === 0) code = "request-budget-exhausted";
+    if (code) {
+      stopCode = code;
+      track(target, "failed", code);
+      addError(`${section}: ${code}`);
+    }
+  };
+
+  const collectSchema = async (item: KqlMetadataItemInput): Promise<KqlDatabaseSchema> => {
+    preStop("kqlSchema", schemaTracker);
+    if (stopCode) {
+      track(schemaTracker, "failed", "not-attempted");
+      return { status: "failed", code: "not-attempted" };
+    }
+    try {
+      const response = await client.postLongRunning(
+        `/v1/workspaces/${request.workspaceId}/kqlDatabases/${item.id}/getDefinition`,
+        {
+          maxPolls: limits.maxLroPolls,
+          minPollDelayMs: limits.minPollDelayMs,
+          maxPollDelayMs: limits.maxPollDelayMs,
+          maxResponseBytes: limits.maxDefinitionResponseBytes,
+        },
+        budget,
+      );
+      const schema = projectKqlSchema(response);
+      if (schema.status !== "complete") {
+        track(schemaTracker, "unsupported", schema.code);
+        return schema;
+      }
+      const size = byteLength(schema);
+      if (usedSchemaBytes + size > limits.maxSchemaBytes) {
+        // The aggregate schema budget is spent; later items are not attempted.
+        stopCode = "response-size-exceeded";
+        track(schemaTracker, "failed", stopCode);
+        addError(`kqlSchema:${item.id}: ${stopCode}`);
+        return { status: "failed", code: stopCode };
+      }
+      usedSchemaBytes += size;
+      track(schemaTracker, "success", schema.code);
+      return schema;
+    } catch (error) {
+      const code = schemaErrorCode(error);
+      const unsupported = SCHEMA_UNSUPPORTED_CODES.has(code);
+      track(schemaTracker, unsupported ? "unsupported" : "failed", code);
+      if (!unsupported) addError(`kqlSchema:${item.id}: ${code}`);
+      if (STOP_CODES.has(code)) stopCode = code;
+      return { status: unsupported ? "unsupported" : "failed", code };
+    }
+  };
 
   for (const item of request.items) {
     const route = KQL_PROPERTY_ROUTES.get(item.type);
@@ -414,20 +591,14 @@ export async function collectWorkspaceKqlMetadata(
       track(tracker, "unsupported", code);
       continue;
     }
-    if (!stopCode) {
-      let preStop: KqlMetadataStatusCode | undefined;
-      if (dependencies.signal?.aborted) preStop = "cancelled";
-      else if (deadline.remaining() <= limits.minItemStartMs) preStop = "deadline-exhausted";
-      else if (budget.remaining === 0) preStop = "request-budget-exhausted";
-      if (preStop) {
-        stopCode = preStop;
-        track(tracker, "failed", preStop);
-        addError(`kqlProperties: ${preStop}`);
-      }
-    }
+    preStop("kqlProperties", tracker);
     if (stopCode) {
       items.push({ ...item, status: "failed", code: "not-attempted" });
       track(tracker, "failed", "not-attempted");
+      if (item.type === "KQLDatabase") {
+        track(schemaTracker, "failed", "not-attempted");
+        schemas[item.id] = { status: "failed", code: "not-attempted" };
+      }
       continue;
     }
     try {
@@ -436,25 +607,39 @@ export async function collectWorkspaceKqlMetadata(
         const projection = projectEventhouse(response, request, item, limits.maxDatabaseItemIds);
         items.push({ ...item, status: "complete", eventhouse: projection.properties });
         config.push(...projection.config);
+        track(tracker, "success");
       } else {
         const projection = projectKqlDatabase(response, request, item);
+        track(tracker, "success");
+        const schema = await collectSchema(item);
         items.push({ ...item, status: "complete", kqlDatabase: projection.properties });
-        config.push(...projection.config);
+        schemas[item.id] = schema;
+        config.push(...projection.config, ...schemaConfig(item.id, schema));
+        if (schema.status === "complete") {
+          artifactMetadata[item.id] = {
+            kind: "kql",
+            functions: schema.functions ?? [],
+            materializedViews: (schema.materializedViews ?? []).map((view) => ({ ...view, columns: [] })),
+          };
+        }
       }
-      track(tracker, "success");
     } catch (error) {
       const code = fabricSafeErrorCode(error, true);
       const unsupported = code === "endpoint-unsupported";
       items.push({ ...item, status: unsupported ? "unsupported" : "failed", code });
       track(tracker, unsupported ? "unsupported" : "failed", code);
+      if (item.type === "KQLDatabase") {
+        // Without validated properties the schema is not requested.
+        const schemaCode: KqlMetadataStatusCode = unsupported ? code : "not-attempted";
+        track(schemaTracker, unsupported ? "unsupported" : "failed", schemaCode);
+        schemas[item.id] = { status: unsupported ? "unsupported" : "failed", code: schemaCode };
+      }
       if (!unsupported) addError(`kqlProperties:${item.id}: ${code}`);
       if (STOP_CODES.has(code)) stopCode = code;
     }
   }
 
-  const kqlSchema: KqlMetadataStatus = request.items.some((item) => item.type === "KQLDatabase")
-    ? { status: "unsupported", code: KQL_SCHEMA_BLOCKER.code }
-    : { status: "unsupported", code: "not-applicable" };
+  const kqlSchema = finishSection(schemaTracker);
   const envelope: KqlMetadataStageEnvelope = {
     contractVersion: 1,
     stage: "kql-metadata",
@@ -462,10 +647,12 @@ export async function collectWorkspaceKqlMetadata(
     ...(request.correlationId ? { correlationId: request.correlationId } : {}),
     workspaceId: request.workspaceId,
     items,
+    schemas,
+    artifactMetadata,
     config,
     sections: { kqlProperties: finishSection(tracker), kqlSchema },
     capabilities: { kqlSchema: { ...kqlSchema } },
-    blockers: [{ ...KQL_SCHEMA_BLOCKER }],
+    blockers: [{ ...KQL_DATA_PLANE_BLOCKER }],
     errors,
     syncedAt: new Date().toISOString(),
   };

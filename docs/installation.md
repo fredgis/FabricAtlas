@@ -466,8 +466,8 @@ npm --prefix rayfin\functions run build
 ## KQL metadata stage
 
 `workspaceCollectKqlMetadata` declares only the Fabric audience and returns Eventhouse and KQL
-database properties from Fabric REST. It is read-only, non-authoritative and not called by the
-browser yet:
+database properties plus KQL structural schema from the documented KQL Database definition. It is
+read-only, non-authoritative and not called by the browser yet:
 
 ```ts
 await client.functions.workspaceCollectKqlMetadata.invoke({
@@ -478,16 +478,17 @@ await client.functions.workspaceCollectKqlMetadata.invoke({
 });
 ```
 
-The AppBackend application identity needs read permission on each Eventhouse and KQL database.
-KQL schema (tables, functions and materialized views) is **blocked as of 2026-10-02 on Rayfin
-1.36.2**: Functions expose no Kusto audience, and the experimental `kusto` connector is
-delegated-only and cannot be authored in this release. Keep using the Python UDF's delegated
-Kusto token for KQL schema. Re-evaluate when a Rayfin release adds a documented Kusto audience;
-do not forward browser tokens to the Function. Validate with:
+The AppBackend application identity needs read permission on each Eventhouse and KQL database,
+and read **and write** permission on each KQL database for `getDefinition`. Missing write access is
+reported per database as `schema: unsupported/read-write-permission-required` and never fails the
+item properties. The Kusto data-plane schema query remains **blocked as of 2026-10-02 on Rayfin
+1.36.2** because Functions expose no Kusto audience; the definition's `DatabaseSchema.kql` is the
+supported structural replacement for the Atlas cutover. Do not forward browser tokens to the
+Function. Validate with:
 
 ```powershell
 npx --no-install rayfin functions init
-npm test -- src\atlas\workspace-kql-metadata.spec.ts src\atlas\durable-sync.spec.ts src\lib\rayfin-client.spec.ts
+npm test -- src\atlas\kql-schema.spec.ts src\atlas\workspace-kql-metadata.spec.ts src\atlas\durable-sync.spec.ts src\lib\rayfin-client.spec.ts
 npm --prefix rayfin\functions run build
 ```
 
