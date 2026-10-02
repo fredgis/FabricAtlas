@@ -1,6 +1,19 @@
 id: fabric-atlas-fabcon
 name: Fabric Atlas FabCon
 version: 2.0.0-alpha.1
+secrets:
+  - name: ATLAS_POWERBI_SCANNER_ENABLED
+    description: Optional scanner adapter switch. Missing or false keeps it disabled.
+  - name: ATLAS_POWERBI_SCANNER_TENANT_ID
+    description: Approved Entra tenant UUID for the optional scanner adapter.
+  - name: ATLAS_POWERBI_SCANNER_CLIENT_ID
+    description: Dedicated approved Power BI scanner service principal application UUID.
+  - name: ATLAS_POWERBI_SCANNER_CLIENT_SECRET
+    description: Scanner service principal credential. Provision only in the deployed Secret Store.
+  - name: ATLAS_POWERBI_SCANNER_WORKSPACE_IDS
+    description: JSON array of approved workspace UUIDs for the optional scanner adapter.
+  - name: ATLAS_POWERBI_SCANNER_SETTINGS_CONFIRMED
+    description: Set true only after reviewing read-only admin API and detailed metadata scanning settings.
 services:
   auth:
     enabled: true

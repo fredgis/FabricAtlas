@@ -126,6 +126,7 @@ describe("Rayfin Functions contract", () => {
       | "workspaceCollectPowerBi"
       | "workspaceCollectSqlMetadata"
       | "searchCatalogPreview"
+      | "workspaceCollectPowerBiScanner"
       | "syncStart"
       | "syncContinue"
       | "syncStatus"

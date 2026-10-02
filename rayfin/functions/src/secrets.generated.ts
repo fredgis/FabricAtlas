@@ -20,7 +20,15 @@
  * never written to disk.
  */
 
-// No secrets are declared in rayfin.yml, so the registry stays empty and
-// ctx.Secrets exposes nothing.
+declare module '@microsoft/fabric-user-data-functions' {
+  interface RayfinSecretRegistry {
+    ATLAS_POWERBI_SCANNER_CLIENT_ID: string;
+    ATLAS_POWERBI_SCANNER_CLIENT_SECRET: string;
+    ATLAS_POWERBI_SCANNER_ENABLED: string;
+    ATLAS_POWERBI_SCANNER_SETTINGS_CONFIRMED: string;
+    ATLAS_POWERBI_SCANNER_TENANT_ID: string;
+    ATLAS_POWERBI_SCANNER_WORKSPACE_IDS: string;
+  }
+}
 
 export {};

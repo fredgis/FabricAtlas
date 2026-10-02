@@ -54,6 +54,8 @@ import {
   type CatalogSearchTextInput,
   type CatalogSearchWorkspaceIdsInput,
 } from './catalog-search.js';
+import { workspaceCollectPowerBiScanner } from './workspace-powerbi-scanner.js';
+import type { ScannerExpectedItemsInput, ScannerStageEnvelope } from './powerbi-scanner-projection.js';
 
 const udf = new UserDataFunctions();
 
@@ -177,6 +179,20 @@ udf.func(
     continuationToken: CatalogSearchContinuationInput | null,
   ): Promise<CatalogSearchEnvelope> =>
     searchCatalogPreview(ctx, protocolVersion, search, itemTypes, workspaceIds, pageSize, continuationToken),
+  [],
+);
+
+udf.func(
+  'workspaceCollectPowerBiScanner',
+  async (
+    ctx: RayfinContext<AtlasSchema>,
+    protocolVersion: 1,
+    tenantId: SyncUuidInput,
+    workspaceId: SyncUuidInput,
+    expectedItems: ScannerExpectedItemsInput,
+    correlationId: SyncUuidInput | null = null,
+  ): Promise<ScannerStageEnvelope> =>
+    workspaceCollectPowerBiScanner(ctx, protocolVersion, tenantId, workspaceId, expectedItems, correlationId),
   [],
 );
 

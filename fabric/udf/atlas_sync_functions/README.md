@@ -93,6 +93,13 @@ does not provide a documented deployed Power BI application-token audience,
 and its semantic-model connector is delegated-only. No browser-token workaround
 was added. See [the exact coverage and remaining blocker](../../../docs/powerbi-scanner-replacement.md).
 
+An optional disabled-by-default Rayfin Secret Store service-principal adapter
+now implements the documented public scanner path without browser credentials.
+It requires explicit tenant/workspace approval, an existing operator-provisioned
+credential and complete scanner metadata before merging. It does not cut over
+the active publisher or claim live tenant validation. See
+[the exact setup](../../../docs/powerbi-scanner-secret-store.md).
+
 ## Functions
 
 | Function | Params | Returns |

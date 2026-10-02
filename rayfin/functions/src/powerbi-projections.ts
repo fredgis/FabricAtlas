@@ -63,7 +63,7 @@ export type ModelMeasure = {
 export type ModelTable = {
   name: string;
   objectType: "Model table";
-  source: "Fabric semantic model definition (TMSL)";
+  source: "Fabric semantic model definition (TMSL)" | "Power BI admin scanner";
   isHidden?: boolean;
   columns: ModelColumn[];
   measures: ModelMeasure[];
@@ -278,6 +278,15 @@ export function projectSemanticModel(response: unknown): ModelProjection {
     throw new PowerBiProjectionError(parts.values.has("model.bim") ? "invalid-definition" : "format-unsupported");
   }
   const model = metadataRecord(parts.json("model.bim").model);
+  return projectSemanticModelStructure(model, "Fabric semantic model definition (TMSL)");
+}
+
+/** Shared selected-field projection for public TMSL and scanner model metadata. */
+export function projectSemanticModelStructure(
+  value: unknown,
+  source: ModelTable["source"],
+): ModelProjection {
+  const model = metadataRecord(value);
   const budget = new ProjectionBudget();
   let expressionsOmitted = 0;
   const expression = (value: unknown) => {
@@ -302,7 +311,7 @@ export function projectSemanticModel(response: unknown): ModelProjection {
     return {
       name: metadataText(table.name),
       objectType: "Model table",
-      source: "Fabric semantic model definition (TMSL)",
+      source,
       ...hidden(table),
       columns, measures,
     };

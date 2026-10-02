@@ -62,7 +62,7 @@ export const POWERBI_BLOCKERS: readonly PowerBiBlocker[] = [
   {
     capability: "scannerParity", code: "powerbi-audience-unavailable",
     observedOn: "2026-10-02", rayfinVersion: "1.36.2",
-    requiredCapability: "A documented deployed application-identity Power BI REST audience or scanner connector; tenant read-only admin API service-principal approval plus detailed metadata and DAX/mashup scanning settings. Fabric tokens must not be retargeted to api.powerbi.com.",
+    requiredCapability: "Enable the optional approved Secret Store service-principal scanner adapter, or provide a documented Power BI REST application binding. Tenant read-only admin API approval and detailed metadata/DAX scanning settings remain required. Fabric tokens must not be retargeted to api.powerbi.com.",
   },
   {
     capability: "engineDependencies", code: "application-semantic-model-connector-unavailable",

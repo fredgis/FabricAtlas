@@ -8,6 +8,13 @@ not through a forwarded browser credential. It is not a complete scanner
 replacement, does not publish snapshots, and does not change the active Python
 UDF synchronization flow.
 
+The optional, disabled-by-default `workspaceCollectPowerBiScanner` now provides
+an additional public service-principal identity path through Rayfin 1.36.2
+Secret Store. It requires explicit credential/scope provisioning and tenant
+approval, creates no credentials, and never forwards browser tokens. See
+[powerbi-scanner-secret-store.md](powerbi-scanner-secret-store.md) for the
+installed contract proof, exact six secret names and tenant settings.
+
 ## Supported identity boundary
 
 The registered handler declares `RayfinContext<AtlasSchema, AudienceType.Fabric>`
@@ -93,7 +100,7 @@ cannot run with a supported deployed identity:
 - `scannerParity/powerbi-audience-unavailable`: Rayfin 1.36.2 provides no
   documented deployed Power BI REST application audience or admin-scanner
   connector. Power BI `getInfo`, scan status/result and Reports Get Pages are
-  therefore not called. Full scanner item lineage, datasource/upstream
+  therefore not called by the Fabric-token tranche. Full scanner item lineage, datasource/upstream
   boundaries, scanner-specific owners, endorsement and sensitivity remain
   unavailable.
 - `engineDependencies/application-semantic-model-connector-unavailable`:
@@ -114,12 +121,15 @@ cannot run with a supported deployed identity:
   references do not establish Fabric UUIDs and are not resolved by guessing
   folder/display names.
 
-**Minimum platform capability for scanner parity:** provide a publicly
+**Generic audience blocker:** provide a publicly
 documented, deployed application-identity **Power BI REST token binding** or
 server-side scanner connector in Rayfin. Its contract must cover
 `POST /v1.0/myorg/admin/workspaces/getInfo`, scan status/result, and Power BI
 report pages, without browser token forwarding or caller-supplied endpoints.
-No new secret-based token acquisition is introduced here.
+The optional Secret Store adapter is the supported alternative implemented in
+this branch; it uses public client credentials for an explicitly approved
+service principal rather than a generic Rayfin Power BI audience. A platform
+upgrade is not required for that optional path. Its default state is disabled.
 
 **Minimum tenant configuration for that path:** an eligible service principal
 in the security group approved for **Service principals can access read-only
