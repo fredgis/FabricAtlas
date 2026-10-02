@@ -8,8 +8,15 @@ import {
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { RadarEntry, RadarRiskKind, RiskyChange } from "../radar";
+import type { PosturePillar } from "../posture";
 import { AtlasProvider } from "../store";
 import { GovernanceCenterView, RadarPanel } from "./GovernanceCenter";
+
+vi.mock("../components/PostureRadar", () => ({
+  PostureRadar: ({ onSelect }: { onSelect: (pillar: PosturePillar) => void }) => (
+    <button onClick={() => onSelect("lineage")}>Select lineage in radar</button>
+  ),
+}));
 
 function renderView() {
   const onNavigate = vi.fn();
@@ -34,6 +41,8 @@ describe("GovernanceCenterView", () => {
     expect(screen.getByRole("tab", { name: /Coverage/ })).toBeVisible();
     expect(screen.getByRole("tab", { name: /Posture/ })).toBeVisible();
     expect(screen.getByRole("tab", { name: /Policies & AI/ })).toBeVisible();
+    expect(screen.getByRole("tablist", { name: "Governance Center sections" })).toHaveClass("atlas-line-tabs");
+    expect(screen.getByRole("button", { name: /Saved views/ })).toBeVisible();
     expect(
       screen.getByRole("heading", {
         name: "Your governance baseline is ready",
@@ -94,8 +103,9 @@ describe("GovernanceCenterView", () => {
     const onStateChange = vi.fn();
     render(<AtlasProvider isPreview><GovernanceCenterView onNavigate={vi.fn()} onStateChange={onStateChange} /></AtlasProvider>);
     fireEvent.click(screen.getByRole("tab", { name: /Policies & AI/ }));
-    expect(screen.getByRole("heading", { name: "Policies & AI evidence" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Watchlists unavailable" })).toBeDisabled();
+    expect(screen.getByRole("heading", { name: "AI governance inventory" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Evidence details" })).toBeVisible();
+    expect(screen.getByText(/Watchlists and Sync Brief are unavailable/)).toBeVisible();
     await waitFor(() => expect(onStateChange).toHaveBeenLastCalledWith(expect.objectContaining({
       focus: expect.objectContaining({ governanceSection: "policies-ai", filters: { section: "policies-ai" } }),
     })));
@@ -137,6 +147,26 @@ describe("GovernanceCenterView", () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/Fixed 0–100 scale/)).toBeInTheDocument();
     expect(screen.getAllByText("Target 70%").length).toBeGreaterThan(0);
+  });
+
+  it("updates posture trend and evidence from the radar or keyboard-accessible pillar controls", async () => {
+    const onNavigate = renderView();
+    fireEvent.click(screen.getByRole("tab", { name: /Posture/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Select lineage in radar" }));
+    expect(screen.getByRole("heading", { name: "Lineage trend" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "Lineage posture details" })).toBeVisible();
+    expect(screen.getByRole("combobox", { name: "Posture trend pillar" })).toHaveValue("lineage");
+    fireEvent.click(screen.getByRole("button", { name: "Review lineage evidence" }));
+    expect(onNavigate).toHaveBeenLastCalledWith(expect.objectContaining({
+      tab: "governance", focus: expect.objectContaining({ governanceSection: "findings", filters: { section: "findings", pillar: "lineage" } }),
+    }));
+    fireEvent.click(screen.getByRole("button", { name: /^Ownership/ }));
+    expect(screen.getByRole("heading", { name: "Ownership trend" })).toBeVisible();
+    expect(screen.getByRole("button", { name: /^Ownership/ })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Review ownership evidence" }));
+    expect(onNavigate).toHaveBeenLastCalledWith(expect.objectContaining({
+      tab: "catalog", focus: expect.objectContaining({ filters: { posturePillar: "ownership" } }),
+    }));
   });
 
   it("adds a shared exception without hiding the raw finding", async () => {

@@ -157,6 +157,21 @@ describe("Map & lineage unified evidence", () => {
     vi.restoreAllMocks();
   });
 
+  it("makes the real Preview switch and its authority boundary visible even while off", async () => {
+    renderMap({ itemRelationsEnabled: true, loadItemRelationsEvidence: loadNothing });
+    const toggle = previewCheckbox();
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(toggle).toHaveAccessibleDescription("Beta overlay only. Atlas snapshot lineage stays authoritative.");
+    expect(toggle).toHaveClass("min-h-[var(--atlas-touch-target)]");
+    expect(screen.getByRole("tablist", { name: "Map and lineage views" })).toHaveClass("atlas-line-tabs");
+    expect(screen.getByText("80%")).toBeVisible();
+    expect(screen.getByText("Only Atlas snapshot lineage is drawn.")).toBeVisible();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    expect(await screen.findByText("No persisted Item Relations evidence for this workspace.")).toBeVisible();
+    expect(screen.queryByText("Item Relations API (Beta, observed)")).not.toBeInTheDocument();
+  });
+
   it("keeps one map with Graph, Evidence and Changes and no Preview control when the flag is off", () => {
     const loader = vi.fn(loadEvidence);
     const { container } = renderMap({
@@ -278,11 +293,11 @@ describe("Map & lineage unified evidence", () => {
     );
 
     const pane = screen.getByRole("region", { name: "Relationship evidence" });
-    expect(pane).toHaveTextContent("Atlas snapshot — Collected");
+    expect(pane).toHaveTextContent("Atlas snapshot · Collected");
     expect(pane).toHaveTextContent(
       "Reports that AlpineRent Sales Model uses data from alpinerent_lakehouse (Direct Lake).",
     );
-    expect(pane).toHaveTextContent("Item Relations API — Beta");
+    expect(pane).toHaveTextContent("Item Relations API · Beta");
     expect(pane).toHaveTextContent(
       "Reports an inverse relation (AlpineRent Sales Model → alpinerent_lakehouse).",
     );

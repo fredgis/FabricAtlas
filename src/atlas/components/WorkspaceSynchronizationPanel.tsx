@@ -73,7 +73,7 @@ function synchronizerEmail(): string | undefined {
 }
 
 const CHIP =
-  "inline-flex items-center gap-xs rounded-md border px-s py-xxs text-200 font-semibold";
+  "inline-flex items-center gap-xs rounded-md border px-s py-xxs text-[length:var(--text-200)] font-semibold";
 
 function ScopeStatus({ row }: { row: ScopeWorkspaceRow }) {
   const { status } = row;
@@ -94,21 +94,21 @@ function ScopeStatus({ row }: { row: ScopeWorkspaceRow }) {
       );
     case "snapshot":
       return (
-        <span className={cn(CHIP, "border-status-healthy/30 bg-status-healthy/10 text-foreground")}>
+        <span className={cn(CHIP, "border-signal-success-foreground/20 bg-signal-success-background text-signal-success-foreground")}>
           <CircleCheck className="icon-size-100 text-status-healthy" aria-hidden="true" />
           Last valid snapshot
         </span>
       );
     case "synchronized":
       return (
-        <span className={cn(CHIP, "border-status-healthy/30 bg-status-healthy/10 text-foreground")}>
+        <span className={cn(CHIP, "border-signal-success-foreground/20 bg-signal-success-background text-signal-success-foreground")}>
           <CircleCheck className="icon-size-100 text-status-healthy" aria-hidden="true" />
           Synchronized
         </span>
       );
     case "failed":
       return (
-        <span className={cn(CHIP, "border-destructive/35 bg-destructive/10 text-foreground")}>
+        <span className={cn(CHIP, "border-signal-danger-foreground/20 bg-signal-danger-background text-signal-danger-foreground")}>
           <CircleX className="icon-size-100 text-destructive" aria-hidden="true" />
           Last run failed
         </span>
@@ -122,7 +122,7 @@ function ScopeStatus({ row }: { row: ScopeWorkspaceRow }) {
       );
     case "unsynchronized":
       return (
-        <span className={cn(CHIP, "border-status-warning/35 bg-status-warning/10 text-foreground")}>
+        <span className={cn(CHIP, "border-signal-warning-foreground/20 bg-signal-warning-background text-signal-warning-foreground")}>
           <CircleDashed className="icon-size-100" aria-hidden="true" />
           Not synchronized
         </span>
@@ -407,7 +407,7 @@ function SelectedWorkspacesCard() {
               <tr
                 key={row.id}
                 className={cn(
-                  "grid items-center gap-x-m gap-y-xs px-l py-m md:table-row md:p-0",
+                  "grid items-center gap-x-m gap-y-xs px-l py-m hover:bg-accent/60 md:table-row md:p-0",
                   selectable
                     ? "grid-cols-[auto_minmax(0,1fr)_auto]"
                     : "grid-cols-[minmax(0,1fr)_auto]",
@@ -440,7 +440,7 @@ function SelectedWorkspacesCard() {
                       <Layers className="icon-size-200" />
                     </span>
                     <span className="min-w-0">
-                      <span className="block truncate font-semibold" title={row.displayName}>
+                      <span className="block truncate font-medium" title={row.displayName}>
                         {row.displayName}
                       </span>
                       {row.active && (
@@ -562,7 +562,7 @@ function ScheduleCard() {
             <Icon className="mt-xxs icon-size-200 shrink-0 text-muted-foreground" aria-hidden="true" />
             <dt className="text-300 text-muted-foreground">{label}</dt>
             <dd className="min-w-0 text-300">
-              <span className="block break-words font-semibold">{value}</span>
+              <span className="block font-medium [overflow-wrap:anywhere]">{value}</span>
               {detail && (
                 <span className="block text-200 text-muted-foreground">{detail}</span>
               )}
@@ -919,9 +919,9 @@ export function WorkspaceSynchronizationPanel() {
   };
 
   return (
-    <div className="flex flex-col gap-l">
+    <div className="flex min-w-0 flex-col gap-l">
       <SyncRunDetailed onViewRun={viewRun} />
-      <div className="grid gap-l xl:grid-cols-[minmax(0,1.85fr)_minmax(320px,1fr)]">
+      <div className="grid items-start gap-l xl:grid-cols-[minmax(0,1.85fr)_minmax(0,1fr)]">
         <SelectedWorkspacesCard />
         <ScheduleCard />
       </div>

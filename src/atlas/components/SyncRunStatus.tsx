@@ -98,7 +98,7 @@ export function SyncRunCompact({ onOpenDetails }: { onOpenDetails: () => void })
           type="button"
           onClick={onOpenDetails}
           aria-label="Show synchronization error details"
-          className="flex h-[32px] shrink-0 items-center gap-xs rounded-md px-s text-200 font-semibold text-brand-foreground hover:bg-accent"
+          className="flex min-h-[var(--atlas-touch-target)] min-w-[var(--atlas-touch-target)] shrink-0 items-center justify-center gap-xs rounded-md px-s text-200 font-semibold text-brand-foreground hover:bg-accent sm:min-h-[var(--atlas-control-height)] sm:min-w-0"
         >
           <Info className="icon-size-200 sm:hidden" aria-hidden="true" />
           <span aria-hidden="true" className="hidden sm:inline">
@@ -211,10 +211,10 @@ function BannerShell({
     <section
       aria-labelledby="workspace-sync-banner-title"
       className={cn(
-        "rounded-xl border p-l sm:p-xl",
+        "rounded-xl border p-l shadow-fabric-2 sm:p-xl",
         tone === "primary" && "border-primary/30 bg-primary/5",
-        tone === "destructive" && "border-destructive/35 bg-destructive/10",
-        tone === "warning" && "border-status-warning/35 bg-status-warning/10",
+        tone === "destructive" && "border-signal-danger-foreground/20 bg-signal-danger-background",
+        tone === "warning" && "border-signal-warning-foreground/20 bg-signal-warning-background",
       )}
     >
       <div className="flex flex-col gap-l lg:flex-row lg:items-center">
@@ -224,8 +224,8 @@ function BannerShell({
             className={cn(
               "flex icon-size-700 shrink-0 items-center justify-center rounded-xl",
               tone === "primary" && "bg-primary text-primary-foreground",
-              tone === "destructive" && "bg-destructive text-destructive-foreground",
-              tone === "warning" && "bg-status-warning/20 text-foreground",
+              tone === "destructive" && "bg-signal-danger-foreground/10 text-signal-danger-foreground",
+              tone === "warning" && "bg-signal-warning-foreground/10 text-signal-warning-foreground",
             )}
           >
             {icon}

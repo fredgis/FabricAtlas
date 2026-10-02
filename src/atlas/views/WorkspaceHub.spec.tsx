@@ -25,6 +25,10 @@ describe("WorkspaceHubView", () => {
     expect(
       screen.getByRole("heading", { level: 1, name: "Workspace Hub" }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("tablist", { name: "Workspace Hub sections" })).toHaveClass("atlas-line-tabs");
+    expect(screen.getByRole("switch", { name: "Scheduled synchronization" })).toBeDisabled();
+    expect(screen.getByText(/Runs are manual and execute in the synchronizer's browser tab/)).toBeInTheDocument();
+    expect(screen.queryByText(/in the background|schedule enabled/i)).toBeNull();
     expect(
       screen
         .getAllByRole("tab")

@@ -124,12 +124,12 @@ function SourceCard({
   children?: ReactNode;
 }) {
   return (
-    <li className="rounded-lg border border-border bg-card p-m shadow-fabric-2">
+    <li className="rounded-lg border border-border bg-card p-m">
       <div className="flex items-start gap-m">
         {badge}
         <div className="min-w-0 flex-1">
           <div className="text-300 font-semibold text-foreground">
-            {title} — <span className={statusClass}>{status}</span>
+            {title} · <span className={statusClass}>{status}</span>
           </div>
           {meta && (
             <div className="text-200 text-muted-foreground">{meta}</div>
@@ -213,7 +213,7 @@ export function RelationshipEvidencePane({
       aria-labelledby={headingId}
       className={cn("flex min-h-0 flex-1 flex-col", className)}
     >
-      <header className="flex items-center gap-s border-b border-border px-l py-m">
+      <header className="flex shrink-0 items-center gap-s border-b border-border px-l py-m">
         <Waypoints
           className="icon-size-300 shrink-0 text-brand-foreground"
           aria-hidden="true"
@@ -233,7 +233,7 @@ export function RelationshipEvidencePane({
         )}
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-l overflow-auto p-l">
+      <div className="min-h-0 flex-1 space-y-l overflow-auto p-l">
         <div>
           <h3 className="break-words text-500 font-semibold leading-500">
             {source.displayName} <span aria-hidden="true">→</span>
@@ -276,7 +276,7 @@ export function RelationshipEvidencePane({
                   <SourceCard
                     key={`${edge.source}|${edge.target}|${edge.relation}`}
                     badge={
-                      <span className="flex icon-size-500 shrink-0 items-center justify-center rounded-full bg-status-healthy text-background">
+                      <span className="flex icon-size-500 shrink-0 items-center justify-center rounded-full bg-signal-success-background text-signal-success-foreground">
                         <Check className="icon-size-200" aria-hidden="true" />
                       </span>
                     }
@@ -330,7 +330,7 @@ export function RelationshipEvidencePane({
                   }
                 >
                   <details className="mt-s text-200">
-                    <summary className="cursor-pointer font-semibold text-lineage-upstream">
+                    <summary className="atlas-control cursor-pointer font-semibold text-lineage-upstream">
                       Evidence details
                     </summary>
                     <dl className="mt-s grid grid-cols-2 gap-m">
@@ -371,7 +371,7 @@ export function RelationshipEvidencePane({
         {conflict && relationship.authoritative[0] && (
           <div
             role="note"
-            className="flex flex-wrap items-start gap-m rounded-lg border border-status-warning/40 bg-status-warning/10 p-m text-200 leading-200 text-foreground"
+            className="flex flex-wrap items-start gap-m rounded-lg border border-signal-warning-foreground/20 bg-signal-warning-background p-m text-200 leading-300 text-foreground"
           >
             <AlertTriangle
               className="icon-size-300 shrink-0 text-status-warning"
@@ -401,10 +401,10 @@ export function RelationshipEvidencePane({
 
         <div
           role="note"
-          className="flex items-start gap-m rounded-lg border border-fabric-blue/30 bg-fabric-blue/5 p-m text-200 leading-200 text-foreground"
+          className="flex items-start gap-m rounded-lg border border-signal-info-foreground/20 bg-signal-info-background p-m text-200 leading-300 text-foreground"
         >
           <Info
-            className="icon-size-300 shrink-0 text-fabric-blue"
+            className="icon-size-300 shrink-0 text-signal-info-foreground"
             aria-hidden="true"
           />
           <p>

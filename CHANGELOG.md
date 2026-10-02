@@ -8,6 +8,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- A six-pillar governance posture radar rendered by Fabric Visuals. Current
+  scores and configured targets share a fixed 0-100 scale; unknown pillars
+  leave gaps. Chart selection and keyboard-accessible pillar controls update
+  the same evidence and history view.
+- A UI-only Fabric redesign of Overview, Governance Center, Policies & AI,
+  Workspace Hub, Map & lineage and Semantic X-Ray. The existing Segoe UI
+  typography and spacing tokens remain; soft semantic score colors distinguish
+  red, amber, green and neutral N/A. Governance uses line tabs and a persistent
+  desktop evidence pane with a mobile drawer. Policy settings remain context,
+  never restriction decisions or AI exposure assessments. Synchronization
+  remains browser-driven with scheduling disabled, and Beta relationships
+  remain separate from Atlas snapshot lineage.
 - Rayfin TypeScript Functions foundation with a typed, bounded `ping`
   contract.
 - A shared registry and compact notice component for Preview, Beta and

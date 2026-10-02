@@ -31,8 +31,8 @@ const SIGNAL_ICON: Record<RadarSignalId, LucideIcon> = {
 };
 
 function toneClass(severity: RadarSignalGroup["severity"]): string {
-  if (severity === "critical") return "bg-status-failing/10 text-status-failing";
-  if (severity === "high") return "bg-status-warning/10 text-status-warning";
+  if (severity === "critical") return "bg-signal-danger-background text-signal-danger-foreground";
+  if (severity === "high") return "bg-signal-warning-background text-signal-warning-foreground";
   return "bg-primary/10 text-brand-foreground";
 }
 
@@ -95,7 +95,7 @@ export function RadarSignalTiles({
                 <span className="block truncate text-300 font-semibold leading-300">
                   {group.title}
                 </span>
-                <span className="block truncate text-200 leading-200 text-brand-foreground">
+                <span className="block text-200 leading-200 text-muted-foreground">
                   {group.summary}
                 </span>
               </span>

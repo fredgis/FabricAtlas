@@ -1537,8 +1537,8 @@ export function MapView({
   );
 
   return (
-    <div className="flex h-full min-h-[720px] flex-col xl:min-h-0">
-      <div className="atlas-page-header flex flex-wrap items-start justify-between border-b border-border">
+    <div className="flex h-full min-h-[720px] min-w-0 flex-col xl:min-h-0">
+      <div className="atlas-page-header flex shrink-0 flex-wrap items-start justify-between border-b border-border">
         <div className="min-w-0">
           <div className="text-200 font-semibold uppercase tracking-[0.12em] text-brand-foreground">
             Workspace topology
@@ -1605,19 +1605,20 @@ export function MapView({
       <div className="flex flex-wrap items-center justify-between gap-x-l border-b border-border bg-card px-l">
         <Tabs.List
           aria-label="Map and lineage views"
-          className="-mx-xs flex overflow-x-auto px-xs"
+          className="atlas-line-tabs max-w-full border-b-0"
         >
           {LINEAGE_VIEWS.map(({ id, label }) => (
             <Tabs.Trigger
               key={id}
               value={id}
-              className="relative flex min-h-[var(--atlas-touch-target)] shrink-0 items-center whitespace-nowrap px-l text-300 text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-inset focus-visible:ring-offset-0 data-[state=active]:font-semibold data-[state=active]:text-brand-foreground data-[state=active]:after:absolute data-[state=active]:after:inset-x-s data-[state=active]:after:bottom-0 data-[state=active]:after:h-xxs data-[state=active]:after:rounded-full data-[state=active]:after:bg-primary dark:data-[state=active]:after:bg-brand-foreground"
+              className="atlas-line-tab focus-visible:ring-inset focus-visible:ring-offset-0"
             >
               {label}
             </Tabs.Trigger>
           ))}
         </Tabs.List>
         {itemRelationsEnabled && (
+          <div className="my-s flex max-w-full flex-wrap items-center gap-x-s rounded-lg border border-lineage-upstream/30 bg-lineage-upstream/5 px-s">
           <ToggleSwitch
             checked={includePreview}
             onChange={(checked) => {
@@ -1626,7 +1627,13 @@ export function MapView({
             }}
             label="Item Relations API evidence (Preview)"
             tone="preview"
+            describedBy="map-preview-boundary"
           />
+          <span aria-hidden="true" className="rounded-md bg-card px-s py-xxs text-200 font-semibold text-lineage-upstream">{includePreview ? "On" : "Off"}</span>
+          <p id="map-preview-boundary" className="w-full px-s pb-s text-200 text-muted-foreground">
+            Beta overlay only. Atlas snapshot lineage stays authoritative.
+          </p>
+          </div>
         )}
       </div>
       {previewActive && (
@@ -1707,7 +1714,7 @@ export function MapView({
         <WorkspaceSelector
           id="map-workspace-selector"
           compact
-          className="min-w-[180px] max-w-[260px]"
+          className="min-w-0 max-w-full sm:min-w-[180px] sm:max-w-[260px]"
         />
         {externalWorkspaceCount > 0 && (
           <span className="shrink-0 whitespace-nowrap rounded-md bg-lineage-upstream/10 px-s py-xxs text-200 font-semibold text-lineage-upstream">

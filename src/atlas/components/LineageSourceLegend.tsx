@@ -48,9 +48,10 @@ export function LineageSourceLegend({
     <div
       role="group"
       aria-label="Lineage legend"
-      className="sticky bottom-[14px] left-[14px] z-20 ml-[14px] w-fit max-w-[calc(100%-28px)] rounded-lg border border-border bg-card px-l py-s text-200 text-foreground shadow-fabric-4"
+      className="sticky bottom-m left-m z-20 ml-m w-fit max-w-[calc(100%_-_var(--spacing-xxl))] rounded-lg border border-border bg-card px-m py-s text-200 text-foreground shadow-fabric-4"
     >
-      <ul className="flex flex-wrap items-center gap-x-l gap-y-xs">
+      <p className="mb-xs font-semibold">Sources and paths</p>
+      <ul className="flex flex-wrap items-center gap-x-l gap-y-s">
         {mode === "items" && (
           <>
             <LegendLine
@@ -94,6 +95,11 @@ export function LineageSourceLegend({
           />
         )}
       </ul>
+      {mode === "items" && (
+        <p className="mt-s border-t border-border pt-s text-muted-foreground">
+          {previewIncluded ? "Dashed Beta evidence is observed, not authoritative." : "Only Atlas snapshot lineage is drawn."}
+        </p>
+      )}
     </div>
   );
 }

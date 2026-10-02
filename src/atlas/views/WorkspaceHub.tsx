@@ -59,7 +59,7 @@ export function WorkspaceHubView({
       }}
       asChild
     >
-      <div className="atlas-content-frame flex flex-col gap-l p-xl lg:p-xxl">
+      <div className="atlas-content-frame flex min-w-0 flex-col gap-l">
         <header className="flex items-center gap-l">
           <span
             aria-hidden="true"
@@ -79,13 +79,13 @@ export function WorkspaceHubView({
 
         <Tabs.List
           aria-label="Workspace Hub sections"
-          className="-mx-xs flex overflow-x-auto border-b border-border px-xs"
+          className="atlas-line-tabs"
         >
           {HUB_TABS.map(({ id, label }) => (
             <Tabs.Trigger
               key={id}
               value={id}
-              className="relative flex min-h-[var(--atlas-touch-target)] shrink-0 items-center whitespace-nowrap px-l text-300 text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-inset focus-visible:ring-offset-0 data-[state=active]:font-semibold data-[state=active]:text-brand-foreground data-[state=active]:after:absolute data-[state=active]:after:inset-x-s data-[state=active]:after:bottom-0 data-[state=active]:after:h-xxs data-[state=active]:after:rounded-full data-[state=active]:after:bg-primary dark:data-[state=active]:after:bg-brand-foreground"
+              className="atlas-line-tab focus-visible:ring-inset focus-visible:ring-offset-0"
             >
               {label}
             </Tabs.Trigger>

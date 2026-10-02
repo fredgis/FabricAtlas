@@ -53,16 +53,18 @@ describe("RelationshipEvidencePane", () => {
     expect(facts.slice(0, 2)).toEqual(["Type", "Workspace boundary"]);
     expect(pane).toHaveTextContent("Same workspace");
     const cards = within(pane).getAllByRole("listitem");
-    expect(cards[0]).toHaveTextContent("Atlas snapshot — Collected");
+    expect(cards[0]).toHaveTextContent("Atlas snapshot · Collected");
     expect(cards[0]).toHaveTextContent("Reports that Sales model uses data from Rental warehouse (reads).");
     expect(cards[0]).toHaveTextContent("SourceAtlas snapshot syncConfidenceVerified");
-    expect(cards[1]).toHaveTextContent("Item Relations API — Beta");
+    expect(cards[1]).toHaveTextContent("Item Relations API · Beta");
     expect(cards[1]).toHaveTextContent("Reports an inverse relation (Sales model → Rental warehouse).");
     expect(cards[1]).toHaveTextContent("SourceItem Relations API (Beta)ConfidenceObserved");
     expect(within(pane).getAllByRole("note").map((note) => note.textContent)).toEqual([
       expect.stringContaining("Direction differs between sources"),
       expect.stringContaining("Evidence remains separate."),
     ]);
+    expect(pane.querySelector(".overflow-auto")).toHaveClass("space-y-l");
+    expect(pane.querySelector(".overflow-auto")).not.toHaveClass("flex-col");
 
     fireEvent.click(within(pane).getByRole("button", { name: "Review conflict" }));
     expect(onReviewConflict).toHaveBeenCalledWith(conflict.id);
@@ -91,9 +93,12 @@ describe("LineageSourceLegend", () => {
       "Conflict (review needed)",
       "Upstream path",
     ]);
+    expect(screen.getByText("Sources and paths")).toBeVisible();
+    expect(screen.getByText("Dashed Beta evidence is observed, not authoritative.")).toBeVisible();
 
     rerender(<LineageSourceLegend mode="items" previewIncluded={false} />);
     expect(screen.queryByText("Item Relations API (Beta, observed)")).not.toBeInTheDocument();
     expect(screen.queryByText("Conflict (review needed)")).not.toBeInTheDocument();
+    expect(screen.getByText("Only Atlas snapshot lineage is drawn.")).toBeVisible();
   });
 });

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { CheckCircle2, CircleHelp, Database, History, Info, Search, ShieldQuestion, X } from "lucide-react";
 import type { AtlasData } from "../model";
 import type { HistoricalSnapshot } from "../history";
 import type { AtlasNavigation } from "../navigation";
 import {
   buildAiGovernanceInventory, compareAgentSourceSelections, POLICIES_AI_LIMITATION,
-  WATCHLIST_BLOCKER, SYNC_BRIEF_BLOCKER,
+  type AiInventoryRow,
 } from "../policies-ai";
 import { isFeatureEnabled } from "../feature-flags";
 import {
@@ -38,17 +39,14 @@ export function PoliciesAiSection({
   const filtered = rows.filter((row) => [
     row.item.displayName, row.owner, ...row.sources.map((source) => source.displayName),
   ].join(" ").toLowerCase().includes(search.trim().toLowerCase()));
-  const selected = filtered.find((row) => row.item.fabricId === selectedId);
   const desktop = useDesktopEvidence();
+  const selected = filtered.find((row) => row.item.fabricId === selectedId) ?? (desktop ? filtered[0] : undefined);
   const selectionTrigger = useRef<HTMLElement | null>(null);
   const returnFocus = () => selectionTrigger.current?.isConnected && selectionTrigger.current.focus();
   const closeDetails = () => {
     setSelectedId(null);
     returnFocus();
   };
-  useEffect(() => {
-    if (desktop && selectedId) document.getElementById("close-ai-evidence")?.focus();
-  }, [desktop, selectedId]);
   const enabled = isFeatureEnabled("fabric-policies");
   const policy = useStoredPolicyEvidence(
     data.workspace.fabricId, data.workspace.snapshotId,
@@ -57,192 +55,259 @@ export function PoliciesAiSection({
   const navigate = (tab: AtlasNavigation["tab"], itemId: string) => onNavigate({
     tab, focus: { requestId: crypto.randomUUID(), itemId },
   });
+  const policyStatus = !enabled
+    ? "Policy collection is off. No policy records were queried."
+    : policy.status === "loading"
+      ? "Loading stored workspace context..."
+      : policy.status === "unavailable"
+        ? "Stored policy context unavailable. No restriction decision is inferred."
+        : !policy.records.length
+          ? "No stored context for this snapshot. Applicability is unknown."
+          : `${policy.records.length} stored workspace context records.`;
+
   return (
-    <div className="grid gap-l">
-      <Card className="border-status-warning/30 bg-status-warning/5 p-l">
-        <h2 className="text-400 font-semibold">Policies &amp; AI evidence</h2>
-        <p className="mt-s text-300 leading-300">{POLICIES_AI_LIMITATION}</p>
-        <p className="mt-s text-200 leading-300 text-muted-foreground">
-          Catalog snapshot: {data.workspace.snapshotId ?? "Not recorded"} ·
-          Collected snapshot time: {data.workspace.syncedAt ?? "Not recorded"}.
-          Individual definition observation times are not collected.
+    <div className="grid min-w-0 gap-m">
+      <div>
+        <h2 className="sr-only">Policies &amp; AI evidence</h2>
+        <p className="text-300 text-muted-foreground">
+          Review collected protection metadata and Data Agent source selections, without inferring AI exposure or restriction decisions.
         </p>
-      </Card>
-      <div className="grid grid-cols-2 gap-m lg:grid-cols-4">
-        {[
-          ["Inventoried artifacts", rows.length, "Selected artifact families and recorded agent source targets"],
-          ["Data agents", rows.filter((row) => row.item.itemType === "DataAgent").length, "Actual catalog DataAgent items"],
-          ["Source definitions unavailable", rows.filter((row) => row.selections === "unavailable").length, "Missing normalized source-selection evidence"],
-          ["Exposure unknown", rows.length, "No verified exposure evidence collected"],
-        ].map(([label, value, detail]) => (
-          <Card key={String(label)} className="min-w-0 p-l">
-            <div className="font-numeric text-500 font-bold">{value}</div>
-            <div className="mt-xs text-300 font-semibold">{label}</div>
-            <p className="mt-xs text-200 leading-300 text-muted-foreground">{detail}</p>
-          </Card>
-        ))}
       </div>
-      <div className={cn("grid items-start gap-l", selected && "xl:grid-cols-3")}>
-        <Card className={cn("min-w-0 overflow-hidden", selected && "xl:col-span-2")}>
-          <div className="atlas-toolbar flex flex-wrap items-center justify-between gap-m border-b border-border p-l">
+      <div role="note" className="flex items-start gap-s rounded-md border border-signal-warning-foreground/15 bg-signal-warning-background px-m py-s text-200 leading-300 text-signal-warning-foreground">
+        <Info className="mt-xxs icon-size-200 shrink-0" aria-hidden="true" />
+        Coverage is partial. Unknown exposure does not mean not exposed; unknown controls are not compliant.
+      </div>
+      <dl aria-label="Policy and AI inventory summary" className="grid grid-cols-2 gap-s lg:grid-cols-4">
+        {[
+          ["Models", rows.filter((row) => row.item.itemType === "SemanticModel").length, "Semantic models in inventory"],
+          ["Data agents", rows.filter((row) => row.item.itemType === "DataAgent").length, "Cataloged Data Agent items"],
+          ["Source gaps", rows.filter((row) => row.selections === "unavailable").length, "Agent definitions not collected"],
+          ["Exposure unknown", rows.length, "Not evaluated across inventory"],
+        ].map(([label, value, detail]) => (
+          <div key={label} className="min-w-0 rounded-lg border border-border bg-card p-m">
+            <dt className="text-300 font-semibold">{label}</dt>
+            <dd className="mt-xs font-numeric text-500 font-semibold">{value}</dd>
+            <p className="mt-xs text-200 leading-300 text-muted-foreground">{detail}</p>
+          </div>
+        ))}
+      </dl>
+      <div className="atlas-ai-workbench">
+        <Card className="min-w-0 overflow-hidden shadow-none">
+          <div className="atlas-toolbar flex flex-wrap items-center justify-between gap-m border-b border-border p-m">
             <h3 className="text-400 font-semibold">AI governance inventory</h3>
-            <label className="min-w-0">
+            <label className="relative min-w-0 flex-1 sm:max-w-xs">
+              <Search className="pointer-events-none absolute left-s top-1/2 icon-size-200 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
               <span className="sr-only">Search policy and AI inventory</span>
               <input type="search" value={search} onChange={(event) => setSearch(event.target.value)}
-                placeholder="Asset, documented owner or source"
-                className="atlas-control max-w-full rounded-lg border border-input bg-card px-m text-300" />
+                placeholder="Search assets, owners or sources"
+                className="atlas-control w-full rounded-md border border-input bg-card pl-xxxl pr-m text-300" />
             </label>
           </div>
-          <div className="atlas-row hidden grid-cols-5 gap-m bg-secondary px-l text-200 font-semibold xl:grid" aria-hidden="true">
-            <span>Artifact</span><span>Documented owner</span><span>Source selections</span><span>Protection metadata</span><span>AI exposure</span>
-          </div>
-          <ul className="divide-y divide-border">
-            {filtered.map((row) => (
-              <li key={row.item.fabricId}>
-                <button type="button" aria-pressed={selectedId === row.item.fabricId}
-                  aria-label={`Inspect ${row.item.displayName}. AI exposure unknown. Source selection evidence ${row.selections}.`}
-                  onClick={(event) => {
-                    event.currentTarget.focus();
-                    selectionTrigger.current = event.currentTarget;
-                    setSelectedId(row.item.fabricId);
-                  }}
-                  className={cn("atlas-row grid w-full gap-m px-l text-left hover:bg-accent xl:grid-cols-5",
-                    selectedId === row.item.fabricId && "bg-primary/10")}>
-                  <span className="flex min-w-0 items-start gap-s">
-                    <TypeGlyph type={row.item.itemType} size={24} />
-                    <span className="min-w-0">
-                      <span className="block truncate text-300 font-semibold">{row.item.displayName}</span>
-                      <span className="text-200 text-muted-foreground">{row.item.itemType}</span>
+          <table className="w-full table-fixed border-collapse text-left text-200">
+            <caption className="sr-only">AI governance inventory. Select an asset to inspect its evidence.</caption>
+            <thead className="border-b border-border bg-secondary text-muted-foreground">
+              <tr>
+                <th scope="col" className="w-2/5 px-m py-s font-medium md:w-1/3">Asset</th>
+                <th scope="col" className="hidden px-s py-s font-medium md:table-cell">Owner</th>
+                <th scope="col" className="hidden px-s py-s font-medium md:table-cell md:w-1/12">Sources</th>
+                <th scope="col" className="px-s py-s font-medium">Protection evidence</th>
+                <th scope="col" className="px-s py-s font-medium">AI exposure</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {filtered.map((row) => (
+                <tr key={row.item.fabricId} className={cn("hover:bg-accent", selected?.item.fabricId === row.item.fabricId && "bg-primary/5")}>
+                  <td className="px-m py-xs">
+                    <button type="button" aria-pressed={selected?.item.fabricId === row.item.fabricId}
+                      aria-label={`Inspect ${row.item.displayName}. AI exposure unknown. Source selection evidence ${row.selections}.`}
+                      onClick={(event) => {
+                        event.currentTarget.focus();
+                        selectionTrigger.current = event.currentTarget;
+                        setSelectedId(row.item.fabricId);
+                      }}
+                      className="atlas-control flex w-full items-center gap-s rounded-md text-left text-300">
+                      <TypeGlyph type={row.item.itemType} size={24} />
+                      <span className="min-w-0 break-words font-medium">{row.item.displayName}</span>
+                    </button>
+                  </td>
+                  <td className="hidden break-words px-s py-s text-muted-foreground md:table-cell">{row.owner}</td>
+                  <td className="hidden px-s py-s md:table-cell">
+                    <span title={sourceSelectionLabel(row)}>{row.selections.startsWith("observed") ? row.sources.length : row.selections === "not-applicable" ? "N/A" : "Unknown"}</span>
+                  </td>
+                  <td className="px-s py-s">
+                    <ProtectionEvidence row={row} />
+                  </td>
+                  <td className="px-s py-s">
+                    <span className="inline-flex items-center gap-xs rounded-md bg-muted px-s py-xxs text-muted-foreground">
+                      <CircleHelp className="icon-size-100 shrink-0" aria-hidden="true" /> Unknown
                     </span>
-                  </span>
-                  <span className="break-words text-200">{row.owner}</span>
-                  <span className="text-200">
-                    {row.selections === "observed" ? `${row.sources.length} configured source references` :
-                      row.selections === "observed-empty" ? "No sources in collected definition; exposure unknown" :
-                      row.selections === "unavailable" ? "Not collected" : "No Data Agent source-selection contract for this artifact"}
-                  </span>
-                  <span className="text-200">{row.sensitivity} · Endorsement: {row.endorsement}</span>
-                  <span className="text-200">Unknown (not evaluated)</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
           {!filtered.length && <p className="p-l text-300 leading-300">
             No inventoried artifacts match. Missing inventory is not evidence of absent AI exposure.
           </p>}
         </Card>
-        {selected && (
+        {(desktop || selected) && (
           <AccessEvidenceInspector desktop={desktop} onClose={closeDetails} onReturnFocus={() => { returnFocus(); }}
             title="Policies and AI evidence" desktopLabel="Selected policy and AI evidence"
             description="Catalog and definition metadata, source selections and unknown exposure."
             closeButtonId="close-ai-evidence">
           <section aria-labelledby="ai-evidence-detail-heading" className="min-w-0"
             onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); closeDetails(); } }}>
-            <Card className="p-l">
+            <Card className="overflow-hidden shadow-none">
               <div className="flex items-start justify-between gap-m">
-                <h3 id="ai-evidence-detail-heading" className="break-words text-400 font-semibold">Evidence details: {selected.item.displayName}</h3>
-                <button id="close-ai-evidence" type="button" onClick={closeDetails}
-                  className="atlas-control rounded-lg border border-border px-s text-200"
-                  aria-label="Close AI evidence details">Close</button>
+                <h3 id="ai-evidence-detail-heading" className="p-m text-400 font-semibold">Evidence details</h3>
+                {!desktop && <button id="close-ai-evidence" type="button" onClick={closeDetails}
+                  className="atlas-control m-xs flex min-w-[var(--atlas-touch-target)] items-center justify-center rounded-md hover:bg-accent"
+                  aria-label="Close AI evidence details"><X className="icon-size-200" aria-hidden="true" /></button>}
               </div>
-              <dl className="mt-m grid gap-m text-200 leading-300">
-                {[
-                  ["Documented owner", selected.owner], ["Sensitivity metadata", selected.sensitivity],
-                  ["Endorsement metadata", selected.endorsement], ["Observed lineage", selected.lineage],
-                  ["AI/Copilot exposure", "Unknown; no exposure contract collected"],
-                  ["Provenance", selected.provenance], ["Snapshot ID", selected.snapshotId ?? "Not recorded"],
-                  ["Catalog collection time", selected.catalogCollectedAt ?? "Not recorded"],
-                  ["Per-definition observation time", "Not collected"],
-                ].map(([label, value]) => <div key={label}><dt className="font-semibold">{label}</dt><dd className="break-words text-muted-foreground">{value}</dd></div>)}
-              </dl>
-              <h4 className="mt-l text-300 font-semibold">Recorded source selections</h4>
-              {!selected.sources.length && <p className="mt-s text-200 leading-300">
-                {selected.selections === "observed-empty" ? "No source references in the collected definition." : "Source-selection evidence unavailable or not applicable."}
-                {" "}Neither statement establishes that this artifact is not exposed.
+              {selected ? <div className="px-m pb-m" role="region" aria-label={`Evidence details: ${selected.item.displayName}`}>
+                <div className="flex items-center gap-s border-b border-border pb-m">
+                  <TypeGlyph type={selected.item.itemType} size={32} />
+                  <div className="min-w-0">
+                    <h4 className="break-words text-300 font-semibold">{selected.item.displayName}</h4>
+                    <p className="text-200 text-muted-foreground">{selected.item.itemType}</p>
+                  </div>
+                </div>
+                <dl className="grid gap-m py-m text-200 leading-300">
+                  {[
+                    ["Owner", selected.owner], ["Sensitivity", selected.sensitivity],
+                    ["Source metadata", sourceSelectionLabel(selected)],
+                    ["AI/Copilot exposure", "Unknown; no exposure contract collected"],
+                    ["Catalog collected", selected.catalogCollectedAt ?? "Not recorded"],
+                  ].map(([label, value]) => <div key={label} className="grid grid-cols-2 gap-s">
+                    <dt className="text-muted-foreground">{label}</dt><dd className="break-words">{value}</dd>
+                  </div>)}
+                </dl>
+                <details className="border-t border-border py-s text-200 leading-300">
+                  <summary className="cursor-pointer py-xs font-semibold">Sources and provenance</summary>
+                  <p className="mt-s text-muted-foreground">{POLICIES_AI_LIMITATION}</p>
+                  <dl className="mt-m grid gap-s">
+                    {[
+                      ["Endorsement metadata", selected.endorsement], ["Observed lineage", selected.lineage],
+                      ["Provenance", selected.provenance], ["Snapshot ID", selected.snapshotId ?? "Not recorded"],
+                      ["Per-definition observation time", "Not collected"],
+                    ].map(([label, value]) => <div key={label}><dt className="font-semibold">{label}</dt><dd className="break-words text-muted-foreground">{value}</dd></div>)}
+                  </dl>
+                  {!selected.sources.length && <p className="mt-m">
+                    {selected.selections === "observed-empty" ? "No source references in the collected definition." : "Source-selection evidence unavailable or not applicable."}
+                    {" "}Neither statement establishes that this artifact is not exposed.
+                  </p>}
+                  <ul className="mt-m grid gap-s">
+                    {selected.sources.map((source) => (
+                      <li key={`${source.workspaceId ?? "unknown"}:${source.artifactId}`} className="rounded-md bg-secondary p-s">
+                        <p className="font-semibold">{source.displayName} · {source.sourceType}</p>
+                        <p className="break-all text-muted-foreground">Artifact: {source.artifactId} · Workspace: {source.workspaceId ?? "Not recorded"}</p>
+                        <ul className="mt-s grid gap-xs">
+                          {source.selectedElements.map((element) => (
+                            <li key={JSON.stringify([element.parentId, element.parentPath, element.id, element.elementType])}>
+                              {element.elementType}: {element.displayName} · Recorded ID: {element.id}
+                            </li>
+                          ))}
+                        </ul>
+                        {!source.selectedElements.length && <p>No supported selected elements recorded; other selections remain unknown.</p>}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+                <div className="flex flex-wrap gap-s border-t border-border pt-m">
+                  <button type="button" onClick={() => navigate("catalog", selected.item.fabricId)}
+                    className="atlas-control rounded-md border border-border px-s text-200 hover:bg-accent">Open catalog evidence</button>
+                  <button type="button" onClick={() => navigate("map", selected.item.fabricId)}
+                    className="atlas-control rounded-md border border-border px-s text-200 hover:bg-accent">Open lineage evidence</button>
+                </div>
+              </div> : <p className="px-m pb-l text-200 leading-300 text-muted-foreground">
+                No asset matches the current inventory filter. Clear the search to inspect collected metadata.
               </p>}
-              <ul className="mt-m grid gap-s">
-                {selected.sources.map((source) => (
-                  <li key={`${source.workspaceId ?? "unknown"}:${source.artifactId}`} className="rounded-lg border border-border p-m text-200 leading-300">
-                    <p className="font-semibold">{source.displayName} · {source.sourceType}</p>
-                    <p className="break-all">Artifact ID: {source.artifactId} · Workspace: {source.workspaceId ?? "Not recorded"}</p>
-                    <ul className="mt-s grid gap-xs">
-                      {source.selectedElements.map((element) => (
-                        <li key={JSON.stringify([element.parentId, element.parentPath, element.id, element.elementType])}>
-                          {element.elementType}: {element.displayName} · Recorded ID: {element.id}
-                        </li>
-                      ))}
-                    </ul>
-                    {!source.selectedElements.length && <p>No supported selected elements in this collected projection; other selections remain unknown.</p>}
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-l flex flex-wrap gap-s">
-                <button type="button" onClick={() => navigate("catalog", selected.item.fabricId)}
-                  className="atlas-control rounded-lg border border-border px-m text-200">Open catalog evidence</button>
-                <button type="button" onClick={() => navigate("map", selected.item.fabricId)}
-                  className="atlas-control rounded-lg border border-border px-m text-200">Open lineage evidence</button>
+              <div className="border-t border-border bg-secondary/50 p-m">
+                <h4 className="flex items-center gap-s text-300 font-semibold"><ShieldQuestion className="icon-size-200 text-muted-foreground" aria-hidden="true" />Workspace policy context</h4>
+                <p role={policy.status === "unavailable" ? "alert" : "status"} className="mt-s text-200 leading-300 text-muted-foreground">{policyStatus}</p>
+                <p className="mt-s text-200 leading-300">Workspace settings only, not item restriction or exposure decisions.</p>
+                {!!policy.records.length && <details className="mt-s text-200 leading-300">
+                  <summary className="cursor-pointer py-s font-semibold">Stored context records</summary>
+                  <p className="text-muted-foreground">{POLICY_LIMITATION}</p>
+                  <ul className="mt-m grid gap-m">
+                    {policy.records.map((record) => <li key={record.id} className="border-t border-border pt-s">
+                      <p className="font-semibold">{POLICY_LABELS[record.kind]} · {record.coverage}</p>
+                      {record.inboundPublicAction && <p>Inbound public-network default: {record.inboundPublicAction}</p>}
+                      {record.outboundPublicAction && <p>Outbound public-network default: {record.outboundPublicAction}</p>}
+                      {record.externalSharesBypassAction && <p>External-share network bypass default: {record.externalSharesBypassAction}</p>}
+                      <p>Observation: {record.observedAt ?? "Not observed"} · Attempt: {record.attemptedAt} · {record.reason}</p>
+                      <p>Connection identity: {record.collectorIdentity}</p>
+                      <a href={POLICY_DOCS[record.kind]} className="atlas-control inline-flex items-center text-brand-foreground underline"
+                        target="_blank" rel="noopener noreferrer">Source contract</a>
+                    </li>)}
+                  </ul>
+                </details>}
               </div>
             </Card>
           </section>
           </AccessEvidenceInspector>
         )}
       </div>
-      <Card className="p-l">
-        <h3 className="text-400 font-semibold">Supported stored policy context</h3>
-        <p className="mt-s text-200 leading-300">{POLICY_LIMITATION}</p>
-        <p role="status" className="mt-s text-200 text-muted-foreground">
-          {!enabled ? "Policy evidence feature is off. No policy records or APIs were queried." :
-            policy.status === "loading" ? "Loading stored context…" :
-            policy.status === "unavailable" ? "Stored policy context unavailable; no policy outcome is inferred." :
-            !policy.records.length ? "No stored policy context for this snapshot; applicability remains unknown." : "Stored workspace context only."}
-        </p>
-        <ul className="mt-m grid gap-s">
-          {policy.records.map((record) => <li key={record.id} className="rounded-lg border border-border p-m text-200 leading-300">
-            <p className="font-semibold">{POLICY_LABELS[record.kind]} · {record.coverage}</p>
-            {record.inboundPublicAction && <p>Inbound public-network default: {record.inboundPublicAction}</p>}
-            {record.outboundPublicAction && <p>Outbound public-network default: {record.outboundPublicAction}</p>}
-            {record.externalSharesBypassAction && <p>External-share network bypass default: {record.externalSharesBypassAction}</p>}
-            <p>Observation: {record.observedAt ?? "Not observed"} · Attempt: {record.attemptedAt} · {record.reason}</p>
-            <p>Connection identity: {record.collectorIdentity}</p>
-            <a href={POLICY_DOCS[record.kind]} className="atlas-control inline-flex items-center text-brand-foreground underline"
-              target="_blank" rel="noopener noreferrer">Source contract</a>
-          </li>)}
-        </ul>
-        <p className="mt-m text-200 leading-300 text-muted-foreground">
-          Central policy evaluation, OneLake roles, Purview DLP and AI exposure APIs remain unavailable or unsupported. Unknown is not a compliant result.
-        </p>
-      </Card>
-      <Card className="p-l">
-        <h3 className="text-400 font-semibold">Recorded source-selection differences</h3>
+      <Card className="p-m shadow-none">
+        <h3 className="flex items-center gap-s text-300 font-semibold"><History className="icon-size-200 text-brand-foreground" aria-hidden="true" />Source-selection changes</h3>
         {historyError ? <p role="alert" className="mt-s text-300">Snapshot history unavailable; no selection changes are inferred.</p> :
           historyLoading ? <p role="status" className="mt-s text-300">Loading validated snapshot history…</p> :
-          comparison.state === "unavailable" ? <p className="mt-s text-300 leading-300">{comparison.reason}</p> :
+          comparison.state === "unavailable" ? <p className="mt-s text-200 leading-300 text-muted-foreground">{comparison.reason}</p> :
           <>
-            <p className="mt-s text-200 leading-300">
-              {comparison.previousSnapshotId} ({comparison.previousCollectedAt}) → {comparison.currentSnapshotId} ({comparison.currentCollectedAt}).
-              Comparison is of complete, supported definition projections, not effective exposure or revoked access.
+            <p className="mt-s text-200 leading-300 text-muted-foreground">
+              {comparison.differences.length} recorded changes between validated snapshots. These are source selections, not effective exposure or revoked access.
             </p>
-            <ul className="mt-m grid gap-s">
-              {comparison.differences.map((difference) => <li key={difference.id} className="rounded-lg border border-border p-m text-200 leading-300">
+            <ul className="mt-m grid gap-s sm:grid-cols-2">
+              {comparison.differences.slice(0, 4).map((difference) => <li key={difference.id} className="rounded-md bg-secondary p-s text-200 leading-300">
                 <p className="font-semibold">{difference.agentName}: {difference.type} · {difference.label}</p>
-                <p className="break-all">Agent ID: {difference.agentId} · Source ID: {difference.sourceId} · Element ID: {difference.elementId ?? "Not applicable"}</p>
               </li>)}
             </ul>
+            {comparison.differences.length > 4 && <p className="mt-s text-200 text-muted-foreground">Showing the first 4 changes. Expand source-change evidence for all recorded changes.</p>}
             {!comparison.differences.length && <p className="mt-s text-200">No recorded selection differences for comparable agents. Unavailable agents are not treated as unchanged.</p>}
             {!!comparison.unavailableAgents.length && <p className="mt-s text-200">{comparison.unavailableAgents.length} agents lack comparable source/identity evidence.</p>}
+            <details className="mt-s text-200 leading-300">
+              <summary className="cursor-pointer py-s font-semibold">Source-change evidence</summary>
+              <p className="break-words text-muted-foreground">
+                {comparison.previousSnapshotId} ({comparison.previousCollectedAt}) to {comparison.currentSnapshotId} ({comparison.currentCollectedAt}).
+              </p>
+              <ul className="mt-s grid gap-s">
+                {comparison.differences.map((difference) => <li key={difference.id} className="border-t border-border pt-s">
+                  <p className="font-semibold">{difference.agentName}: {difference.type} · {difference.label}</p>
+                  <p className="break-all text-muted-foreground">Agent ID: {difference.agentId} · Source ID: {difference.sourceId} · Element ID: {difference.elementId ?? "Not applicable"}</p>
+                </li>)}
+              </ul>
+            </details>
             <button type="button" onClick={() => onCompare(comparison.previousSnapshotId, comparison.currentSnapshotId)}
               className="atlas-control mt-m rounded-lg border border-border px-m text-300">Open exact historical comparison</button>
           </>}
       </Card>
-      <Card className="p-l">
-        <h3 className="text-400 font-semibold">Personal monitoring and brief integrations</h3>
-        <p id="ai-watchlist-blocker" className="mt-s text-200 leading-300">{WATCHLIST_BLOCKER}</p>
-        <button type="button" disabled aria-describedby="ai-watchlist-blocker"
-          className="atlas-control mt-s rounded-lg border border-border px-m text-200">Watchlists unavailable</button>
-        <p id="ai-brief-blocker" className="mt-m text-200 leading-300">{SYNC_BRIEF_BLOCKER}</p>
-        <button type="button" disabled aria-describedby="ai-brief-blocker"
-          className="atlas-control mt-s rounded-lg border border-border px-m text-200">Sync Brief unavailable</button>
-      </Card>
+      <p role="note" className="text-200 leading-300 text-muted-foreground">
+        Watchlists and Sync Brief are unavailable in this build. Personal saved views and historical comparisons remain available.
+      </p>
     </div>
+  );
+}
+
+function sourceSelectionLabel(row: AiInventoryRow): string {
+  switch (row.selections) {
+    case "observed": return `${row.sources.length} configured source references`;
+    case "observed-empty": return "Collected; no source references";
+    case "unavailable": return "Not collected";
+    case "not-applicable": return "N/A for this artifact type";
+  }
+}
+
+function ProtectionEvidence({ row }: { row: AiInventoryRow }) {
+  const collected = !!(row.item.sensitivity?.trim() || row.item.sensitivityLabelId);
+  const knownEmpty = row.item.sensitivityMetadataAvailable === true;
+  const Icon = collected ? CheckCircle2 : knownEmpty ? Database : CircleHelp;
+  return (
+    <span title={row.sensitivity} className={cn(
+      "inline-flex items-center gap-xs rounded-md px-s py-xxs",
+      collected ? "bg-signal-success-background text-signal-success-foreground" : "bg-muted text-muted-foreground",
+    )}>
+      <Icon className="icon-size-100 shrink-0" aria-hidden="true" />
+      {collected ? "Label collected" : knownEmpty ? "No label recorded" : "Not collected"}
+    </span>
   );
 }

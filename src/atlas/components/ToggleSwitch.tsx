@@ -7,21 +7,24 @@ export function ToggleSwitch({
   label,
   tone = "brand",
   className,
+  describedBy,
 }: {
   checked: boolean;
   onChange: (checked: boolean) => void;
   label: string;
   tone?: "brand" | "preview";
   className?: string;
+  describedBy?: string;
 }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-describedby={describedBy}
       onClick={() => onChange(!checked)}
       className={cn(
-        "flex items-center gap-s rounded-lg px-s font-semibold text-foreground hover:bg-accent",
+        "flex min-h-[var(--atlas-touch-target)] items-center gap-s rounded-md px-s text-300 font-semibold text-foreground hover:bg-accent sm:min-h-[var(--atlas-control-height)]",
         className,
       )}
     >
@@ -36,7 +39,7 @@ export function ToggleSwitch({
             : "border-input bg-muted after:bg-muted-foreground",
         )}
       />
-      {label}
+      <span className="min-w-0 text-left">{label}</span>
     </button>
   );
 }

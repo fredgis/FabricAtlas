@@ -20,8 +20,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import * as Tabs from "@radix-ui/react-tabs";
-import { motion } from "framer-motion";
-import { useEffect, useId, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useMemo, useState } from "react";
 import { SavedViewsMenu } from "../components/SavedViewsMenu";
 import { TrendChart } from "../components/TrendChart";
 import { GovernanceExceptionControl } from "../components/GovernanceExceptionControl";
@@ -29,6 +28,9 @@ import { GovernancePolicyEditor } from "../components/GovernancePolicyEditor";
 import { HistoricalChangeDetails } from "../components/HistoricalChangeDetails";
 import { ItemFamilyCoverageSection } from "../components/ItemFamilyCoverageSection";
 import { RadarSignalTiles } from "../components/RadarSignalTiles";
+import { ScoreMeter } from "../components/ScoreMeter";
+import { scoreBand } from "../components/score-style";
+import { POSTURE_LABELS } from "../components/posture-radar";
 import { ATLAS_CONFIG } from "../config";
 import {
   buildGovernanceFindings,
@@ -78,6 +80,10 @@ import { Card, SectionLabel, cn } from "../ui";
 import { SensitivityView } from "./Sensitivity";
 import { PoliciesAiSection } from "./PoliciesAi";
 import { buildAiGovernanceInventory } from "../policies-ai";
+
+const PostureRadar = lazy(() => import("../components/PostureRadar").then(
+  (module) => ({ default: module.PostureRadar }),
+));
 
 const SEVERITY_META: Record<
   GovernanceSeverity,
@@ -569,15 +575,15 @@ export function GovernanceCenterView({
     );
   }, [changeDomain, changeSearch, snapshotChanges]);
 
-  const coverageScore = Math.round(
-    coverage.metrics
-      .filter((metric) => metric.percentage != null)
+  const applicableCoverage = coverage.metrics.filter((metric) => metric.percentage != null);
+  const coverageScore = applicableCoverage.length ? Math.round(
+    applicableCoverage
       .reduce(
         (total, metric, _index, values) =>
           total + (metric.percentage ?? 0) / values.length,
         0,
       ),
-  );
+  ) : null;
   const priorityFindings = findings.filter(
     (finding) =>
       finding.severity === "critical" || finding.severity === "high",
@@ -859,9 +865,9 @@ export function GovernanceCenterView({
           );
         }}
       />
-      <Card className="overflow-hidden border-border shadow-fabric-4">
-        <div className="atlas-page-header atlas-fabric-hero relative overflow-hidden">
-          <div className="atlas-row relative flex flex-col gap-m lg:flex-row lg:items-center lg:justify-between">
+      <Card className="min-w-0 overflow-hidden">
+        <div className="atlas-page-header atlas-fabric-hero">
+          <div className="flex flex-col gap-m lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-start gap-m">
               <span className="atlas-brand-mark flex icon-size-600 shrink-0 items-center justify-center rounded-xl text-primary-foreground">
                 <ShieldCheck className="icon-size-300" aria-hidden="true" />
@@ -871,10 +877,8 @@ export function GovernanceCenterView({
                 <h1 className="mt-xxs font-heading text-500 font-bold leading-500">
                   Governance Center
                 </h1>
-                <p className="mt-xxs max-w-3xl text-200 text-muted-foreground">
-                  {hasNewPriorityAlert
-                    ? `${allRadarEntries.length} new priority alert${allRadarEntries.length === 1 ? "" : "s"} require review.`
-                    : "No new priority alert. Governance details remain available below."}
+                <p className="mt-xxs text-200 text-muted-foreground">
+                  Review changes, controls and evidence across your workspace.
                 </p>
               </div>
             </div>
@@ -895,8 +899,8 @@ export function GovernanceCenterView({
                 className={cn(
                   "rounded-full border px-m py-s text-200 font-semibold",
                   hasNewPriorityAlert
-                    ? "border-status-warning/30 bg-status-warning/10 text-status-warning"
-                    : "border-status-healthy/30 bg-status-healthy/10 text-status-healthy",
+                    ? "border-signal-warning-foreground/20 bg-signal-warning-background text-signal-warning-foreground"
+                    : "border-border bg-card text-muted-foreground",
                 )}
               >
                 {hasNewPriorityAlert
@@ -906,8 +910,8 @@ export function GovernanceCenterView({
             </div>
           </div>
 
-          <details className="relative mt-m rounded-lg border border-border bg-background/65">
-            <summary className="cursor-pointer px-m py-s text-200 font-semibold text-primary">
+          <details className="mt-s text-200">
+            <summary className="cursor-pointer py-xs text-200 text-muted-foreground">
               Workspace governance summary
             </summary>
             <div className="grid grid-cols-2 gap-s border-t border-border p-m lg:grid-cols-4">
@@ -924,7 +928,7 @@ export function GovernanceCenterView({
                 },
                 {
                   label: "Coverage",
-                  value: `${coverageScore}%`,
+                  value: coverageScore == null ? "N/A" : `${coverageScore}%`,
                   detail: "Across available metadata",
                 },
                 {
@@ -934,7 +938,7 @@ export function GovernanceCenterView({
                 },
               ].map((metric) => (
                 <div key={metric.label} className="rounded-lg bg-secondary/60 p-m">
-                  <div className="font-numeric text-400 font-bold">
+                  <div className="atlas-score font-numeric text-400 font-bold" data-score-band={metric.label === "Coverage" ? scoreBand(coverageScore) : undefined}>
                     {metric.value}
                   </div>
                   <div className="text-200 font-semibold">{metric.label}</div>
@@ -949,45 +953,24 @@ export function GovernanceCenterView({
 
         <Tabs.List
           aria-label="Governance Center sections"
-          className="grid gap-s border-t border-border bg-secondary/55 p-s sm:grid-cols-2 xl:grid-cols-3"
+          className="atlas-line-tabs border-t border-border bg-secondary/40"
         >
           {tabs.map(({ id, label, detail, count, icon: Icon }) => (
             <Tabs.Trigger key={id} value={id} asChild>
               <button
                 type="button"
                 onClick={() => setSection(id)}
-                className={cn(
-                  "flex items-center gap-m rounded-xl border px-m py-s text-left transition-colors",
-                  section === id
-                    ? "border-primary/45 bg-primary/10 text-foreground"
-                    : "border-transparent text-muted-foreground hover:border-border hover:bg-card hover:text-foreground",
-                )}
+                title={detail}
+                className="atlas-line-tab flex-1 focus-visible:ring-inset focus-visible:ring-offset-0"
               >
-                <span
-                  className={cn(
-                    "flex icon-size-600 shrink-0 items-center justify-center rounded-xl",
-                    section === id
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  <Icon className="icon-size-200" aria-hidden="true" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center justify-between gap-s">
-                    <span className="text-300 font-semibold">{label}</span>
-                    <span className="rounded-full bg-card px-s py-xxs font-numeric text-100">
-                      {count}
-                    </span>
-                  </span>
-                  <span className="mt-xxs block truncate text-200">{detail}</span>
-                </span>
+                <Icon className="icon-size-200" aria-hidden="true" />
+                {label}
+                <span className="sr-only"> ({count})</span>
               </button>
             </Tabs.Trigger>
           ))}
         </Tabs.List>
-      </Card>
-
+      <div className="p-m sm:p-l">
       {historyError && radarFailedSnapshotIds.length === 0 && (
         <div
           role="alert"
@@ -998,11 +981,7 @@ export function GovernanceCenterView({
       )}
 
       <Tabs.Content value="findings" asChild>
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.16 }}
-        >
+        <div>
           <FindingsSection
             findings={filteredFindings}
             total={findings.length}
@@ -1044,14 +1023,10 @@ export function GovernanceCenterView({
               }
             }}
           />
-        </motion.div>
+        </div>
       </Tabs.Content>
       <Tabs.Content value="changes" asChild>
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.16 }}
-        >
+        <div>
           <ChangesSection
             changes={filteredChanges}
             total={snapshotChanges.length}
@@ -1076,42 +1051,30 @@ export function GovernanceCenterView({
             onSearch={setChangeSearch}
             onDomain={setChangeDomain}
           />
-        </motion.div>
+        </div>
       </Tabs.Content>
       <Tabs.Content value="history" asChild>
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.16 }}
-        >
+        <div>
           <HistorySection
             summaries={history.trend}
             metric={historyMetric}
             loading={historyLoading}
             onMetric={setHistoryMetric}
           />
-        </motion.div>
+        </div>
       </Tabs.Content>
       <Tabs.Content value="coverage" asChild>
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.16 }}
-        >
+        <div>
           <CoverageSection
             diagnostics={coverage}
             historyLoading={historyLoading}
             syncSections={data.workspace.syncSections}
             snapshot={data}
           />
-        </motion.div>
+        </div>
       </Tabs.Content>
       <Tabs.Content value="posture" asChild>
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.16 }}
-        >
+        <div>
           <PostureSection
             current={currentPosture}
             previous={previousPosture}
@@ -1128,7 +1091,7 @@ export function GovernanceCenterView({
             onPillar={setPostureMetric}
             onNavigate={onNavigate}
           />
-        </motion.div>
+        </div>
       </Tabs.Content>
       <Tabs.Content value="policies-ai" asChild>
         <div>
@@ -1150,7 +1113,8 @@ export function GovernanceCenterView({
           />
         </div>
       </Tabs.Content>
-
+      </div>
+      </Card>
     </div>
     </Tabs.Root>
   );
@@ -1217,7 +1181,7 @@ export function RadarPanel({
   const detailId = useId();
   const activeSignal = signalGroups.find((group) => group.id === openSignal);
   return (
-    <Card className="overflow-hidden border-primary/25 shadow-fabric-4">
+    <Card className="overflow-hidden">
       <div className="atlas-page-header atlas-fabric-hero flex flex-col gap-m lg:flex-row lg:items-center">
         <span className="flex icon-size-600 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
           <RadarIcon className="icon-size-300" aria-hidden="true" />
@@ -1533,15 +1497,6 @@ function RadarTargetState({
   );
 }
 
-const POSTURE_LABELS: Record<PosturePillar, string> = {
-  documentation: "Documentation",
-  ownership: "Ownership",
-  sensitivity: "Sensitivity",
-  access: "Access",
-  lineage: "Lineage",
-  operations: "Operations",
-};
-
 function PostureSection({
   current,
   previous,
@@ -1589,20 +1544,21 @@ function PostureSection({
         ?.pillars.find((pillar) => pillar.pillar === selectedPillar)
         ?.score ?? null,
   }));
+  const targetsAvailable = !policyLoading && !policyError;
 
   return (
     <div className="flex flex-col gap-l">
       <Card className="overflow-hidden">
         <div className="atlas-fabric-hero flex flex-col gap-m border-b border-border p-l sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <SectionLabel>Posture targets</SectionLabel>
-            <h2 className="mt-xs text-500 font-semibold">
-              {atTarget} of {current.pillars.length} pillars at target
+            <h2 className="text-500 font-semibold">
+              {targetsAvailable ? `${atTarget} of ${current.pillars.length} pillars at target` : "Governance posture"}
             </h2>
             <p className="mt-xs text-200 text-muted-foreground">
-              Standard baseline: 70% for each pillar. Non-applicable evidence
-              is never counted as zero.
+              Select a pillar to inspect its score and trend. N/A is not zero or a compliant result.
             </p>
+            {policyLoading && <p role="status" className="mt-s text-200 text-muted-foreground">Loading governance targets...</p>}
+            {policyError && <p role="alert" className="mt-s text-200 text-signal-danger-foreground">{policyError} Targets are unavailable; raw scores remain visible.</p>}
           </div>
           <label>
             <span className="sr-only">Posture trend pillar</span>
@@ -1621,7 +1577,13 @@ function PostureSection({
             </select>
           </label>
         </div>
-        <div className="grid gap-s p-l sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid lg:grid-cols-2">
+          <Suspense fallback={<div role="status" className="atlas-posture-chart flex items-center justify-center text-200 text-muted-foreground">Loading posture radar...</div>}>
+            <PostureRadar pillars={current.pillars} selectedPillar={selectedPillar}
+              targetsAvailable={targetsAvailable} onSelect={onPillar} />
+          </Suspense>
+          <div className="min-w-0 border-t border-border p-m lg:border-l lg:border-t-0">
+          <div aria-label="Posture pillar selection" className="grid gap-xs sm:grid-cols-2">
           {current.pillars.map((pillar) => {
             const before = previous?.pillars.find(
               (candidate) => candidate.pillar === pillar.pillar,
@@ -1634,56 +1596,24 @@ function PostureSection({
               <button
                 key={pillar.pillar}
                 type="button"
-                onClick={() =>
-                  onNavigate(
-                    pillar.pillar === "documentation" ||
-                      pillar.pillar === "ownership" ||
-                      pillar.pillar === "sensitivity"
-                      ? {
-                          tab: "catalog",
-                          focus: focusRequest({
-                            filters: {
-                              posturePillar: pillar.pillar,
-                            },
-                          }),
-                        }
-                      : {
-                          tab: "governance",
-                          focus: focusRequest({
-                            governanceSection: "findings",
-                            filters: {
-                              section: "findings",
-                              pillar: pillar.pillar,
-                            },
-                          }),
-                        },
-                  )
-                }
-                className="rounded-xl border border-border bg-card p-m text-left transition-colors hover:border-primary/40 hover:bg-primary/5"
+                aria-pressed={selectedPillar === pillar.pillar}
+                onClick={() => onPillar(pillar.pillar)}
+                className={cn("min-h-[var(--atlas-touch-target)] rounded-md border p-m text-left hover:bg-accent",
+                  selectedPillar === pillar.pillar ? "border-brand-foreground/40 bg-primary/5" : "border-transparent")}
               >
                 <div className="flex items-center justify-between gap-s">
                   <span className="text-300 font-semibold">
                     {POSTURE_LABELS[pillar.pillar]}
                   </span>
-                  <span className="font-numeric text-400 font-bold">
+                  <span className="atlas-score font-numeric text-400 font-semibold" data-score-band={scoreBand(pillar.score)}>
                     {pillar.score == null ? "N/A" : `${pillar.score}%`}
                   </span>
                 </div>
-                <div className="mt-m h-s overflow-hidden rounded-full bg-muted">
-                  <div
-                    className={cn(
-                      "h-full rounded-full",
-                      pillar.score == null
-                        ? "bg-lineage-neutral"
-                        : pillar.score >= pillar.target
-                          ? "bg-status-healthy"
-                          : "bg-status-warning",
-                    )}
-                    style={{ width: `${pillar.score ?? 0}%` }}
-                  />
+                <div className="mt-s">
+                  <ScoreMeter label={`${POSTURE_LABELS[pillar.pillar]} score`} value={pillar.score} />
                 </div>
-                <div className="mt-s flex items-center justify-between text-100 text-muted-foreground">
-                  <span>Target {pillar.target}%</span>
+                <div className="mt-xs flex items-center justify-between text-200 text-muted-foreground">
+                  <span>{targetsAvailable ? `Target ${pillar.target}%` : "Target unavailable"}</span>
                   <span>
                     {delta == null
                       ? "No delta"
@@ -1693,9 +1623,29 @@ function PostureSection({
               </button>
             );
           })}
+          </div>
+          <section aria-label={`${POSTURE_LABELS[selectedPillar]} posture details`} className="mt-m border-t border-border p-m">
+            <h3 className="text-300 font-semibold">{POSTURE_LABELS[selectedPillar]} evidence</h3>
+            <p className="mt-xs text-200 leading-300 text-muted-foreground">
+              {selected.score == null ? "No evaluable evidence for this pillar in the current snapshot."
+                : selected.metrics.length ? "Score based on collected metadata coverage."
+                  : `${selected.contributingFindings} findings contribute to this score.`}
+            </p>
+            <button type="button" className="atlas-control mt-s rounded-md px-s text-200 font-semibold text-brand-foreground hover:bg-accent"
+              onClick={() => onNavigate(
+                selectedPillar === "documentation" || selectedPillar === "ownership" || selectedPillar === "sensitivity"
+                  ? { tab: "catalog", focus: focusRequest({ filters: { posturePillar: selectedPillar } }) }
+                  : { tab: "governance", focus: focusRequest({ governanceSection: "findings", filters: { section: "findings", pillar: selectedPillar } }) },
+              )}>
+              Review {POSTURE_LABELS[selectedPillar].toLowerCase()} evidence
+            </button>
+          </section>
+          </div>
         </div>
       </Card>
 
+      <details className="rounded-lg border border-border bg-card">
+        <summary className="cursor-pointer px-l py-m text-300 font-semibold">Configure governance targets</summary>
       <GovernancePolicyEditor
         key={current.pillars
           .map((pillar) => `${pillar.pillar}:${pillar.target}`)
@@ -1710,6 +1660,7 @@ function PostureSection({
         onSave={onSaveTargets}
         onReset={onResetTargets}
       />
+      </details>
 
       <Card className="overflow-hidden">
         <div className="border-b border-border bg-secondary/55 px-l py-m">
@@ -1717,7 +1668,7 @@ function PostureSection({
             {POSTURE_LABELS[selectedPillar]} trend
           </h3>
           <p className="text-200 text-muted-foreground">
-            Fixed 0–100 scale · target {selected.target}%
+            Fixed 0–100 scale · {targetsAvailable ? `target ${selected.target}%` : "target unavailable"}
           </p>
         </div>
         {loading ? (
@@ -1731,7 +1682,7 @@ function PostureSection({
               data={trend}
               valueLabel={(value) => `${value}%`}
               maxValue={100}
-              referenceValue={selected.target}
+              referenceValue={targetsAvailable ? selected.target : undefined}
             />
           </div>
         )}
@@ -2333,28 +2284,14 @@ function CoverageSection({
                   </p>
                 </div>
                 <span
-                  className={cn(
-                    "rounded-full border px-s py-xxs font-numeric text-200 font-semibold",
-                    metric.state === "complete"
-                      ? "border-status-healthy/30 bg-status-healthy/10 text-status-healthy"
-                      : metric.state === "not-applicable"
-                        ? "border-border bg-muted text-muted-foreground"
-                        : "border-status-warning/30 bg-status-warning/10 text-status-warning",
-                  )}
+                  className="atlas-score rounded-md bg-secondary px-s py-xxs font-numeric text-200 font-semibold"
+                  data-score-band={scoreBand(value)}
                 >
                   {value == null ? "N/A" : `${value}%`}
                 </span>
               </div>
-              <div className="mt-m h-2 overflow-hidden rounded-full bg-muted">
-                <div
-                  className={cn(
-                    "h-full rounded-full",
-                    metric.state === "complete"
-                      ? "bg-status-healthy"
-                      : "bg-primary",
-                  )}
-                  style={{ width: `${value ?? 0}%` }}
-                />
+              <div className="mt-m">
+                <ScoreMeter label={`${metric.label} coverage`} value={value} />
               </div>
               {metric.state === "no-values" && (
                 <p className="mt-s text-200 text-muted-foreground">

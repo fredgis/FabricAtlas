@@ -37,7 +37,7 @@ describe("SemanticXRayPanel", () => {
     expect(tables.every((button) => button.getAttribute("aria-expanded") === "false")).toBe(true);
     expect(objectList).toHaveClass("overflow-y-auto");
     expect(table("revenue_by_month").closest("li")).toHaveClass("shrink-0");
-    expect(screen.getByText("What X-Ray shows")).toBeInTheDocument();
+    expect(screen.getByText(/Open a table and select an object to trace collected DAX references/)).toBeInTheDocument();
     expect(screen.getByText(/Report visual usage and runtime queries/)).toBeInTheDocument();
     const model = SAMPLE_DATA.items.find((item) => item.itemType === "SemanticModel")!;
     const measures = (SAMPLE_DATA.schema?.[model.fabricId] ?? []).reduce(
@@ -60,6 +60,33 @@ describe("SemanticXRayPanel", () => {
     expect(detail).toHaveTextContent(
       "No DAX consumers in this model. Report and visual usage is not exposed by Fabric APIs, so this does not mean unused.",
     );
+  });
+
+  it("explains direction and scope and supports arrow-key radio navigation", async () => {
+    renderPanel();
+    const usedBy = screen.getByRole("radio", { name: "Used by" });
+    expect(usedBy).toHaveAttribute("title", "Consumers that reference the selected object");
+    await act(async () => {
+      usedBy.focus();
+      fireEvent.keyDown(usedBy, { key: "ArrowLeft" });
+    });
+    expect(screen.getByRole("radio", { name: "Depends on" })).toHaveFocus();
+    expect(screen.getByRole("radio", { name: "Depends on" })).toHaveAttribute("aria-checked", "true");
+    expect(usedBy).toHaveAttribute("tabindex", "-1");
+    await act(async () => {
+      screen.getByRole("radio", { name: "Direct" }).focus();
+      fireEvent.keyDown(screen.getByRole("radio", { name: "Direct" }), { key: "End" });
+    });
+    expect(screen.getByRole("radio", { name: "Transitive" })).toHaveFocus();
+    expect(screen.getByRole("radio", { name: "Transitive" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("keeps the evidence column and a useful empty search state", () => {
+    const { container } = renderPanel();
+    fireEvent.change(screen.getByRole("textbox", { name: "Search measures and columns" }), { target: { value: "no such collected object" } });
+    expect(screen.getByText(/No measures or columns match this search/)).toBeVisible();
+    expect(screen.getByRole("complementary", { name: "X-Ray object evidence" })).toBeVisible();
+    expect(container.querySelector(".atlas-xray-workbench")).toBeInTheDocument();
   });
 
   it("highlights consumers without reordering rows", () => {

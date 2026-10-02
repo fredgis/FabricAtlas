@@ -80,6 +80,9 @@ evidence of one semantic model from the active snapshot.
 
 - Every table, measure and column is listed, grouped by table. Groups are
   collapsed by default and open while searching.
+- The table groups never shrink vertically to fit a large model. The object
+  list and evidence pane scroll independently on desktop; narrow layouts stack
+  them with a bounded object list.
 - A DAX reference becomes an edge only when it resolves to exactly one
   synchronized object, with the same rules as `buildSchemaDependencies`:
   unqualified `[Name]` must match exactly one measure; `'Table'[Name]` must
@@ -88,6 +91,10 @@ evidence of one semantic model from the active snapshot.
 - **Depends on** and **Used by**, direct or transitive, highlight objects with
   hop counts without reordering the list. Cycles and self references are
   detected and traversal stops on repeated objects.
+- **Depends on** means inputs; **Used by** means consumers. **Direct** follows
+  one resolved hop and **Transitive** follows every reachable resolved hop.
+  Arrow keys operate these controls. The evidence pane lists direct
+  references, while the selected direction and scope control list highlights.
 - Measures without DAX consumers say "No DAX consumers in this model"; report
   and visual usage is not exposed by Fabric APIs, so they are not called
   unused.

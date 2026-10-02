@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, FileDown, Info, RefreshCcw, ScanSearch, Search } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { downloadText, fileSlug } from "../download";
 import { LINEAGE_CAPABILITIES } from "../lineage-capabilities";
 import { schemaFor } from "../model";
@@ -22,7 +22,7 @@ function param(name: string): string {
 
 function Metric({ label, value, tone }: { label: string; value: number; tone?: string }) {
   return (
-    <div className="min-w-[104px] rounded-lg border border-border bg-card px-m py-s shadow-fabric-2">
+    <div className="min-w-0 border-r border-border px-m py-s last:border-r-0">
       <div className={cn("font-numeric text-400 font-semibold", tone)}>{value}</div>
       <div className="text-200 text-muted-foreground">{label}</div>
     </div>
@@ -42,15 +42,30 @@ function SegmentedControl<T extends string>({
 }) {
   return (
     <div role="radiogroup" aria-label={label} className="flex rounded-md border border-border bg-secondary p-xxs">
-      {options.map(([option, text]) => (
+      {options.map(([option, text], index) => (
         <button
           key={option}
           type="button"
           role="radio"
           aria-checked={value === option}
+          tabIndex={value === option ? 0 : -1}
+          title={label === "Dependency direction"
+            ? option === "dependsOn" ? "Inputs referenced by the selected object" : "Consumers that reference the selected object"
+            : label === "Impact scope" ? option === "direct" ? "One resolved dependency hop" : "Every reachable resolved dependency hop" : undefined}
           onClick={() => onChange(option)}
+          onKeyDown={(event) => {
+            let next: number;
+            if (event.key === "ArrowRight" || event.key === "ArrowDown") next = (index + 1) % options.length;
+            else if (event.key === "ArrowLeft" || event.key === "ArrowUp") next = (index + options.length - 1) % options.length;
+            else if (event.key === "Home") next = 0;
+            else if (event.key === "End") next = options.length - 1;
+            else return;
+            event.preventDefault();
+            onChange(options[next][0]);
+            event.currentTarget.parentElement?.querySelectorAll("button")[next]?.focus();
+          }}
           className={cn(
-            "rounded-md px-m text-300 font-semibold text-muted-foreground",
+            "min-h-[var(--atlas-touch-target)] rounded-md px-m text-[length:var(--text-300)] font-semibold text-muted-foreground sm:min-h-[var(--atlas-control-height)]",
             value === option && "bg-card text-brand-foreground shadow-fabric-2",
           )}
         >
@@ -64,6 +79,7 @@ function SegmentedControl<T extends string>({
 /** Complete DAX dependency explorer for one synchronized semantic model. */
 export function SemanticXRayPanel() {
   const { data } = useAtlas();
+  const groupId = useId();
   const models = useMemo(
     () =>
       data.items
@@ -151,13 +167,13 @@ export function SemanticXRayPanel() {
     });
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-m overflow-auto p-l">
-      <header className="flex flex-wrap items-end justify-between gap-m">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-m overflow-auto p-l">
+      <header className="flex shrink-0 flex-wrap items-end justify-between gap-m">
         <div className="flex items-center gap-s">
           <ScanSearch className="icon-size-200 text-brand-foreground" aria-hidden="true" />
           <h2 className="text-400 font-semibold">Semantic model X-Ray</h2>
         </div>
-        <label className="flex items-center gap-s text-200 text-muted-foreground">
+        <label className="flex min-w-0 flex-wrap items-center gap-s text-200 text-muted-foreground">
           Semantic model
           <select
             value={modelId}
@@ -166,7 +182,7 @@ export function SemanticXRayPanel() {
               setSelectedKey("");
               setOpenTables(new Set());
             }}
-            className="min-h-[var(--atlas-control-height)] max-w-[260px] rounded-lg border border-input bg-card px-m text-300 text-foreground outline-none"
+            className="atlas-control max-w-full rounded-md border border-input bg-card px-m text-300 text-foreground sm:max-w-xs"
           >
             {models.map((entry) => (
               <option key={entry.fabricId} value={entry.fabricId}>
@@ -177,22 +193,18 @@ export function SemanticXRayPanel() {
         </label>
       </header>
 
-      <div className="flex items-start gap-m rounded-lg border border-primary/20 bg-primary/5 p-m">
+      <div className="flex shrink-0 items-start gap-s rounded-md border border-signal-info-foreground/15 bg-signal-info-background px-m py-s">
         <Info className="mt-xxs icon-size-200 shrink-0 text-brand-foreground" aria-hidden="true" />
         <div className="text-200 leading-300">
-          <p className="font-semibold text-foreground">What X-Ray shows</p>
-          <p className="mt-xxs text-muted-foreground">
-            X-Ray resolves DAX references between synchronized measures and
-            columns in one semantic model. Open a table, select an object, then
-            use <strong>Depends on</strong> for its inputs or <strong>Used by</strong>
-            for its consumers. Direct shows one hop; Transitive follows the
-            complete resolved chain. Report visual usage and runtime queries
-            are not exposed by Fabric and are not inferred.
+          <p className="text-foreground">
+            Open a table and select an object to trace collected DAX references.
+            {" "}<strong>Depends on</strong> shows inputs; <strong>Used by</strong> shows consumers.
+            {" "}<strong>Direct</strong> is one hop; <strong>Transitive</strong> follows the resolved chain.
           </p>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-s">
+      <div aria-label="Semantic model inventory" className="grid shrink-0 grid-cols-2 rounded-lg border border-border bg-card sm:grid-cols-3 xl:grid-cols-6">
         <Metric label="Tables" value={xray.tables.length} />
         <Metric label="Measures" value={xray.measureCount} />
         <Metric label="Columns" value={xray.columnCount} />
@@ -205,8 +217,8 @@ export function SemanticXRayPanel() {
         <Metric label="Cycles" value={xray.cycles.length} tone={xray.cycles.length ? "text-status-warning" : undefined} />
       </div>
 
-      <div className="atlas-toolbar flex flex-wrap items-center">
-        <label className="relative min-w-[200px] flex-1 sm:max-w-[300px]">
+      <div className="atlas-toolbar flex shrink-0 flex-wrap items-center">
+        <label className="relative min-w-0 basis-full sm:flex-1 sm:basis-auto sm:max-w-xs">
           <Search
             className="pointer-events-none absolute left-s top-1/2 icon-size-200 -translate-y-1/2 text-muted-foreground"
             aria-hidden="true"
@@ -249,10 +261,21 @@ export function SemanticXRayPanel() {
         />
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-m xl:flex-row">
+      <p role="status" className="shrink-0 text-200 leading-300 text-muted-foreground">
+        {selected
+          ? `${selected.name}: ${impact?.keys.size ?? 0} ${transitive ? "reachable" : "direct"} ${direction === "dependsOn" ? "inputs" : "consumers"} highlighted.`
+          : "Tables start collapsed. Select a measure or column to highlight its inputs or consumers."}
+        {" "}Report visual usage and runtime queries are not collected or inferred.
+      </p>
+      <div className="atlas-xray-workbench">
+        <div className="flex min-h-0 min-w-0 flex-col rounded-lg border border-border bg-secondary/50">
+        <div className="flex shrink-0 items-center justify-between gap-s border-b border-border px-m py-s">
+          <h3 className="text-300 font-semibold">Tables &amp; objects</h3>
+          <span className="text-200 text-muted-foreground">{xray.tables.length} tables</span>
+        </div>
         <ul
           aria-label="Model objects by table"
-          className="flex min-h-0 min-w-0 flex-1 flex-col gap-xs overflow-y-auto pr-xs"
+          className="atlas-xray-objects flex min-h-0 min-w-0 flex-1 flex-col gap-s overflow-y-auto p-s"
         >
           {xray.tables.map((table) => {
             const visible = table.objectKeys
@@ -261,14 +284,16 @@ export function SemanticXRayPanel() {
             if (normalizedQuery && visible.length === 0) return null;
             const open = !!normalizedQuery || openTables.has(table.name);
             const impacted = table.objectKeys.filter((key) => impact?.keys.has(key)).length;
+            const contentId = `${groupId}-${encodeURIComponent(table.name)}`;
             return (
               <li key={table.name} className="shrink-0 overflow-hidden rounded-lg border border-border bg-card">
                 <button
                   type="button"
                   aria-expanded={open}
+                  aria-controls={contentId}
                   disabled={!!normalizedQuery}
                   onClick={() => toggle(table.name)}
-                  className="flex min-h-[var(--atlas-touch-target)] w-full items-center gap-s px-m text-left hover:bg-accent disabled:cursor-default"
+                  className="flex min-h-[var(--atlas-touch-target)] w-full items-center gap-s px-m py-s text-left hover:bg-accent disabled:cursor-default"
                 >
                   {open ? (
                     <ChevronDown className="icon-size-200" aria-hidden="true" />
@@ -288,22 +313,22 @@ export function SemanticXRayPanel() {
                           : "dependencies"}
                     </span>
                   )}
-                  <span className="text-200 text-muted-foreground">{visible.length} objects</span>
+                  <span className="shrink-0 text-200 text-muted-foreground">{visible.length} objects</span>
                 </button>
                 {open && (
-                  <ul className="border-t border-border">
+                  <ul id={contentId} className="border-t border-border">
                     {visible.map((object) => {
                       const active = object.key === selectedKey;
                       const hop = impact?.distance.get(object.key);
                       return (
-                        <li key={object.key}>
+                        <li key={object.key} className="shrink-0 border-b border-border/60 last:border-b-0">
                           <button
                             type="button"
                             data-object-key={object.key}
                             aria-current={active ? "true" : undefined}
                             onClick={() => setSelectedKey(object.key)}
                             className={cn(
-                              "flex min-h-[var(--atlas-touch-target)] w-full flex-wrap items-center gap-s px-l text-left text-200 hover:bg-accent",
+                              "flex min-h-[var(--atlas-touch-target)] w-full flex-wrap items-center gap-s px-m py-s text-left text-200 hover:bg-accent",
                               active && "bg-primary/10",
                             )}
                           >
@@ -339,12 +364,16 @@ export function SemanticXRayPanel() {
               </li>
             );
           })}
+          {normalizedQuery && ![...xray.objects.values()].some(matches) && (
+            <li className="p-l text-200 text-muted-foreground">No measures or columns match this search. Try a table name or a DAX reference.</li>
+          )}
         </ul>
-
+        </div>
         <aside
           aria-label="X-Ray object evidence"
-          className="flex min-h-[260px] flex-col gap-m rounded-lg border border-border bg-card p-l xl:w-[380px] xl:shrink-0"
+          className="min-h-0 min-w-0 space-y-m overflow-y-auto rounded-lg border border-border bg-card p-l"
         >
+          <h3 className="border-b border-border pb-m text-300 font-semibold">Object evidence</h3>
           {selected ? (
             <ObjectDetail
               object={selected}
@@ -363,7 +392,7 @@ export function SemanticXRayPanel() {
               }
             />
           ) : (
-            <p className="m-auto max-w-[280px] text-center text-300 text-muted-foreground">
+            <p className="text-300 leading-300 text-muted-foreground">
               Open a table and select a measure or column to trace its DAX
               dependencies and consumers.
             </p>
@@ -408,7 +437,7 @@ function ObjectDetail({
               <button
                 type="button"
                 onClick={() => onSelect(key)}
-                className="break-words text-left text-200 font-semibold text-primary hover:underline"
+                className="atlas-control break-words rounded-md text-left text-200 font-semibold text-brand-foreground hover:underline"
               >
                 {entry.table} {xrayObjectLabel(entry)}
               </button>
@@ -431,6 +460,9 @@ function ObjectDetail({
           {object.expression}
         </pre>
       )}
+      <p className="text-200 leading-300 text-muted-foreground">
+        Direct references are listed below. Direct / Transitive changes which objects are highlighted in the table list.
+      </p>
       {inCycle && (
         <p className="flex items-start gap-s rounded-md bg-status-warning/10 p-s text-200 text-foreground">
           <RefreshCcw className="icon-size-200 shrink-0 text-status-warning" aria-hidden="true" />
@@ -480,8 +512,8 @@ function ObjectDetail({
 
 function CapabilityStates() {
   return (
-    <details className="rounded-lg border border-border bg-card p-m text-200">
-      <summary className="flex cursor-pointer items-center gap-s font-semibold">
+    <details className="shrink-0 rounded-lg border border-border bg-card p-m text-200">
+      <summary className="flex min-h-[var(--atlas-touch-target)] cursor-pointer items-center gap-s font-semibold focus-visible:outline-2 focus-visible:outline-ring sm:min-h-[var(--atlas-control-height)]">
         <Info className="icon-size-200 text-muted-foreground" aria-hidden="true" />
         Lineage depth capability states
       </summary>

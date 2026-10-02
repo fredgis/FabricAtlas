@@ -9,7 +9,6 @@ import {
   ArrowRight,
   Boxes,
   Clock3,
-  Compass,
   FolderTree,
   LockKeyhole,
   ShieldCheck,
@@ -21,7 +20,7 @@ import {
   buildAccessReviewRows,
   getCoverageDiagnostics,
 } from "../governance";
-import { Card, SectionLabel, TypeGlyph } from "../ui";
+import { Card, TypeGlyph } from "../ui";
 import {
   typeMeta,
   relativeTime,
@@ -33,6 +32,8 @@ import { snapshotCatalogFromData } from "../history";
 import { scorePosture } from "../posture";
 import { workspaceDetailLabel } from "../workspace-display";
 import { summarizeHealth } from "../health-summary";
+import { ScoreMeter } from "../components/ScoreMeter";
+import { scoreBand } from "../components/score-style";
 
 const JOB_TONE: Record<JobStatus, string> = {
   completed: "bg-status-healthy",
@@ -176,7 +177,7 @@ export function OverviewView({
         ? {
             label: `${health.unknown} health status unknown`,
             className:
-              "border-status-warning/30 bg-status-warning/10 text-status-warning",
+              "border-border bg-muted text-muted-foreground",
           }
         : items.length
           ? {
@@ -200,7 +201,6 @@ export function OverviewView({
         endorsementCoverage.percentage == null
           ? null
           : Math.round(endorsementCoverage.percentage),
-      tone: "bg-lineage-downstream",
     },
     {
       label: "Sensitivity labels",
@@ -211,7 +211,6 @@ export function OverviewView({
         sensitivityCoverage.percentage == null
           ? null
           : Math.round(sensitivityCoverage.percentage),
-      tone: "bg-lineage-upstream",
     },
     {
       label: "Documented ownership",
@@ -222,7 +221,6 @@ export function OverviewView({
         ownerCoverage.percentage == null
           ? null
           : Math.round(ownerCoverage.percentage),
-      tone: "bg-primary",
     },
   ];
 
@@ -300,44 +298,44 @@ export function OverviewView({
   return (
     <section
       aria-labelledby="overview-title"
-      className="atlas-content-frame flex flex-col gap-xl"
+      className="atlas-content-frame flex flex-col gap-xxl"
     >
-      <Card className="atlas-overview-hero relative isolate overflow-hidden border-border shadow-fabric-4">
+      <Card className="atlas-overview-hero overflow-hidden">
         <div className="grid lg:grid-cols-5">
-          <div className="atlas-page-header flex flex-col justify-between lg:col-span-3">
+          <div className="flex flex-col justify-between gap-xl p-l sm:p-xxl lg:col-span-3">
             <div>
-              <div className="flex items-center gap-m">
-                <span className="atlas-brand-mark flex icon-size-700 shrink-0 items-center justify-center rounded-xl text-primary-foreground">
-                  <Compass className="icon-size-400" aria-hidden="true" />
-                </span>
-                <div>
-                  <SectionLabel>Fabric Atlas</SectionLabel>
-                  <div className="mt-xs text-200 font-semibold text-muted-foreground">
-                    Governance overview
-                  </div>
-                </div>
-              </div>
-
+              <p className="text-200 font-semibold text-brand-foreground">Workspace overview</p>
               <h1
                 id="overview-title"
-                className="atlas-overview-title mt-m text-balance font-heading text-600 font-bold leading-600"
+                className="atlas-overview-title mt-s break-words font-heading text-600 font-semibold leading-600 sm:text-hero-700 sm:leading-hero-700"
               >
                 {data.workspace.displayName || "Fabric workspace"}
               </h1>
               <p className="atlas-overview-copy mt-s text-300 leading-300 text-muted-foreground">
-                See what is governed, what needs attention, and where to act
-                across this workspace.
+                Review this workspace's inventory, governance gaps and recent activity.
               </p>
               {workspaceDetails.length > 0 && (
                 <p className="mt-s text-200 text-muted-foreground">
                   {workspaceDetails.join(" · ")}
                 </p>
               )}
+              <dl className="mt-xl flex flex-wrap gap-x-xxl gap-y-m" aria-label="Workspace inventory">
+                {[
+                  ["Fabric items", items.length],
+                  ["Tables, columns & measures", assetCount],
+                  ["Lineage links", edges.length],
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <dt className="text-200 text-muted-foreground">{label}</dt>
+                    <dd className="mt-xs font-numeric text-500 font-semibold tabular-nums">{value}</dd>
+                  </div>
+                ))}
+              </dl>
             </div>
 
             <nav
               aria-label="Overview destinations"
-              className="atlas-toolbar grid sm:grid-cols-3"
+              className="atlas-toolbar flex flex-wrap"
             >
               <button
                 type="button"
@@ -346,7 +344,7 @@ export function OverviewView({
               >
                 <span className="inline-flex items-center gap-s">
                   <Waypoints className="icon-size-200" aria-hidden="true" />
-                  Map
+                  Map &amp; lineage
                 </span>
                 <ArrowRight
                   className="icon-size-200 transition-transform group-hover:translate-x-xs motion-reduce:transition-none"
@@ -384,7 +382,7 @@ export function OverviewView({
             </nav>
           </div>
 
-          <aside className="atlas-page-header flex flex-col justify-center border-t border-border bg-secondary/70 lg:col-span-2 lg:border-l lg:border-t-0">
+          <aside className="flex flex-col justify-center gap-xl border-t border-border p-l sm:p-xxl lg:col-span-2 lg:border-l lg:border-t-0">
             <div className="flex items-center gap-l">
               <span
                 className={`relative flex icon-size-600 shrink-0 items-center justify-center rounded-full border ${pulse.className}`}
@@ -392,10 +390,10 @@ export function OverviewView({
               >
                 <Activity className="icon-size-300" />
               </span>
-              <div>
-                <SectionLabel>Assessed item health</SectionLabel>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-300 font-semibold">Assessed item health</h2>
                 <div className="mt-xs flex flex-wrap items-baseline gap-s">
-                  <span className="font-numeric text-600 font-bold leading-600">
+                  <span className="atlas-score font-numeric text-600 font-semibold leading-600" data-score-band={scoreBand(healthPercentage)}>
                     {healthPercentage == null ? "Not assessed" : `${healthPercentage}%`}
                   </span>
                   <span className="text-300 font-semibold">{pulse.label}</span>
@@ -405,8 +403,11 @@ export function OverviewView({
                     ? `${health.healthy} of ${health.assessed} assessed items healthy`
                     : "No collected health status is available yet."}
                 </p>
+                <div className="mt-m">
+                  <ScoreMeter label="Assessed item health" value={healthPercentage} />
+                </div>
                 <p className="mt-s text-200 text-muted-foreground">
-                  Health coverage: {health.coveragePercentage == null ? "Not applicable" : `${health.coveragePercentage}%`}
+                  Health coverage: <span className="atlas-score font-semibold" data-score-band={scoreBand(health.coveragePercentage)}>{health.coveragePercentage == null ? "Not applicable" : `${health.coveragePercentage}%`}</span>
                   {" "}({health.assessed} of {health.total} items assessed).
                   {health.unknown > 0 && ` ${health.unknown} unknown statuses are excluded from the health score.`}
                 </p>
@@ -420,7 +421,7 @@ export function OverviewView({
                 <Clock3 className="icon-size-300" aria-hidden="true" />
               </span>
               <div className="min-w-0">
-                <SectionLabel>Sync freshness</SectionLabel>
+                <p className="text-200 text-muted-foreground">Last synchronized</p>
                 <div className="mt-xs text-400 font-semibold">
                   {syncFreshness}
                 </div>
@@ -440,10 +441,9 @@ export function OverviewView({
       <section aria-labelledby="posture-targets-title">
         <div className="mb-m flex items-end justify-between gap-l">
           <div>
-            <SectionLabel>Posture targets</SectionLabel>
             <h2
               id="posture-targets-title"
-              className="mt-xs text-500 font-semibold"
+              className="text-400 font-semibold"
             >
               {targetsAvailable
                 ? `${postureAtTarget} of ${posture.pillars.length} pillars at target`
@@ -466,7 +466,7 @@ export function OverviewView({
                 },
               })
             }
-            className="text-200 font-semibold text-primary hover:underline"
+            className="atlas-control shrink-0 rounded-md px-s text-200 font-semibold text-brand-foreground hover:underline"
           >
             Open posture
           </button>
@@ -476,7 +476,7 @@ export function OverviewView({
             {governancePolicyError} Open posture to retry. Raw scores remain visible below.
           </p>
         )}
-        <Card className="grid gap-s p-m sm:grid-cols-2 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-3 xl:grid-cols-6">
           {posture.pillars.map((pillar) => {
             const previous = previousPosture?.pillars.find(
               (candidate) => candidate.pillar === pillar.pillar,
@@ -499,13 +499,16 @@ export function OverviewView({
                     },
                   })
                 }
-                className="rounded-xl border border-border bg-secondary/55 p-m text-left transition-colors hover:border-primary/40 hover:bg-primary/5"
+                className="min-w-0 bg-card p-m text-left transition-colors hover:bg-accent focus-visible:ring-inset focus-visible:ring-offset-0"
               >
                 <div className="text-200 font-semibold capitalize">
                   {pillar.pillar}
                 </div>
-                <div className="mt-xs font-numeric text-400 font-bold">
+                <div className="atlas-score mt-xs font-numeric text-500 font-semibold" data-score-band={scoreBand(pillar.score)}>
                   {pillar.score == null ? "N/A" : `${pillar.score}%`}
+                </div>
+                <div className="mt-s">
+                  <ScoreMeter label={`${pillar.pillar} posture score`} value={pillar.score} />
                 </div>
                 <div className="mt-xs text-200 text-muted-foreground">
                   {targetsAvailable ? `Target ${pillar.target}%` : "Target unavailable"}
@@ -516,19 +519,18 @@ export function OverviewView({
               </button>
             );
           })}
-        </Card>
+        </div>
       </section>
 
       <section aria-labelledby="priority-signals-title">
         <div className="mb-m flex items-end justify-between gap-l">
           <div>
-            <SectionLabel>Priority signals</SectionLabel>
-            <h2 id="priority-signals-title" className="mt-xs text-500 font-semibold">
-              What deserves a closer look
+            <h2 id="priority-signals-title" className="text-400 font-semibold">
+              Priority signals
             </h2>
           </div>
           <span className="hidden text-200 text-muted-foreground sm:block">
-            Live workspace index
+            Collected workspace metadata
           </span>
         </div>
         <Card className="overflow-hidden">
@@ -577,12 +579,11 @@ export function OverviewView({
       <section aria-labelledby="governance-coverage-title">
         <div className="mb-m flex items-end justify-between gap-l">
           <div>
-            <SectionLabel>Governance coverage</SectionLabel>
             <h2
               id="governance-coverage-title"
-              className="mt-xs text-500 font-semibold"
+              className="text-400 font-semibold"
             >
-              Essential controls across the inventory
+              Metadata coverage
             </h2>
           </div>
           <button
@@ -596,14 +597,14 @@ export function OverviewView({
                 },
               })
             }
-            className="shrink-0 text-200 font-semibold text-primary hover:underline"
+            className="atlas-control shrink-0 rounded-md px-s text-200 font-semibold text-brand-foreground hover:underline"
           >
             Review labels
           </button>
         </div>
-        <Card className="p-xl sm:p-xxl">
+        <Card className="p-l sm:p-xl">
           {items.length ? (
-            <div className="grid gap-xxxl lg:grid-cols-5">
+            <div className="grid gap-xxl lg:grid-cols-5">
               <div className="flex flex-col gap-xl lg:col-span-3">
                 {coverage.map((metric) => (
                   <div key={metric.label}>
@@ -616,23 +617,11 @@ export function OverviewView({
                           {metric.detail}
                         </div>
                       </div>
-                      <div className="font-numeric text-500 font-bold tabular-nums">
+                      <div className="atlas-score font-numeric text-400 font-semibold tabular-nums" data-score-band={scoreBand(metric.value)}>
                         {metric.value == null ? "N/A" : `${metric.value}%`}
                       </div>
                     </div>
-                    <div
-                      className="h-s overflow-hidden rounded-full bg-muted"
-                      role={metric.value == null ? undefined : "progressbar"}
-                      aria-label={`${metric.label} coverage`}
-                      aria-valuemin={metric.value == null ? undefined : 0}
-                      aria-valuemax={metric.value == null ? undefined : 100}
-                      aria-valuenow={metric.value ?? undefined}
-                    >
-                      <div
-                        className={`h-full rounded-full ${metric.tone}`}
-                        style={{ width: `${metric.value ?? 0}%` }}
-                      />
-                    </div>
+                    <ScoreMeter label={`${metric.label} coverage`} value={metric.value} />
                   </div>
                 ))}
               </div>
@@ -640,11 +629,11 @@ export function OverviewView({
               <button
                 type="button"
                 onClick={() => onOpen("assets")}
-                className="group flex flex-col justify-between gap-xl rounded-xl border border-border bg-muted/30 p-l text-left transition-colors hover:border-primary/40 hover:bg-accent lg:col-span-2"
+                className="group flex flex-col justify-between gap-l rounded-lg bg-secondary p-l text-left transition-colors hover:bg-accent lg:col-span-2"
               >
                 <span>
                   <span className="flex items-center justify-between gap-l">
-                    <SectionLabel>Inventory reach</SectionLabel>
+                    <span className="text-300 font-semibold">Object inventory</span>
                     <ArrowRight
                       className="icon-size-200 text-muted-foreground transition-transform group-hover:translate-x-xs motion-reduce:transition-none"
                       aria-hidden="true"
@@ -697,22 +686,21 @@ export function OverviewView({
       <section aria-labelledby="activity-mix-title">
         <div className="mb-m flex items-end justify-between gap-l">
           <div>
-            <SectionLabel>Recent activity &amp; item mix</SectionLabel>
-            <h2 id="activity-mix-title" className="mt-xs text-500 font-semibold">
-              What is changing in the workspace
+            <h2 id="activity-mix-title" className="text-400 font-semibold">
+              Recent activity &amp; item mix
             </h2>
           </div>
           <button
             type="button"
             onClick={() => onOpen("jobs")}
-            className="shrink-0 text-200 font-semibold text-primary hover:underline"
+            className="atlas-control shrink-0 rounded-md px-s text-200 font-semibold text-brand-foreground hover:underline"
           >
             View all jobs
           </button>
         </div>
         <Card className="overflow-hidden">
           <div className="grid lg:grid-cols-2">
-            <div className="p-xl sm:p-xxl lg:border-r lg:border-border">
+            <div className="p-l sm:p-xl lg:border-r lg:border-border">
               <h3 className="text-300 font-semibold">Latest jobs</h3>
               {recentJobs.length ? (
                 <div className="mt-m flex flex-col">
@@ -755,7 +743,7 @@ export function OverviewView({
               )}
             </div>
 
-            <div className="border-t border-border p-xl sm:p-xxl lg:border-t-0">
+            <div className="border-t border-border p-l sm:p-xl lg:border-t-0">
               <div className="flex items-center justify-between gap-l">
                 <h3 className="text-300 font-semibold">Item mix</h3>
                 <button

@@ -330,6 +330,26 @@ describe("WorkspaceSynchronizationPanel", () => {
     expect(screen.queryByRole("menuitem", { name: "Open in Atlas" })).toBeNull();
   });
 
+  it("preserves failed workspace row identity and fixed columns when a long error changes", () => {
+    const longError = `Atlas could not publish the snapshot. ${"A recorded upstream failure. ".repeat(40)}`;
+    const first = context({
+      syncQueue: [{ workspaceId: OTHER, status: "failed", error: longError }],
+    });
+    const { rerender } = renderPanel(first);
+    const table = screen.getByRole("table", { name: "Workspaces in the shared synchronization scope" });
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(table).toHaveClass("md:table-fixed");
+    expect(rows[1]).toHaveTextContent("Last run failed");
+    expect(within(rows[1]).getByRole("button", { name: "Actions for Second workspace" })).toBeInTheDocument();
+    harness.context = context({
+      syncQueue: [{ workspaceId: OTHER, status: "failed", error: "A shorter observed failure." }],
+    });
+    rerender(<WorkspaceSynchronizationPanel />);
+    expect(within(table).getAllByRole("row")[2]).toBe(rows[1]);
+    expect(rows[1]).toHaveTextContent("A shorter observed failure.");
+    expect(rows[1].children).toHaveLength(rows[0].children.length);
+  });
+
   it("synchronizes only the checked workspaces with a mixed select-all state", () => {
     const value = context();
     renderPanel(value);
