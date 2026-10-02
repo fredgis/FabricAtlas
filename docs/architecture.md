@@ -169,11 +169,16 @@ schema and Functions package have also been deployed to the isolated FabCon cand
 three tables were confirmed in the candidate SQL Database. This proves deployment compatibility,
 not caller-scoped execution, SQL uniqueness under contention or browser recovery.
 
-### Phase 2 decision: hybrid
+### Phase 2 decision: Rayfin primary with documented compatibility fallbacks
 
-The persistence primitives are retained for bounded experiments, but the durable synchronization
-architecture is not adopted as the active product path. The browser still uses the Python UDF and
-the existing manifest-last snapshot writer.
+Rayfin Functions are the primary collector and persistence target. The Python
+UDF is retained only for capabilities that Rayfin 1.36.2 cannot obtain through
+a reviewed deployed identity or transactional primitive. Migrated collectors
+must not route back through Python.
+
+Every retained fallback records the Rayfin version, missing platform contract,
+minimal Python scope and requested Rayfin capability in
+[rayfin-platform-gaps.md](rayfin-platform-gaps.md).
 
 The blockers are explicit:
 
