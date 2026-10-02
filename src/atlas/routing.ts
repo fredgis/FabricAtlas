@@ -381,7 +381,12 @@ export function urlForNavigation(
   }
   const focus = navigation.focus;
 
-  if (navigation.tab === "catalog") {
+  if (navigation.tab === "map") {
+    set(params, "item", focus?.itemId);
+    if (filterValue(focus, "impact") === "focused") {
+      params.set("impact", "focused");
+    }
+  } else if (navigation.tab === "catalog") {
     set(params, "catalog.q", focus?.query ?? filterValue(focus, "search"));
     set(params, "catalog.type", filterValue(focus, "type"));
     set(params, "catalog.posture", filterValue(focus, "posturePillar"));

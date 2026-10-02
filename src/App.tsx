@@ -692,6 +692,7 @@ function App() {
                 <JobsView
                   focus={focus}
                   onStateChange={replaceViewState}
+                  onNavigate={navigate}
                 />
               )}
               {tab === "workspace" && (

@@ -802,6 +802,24 @@ grant-only assessment. OneLake and DLP remain manual/unsupported until verified 
 exist; the fictional restriction counts and principals in the concept image are
 never production fixtures.
 
+## Phase 9 observability foundation
+
+Jobs & health separates *observed* failures from *inferred* downstream impact
+(`src/atlas/observability.ts`). An observed incident is the latest recorded run
+of an item and job type that failed in the synchronized Fabric job history. It
+carries the workspace, item, job type, run start and snapshot capture time.
+Inferred impact walks normalized snapshot lineage downstream from that item and
+is always labelled as not confirmed by monitoring. Neither is persisted.
+
+The Monitoring sources card states what Atlas collects: job history only.
+Workspace monitoring is shown as not collected. Monitor hub alerts and Fabric
+App Metrics are shown as Fabric portal only, with links to the verified Monitor
+hub routes (`/monitoringhub/jobs`, `/alerts`, `/applications`) and to the
+deployed app item when its IDs are configured. No collector, entity or Preview
+flag is added. See [observability.md](observability.md) for the routes,
+workspace monitoring permissions, retention and cost prerequisites, and the
+remaining collector blockers.
+
 ## Sync
 
 The Sync button calls `runFabricSync` (`src/atlas/backend.ts`). When deployed,

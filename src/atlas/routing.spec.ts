@@ -216,6 +216,28 @@ describe("Atlas routing", () => {
     });
   });
 
+  it("opens Map & lineage on an item in focused impact mode", () => {
+    const url = urlForNavigation(
+      { pathname: "/", search: "?ctid=tenant&jobs.status=failed&item=stale" },
+      {
+        tab: "map",
+        focus: {
+          requestId: "ignored",
+          itemId: "failed-item",
+          filters: { impact: "focused" },
+        },
+      },
+    );
+
+    expect(url).toBe("/?ctid=tenant&item=failed-item&impact=focused#map");
+    expect(
+      parseAtlasLocation({
+        hash: "#map",
+        search: url.slice(url.indexOf("?"), url.indexOf("#")),
+      }),
+    ).toMatchObject({ tab: "map", focus: { requestId: expect.any(String) } });
+  });
+
   it("folds legacy map-beta links into the single Map & lineage tab", () => {
     expect(parseAtlasLocation({ hash: "#map-beta", search: "" })).toMatchObject({
       tab: "map",

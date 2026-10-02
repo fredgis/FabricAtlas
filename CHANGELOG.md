@@ -26,6 +26,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   the navigation drawer on narrow screens) when the shared scope holds more
   than one workspace. Switching is blocked during synchronization and keeps
   the route and focus.
+- **Jobs & health** observability foundation: failures observed in the
+  synchronized job history are shown apart from downstream impact inferred
+  from snapshot lineage, with a Monitoring sources card that marks workspace
+  monitoring as not collected and links to the verified Monitor hub Job runs,
+  Alerts and Applications pages and to the app's Metrics. No collector or
+  incident entity is added.
 - **Map & lineage** gains Graph, Evidence and Changes tabs. Evidence lists
   every relationship with its sources and a provenance pane; Changes lists
   lineage added, removed or broken between the last two snapshots. Legacy

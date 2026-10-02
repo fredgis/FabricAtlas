@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   Ban,
@@ -12,6 +12,7 @@ import {
   XCircle,
 } from "lucide-react";
 import type { AtlasFocusRequest, AtlasNavigation } from "../navigation";
+import { OperationalSignals } from "../components/OperationalSignals";
 import { SavedViewsMenu } from "../components/SavedViewsMenu";
 import { searchJobId } from "../search";
 import { useAtlas } from "../store";
@@ -89,10 +90,13 @@ function dateGroup(value: string): string {
 export function JobsView({
   focus,
   onStateChange,
+  onNavigate,
 }: {
   focus?: AtlasFocusRequest;
   onStateChange?: (navigation: AtlasNavigation) => void;
+  onNavigate?: (navigation: AtlasNavigation) => void;
 } = {}) {
+  const runHistoryHeading = useRef<HTMLHeadingElement>(null);
   const {
     data,
     savedViews,
@@ -265,11 +269,42 @@ export function JobsView({
         ))}
       </section>
 
+      <OperationalSignals
+        onShowRuns={(incident) => {
+          setQuery("");
+          setStatusFilter("all");
+          setFocusedItemId(incident.itemId);
+          setFocusedJobId(incident.id);
+          window.requestAnimationFrame(() => {
+            runHistoryHeading.current?.scrollIntoView?.({ block: "start" });
+            runHistoryHeading.current?.focus();
+          });
+        }}
+        onOpenImpact={
+          onNavigate
+            ? (itemId) =>
+                onNavigate({
+                  tab: "map",
+                  focus: {
+                    requestId: crypto.randomUUID(),
+                    itemId,
+                    filters: { impact: "focused" },
+                  },
+                })
+            : undefined
+        }
+      />
+
       <section aria-labelledby="run-history-title">
         <Card className="overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-m border-b border-border px-l py-m">
             <div>
-              <h2 id="run-history-title" className="text-400 leading-400 font-semibold">
+              <h2
+                id="run-history-title"
+                ref={runHistoryHeading}
+                tabIndex={-1}
+                className="rounded-md text-400 leading-400 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              >
                 Run history
               </h2>
               <p className="mt-xs text-200 leading-200 text-muted-foreground">
