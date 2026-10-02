@@ -1,4 +1,4 @@
-import { authenticated, date, entity, set, text, uuid } from '@microsoft/rayfin-core';
+import { authenticated, date, entity, int, set, text, uuid } from '@microsoft/rayfin-core';
 import { SYNC_WRITER_SUBJECT } from './sync-policy.js';
 
 export type SyncCommandKind = 'start' | 'continue' | 'cancel';
@@ -14,6 +14,10 @@ export class SyncCommand {
   @uuid() requestId!: string;
   @set('start', 'continue', 'cancel') command!: SyncCommandKind;
   @uuid({ optional: true }) jobId?: string;
+  @int({ optional: true }) protocolVersion?: number;
+  @uuid({ optional: true }) rootRunId?: string;
+  @uuid({ optional: true }) taskId?: string;
+  @int({ optional: true }) taskAttempt?: number;
   @text({ max: 64 }) inputHash!: string;
   @set('accepted', 'completed', 'failed') state!: 'accepted' | 'completed' | 'failed';
   @date() createdAt!: Date;

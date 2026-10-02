@@ -162,6 +162,96 @@ recovery and duplicate-publication safety. See
 [installation.md](installation.md#phase-2-integration-status) for the validation boundary and the
 optional-parameter typegen limitation.
 
+### Phase 2 v2 server cutover framework (disabled)
+
+The additive framework in `rayfin/functions/src/sync/graph-*.ts` registers
+`syncGraphStart`, `syncGraphContinue`, `syncGraphStatus` and `syncGraphCancel`.
+It does not replace the product Sync button or the v1 persistence probe.
+Authorized v2 mutation calls currently return `SERIALIZATION_REQUIRED` before
+creating graph or snapshot rows. Status can read an existing v2 root. This
+framework has local tests and generated contracts, not deployed execution evidence.
+
+One `SyncRootRun` plans at most 16 workspace `SyncJob` rows. Each workspace has
+the versioned, ordered task graph:
+
+`core -> definitions -> relations -> kql -> sql -> scanner -> persist -> publish`
+
+Collector stages are adapters, not duplicate collector implementations. Each
+receives its stable task UUID, upstream payload references and an optional
+checkpoint reference. It must use a reviewed immutable metadata store to recover
+the same task/checkpoint result after a lost response. References are UUIDs plus
+SHA-256 digests, never URLs, tokens or serialized collector responses. The
+`MetadataPayloadStore<TProjection>` interface is a deployment seam, not an
+installed store. The assembler must verify digests and assemble only those frozen
+projections, without re-collecting mutable upstream data. SQL/scanner collectors
+can plug in through these same interfaces.
+
+Start recovers partially planned rows with deterministic IDs. A continue command
+binds one request UUID to one task slice before execution. A repeated command
+cannot advance another slice. Paged collectors return an opaque checkpoint;
+persist writes at most 64 rows per invocation in eight-row batches. A new request
+is needed for the next slice. Root states are `planning`, `ready`, `running`,
+`completed` and `cancelled`; workspace progress separates `collect`, `persist`
+and `publish`. Operational errors leave the last confirmed checkpoint for retry
+or cancellation and expose only fixed error codes/messages.
+
+#### Serialization evidence and blocker
+
+The installed Rayfin 1.36.2 `GraphQLEntityClient.update` takes
+`WhereUniqueInput`, whose declaration contains primary-key fields, not predicates.
+Query `.where()` is not an atomic update condition. The version-locked Rayfin
+guides `data/graphql.md`, `known-limitations.md` and
+`functions/writing-functions.md` provide no verified compare-and-swap primitive.
+The `functions/connections/add-fabric-resource.md` guide documents external SQL
+connections, but specifically directs app-database access to `ctx.getDataClient()`.
+It does not establish a supported deployment/grant path for a stored procedure in
+the same managed Rayfin database. No SQL claim procedure or synthetic GraphQL
+transaction is installed.
+
+`ExternalSerializer` is therefore mandatory for internal mutation execution.
+Its scope covers **all** writers, cancellation and retention across roots,
+workspaces and hosts. It must not hand over ownership while any previous
+invocation or uncertain write can still commit. Caller booleans, a process mutex,
+request timeouts and browser disconnection do not prove this. Reserved lease
+fields are rejected even when expired; there is no timed takeover or CAS claim.
+Tests inject a test-only serialized executor. No production executor is wired.
+
+#### Internal snapshot publication
+
+`snapshot-publisher.ts` uses the caller-scoped fluent data client and existing
+entity policies. The configured writer email must satisfy the existing
+subject/email create policy. It accepts only internally assembled, bounded
+metadata entity projections; no public Function accepts snapshot rows. The new
+path contains no browser GraphQL mutation.
+
+Snapshot, row, audit and manifest IDs are deterministic. A frozen publication
+digest prevents an assembler from changing data on retry. Eight-row fast writes
+settle before failed rows retry sequentially; read-back compares expected fields
+rather than trusting an exception or merely finding an ID. Publication verifies
+the exact paginated row-ID inventory and row contents, confirms audit completion,
+then creates the immutable `Workspace` manifest last. A lost manifest response
+recovers the same marker. Progress/command bookkeeping can follow that marker;
+no snapshot data does. Legacy hydration still selects only manifests and can
+continue showing the previous valid snapshot.
+
+Cancellation commits the root barrier before child cleanup, checks it during
+collection, persistence and immediately before publication, and can retry
+interrupted cleanup. Under the required serializer contract, an acknowledged
+cancel prevents any later marker. It cannot retract a marker already committed
+before cancellation, including one whose response was lost. Cancellation reports
+that earlier publication accurately. Different workspaces publish separately,
+not in a cross-workspace transaction.
+
+The new publisher deletes nothing. Retention and orphan cleanup are deferred,
+not silently reused against resumable staging. Before enabling the runtime,
+disable the legacy browser writer/cleanup or bring them under the same verified
+serialization boundary, and review retention protection for active graph rows
+and payloads. Also prove immutable storage, collector/codec parity, invocation
+budgets (including the final full verification), caller-scoped policies and
+recovery in Fabric. There are no queues, timers, unattended triggers or persisted
+credentials. Closing the browser preserves confirmed checkpoints but schedules
+no work.
+
 ## Phase 3 workspace scope foundation
 
 `WorkspaceScope` stores only administrator-selected workspaces. Authenticated app users can read
@@ -183,8 +273,8 @@ the previous workspace state, rehydrates only the selected workspace and scopes 
 saved views, governance state and synchronization writes to that ID. Late hydration from the prior
 workspace is discarded through the existing operation generation guard.
 
-The visible workspace selector, multi-workspace task graph and Workspace Hub Synchronization tab
-are not added yet. The configured deployment workspace remains the fallback until the
+The visible workspace selector and Workspace Hub Synchronization tab are not added yet.
+The v2 multi-workspace graph is an internal disabled framework. The configured deployment workspace remains the fallback until the
 administrator persists an explicit shared scope.
 
 ### Fabric Core collector stage (dual-run, no cutover)

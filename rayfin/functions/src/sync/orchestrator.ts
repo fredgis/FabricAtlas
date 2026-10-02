@@ -228,7 +228,7 @@ export class SyncOrchestrator {
 
   private async latestJob(workspaceId: string): Promise<SyncJob | null> {
     const rows = await this.data.SyncJob.select(JOB_FIELDS)
-      .where({ workspace_id: { eq: workspaceId } })
+      .where({ workspace_id: { eq: workspaceId }, protocolVersion: { eq: 1 } })
       .orderBy({ createdAt: 'desc', id: 'desc' }).first(1).execute();
     const job = rows[0] ?? null;
     if (job) assertJobCheckpoint(job);

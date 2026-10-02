@@ -127,6 +127,10 @@ describe("Rayfin Functions contract", () => {
       | "syncContinue"
       | "syncStatus"
       | "syncCancel"
+      | "syncGraphStart"
+      | "syncGraphContinue"
+      | "syncGraphStatus"
+      | "syncGraphCancel"
     >();
     expectTypeOf<AppFunctionsSchema["ping"]["input"]>().toEqualTypeOf<Record<string, never>>();
     expectTypeOf<AppFunctionsSchema["ping"]["output"]>().toEqualTypeOf<PingResult>();

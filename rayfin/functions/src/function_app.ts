@@ -7,6 +7,10 @@ import type { AtlasSchema } from '../../data/schema.js';
 import { createPingResult, type PingResult } from './ping.js';
 import { SyncOrchestrator } from './sync/orchestrator.js';
 import { safeSyncCall, type SyncResponse, type SyncUuidInput } from './sync/protocol.js';
+import { graphStart, graphContinue, graphStatus, graphCancel } from './sync/graph-functions.js';
+import type {
+  GraphStartInput, GraphContinueInput, GraphStatusInput, GraphCancelInput, GraphResponse,
+} from './sync/graph-protocol.js';
 import {
   workspaceCollectCore,
   type WorkspaceCoreEnvelope,
@@ -32,6 +36,15 @@ import {
 } from './workspace-discovery.js';
 
 const udf = new UserDataFunctions();
+
+udf.func('syncGraphStart', async (ctx: RayfinContext<AtlasSchema>, input: GraphStartInput): Promise<GraphResponse> =>
+  graphStart(ctx, input), []);
+udf.func('syncGraphContinue', async (ctx: RayfinContext<AtlasSchema>, input: GraphContinueInput): Promise<GraphResponse> =>
+  graphContinue(ctx, input), []);
+udf.func('syncGraphStatus', async (ctx: RayfinContext<AtlasSchema>, input: GraphStatusInput): Promise<GraphResponse> =>
+  graphStatus(ctx, input), []);
+udf.func('syncGraphCancel', async (ctx: RayfinContext<AtlasSchema>, input: GraphCancelInput): Promise<GraphResponse> =>
+  graphCancel(ctx, input), []);
 
 /** Bounded health probe with no secrets, external calls or data writes. */
 udf.func('ping', (): PingResult => createPingResult(), []);

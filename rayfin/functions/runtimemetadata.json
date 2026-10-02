@@ -2,6 +2,94 @@
   "schemaVersion": "2.0",
   "functions": [
     {
+      "functionName": "syncGraphStart",
+      "delegateParameters": [
+        {
+          "name": "ctx",
+          "type": "RayfinContext<AtlasSchema>",
+          "optional": false,
+          "hasDefault": false,
+          "position": 0,
+          "isFabricParameter": false
+        },
+        {
+          "name": "input",
+          "type": "GraphStartInput",
+          "optional": false,
+          "hasDefault": false,
+          "position": 1,
+          "isFabricParameter": false
+        }
+      ],
+      "contextAudiences": []
+    },
+    {
+      "functionName": "syncGraphContinue",
+      "delegateParameters": [
+        {
+          "name": "ctx",
+          "type": "RayfinContext<AtlasSchema>",
+          "optional": false,
+          "hasDefault": false,
+          "position": 0,
+          "isFabricParameter": false
+        },
+        {
+          "name": "input",
+          "type": "GraphContinueInput",
+          "optional": false,
+          "hasDefault": false,
+          "position": 1,
+          "isFabricParameter": false
+        }
+      ],
+      "contextAudiences": []
+    },
+    {
+      "functionName": "syncGraphStatus",
+      "delegateParameters": [
+        {
+          "name": "ctx",
+          "type": "RayfinContext<AtlasSchema>",
+          "optional": false,
+          "hasDefault": false,
+          "position": 0,
+          "isFabricParameter": false
+        },
+        {
+          "name": "input",
+          "type": "GraphStatusInput",
+          "optional": false,
+          "hasDefault": false,
+          "position": 1,
+          "isFabricParameter": false
+        }
+      ],
+      "contextAudiences": []
+    },
+    {
+      "functionName": "syncGraphCancel",
+      "delegateParameters": [
+        {
+          "name": "ctx",
+          "type": "RayfinContext<AtlasSchema>",
+          "optional": false,
+          "hasDefault": false,
+          "position": 0,
+          "isFabricParameter": false
+        },
+        {
+          "name": "input",
+          "type": "GraphCancelInput",
+          "optional": false,
+          "hasDefault": false,
+          "position": 1,
+          "isFabricParameter": false
+        }
+      ],
+      "contextAudiences": []
+    },
+    {
       "functionName": "ping",
       "delegateParameters": [],
       "contextAudiences": []

@@ -221,6 +221,57 @@ separate workspace-state row. Uniqueness and persisted read-back support retries
 invocations; they do not establish distributed atomic task claims. See
 [architecture.md](architecture.md#phase-2-persistence-probe-no-cutover) for the concurrency boundary.
 
+### Version 2 additive graph fields
+
+Existing v1 rows remain valid: their new optional fields are null/absent, their
+phase/kind stays `probe`, and the v1 latest-job query filters `protocolVersion: 1`.
+There is no reinterpretation or backfill of probe rows.
+
+**SyncRootRun** is the only new graph entity. Its fields are `id`, `requestId`,
+`protocolVersion`, `planHash` (64 characters), `workspaceCount`, `state`,
+`executionMode`, `createdAt`, `updatedAt`, `cancelRequestedAt?` and `finishedAt?`.
+IDs are strict UUIDs; version is 2; workspace count is 1 through 16. States are
+`planning`, `ready`, `running`, `completed`, `cancelled`; execution mode is
+`external-serialized`. Authenticated users can read roots, while mutations require
+the configured synchronizer subject.
+
+**SyncJob** is also the per-workspace v2 run. Additions are `rootRunId?`,
+`publicationState?` (`unpublished`, `staged`, `published`), `manifestId?` and
+`snapshotHash?` (64 characters). V2 phases are `collect`, `persist`, `publish`.
+`initiatedByEmail` records the configured publication writer, not a decoded caller
+claim; the subject field remains unset. `activeKey` uses a version-separated
+workspace digest and becomes a per-job released key at completion/cancellation.
+That uniqueness does not serialize v1/v2 writers or provide an atomic task claim.
+
+**SyncTask** adds optional `protocolVersion`, `rootRunId`, `ordinal`,
+`dependsOnTaskId`, `payloadRef`, `payloadHash`, `checkpointRef`, `checkpointHash`
+and `checkpointOffset`. Reference fields are UUIDs, hashes are 64-character
+SHA-256 values, and offset is a bounded integer. V2 kinds are `core`, `definitions`,
+`relations`, `kql`, `sql`, `scanner`, `persist`, `publish`. The fixed dependency
+chain is checked on every continuation. Payloads live behind a reviewed external
+immutable-store interface, never as JSON in task rows. Optional `leaseExpiresAt`
+and `claimEpoch` reserve a future lease shape; the current engine rejects either
+when populated. They confer no ownership, renewal or takeover rights.
+
+**SyncCommand** adds optional `protocolVersion`, `rootRunId`, `taskId` and
+`taskAttempt`. V2 continue commands bind a request to a single task slice before work. Partial
+collector/persist checkpoints plus the original claim request distinguish a
+committed slice from an interrupted attempt. Root start is idempotent by request
+UUID and plan hash; root cancellation is a monotonic, idempotent barrier.
+
+**Workspace** adds optional `publicationHash` (64 characters). Existing markers
+need no value. A v2 marker binds the frozen row set and manifest metadata to the
+workspace job's `snapshotHash`. `SyncRun` and all catalog entity policies remain
+unchanged. Data rows precede audit completion and the final manifest; the
+publisher performs no deletion or retention sweep.
+
+No additive orchestration field stores tokens, request bodies, arbitrary URLs,
+raw definitions, business rows or large collector payloads. These schemas and
+local tests do not prove distributed durability. Public v2 mutations are blocked
+until the serialization, immutable store and adapter deployment seams described
+in [architecture.md](architecture.md#phase-2-v2-server-cutover-framework-disabled)
+are resolved.
+
 ## SavedView
 
 A personal named view over Atlas navigation and filters.

@@ -256,7 +256,7 @@ export function projectJob(job: SyncJob): SyncJobProjection {
     protocolVersion: 1,
     scope: 'persistence-probe',
     state: job.state,
-    phase: job.phase,
+    phase: 'probe',
     revision: job.revision,
     completedTasks: job.completedTasks,
     totalTasks: job.totalTasks,

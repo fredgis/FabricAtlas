@@ -21,7 +21,12 @@ export class SyncJob {
   @int() protocolVersion!: number;
   @set('queued', 'running', 'waiting', 'completed', 'failed', 'cancelled')
   state!: SyncJobState;
-  @set('probe') phase!: 'probe';
+  @set('probe', 'collect', 'persist', 'publish') phase!: 'probe' | 'collect' | 'persist' | 'publish';
+  @uuid({ optional: true }) rootRunId?: string;
+  @set({ optional: true }, 'unpublished', 'staged', 'published')
+  publicationState?: 'unpublished' | 'staged' | 'published';
+  @uuid({ optional: true }) manifestId?: string;
+  @text({ max: 64, optional: true }) snapshotHash?: string;
   @int() revision!: number;
   @int() totalTasks!: number;
   @int() completedTasks!: number;

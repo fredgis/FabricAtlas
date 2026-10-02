@@ -315,6 +315,73 @@ for follow-up integration, but leave Python collection and browser snapshot publ
 authoritative. Distributed claims, transactional publication, unattended triggers and embedded
 recovery remain blockers. There is no browser cutover in this spike.
 
+### Version 2 framework validation (not enabled)
+
+`syncGraphStart`, `syncGraphContinue`, `syncGraphStatus` and `syncGraphCancel`
+are generated, typed Function contracts alongside the unchanged v1 probe.
+Inputs are a single structured `input` parameter with `protocolVersion: 2`.
+For example, this is the contract shape, **not an instruction to enable a writer**:
+
+```ts
+await client.functions.syncGraphStart.invoke({
+  input: { protocolVersion: 2, requestId, workspaceIds: [workspaceId] },
+});
+await client.functions.syncGraphStatus.invoke({
+  input: { protocolVersion: 2, rootRunId },
+});
+```
+
+Authorized start/continue/cancel currently fail closed with
+`SERIALIZATION_REQUIRED`; ordinary callers fail the synchronizer authority gate.
+The handlers do not accept tokens, endpoints, payload rows, a serialization flag
+or a lease override. Status reads shared root/job/manifest projections. No
+production `GraphRuntime` is installed and no browser control calls this path.
+
+Validate source and generated contracts locally:
+
+```powershell
+npx --no-install rayfin functions init
+npm test -- src\atlas\durable-graph.spec.ts src\atlas\durable-sync.spec.ts src\atlas\durable-sync-policy.spec.ts src\lib\rayfin-client.spec.ts
+npm run typecheck
+npx --no-install eslint rayfin\data\SyncRootRun.ts rayfin\data\SyncJob.ts rayfin\data\SyncTask.ts rayfin\data\SyncCommand.ts rayfin\data\Workspace.ts rayfin\data\schema.ts rayfin\functions\src\sync rayfin\functions\src\function_app.ts src\atlas\durable-graph.spec.ts src\atlas\durable-sync.spec.ts src\atlas\durable-sync-policy.spec.ts src\lib\rayfin-client.spec.ts
+npm --prefix rayfin\functions run build
+```
+
+The CLI also refreshes agent skills and unrelated generated configuration; keep
+only intended contract/runtime metadata changes. V2 adds one entity and optional
+fields, and expands existing task/phase enum values. No deployment or migration
+has been performed for this framework. Use the normal reviewed
+`npx rayfin up --tenant <tenant-id> --workspace <workspace-name>` workflow when
+deploying; do not bypass policy checks with raw SQL or `--force`.
+
+Before wiring `GraphRuntime`, prove all of the following:
+
+1. An externally serialized executor covers start/continue/cancel/publication and
+   retention across every host. It must not release authority while an uncertain
+   earlier write can still commit. No supported atomic claim/CAS or same-managed-
+   database stored-procedure deployment path has been verified in Rayfin 1.36.2.
+   Expired leases, HTTP timeouts and closed browsers are not takeover evidence.
+2. The legacy browser writer/cleanup is disabled or participates in that same
+   boundary. An active v1 probe is not evidence of a v2 distributed claim.
+3. An immutable, access-controlled metadata payload store recovers by stable
+   task/checkpoint UUID and validates digests. Do not put payloads or credentials
+   in orchestration rows. Store provisioning is not included.
+4. Core/Definitions/Relations/KQL/SQL/scanner adapters and the deterministic
+   snapshot assembler preserve the reviewed metadata projections and legacy
+   schema/object-lineage codecs. No collector is duplicated or silently skipped
+   by this framework.
+5. Embedded caller-scoped execution, exact row read-back, duplicate/lost-response
+   recovery, cancellation/publication ordering and invocation budgets pass in
+   Fabric. Local fake-transport tests do not establish those deployed guarantees.
+6. Retention protects all active staging, payloads and the last valid marker.
+   V2 currently deletes nothing; pruning is intentionally deferred.
+
+The runtime remains request-driven. Every next slice needs another authorized
+invocation, including after browser closure. There is no automatic worker,
+timer, scheduler or persisted user token. A cancellation acknowledged before
+publication prevents a later marker under the executor contract; a marker
+already committed before cancellation remains visible.
+
 ## Phase 3 workspace discovery foundation
 
 The `workspaceDiscover` Function declares the Fabric audience and therefore runs Fabric REST
