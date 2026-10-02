@@ -3,6 +3,11 @@
 Support review: **2026-10-02**. Deployment plans are in preview.
 This is an operator runbook, not an executed deployment record.
 
+The [Phase 10 live authoring benchmark](phase10-live-benchmark-result.md)
+ran without deployment on 2026-10-02. Bulk export returned HTTP 404 under the
+cached user identity. This does not change the component matrix or establish
+Rayfin application-identity support; deployed bulk activation stays deferred.
+
 ## Component support matrix
 
 A deployment plan adds order and actions to a supported deployment operation.

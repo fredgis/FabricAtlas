@@ -7,8 +7,10 @@ brokered authentication. It runs as an item inside a Microsoft Fabric workspace.
 For release sequencing, the Microsoft deployment-plan component support matrix,
 updates and recovery, see the [deployment runbook](deployment-plan-runbook.md).
 Fabric App/AppBackend deployment-plan compatibility is not established.
-The [Phase 10 bulk-definition benchmark](phase10-bulk-definitions.md) is
-offline-only; it does not replace the existing per-item collectors.
+The [Phase 10 bulk-definition benchmark](phase10-bulk-definitions.md) includes
+offline replay and a separate read-only authoring command. Its
+[live result](phase10-live-benchmark-result.md) leaves deployed activation
+deferred; neither tool replaces the existing per-item collectors.
 
 > All identifiers below (tenant, workspace, client id, hosting URL, emails) are shown as
 > **placeholders** like `<tenant-id>`. Fill in your own — nothing in this repo is tied to a specific

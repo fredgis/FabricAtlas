@@ -4,11 +4,15 @@ Reviewed against Microsoft public contracts on **2026-10-02**.
 
 ## Decision
 
-Ship an offline, bounded comparison tool, not a deployed bulk collector.
-`BULK_DEFINITION_RUNTIME_GATE.enabled` is `false`; the CLI rejects `--live`.
-There is no bulk function registration, token input, HTTP transport, database
-client, snapshot publisher or browser switch. Changing that constant alone
-cannot enable live collection.
+The offline replay tool remains available, and the follow-up added a separate
+bounded **authoring-identity** live command. The live FGI-MAIN experiment ran on
+2026-10-02 without deployment; bulk export returned HTTP 404. See the
+[dated result and defer decision](phase10-live-benchmark-result.md).
+
+`BULK_DEFINITION_RUNTIME_GATE.enabled` remains `false`; the offline CLI still
+rejects `--live`. There is no bulk Function registration, database client,
+snapshot publisher or browser switch. The separate authoring command cannot
+enable deployed bulk collection, and changing the constant alone cannot either.
 
 The existing Python and Rayfin per-item collectors remain unchanged.
 The benchmark uses the same reviewed projection functions before retaining
@@ -46,9 +50,9 @@ Current per-item collectors inspected:
 - `rayfin/functions/src/workspace-powerbi.ts`: individual semantic-model
   requests use `format=TMSL`; report and model projections remain separate
   from scanner/access evidence.
-- `rayfin/functions/src/fabric-rest.ts`: the current bounded POST LRO helper
-  accepts no request body. No shared transport change was necessary for this
-  offline work.
+- `rayfin/functions/src/fabric-rest.ts`: the bounded POST LRO helper now accepts
+  an optional JSON body for the selective read-only bulk request. Existing
+  bodyless per-item callers are unchanged; polls/results never resend the body.
 
 ## Reproduce
 
@@ -69,6 +73,18 @@ node scripts\benchmark-bulk-definitions.mjs --scenario operation-failed --iterat
 
 npm test -- scripts\bulk-definitions-benchmark.spec.ts src\atlas\workspace-definitions.spec.ts src\atlas\workspace-powerbi.spec.ts
 ```
+
+For a real read-only authoring comparison using an **already cached Azure CLI
+user identity**, without login, consent, new credentials or deployment:
+
+```powershell
+npm run benchmark:definitions:live -- --workspace FGI-MAIN --confirm-read-only
+```
+
+This command prints metrics/evidence only. It never saves raw definitions.
+Its identity and bounds differ from a deployed Rayfin Function; read the
+[live command contract and measured result](phase10-live-benchmark-result.md)
+before interpreting its output. The sections below describe offline replay.
 
 The default fixture in `scripts/fixtures/bulk-definitions.fixture.ts` is a
 sanitized reconstruction of public Microsoft contract examples, **not a
@@ -173,9 +189,10 @@ All of the following are required before replacing the offline-only gate:
 6. Add an explicit server-owned default-off flag and deployment rollback
    procedure. An environment flag must not bypass authorization or validation.
 
-No live API probe or deployment was performed for this phase. Deployment
-component support and installation/update/recovery are documented in the
-[deployment runbook](deployment-plan-runbook.md).
+The initial replay used no live APIs. The follow-up live authoring probe is
+recorded separately; neither step deployed anything. Deployed activation stays
+deferred. Component support and installation/update/recovery are documented in
+the [deployment runbook](deployment-plan-runbook.md).
 
 [bulk]: https://learn.microsoft.com/en-us/rest/api/fabric/core/items/bulk-export-item-definitions
 [single]: https://learn.microsoft.com/en-us/rest/api/fabric/core/items/get-item-definition

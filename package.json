@@ -23,6 +23,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "benchmark:definitions": "npm run --silent build --prefix rayfin/functions && node scripts/benchmark-bulk-definitions.mjs",
+    "benchmark:definitions:live": "npm run --silent build --prefix rayfin/functions && node scripts/benchmark-live-definitions.mjs",
     "test:fabric": "node scripts/open-fabric-portal.mjs"
   },
   "dependencies": {

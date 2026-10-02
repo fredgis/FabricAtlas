@@ -178,7 +178,7 @@ export function splitBulkDefinitions(
   return result;
 }
 
-function project(item: BenchmarkItem, response: unknown): unknown {
+export function projectBenchmarkDefinition(item: BenchmarkItem, response: unknown): unknown {
   const parts = record(record(response).definition).parts;
   if (!Array.isArray(parts) || !parts.length || parts.length > BULK_BENCHMARK_LIMITS.maxParts) {
     return fail("invalid-definition");
@@ -292,7 +292,7 @@ class Replay {
     return response.body;
   }
   save(item: BenchmarkItem, response: unknown): void {
-    const projection = project(item, response);
+    const projection = projectBenchmarkDefinition(item, response);
     const size = bytes(projection);
     if (this.metrics.projectedBytes + size > BULK_BENCHMARK_LIMITS.maxProjectionBytes) fail("projection-limit-exceeded");
     this.projections.set(item.id, projection);

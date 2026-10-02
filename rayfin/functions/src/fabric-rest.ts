@@ -471,7 +471,7 @@ export class FabricRestClient {
   }
 
   /**
-   * POST one fixed Fabric action without a body and resolve a 200 response or
+   * POST one fixed Fabric read action and resolve a 200 response or
    * a 202 long-running operation. Polls only the canonical
    * `/v1/operations/{id}` endpoint and never follows the returned Location.
    */
@@ -480,11 +480,13 @@ export class FabricRestClient {
     limits: FabricLongRunningLimits,
     budget?: RequestBudget,
     query?: FabricQuery,
+    body?: Readonly<Record<string, unknown>>,
   ): Promise<Record<string, unknown>> {
     const first = await this.#send(fabricApiUrl(path, query), budget, {
       method: "POST",
       maxResponseBytes: limits.maxResponseBytes,
       accepted: true,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     if (first.status !== 202) return first.body as Record<string, unknown>;
     const operationId = operationIdFrom(first.headers);
