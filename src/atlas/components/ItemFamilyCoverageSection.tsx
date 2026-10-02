@@ -444,7 +444,7 @@ export function ItemFamilyCoverageSection({
           <Dialog.Portal>
             <Dialog.Overlay className="fixed inset-0 z-[var(--atlas-evidence-overlay-z)] bg-background/80" />
             <Dialog.Content
-              className="fixed inset-y-0 right-0 z-[var(--atlas-evidence-panel-z)] w-full max-w-xl overflow-y-auto overscroll-contain bg-background p-s shadow-fabric-16"
+              className="fixed inset-y-0 right-0 z-[var(--atlas-evidence-panel-z)] w-full max-w-[var(--atlas-drawer-width)] overflow-y-auto overscroll-contain bg-background p-s shadow-fabric-16"
               onOpenAutoFocus={(event) => {
                 event.preventDefault();
                 document.getElementById("family-evidence-close")?.focus();

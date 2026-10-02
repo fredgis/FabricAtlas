@@ -70,19 +70,18 @@ export function PoliciesAiSection({
       <div>
         <h2 className="sr-only">Policies &amp; AI evidence</h2>
         <p className="text-300 text-muted-foreground">
-          Review collected protection metadata and Data Agent source selections, without inferring AI exposure or restriction decisions.
+          AI-facing items in this workspace, the sources their data agents read and their protection labels.
         </p>
       </div>
       <div role="note" className="flex items-start gap-s rounded-md border border-signal-warning-foreground/15 bg-signal-warning-background px-m py-s text-200 leading-300 text-signal-warning-foreground">
         <Info className="mt-xxs icon-size-200 shrink-0" aria-hidden="true" />
-        Coverage is partial. Unknown exposure does not mean not exposed; unknown controls are not compliant.
+        Coverage is partial. AI and Copilot exposure is not collected because Fabric has no public exposure contract. Unknown exposure does not mean not exposed; unknown controls are not compliant.
       </div>
-      <dl aria-label="Policy and AI inventory summary" className="grid grid-cols-2 gap-s lg:grid-cols-4">
+      <dl aria-label="Policy and AI inventory summary" className="grid grid-cols-1 gap-s sm:grid-cols-3">
         {[
           ["Models", rows.filter((row) => row.item.itemType === "SemanticModel").length, "Semantic models in inventory"],
           ["Data agents", rows.filter((row) => row.item.itemType === "DataAgent").length, "Cataloged Data Agent items"],
           ["Source gaps", rows.filter((row) => row.selections === "unavailable").length, "Agent definitions not collected"],
-          ["Exposure unknown", rows.length, "Not evaluated across inventory"],
         ].map(([label, value, detail]) => (
           <div key={label} className="min-w-0 rounded-lg border border-border bg-card p-m">
             <dt className="text-300 font-semibold">{label}</dt>
@@ -95,7 +94,7 @@ export function PoliciesAiSection({
         <Card className="min-w-0 overflow-hidden shadow-none">
           <div className="atlas-toolbar flex flex-wrap items-center justify-between gap-m border-b border-border p-m">
             <h3 className="text-400 font-semibold">AI governance inventory</h3>
-            <label className="relative min-w-0 flex-1 sm:max-w-xs">
+            <label className="relative min-w-0 flex-1 sm:max-w-[var(--atlas-field-width)]">
               <Search className="pointer-events-none absolute left-s top-1/2 icon-size-200 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
               <span className="sr-only">Search policy and AI inventory</span>
               <input type="search" value={search} onChange={(event) => setSearch(event.target.value)}
@@ -111,7 +110,6 @@ export function PoliciesAiSection({
                 <th scope="col" className="hidden px-s py-s font-medium md:table-cell">Owner</th>
                 <th scope="col" className="hidden px-s py-s font-medium md:table-cell md:w-1/12">Sources</th>
                 <th scope="col" className="px-s py-s font-medium">Protection evidence</th>
-                <th scope="col" className="px-s py-s font-medium">AI exposure</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -136,11 +134,6 @@ export function PoliciesAiSection({
                   </td>
                   <td className="px-s py-s">
                     <ProtectionEvidence row={row} />
-                  </td>
-                  <td className="px-s py-s">
-                    <span className="inline-flex items-center gap-xs rounded-md bg-muted px-s py-xxs text-muted-foreground">
-                      <CircleHelp className="icon-size-100 shrink-0" aria-hidden="true" /> Unknown
-                    </span>
                   </td>
                 </tr>
               ))}
@@ -225,7 +218,7 @@ export function PoliciesAiSection({
               <div className="border-t border-border bg-secondary/50 p-m">
                 <h4 className="flex items-center gap-s text-300 font-semibold"><ShieldQuestion className="icon-size-200 text-muted-foreground" aria-hidden="true" />Workspace policy context</h4>
                 <p role={policy.status === "unavailable" ? "alert" : "status"} className="mt-s text-200 leading-300 text-muted-foreground">{policyStatus}</p>
-                <p className="mt-s text-200 leading-300">Workspace settings only, not item restriction or exposure decisions.</p>
+                {enabled && <p className="mt-s text-200 leading-300">Workspace settings only, not item restriction or exposure decisions.</p>}
                 {!!policy.records.length && <details className="mt-s text-200 leading-300">
                   <summary className="cursor-pointer py-s font-semibold">Stored context records</summary>
                   <p className="text-muted-foreground">{POLICY_LIMITATION}</p>
@@ -281,9 +274,6 @@ export function PoliciesAiSection({
               className="atlas-control mt-m rounded-lg border border-border px-m text-300">Open exact historical comparison</button>
           </>}
       </Card>
-      <p role="note" className="text-200 leading-300 text-muted-foreground">
-        Watchlists and Sync Brief are unavailable in this build. Personal saved views and historical comparisons remain available.
-      </p>
     </div>
   );
 }

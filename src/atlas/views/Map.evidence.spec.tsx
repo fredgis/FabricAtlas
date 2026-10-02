@@ -402,6 +402,37 @@ describe("Map & lineage unified evidence", () => {
     expect(container.querySelectorAll(BETA_EDGES)).toHaveLength(0);
   });
 
+  it("keeps the Data flow and Control relations switches unchanged in look and filtering", () => {
+    const { container } = renderMap();
+    const drawnTitles = () =>
+      [...container.querySelectorAll("svg g > title")].map((node) => node.textContent ?? "");
+    const dataFlow = screen.getByRole("switch", { name: "Data flow relations" });
+    const control = screen.getByRole("switch", { name: "Control relations" });
+    const track = (control: HTMLElement) => control.querySelector('span[aria-hidden="true"]')!;
+
+    expect(dataFlow.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    for (const toggle of [dataFlow, control]) {
+      expect(toggle).toHaveClass("min-h-[var(--atlas-touch-target)]", "sm:min-h-[var(--atlas-control-height)]", "gap-s", "rounded-md", "px-s", "font-semibold", "text-foreground", "hover:bg-accent");
+      expect(track(toggle)).toHaveClass("h-l", "w-xxxl", "rounded-full", "border", "after:h-m", "after:w-m", "after:translate-x-[12px]");
+    }
+    expect(dataFlow).toHaveClass("ml-auto");
+    expect(track(dataFlow)).toHaveClass("border-primary", "bg-primary", "after:bg-primary-foreground");
+    expect(track(control)).toHaveClass("border-lineage-upstream", "bg-lineage-upstream", "after:bg-card");
+    expect(drawnTitles()).toHaveLength(14);
+
+    fireEvent.click(dataFlow);
+    expect(dataFlow).toHaveAttribute("aria-checked", "false");
+    expect(track(dataFlow)).toHaveClass("border-input", "bg-muted", "after:bg-muted-foreground");
+    expect(drawnTitles()).toHaveLength(7);
+    expect(drawnTitles().every((title) => ["orchestrates", "endpoint", "default db", "database"].includes(title))).toBe(true);
+
+    fireEvent.click(dataFlow);
+    fireEvent.click(control);
+    expect(track(control)).toHaveClass("border-input", "bg-muted", "after:bg-muted-foreground");
+    expect(drawnTitles()).toHaveLength(7);
+    expect(drawnTitles()).not.toContain("orchestrates");
+  });
+
   it("redirects legacy map-beta links to the single map with Preview included", async () => {
     renderMap(
       { itemRelationsEnabled: true, loadItemRelationsEvidence: loadNothing },

@@ -46,7 +46,6 @@ import {
 import { ResizableInspector } from "../components/ResizableInspector";
 import { SemanticXRayPanel } from "../components/SemanticXRayPanel";
 import { ToggleSwitch } from "../components/ToggleSwitch";
-import { WorkspaceSelector } from "../components/WorkspaceSelector";
 import { isFeatureEnabled } from "../feature-flags";
 import {
   ITEM_RELATIONS_FEATURE_ID,
@@ -1739,11 +1738,6 @@ export function MapView({
         className="flex min-h-0 flex-1 flex-col focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
       >
       <div className="atlas-toolbar flex flex-wrap items-center border-b border-border bg-card px-l py-s shadow-fabric-2">
-        <WorkspaceSelector
-          id="map-workspace-selector"
-          compact
-          className="min-w-0 max-w-full sm:min-w-[180px] sm:max-w-[260px]"
-        />
         {externalWorkspaceCount > 0 && (
           <span className="shrink-0 whitespace-nowrap rounded-md bg-lineage-upstream/10 px-s py-xxs text-200 font-semibold text-lineage-upstream">
             +{externalWorkspaceCount} workspaces via Beta

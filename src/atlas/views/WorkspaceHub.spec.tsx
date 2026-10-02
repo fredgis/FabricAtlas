@@ -73,8 +73,11 @@ describe("WorkspaceHubView", () => {
       screen.getByRole("heading", { name: "Active workspace" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("combobox", { name: "Active workspace" }),
-    ).toBeDisabled();
+      screen.queryByRole("combobox", { name: "Active workspace" }),
+    ).toBeNull();
+    expect(
+      screen.getByText(/Only one workspace is in the shared Atlas scope/),
+    ).toBeInTheDocument();
 
     const workspace = screen.getByRole("tab", { name: "Workspace" });
     await act(async () => {

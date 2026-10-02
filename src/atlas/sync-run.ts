@@ -106,7 +106,9 @@ export function syncRunView(input: SyncRunInput): SyncRunView {
     compactLabel =
       failures.length > 1
         ? `${failures.length} workspaces failed to sync`
-        : "Sync failed";
+        : failures[0].workspaceId === input.activeWorkspaceId
+          ? "Sync failed"
+          : `${failures[0].workspaceName} sync failed`;
   } else {
     kind = "idle";
     compactLabel = input.lastSyncedAt

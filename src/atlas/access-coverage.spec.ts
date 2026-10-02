@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  ACCESS_LEGEND,
   accessLayerSummary,
+  accessLegendState,
   assessAccessEvidence,
   buildAccessEvidenceCoverage,
   evaluatedAccessLayers,
@@ -11,6 +13,16 @@ import {
   type AccessLayerEvidence,
 } from "./access-coverage";
 import type { Grant, WorkspaceInfo } from "./model";
+
+describe("access evidence legend", () => {
+  it("folds evidence states into Granted, Partial, Unknown and Denied", () => {
+    expect(
+      (["observed", "partial", "unavailable", "unsupported", "denied"] as const)
+        .map((state) => ACCESS_LEGEND[accessLegendState(state)].label),
+    ).toEqual(["Granted", "Partial", "Unknown", "Unknown", "Denied"]);
+    expect(ACCESS_LEGEND.denied.description).toMatch(/not denied access/);
+  });
+});
 
 const grants: Grant[] = [
   { principalRef: "principal-id", accessLevel: "edit", source: "workspaceRole" },

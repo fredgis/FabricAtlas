@@ -499,7 +499,7 @@ export function CommandPalette({
                       </span>
                       <span
                         className={cn(
-                          "shrink-0 rounded-md border px-s py-xxs text-100 font-semibold uppercase tracking-wide",
+                          "shrink-0 rounded-md border px-s py-xxs text-200 font-semibold uppercase tracking-wide",
                           active
                             ? "border-primary-foreground/25 text-primary-foreground/80"
                             : "border-border text-muted-foreground",
@@ -583,7 +583,7 @@ export function CommandPalette({
                         <span
                           aria-hidden="true"
                           className={cn(
-                            "inline-flex shrink-0 items-center gap-xxs rounded-md border px-s py-xxs text-100 font-semibold uppercase tracking-wide",
+                            "inline-flex shrink-0 items-center gap-xxs rounded-md border px-s py-xxs text-200 font-semibold uppercase tracking-wide",
                             active
                               ? "border-primary-foreground/25 text-primary-foreground/80"
                               : "border-lineage-upstream/30 text-lineage-upstream",

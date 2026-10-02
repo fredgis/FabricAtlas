@@ -624,7 +624,7 @@ export function AssetCatalogView({
                 {label}
                 <span
                   className={cn(
-                    "rounded-md px-xs py-xxs font-numeric text-100",
+                    "rounded-md px-xs py-xxs font-numeric text-200",
                     kind === key ? "bg-card text-brand-foreground" : "bg-muted",
                   )}
                 >
@@ -1001,7 +1001,7 @@ export function AssetCatalogView({
                                   </span>
                                   <span
                                     className={cn(
-                                      "shrink-0 rounded-full px-s py-xxs text-100 font-semibold",
+                                      "shrink-0 rounded-full px-s py-xxs text-200 font-semibold",
                                       confidence === "verified"
                                         ? "bg-status-healthy/10 text-status-healthy"
                                         : "bg-status-warning/10 text-status-warning",

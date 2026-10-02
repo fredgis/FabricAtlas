@@ -75,6 +75,44 @@ export const ACCESS_EVIDENCE_LABEL: Record<AccessEvidenceState, string> = {
 export const GRANT_ONLY_NOTICE =
   "Collected grants do not prove unrestricted data access. Restrictions and group membership are not evaluated.";
 
+/** Compact evidence vocabulary shared by the Access Review legend and row badges. */
+export type AccessLegendState = "granted" | "partial" | "unknown" | "denied";
+
+export const ACCESS_LEGEND: Record<
+  AccessLegendState,
+  { label: string; description: string }
+> = {
+  granted: {
+    label: "Granted",
+    description: "Grant recorded; collection complete.",
+  },
+  partial: {
+    label: "Partial",
+    description: "Grant recorded; restrictions not evaluated.",
+  },
+  unknown: {
+    label: "Unknown",
+    description: "Not collected, or no public API.",
+  },
+  denied: {
+    label: "Denied",
+    description: "Evidence read denied, which is not denied access.",
+  },
+};
+
+export function accessLegendState(state: AccessEvidenceState): AccessLegendState {
+  switch (state) {
+    case "observed":
+      return "granted";
+    case "partial":
+      return "partial";
+    case "denied":
+      return "denied";
+    default:
+      return "unknown";
+  }
+}
+
 export type AccessCoverageFilter = "all" | AccessEvidenceState;
 
 export function parseAccessCoverageFilter(value: unknown): AccessCoverageFilter {

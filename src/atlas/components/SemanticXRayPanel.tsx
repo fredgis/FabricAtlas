@@ -182,7 +182,7 @@ export function SemanticXRayPanel() {
               setSelectedKey("");
               setOpenTables(new Set());
             }}
-            className="atlas-control max-w-full rounded-md border border-input bg-card px-m text-300 text-foreground sm:max-w-xs"
+            className="atlas-control max-w-full rounded-md border border-input bg-card px-m text-300 text-foreground sm:max-w-[var(--atlas-field-width)]"
           >
             {models.map((entry) => (
               <option key={entry.fabricId} value={entry.fabricId}>
@@ -218,7 +218,7 @@ export function SemanticXRayPanel() {
       </div>
 
       <div className="atlas-toolbar flex shrink-0 flex-wrap items-center">
-        <label className="relative min-w-0 basis-full sm:flex-1 sm:basis-auto sm:max-w-xs">
+        <label className="relative min-w-0 basis-full sm:flex-1 sm:basis-auto sm:max-w-[var(--atlas-field-width)]">
           <Search
             className="pointer-events-none absolute left-s top-1/2 icon-size-200 -translate-y-1/2 text-muted-foreground"
             aria-hidden="true"

@@ -128,9 +128,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   routes no longer shift during a run. Workspace Hub shows the detailed view of
   the same state.
 - Map & lineage opens at 80% zoom and Reset returns to 80%.
+- The header (navigation drawer on narrow screens) is the only active-workspace
+  switcher. Map & lineage, Access Review and Workspace Hub no longer repeat
+  their own workspace selectors; scope management, sync batch selection and the
+  first-sync gate keep theirs.
+- Access Review states its evidence boundary once, in a Granted / Partial /
+  Unknown / Denied legend. Rows show compact badges instead of repeating
+  "restrictions not evaluated" and the evaluated layers; accessible row names,
+  the evidence inspector, copied summaries and CSV exports keep the full text.
+- About groups gated capabilities as Implemented · active, Available · off,
+  Portal only, Deferred · contract blocked and Private Preview · not collected,
+  with maturity shown separately and the unavailable groups collapsed.
+  Ontology now reads as active because every synchronization collects it.
+- Governance Center groups findings by rule with compact preset filters, splits
+  Coverage into Item families, Metadata quality and Sensitivity views, and
+  drops the summary disclosure and the duplicate baseline sentence.
+- Policies & AI states its purpose, drops the always-unknown AI exposure
+  column and KPI in favour of one note, and no longer shows unrelated build
+  notes.
+- Item-type glyph colours keep white codes at 4.5:1 contrast or better.
 
 ### Fixed
 
+- The governance exception dialog and the Access, Policies & AI and Coverage
+  evidence drawers were 20px wide, and the X-Ray and Policies & AI search
+  fields collapsed, because `xs`/`xl` width utilities resolved to spacing
+  tokens.
+- Status chips no longer fall back to 16px: class merging now knows the custom
+  type scale.
+- Governance Center tabs no longer overlap on narrow screens.
+- A failed synchronization of another workspace now names that workspace in
+  the header and says which workspace's snapshot is shown.
 - Long synchronization errors no longer stretch the Recent runs table one
   character per line; the table keeps fixed columns and the full error opens in
   its own row.

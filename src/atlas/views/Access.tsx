@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
+  Ban,
   Check,
   ChevronDown,
   ChevronRight,
+  CircleCheck,
+  CircleDashed,
+  CircleHelp,
   Clipboard,
   Download,
   FilterX,
   Flag,
-  Layers3,
   Search,
   ShieldCheck,
   Users,
@@ -46,8 +49,10 @@ import { accessRowsToCsv } from "../access-export";
 import {
   ACCESS_EVIDENCE_LABEL,
   ACCESS_LAYER_LABEL,
+  ACCESS_LEGEND,
   GRANT_ONLY_NOTICE,
   accessLayerSummary,
+  accessLegendState,
   evaluatedAccessLayers,
   matchesAccessCoverage,
   parseAccessCoverageFilter,
@@ -55,6 +60,7 @@ import {
   withStoredPolicyEvidence,
   storedPolicySummary,
   type AccessCoverageFilter,
+  type AccessLegendState,
 } from "../access-coverage";
 import {
   buildAccessReviewRows,
@@ -88,7 +94,7 @@ const ACCESS_STYLE: Record<
   owner: {
     label: "Owner permission",
     className:
-      "border-status-warning/30 bg-status-warning/10 text-status-warning",
+      "border-signal-warning-foreground/20 bg-signal-warning-background text-signal-warning-foreground",
   },
   edit: {
     label: "Edit",
@@ -161,7 +167,7 @@ function AccessBadge({ level }: { level: AccessLevel }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-md border px-s py-xxs text-[length:var(--text-200)] font-semibold",
+        "inline-flex w-fit items-center rounded-md border px-s py-xxs text-[length:var(--text-200)] font-semibold",
         style.className,
       )}
     >
@@ -176,7 +182,7 @@ function OriginBadge({ origin }: { origin: AccessReviewRow["origin"] }) {
     <span
       title={style.detail}
       className={cn(
-        "inline-flex items-center rounded-md border px-s py-xxs text-[length:var(--text-200)] font-semibold",
+        "inline-flex w-fit items-center rounded-md border px-s py-xxs text-[length:var(--text-200)] font-semibold",
         style.className,
       )}
     >
@@ -284,10 +290,19 @@ function ItemIdentity({ row }: { row: AccessReviewRow }) {
   );
 }
 
-function FlagBadges({ row }: { row: AccessReviewRow }) {
+function FlagBadges({
+  row,
+  compact = false,
+}: {
+  row: AccessReviewRow;
+  /** Rows omit the "no flags" text; the accessible row name still states it. */
+  compact?: boolean;
+}) {
   const flags = rowFlags(row);
   if (flags.length === 0 && row.principalResolution === "resolved") {
-    return <span className="text-200 text-muted-foreground">No recorded flags</span>;
+    return compact ? null : (
+      <span className="text-200 text-muted-foreground">No recorded flags</span>
+    );
   }
 
   return (
@@ -296,21 +311,88 @@ function FlagBadges({ row }: { row: AccessReviewRow }) {
         <span
           key={flag}
           className={cn(
-            "inline-flex rounded-md border px-s py-xxs text-[length:var(--text-200)] font-medium",
+            "inline-flex rounded-md px-s py-xxs text-[length:var(--text-200)] font-medium",
             flag === "external" || flag === "broad"
-              ? "border-status-warning/30 bg-status-warning/10 text-status-warning"
-              : "border-border bg-muted text-muted-foreground",
+              ? "bg-signal-warning-background text-signal-warning-foreground"
+              : "bg-muted text-muted-foreground",
           )}
         >
           {FLAG_LABEL[flag]}
         </span>
       ))}
       {row.principalResolution !== "resolved" && (
-        <span className="inline-flex rounded-md border border-status-warning/30 bg-status-warning/10 px-s py-xxs text-[length:var(--text-200)] font-medium text-status-warning">
+        <span className="inline-flex rounded-md bg-signal-warning-background px-s py-xxs text-[length:var(--text-200)] font-medium text-signal-warning-foreground">
           {row.principalResolution === "ambiguous" ? "Ambiguous" : "Unresolved"}
         </span>
       )}
     </div>
+  );
+}
+
+const LEGEND_TONE: Record<AccessLegendState, string> = {
+  granted: "bg-signal-success-background text-signal-success-foreground",
+  partial: "bg-signal-warning-background text-signal-warning-foreground",
+  unknown: "bg-muted text-muted-foreground",
+  denied: "bg-signal-danger-background text-signal-danger-foreground",
+};
+
+const LEGEND_ICON: Record<AccessLegendState, typeof Check> = {
+  granted: CircleCheck,
+  partial: CircleDashed,
+  unknown: CircleHelp,
+  denied: Ban,
+};
+
+function EvidenceBadge({
+  state,
+  title,
+}: {
+  state: AccessLegendState;
+  title?: string;
+}) {
+  const Icon = LEGEND_ICON[state];
+  return (
+    <span
+      title={title}
+      className={cn(
+        "inline-flex w-fit items-center gap-xs rounded-md px-s py-xxs text-[length:var(--text-200)] font-semibold",
+        LEGEND_TONE[state],
+      )}
+    >
+      <Icon className="icon-size-100 shrink-0" aria-hidden="true" />
+      {ACCESS_LEGEND[state].label}
+    </span>
+  );
+}
+
+function RowEvidenceBadge({ row }: { row: AccessReviewRow }) {
+  return (
+    <EvidenceBadge
+      state={accessLegendState(row.coverage.state)}
+      title={`${ACCESS_EVIDENCE_LABEL[row.coverage.state]}. Evaluated: ${evaluatedAccessLayers(row.coverage)}. Unknown or incomplete layers: ${unknownAccessLayerSummary(row.coverage)}`}
+    />
+  );
+}
+
+/** The single page-level statement of what every access row can and cannot prove. */
+function AccessEvidenceLegend() {
+  return (
+    <section
+      aria-label="Access evidence legend"
+      className="flex flex-col gap-xs border-t border-border bg-secondary/40 px-l py-s text-200 leading-300"
+    >
+      <dl className="flex flex-wrap gap-x-l gap-y-xs">
+        {(Object.keys(ACCESS_LEGEND) as AccessLegendState[]).map((state) => (
+          <div key={state} className="flex items-center gap-s">
+            <dt>
+              <EvidenceBadge state={state} />
+            </dt>
+            <dd className="text-muted-foreground">{ACCESS_LEGEND[state].description}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="text-foreground">{GRANT_ONLY_NOTICE}</p>
+    </section>
   );
 }
 
@@ -353,13 +435,12 @@ function MatrixTable({
     <div role="listbox" aria-label="Access review matrix">
       <div
         aria-hidden="true"
-        className="atlas-row hidden grid-cols-5 gap-m border-b border-border bg-secondary/70 px-l text-200 font-semibold text-muted-foreground xl:grid"
+        className="atlas-row hidden grid-cols-4 gap-m border-b border-border bg-secondary/70 px-l text-200 font-semibold text-muted-foreground xl:grid"
       >
         <span>Principal</span>
         <span>Item</span>
         <span>Granted level</span>
-        <span>Restrictions</span>
-        <span>Coverage</span>
+        <span>Evidence</span>
       </div>
       <div className="divide-y divide-border">
         {rows.map((row, index) => {
@@ -403,44 +484,23 @@ function MatrixTable({
                 }
               }}
               className={cn(
-                "atlas-row atlas-windowed-block grid w-full cursor-pointer gap-m px-l text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring xl:grid-cols-5 xl:items-center",
+                "atlas-row atlas-windowed-block grid w-full cursor-pointer gap-s px-l text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:grid-cols-2 xl:grid-cols-4 xl:items-center xl:gap-m",
                 selected && "bg-primary/10",
               )}
             >
-              <div>
-                <span className="mb-xs block text-200 font-semibold text-muted-foreground xl:hidden">
-                  Principal
-                </span>
+              <div className="min-w-0">
                 <PrincipalIdentity row={row} />
-                <div className="mt-xs"><FlagBadges row={row} /></div>
+                <div className="mt-xs empty:hidden"><FlagBadges row={row} compact /></div>
               </div>
-              <div>
-                <span className="mb-xs block text-200 font-semibold text-muted-foreground xl:hidden">
-                  Item
-                </span>
+              <div className="min-w-0">
                 <ItemIdentity row={row} />
               </div>
-              <div>
-                <span className="mb-xs block text-200 font-semibold text-muted-foreground xl:hidden">
-                  Granted level
-                </span>
+              <div className="flex flex-wrap items-center gap-xs">
                 <AccessBadge level={row.effectiveAccess} />
-                <div className="mt-xs"><OriginBadge origin={row.origin} /></div>
-                <span className="mt-xs block text-200 text-muted-foreground">
-                  {row.applicableGrants.length} recorded grants
-                </span>
+                <OriginBadge origin={row.origin} />
               </div>
               <div>
-                <span className="mb-xs block text-200 font-semibold text-muted-foreground xl:hidden">
-                  Restrictions
-                </span>
-                <span className="text-200 text-muted-foreground">Not evaluated</span>
-              </div>
-              <div>
-                <span className="mb-xs block text-200 font-semibold text-muted-foreground xl:hidden">
-                  Coverage
-                </span>
-                <CoverageEvidence row={row} />
+                <RowEvidenceBadge row={row} />
               </div>
             </div>
           );
@@ -533,8 +593,8 @@ function PrincipalGroups({
               )}
               <div className="min-w-0 flex-1">
                 <PrincipalIdentity row={first} />
-                <span className="mt-xs block text-200 leading-300 text-muted-foreground">
-                  Evaluated layers across recorded pairs: {groupLayers}.
+                <span className="sr-only">
+                  {" "}Evaluated layers across recorded pairs: {groupLayers}.
                   Restrictions not evaluated.
                 </span>
               </div>
@@ -580,17 +640,16 @@ function PrincipalGroups({
                           onSelect(row);
                         }}
                         className={cn(
-                          "atlas-row grid w-full gap-m rounded-lg px-m text-left transition-colors hover:bg-accent xl:grid-cols-5 xl:items-center",
+                          "atlas-row grid w-full gap-s rounded-lg px-m text-left transition-colors hover:bg-accent sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_auto] sm:items-center sm:gap-m",
                           selected && "bg-primary/10",
                         )}
                       >
                         <ItemIdentity row={row} />
-                        <AccessBadge level={row.effectiveAccess} />
-                        <OriginBadge origin={row.origin} />
-                        <span className="text-200 text-muted-foreground">
-                          Restrictions: not evaluated
+                        <span className="flex flex-wrap items-center gap-xs">
+                          <AccessBadge level={row.effectiveAccess} />
+                          <OriginBadge origin={row.origin} />
                         </span>
-                        <CoverageEvidence row={row} />
+                        <RowEvidenceBadge row={row} />
                       </button>
                     );
                   })}
@@ -1595,14 +1654,7 @@ export function AccessView({
       value: summary.rows,
       detail: `${summary.items} workspace items`,
       icon: ShieldCheck,
-      className: "bg-status-healthy/10 text-status-healthy",
-    },
-    {
-      label: "Not fully evaluated",
-      value: rows.length,
-      detail: "Restriction evidence not evaluated",
-      icon: Layers3,
-      className: "bg-status-warning/10 text-foreground",
+      className: "bg-signal-success-background text-signal-success-foreground",
     },
     {
       label: "External / flagged",
@@ -1611,7 +1663,7 @@ export function AccessView({
       icon: Flag,
       className:
         flaggedCount > 0
-          ? "bg-status-warning/10 text-status-warning"
+          ? "bg-signal-warning-background text-signal-warning-foreground"
           : "bg-muted text-muted-foreground",
     },
   ];
@@ -1629,7 +1681,6 @@ export function AccessView({
               Review recorded principal and item grants, trace their sources,
               and check evidence coverage.
             </p>
-            <p className="mt-s text-200 leading-300 text-foreground">{GRANT_ONLY_NOTICE}</p>
           </div>
 
           <div
@@ -1680,11 +1731,12 @@ export function AccessView({
             </button>
           </div>
         </div>
-        <p id="access-what-if-reason" className="border-b border-border px-l py-s text-200 text-muted-foreground">
+        {/* The What-if limits stay as its accessible description; the What-if panel shows them visibly. */}
+        <p id="access-what-if-reason" className="sr-only">
           {WHAT_IF_NOTICE}
         </p>
 
-        <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-4 lg:divide-y-0">
+        <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
           {metrics.map((metric) => {
             const Icon = metric.icon;
             return (
@@ -1794,19 +1846,6 @@ export function AccessView({
 
             <label className="min-w-0">
               <span className="mb-xs block text-200 font-semibold text-muted-foreground">
-                Workspace
-              </span>
-              <select
-                disabled
-                aria-describedby="access-workspace-scope"
-                className="atlas-control w-full max-w-full rounded-lg border border-input bg-card px-m text-300 text-foreground"
-              >
-                <option>{data.workspace.displayName}</option>
-              </select>
-            </label>
-
-            <label className="min-w-0">
-              <span className="mb-xs block text-200 font-semibold text-muted-foreground">
                 Evidence coverage
               </span>
               <select
@@ -1889,29 +1928,22 @@ export function AccessView({
                 Export CSV
               </button>}
             </div>
-            <p id="access-workspace-scope" className="mt-s text-200 text-muted-foreground">
-              This review is scoped to the active workspace snapshot.
-            </p>
-            <p id="access-coverage-help" className="mt-xs text-200 text-muted-foreground">
+            <p id="access-coverage-help" className="sr-only">
               Coverage filters include pairs with any matching evidence layer.
               A denied evidence read does not mean access is denied.
             </p>
           </div>
         </div>
 
-        <div className="atlas-row flex flex-wrap items-center justify-between gap-s px-l">
-          <div>
-            <h2 className="text-300 font-semibold">
-              {mode === "matrix" ? "Review matrix" : mode === "principals" ? "Principals" : "What-if"}
-            </h2>
-            <p className="text-200 text-muted-foreground" aria-live="polite">
-              {filteredRows.length} of {rows.length} recorded grant pairs
-            </p>
-          </div>
-          <span className="text-200 text-muted-foreground">
-            Granted access only; restrictions not evaluated
-          </span>
+        <div className="atlas-row flex flex-wrap items-baseline gap-x-s gap-y-xxs px-l">
+          <h2 className="text-300 font-semibold">
+            {mode === "matrix" ? "Review matrix" : mode === "principals" ? "Principals" : "What-if"}
+          </h2>
+          <p className="text-200 text-muted-foreground" aria-live="polite">
+            {filteredRows.length} of {rows.length} recorded grant pairs
+          </p>
         </div>
+        <AccessEvidenceLegend />
       </Card>
 
       {policyEnabled && (

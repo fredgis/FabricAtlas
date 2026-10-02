@@ -50,8 +50,58 @@ describe("GovernanceCenterView", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("No new priority alert")).toBeInTheDocument();
     expect(
-      screen.getByText("Workspace governance summary"),
-    ).toBeInTheDocument();
+      screen.queryByText("Workspace governance summary"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/first validated snapshot arms the Radar/),
+    ).not.toBeInTheDocument();
+    for (const tab of screen.getAllByRole("tab")) {
+      expect(tab).toHaveClass("grow");
+      expect(tab).not.toHaveClass("flex-1");
+    }
+  });
+
+  it("groups findings by rule with compact presets and collapsed instances", () => {
+    renderView();
+    expect(screen.getByRole("group", { name: "Finding presets" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "All findings" })).toHaveAttribute("aria-pressed", "true");
+
+    const groups = within(screen.getByRole("list", { name: "Findings by rule" }))
+      .getAllByRole("listitem")
+      .filter((item) => item.parentElement?.getAttribute("aria-label") === "Findings by rule");
+    const total = Number(
+      /of (\d+) findings/.exec(screen.getByText(/of \d+ findings/).textContent ?? "")?.[1],
+    );
+    expect(groups.length).toBeGreaterThan(0);
+    expect(groups.length).toBeLessThan(total);
+    expect(screen.getByText(/findings · \d+ rules/)).toBeInTheDocument();
+
+    const toggle = screen.getAllByRole("button", { name: /^Show \d+ findings$/ })[0];
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const instances = screen.getByRole("list", { name: /findings$/ });
+    expect(within(instances).getAllByRole("button", { name: "Open evidence" }).length).toBeGreaterThan(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "External access" }));
+    expect(screen.getByRole("button", { name: "External access" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("splits Coverage into item families, metadata quality and sensitivity views", async () => {
+    renderView();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Coverage/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Coverage/ }));
+    const views = await screen.findByRole("tablist", { name: "Coverage views" });
+    expect(within(views).getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Item families",
+      "Metadata quality",
+      "Sensitivity",
+    ]);
+    expect(screen.queryByRole("heading", { name: "Label distribution" })).toBeNull();
+
+    fireEvent.mouseDown(within(views).getByRole("tab", { name: "Sensitivity" }));
+    expect(await screen.findByRole("heading", { name: "Label distribution" })).toBeInTheDocument();
+    expect(screen.queryByRole("listbox", { name: "Item family coverage" })).toBeNull();
   });
 
   it("puts the item family inventory and evidence pane first in Coverage", async () => {
@@ -105,7 +155,7 @@ describe("GovernanceCenterView", () => {
     fireEvent.click(screen.getByRole("tab", { name: /Policies & AI/ }));
     expect(screen.getByRole("heading", { name: "AI governance inventory" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "Evidence details" })).toBeVisible();
-    expect(screen.getByText(/Watchlists and Sync Brief are unavailable/)).toBeVisible();
+    expect(screen.queryByText(/Watchlists and Sync Brief are unavailable/)).not.toBeInTheDocument();
     await waitFor(() => expect(onStateChange).toHaveBeenLastCalledWith(expect.objectContaining({
       focus: expect.objectContaining({ governanceSection: "policies-ai", filters: { section: "policies-ai" } }),
     })));

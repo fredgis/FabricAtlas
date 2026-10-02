@@ -90,6 +90,21 @@ describe("syncRunView", () => {
     ]);
   });
 
+  it("names the failing workspace when it is not the one being viewed", () => {
+    const view = syncRunView(
+      input({
+        syncQueue: [
+          { workspaceId: MAIN, status: "completed" },
+          { workspaceId: ORACLE, status: "failed", error: "Invalid UDF endpoint." },
+        ],
+      }),
+    );
+    expect(view.compactLabel).toBe("FGI-ORACLE sync failed");
+    expect(view.failures).toEqual([
+      { workspaceId: ORACLE, workspaceName: "FGI-ORACLE", message: "Invalid UDF endpoint." },
+    ]);
+  });
+
   it("returns to the last synchronization time when idle", () => {
     expect(syncRunView(input()).compactLabel).toBe("synced 5m ago");
     expect(syncRunView(input({ lastSyncedAt: undefined })).compactLabel).toBe(

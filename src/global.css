@@ -302,6 +302,10 @@ body,
   --atlas-evidence-width: 360px;
   --atlas-xray-min-height: 320px;
   --atlas-xray-mobile-height: 480px;
+  /* Named widths: Tailwind's xs/xl width keys resolve to the 4px/20px spacing tokens. */
+  --atlas-dialog-width: 36rem;
+  --atlas-drawer-width: 36rem;
+  --atlas-field-width: 20rem;
 }
 
 :root[data-atlas-density="compact"] {

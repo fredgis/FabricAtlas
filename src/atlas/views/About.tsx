@@ -1,12 +1,12 @@
 import { useState } from "react";
 import {
   Check,
+  ChevronRight,
   Code2,
   Copy,
   ExternalLink,
   GitBranch,
   GitCommitHorizontal,
-  FlaskConical,
   Map,
   Package,
 } from "lucide-react";
@@ -21,11 +21,16 @@ import {
   SNAPSHOT_CONTRACT_ID,
   releaseUrl,
 } from "../release";
-import { atlasFeatureFlags } from "../feature-flags";
+import { atlasFeatureFlags, type AtlasFeatureFlag } from "../feature-flags";
 import {
   PREVIEW_API_REGISTRY,
   previewMaturityLabel,
 } from "../preview-api";
+import {
+  CAPABILITY_STATE_META,
+  groupCapabilities,
+  type CapabilityState,
+} from "../capability-states";
 
 const CLONE_COMMAND = `git clone ${REPOSITORY_URL}.git`;
 
@@ -184,7 +189,7 @@ export function AboutView() {
             Deployment coverage
           </h2>
           <p className="mt-xs text-200 text-muted-foreground">
-            Versions and gated Preview capabilities compiled into this build.
+            Versions and what each gated capability means for this deployment.
           </p>
         </div>
 
@@ -211,48 +216,88 @@ export function AboutView() {
         </div>
 
         <div className="divide-y divide-border">
-          {featureFlags.map((flag) => {
-            const descriptor = PREVIEW_API_REGISTRY[flag.id];
-            return (
-              <section
-                key={flag.id}
-                className="grid gap-m px-l py-m lg:grid-cols-[minmax(0,1fr)_auto_auto]"
-                aria-labelledby={`coverage-${flag.id}`}
-              >
-                <div className="min-w-0">
-                  <h3
-                    id={`coverage-${flag.id}`}
-                    className="flex items-center gap-s text-300 font-semibold"
-                  >
-                    <FlaskConical
-                      className="icon-size-100 text-lineage-upstream"
-                      aria-hidden="true"
-                    />
-                    {descriptor.productName}
-                  </h3>
-                  <p className="mt-xxs text-200 text-muted-foreground">
-                    {descriptor.evidenceBoundary}
-                  </p>
+          {groupCapabilities(featureFlags).map(({ state, flags }) => {
+            const meta = CAPABILITY_STATE_META[state];
+            const headingId = `capability-group-${state}`;
+            const rows = (
+              <ul className="divide-y divide-border">
+                {flags.map((flag) => (
+                  <CapabilityRow key={flag.id} flag={flag} state={state} />
+                ))}
+              </ul>
+            );
+            return meta.collapsed ? (
+              <details key={state} className="group">
+                <summary className="flex min-h-[var(--atlas-touch-target)] cursor-pointer flex-wrap items-baseline gap-x-s px-l py-s hover:bg-accent sm:min-h-[var(--atlas-control-height)]">
+                  <ChevronRight
+                    className="icon-size-200 shrink-0 self-center text-muted-foreground transition-transform group-open:rotate-90 motion-reduce:transition-none"
+                    aria-hidden="true"
+                  />
+                  <CapabilityGroupTitle state={state} count={flags.length} />
+                </summary>
+                {rows}
+              </details>
+            ) : (
+              <section key={state} aria-labelledby={headingId}>
+                <div className="flex flex-wrap items-baseline gap-x-s px-l pb-xs pt-m">
+                  <CapabilityGroupTitle id={headingId} state={state} count={flags.length} />
                 </div>
-                <span className="text-200 text-muted-foreground">
-                  {previewMaturityLabel(descriptor.maturity)} ·{" "}
-                  {descriptor.apiVersion}
-                </span>
-                <span
-                  className={
-                    flag.enabled
-                      ? "inline-flex w-fit items-center rounded-md border border-status-healthy/30 bg-status-healthy/10 px-s py-xxs text-200 font-semibold text-status-healthy"
-                      : "inline-flex w-fit items-center rounded-md border border-border bg-secondary px-s py-xxs text-200 font-semibold text-muted-foreground"
-                  }
-                  title={flag.environmentVariable}
-                >
-                  {flag.enabled ? "Enabled" : "Disabled"}
-                </span>
+                {rows}
               </section>
             );
           })}
         </div>
       </Card>
     </div>
+  );
+}
+
+function CapabilityGroupTitle({
+  id,
+  state,
+  count,
+}: {
+  id?: string;
+  state: CapabilityState;
+  count: number;
+}) {
+  const meta = CAPABILITY_STATE_META[state];
+  return (
+    <>
+      <h3 id={id} className="text-300 font-semibold">
+        {meta.label} <span className="font-normal text-muted-foreground">({count})</span>
+      </h3>
+      <span className="text-200 text-muted-foreground">{meta.description}</span>
+    </>
+  );
+}
+
+function CapabilityRow({
+  flag,
+  state,
+}: {
+  flag: AtlasFeatureFlag;
+  state: CapabilityState;
+}) {
+  const descriptor = PREVIEW_API_REGISTRY[flag.id];
+  return (
+    <li className="px-l py-s">
+      <div className="flex flex-wrap items-center gap-x-s gap-y-xxs">
+        <h4 id={`coverage-${flag.id}`} className="text-300 font-semibold">
+          {descriptor.productName}
+        </h4>
+        <span className="text-200 text-muted-foreground">
+          {previewMaturityLabel(descriptor.maturity)} · {descriptor.apiVersion}
+        </span>
+      </div>
+      <p className="mt-xxs text-200 text-muted-foreground">
+        {descriptor.evidenceBoundary}
+      </p>
+      {state === "available-off" && (
+        <p className="mt-xxs text-200 text-muted-foreground">
+          Enable with <code className="font-mono">{flag.environmentVariable}</code>
+        </p>
+      )}
+    </li>
   );
 }

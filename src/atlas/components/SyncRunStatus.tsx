@@ -346,6 +346,9 @@ export function SyncRunDetailed({ onViewRun }: { onViewRun?: () => void }) {
     const onlyActive =
       view.failures.length === 1 &&
       view.failures[0].workspaceId === activeWorkspaceId;
+    const activeFailed = view.failures.some(
+      (failure) => failure.workspaceId === activeWorkspaceId,
+    );
     return (
       <BannerShell
         tone="destructive"
@@ -353,7 +356,9 @@ export function SyncRunDetailed({ onViewRun }: { onViewRun?: () => void }) {
         title={
           view.failures.length > 1
             ? `${view.failures.length} workspaces failed to sync`
-            : "The last synchronization failed"
+            : onlyActive
+              ? "The last synchronization failed"
+              : `${view.failures[0].workspaceName} failed to sync`
         }
         description={
           <>
@@ -368,9 +373,11 @@ export function SyncRunDetailed({ onViewRun }: { onViewRun?: () => void }) {
               ))}
             </div>
             <span className="mt-xs block">
-              {view.lastSyncedAt
-                ? `The last validated snapshot, published ${relativeTime(view.lastSyncedAt)}, is still shown.`
-                : "No snapshot was published for this workspace."}
+              {!view.lastSyncedAt
+                ? "No snapshot was published for this workspace."
+                : activeFailed
+                  ? `The last validated snapshot, published ${relativeTime(view.lastSyncedAt)}, is still shown.`
+                  : `You are viewing ${data.workspace.displayName}, whose validated snapshot was published ${relativeTime(view.lastSyncedAt)}.`}
             </span>
           </>
         }

@@ -380,7 +380,36 @@ describe("AccessView", () => {
     expect(screen.getByText(GRANT_ONLY_NOTICE)).toBeVisible();
     expect(screen.queryByText(/effective permission|reachable pairs|no restrictions|none observed/i))
       .not.toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Workspace" })).toBeDisabled();
+    expect(screen.queryByRole("combobox", { name: "Workspace" })).toBeNull();
+  });
+
+  it("states evidence once in a legend and keeps rows to compact badges", () => {
+    renderAccess();
+    const legend = screen.getByRole("region", { name: "Access evidence legend" });
+    expect(
+      within(legend).getAllByRole("term").map((term) => term.textContent),
+    ).toEqual(["Granted", "Partial", "Unknown", "Denied"]);
+    expect(within(legend).getByText(GRANT_ONLY_NOTICE)).toBeInTheDocument();
+
+    const rows = screen.getAllByRole("option", { name: /Review .+ access to/ });
+    for (const row of rows) {
+      expect(within(row).getByText("Partial")).toHaveAttribute(
+        "title",
+        expect.stringMatching(/Evaluated: .+Unknown or incomplete layers:/),
+      );
+      expect(row).toHaveAccessibleName(/Restrictions not evaluated/);
+    }
+    expect(screen.queryByText(/^Restrictions: not evaluated$/)).toBeNull();
+    expect(screen.queryByText(/^Not evaluated$/)).toBeNull();
+    expect(screen.queryByText(/^Evaluated: /)).toBeNull();
+    expect(screen.queryByText(/^\d+ recorded grants$/)).toBeNull();
+    expect(screen.queryByText("No recorded flags")).toBeNull();
+    expect(screen.queryByText("Not fully evaluated")).toBeNull();
+    expect(screen.queryByText("Granted access only; restrictions not evaluated")).toBeNull();
+    expect(screen.getByText(WHAT_IF_NOTICE)).toHaveClass("sr-only");
+
+    fireEvent.click(screen.getByRole("button", { name: "Principals" }));
+    expect(screen.getAllByText(/Evaluated layers across recorded pairs/)[0]).toHaveClass("sr-only");
   });
 
   it.each(["Enter", " "])("opens evidence with %s and restores focus on Escape", (key) => {

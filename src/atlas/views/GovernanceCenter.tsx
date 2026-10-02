@@ -1,8 +1,8 @@
 import {
-  Activity,
   ArrowRight,
   CheckCircle2,
   CheckCheck,
+  ChevronDown,
   Clock3,
   Download,
   FileClock,
@@ -10,7 +10,6 @@ import {
   Gauge,
   GitCompareArrows,
   History,
-  KeyRound,
   Layers3,
   Radar as RadarIcon,
   RotateCcw,
@@ -80,6 +79,7 @@ import { Card, SectionLabel, cn } from "../ui";
 import { SensitivityView } from "./Sensitivity";
 import { PoliciesAiSection } from "./PoliciesAi";
 import { buildAiGovernanceInventory } from "../policies-ai";
+import { groupFindingsByRule } from "../finding-groups";
 
 const PostureRadar = lazy(() => import("../components/PostureRadar").then(
   (module) => ({ default: module.PostureRadar }),
@@ -87,30 +87,25 @@ const PostureRadar = lazy(() => import("../components/PostureRadar").then(
 
 const SEVERITY_META: Record<
   GovernanceSeverity,
-  { label: string; className: string; dot: string }
+  { label: string; className: string }
 > = {
   critical: {
     label: "Critical",
     className:
-      "border-status-failing/35 bg-status-failing/10 text-status-failing",
-    dot: "bg-status-failing",
+      "border-signal-danger-foreground/20 bg-signal-danger-background text-signal-danger-foreground",
   },
   high: {
     label: "High",
     className:
-      "border-status-warning/35 bg-status-warning/10 text-status-warning",
-    dot: "bg-status-warning",
+      "border-signal-warning-foreground/20 bg-signal-warning-background text-signal-warning-foreground",
   },
   medium: {
     label: "Medium",
     className: "border-primary/30 bg-primary/10 text-brand-foreground",
-    dot: "bg-primary",
   },
   low: {
     label: "Low",
-    className:
-      "border-lineage-neutral/30 bg-lineage-neutral/10 text-muted-foreground",
-    dot: "bg-lineage-neutral",
+    className: "border-border bg-muted text-muted-foreground",
   },
 };
 
@@ -579,19 +574,6 @@ export function GovernanceCenterView({
     );
   }, [changeDomain, changeSearch, snapshotChanges]);
 
-  const applicableCoverage = coverage.metrics.filter((metric) => metric.percentage != null);
-  const coverageScore = applicableCoverage.length ? Math.round(
-    applicableCoverage
-      .reduce(
-        (total, metric, _index, values) =>
-          total + (metric.percentage ?? 0) / values.length,
-        0,
-      ),
-  ) : null;
-  const priorityFindings = findings.filter(
-    (finding) =>
-      finding.severity === "critical" || finding.severity === "high",
-  ).length;
   const currentChanges =
     history.current == null
       ? 0
@@ -913,46 +895,6 @@ export function GovernanceCenterView({
               </span>
             </div>
           </div>
-
-          <details className="mt-s text-200">
-            <summary className="cursor-pointer py-xs text-200 text-muted-foreground">
-              Workspace governance summary
-            </summary>
-            <div className="grid grid-cols-2 gap-s border-t border-border p-m lg:grid-cols-4">
-              {[
-                {
-                  label: "Open findings",
-                  value: findings.length,
-                  detail: `${priorityFindings} high priority`,
-                },
-                {
-                  label: "Latest changes",
-                  value: currentChanges,
-                  detail: history.summaries.length > 1 ? "Since previous sync" : "Needs two snapshots",
-                },
-                {
-                  label: "Coverage",
-                  value: coverageScore == null ? "N/A" : `${coverageScore}%`,
-                  detail: "Across available metadata",
-                },
-                {
-                  label: "History",
-                  value: history.summaries.length,
-                  detail: "Validated snapshots",
-                },
-              ].map((metric) => (
-                <div key={metric.label} className="rounded-lg bg-secondary/60 p-m">
-                  <div className="atlas-score font-numeric text-400 font-bold" data-score-band={metric.label === "Coverage" ? scoreBand(coverageScore) : undefined}>
-                    {metric.value}
-                  </div>
-                  <div className="text-200 font-semibold">{metric.label}</div>
-                  <div className="mt-xxs text-100 text-muted-foreground">
-                    {metric.detail}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </details>
         </div>
 
         <Tabs.List
@@ -965,7 +907,7 @@ export function GovernanceCenterView({
                 type="button"
                 onClick={() => setSection(id)}
                 title={detail}
-                className="atlas-line-tab flex-1 focus-visible:ring-inset focus-visible:ring-offset-0"
+                className="atlas-line-tab grow focus-visible:ring-inset focus-visible:ring-offset-0"
               >
                 <Icon className="icon-size-200" aria-hidden="true" />
                 {label}
@@ -1199,13 +1141,14 @@ export function RadarPanel({
                 ? radarReviewHeadline(entries.length)
                 : "What became risky since the last sync"}
           </h2>
-          <p className="mt-xxs text-200 text-muted-foreground">
-            {firstSnapshotBaseline
-              ? "The first validated snapshot arms the Radar; the next sync will produce risk deltas."
-              : ready && entries.length > 0
+          {/* The first-snapshot baseline body already explains what happens next. */}
+          {!firstSnapshotBaseline && (
+            <p className="mt-xxs text-200 text-muted-foreground">
+              {ready && entries.length > 0
                 ? "Detected between the two latest validated snapshots. Review key signals below."
                 : "New high-priority findings and dangerous access, sensitivity, lineage, removal or job failure changes only."}
-          </p>
+            </p>
+          )}
         </div>
         {ready && entries.length > 0 && (
           <button
@@ -1343,10 +1286,10 @@ export function RadarPanel({
                     <div className="flex flex-wrap items-center gap-s">
                       <span
                         className={cn(
-                          "rounded-full px-s py-xxs text-100 font-semibold uppercase",
+                          "rounded-full px-s py-xxs text-200 font-semibold capitalize",
                           entry.severity === "critical"
-                            ? "bg-status-failing/10 text-status-failing"
-                            : "bg-status-warning/10 text-status-warning",
+                            ? "bg-signal-danger-background text-signal-danger-foreground"
+                            : "bg-signal-warning-background text-signal-warning-foreground",
                         )}
                       >
                         {entry.severity}
@@ -1740,31 +1683,51 @@ function FindingsSection({
 }) {
   const activeFilters =
     search || severity !== "all" || category !== "all" || pillar;
+  const activePreset = pillar || severity !== "all"
+    ? undefined
+    : !search && category === "all"
+      ? "all"
+      : search === "external access" && category === "access"
+        ? "external"
+        : !search && category === "metadata"
+          ? "metadata"
+          : search === "failed" && category === "operations"
+            ? "failures"
+            : undefined;
+  const groups = useMemo(() => groupFindingsByRule(findings), [findings]);
+  const [openRules, setOpenRules] = useState<Set<string>>(new Set());
+  const listId = useId();
+  const toggleRule = (rule: string) =>
+    setOpenRules((current) => {
+      const next = new Set(current);
+      if (next.has(rule)) next.delete(rule);
+      else next.add(rule);
+      return next;
+    });
+  const findingActions = (finding: GovernanceFinding) => (
+    <div className="flex flex-wrap items-center gap-s">
+      <button
+        type="button"
+        onClick={() => onNavigate(finding)}
+        className="atlas-control inline-flex items-center gap-s px-s font-semibold text-primary hover:underline"
+      >
+        Open evidence
+        <ArrowRight className="icon-size-100" />
+      </button>
+      <GovernanceExceptionControl
+        findingId={finding.id}
+        findingTitle={finding.title}
+        exception={exceptions.get(finding.id)}
+        canEdit={canManageExceptions}
+        loading={exceptionsLoading}
+        pending={exceptionPendingIds.has(finding.id)}
+        onSave={onSaveException}
+        onRemove={onRemoveException}
+      />
+    </div>
+  );
   return (
     <div className="flex flex-col gap-l">
-      <div className="grid gap-s sm:grid-cols-2 xl:grid-cols-4">
-        {[
-          ["all", "All findings", ShieldCheck],
-          ["external", "External access", KeyRound],
-          ["metadata", "Metadata gaps", Layers3],
-          ["failures", "Failed operations", Activity],
-        ].map(([id, label, Icon]) => (
-          <button
-            key={id as string}
-            type="button"
-            onClick={() =>
-              onPreset(id as "all" | "external" | "metadata" | "failures")
-            }
-            className="flex items-center gap-m rounded-xl border border-border bg-card p-m text-left hover:border-primary/40 hover:bg-primary/5"
-          >
-            <span className="flex icon-size-600 items-center justify-center rounded-xl bg-primary/10 text-brand-foreground">
-              <Icon className="icon-size-200" aria-hidden="true" />
-            </span>
-            <span className="text-300 font-semibold">{label as string}</span>
-          </button>
-        ))}
-      </div>
-
       <Card className="overflow-hidden">
         {pillar && (
           <div className="flex items-center justify-between gap-m border-b border-border bg-primary/5 px-l py-s">
@@ -1781,7 +1744,31 @@ function FindingsSection({
             </button>
           </div>
         )}
-        <div className="atlas-toolbar flex flex-col gap-s border-b border-border bg-secondary/55 p-m lg:flex-row lg:items-center">
+        <div className="atlas-toolbar flex flex-col gap-s border-b border-border bg-secondary/55 p-m">
+          <div role="group" aria-label="Finding presets" className="flex flex-wrap gap-s">
+            {([
+              ["all", "All findings"],
+              ["external", "External access"],
+              ["metadata", "Metadata gaps"],
+              ["failures", "Failed operations"],
+            ] as const).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                aria-pressed={activePreset === id}
+                onClick={() => onPreset(id)}
+                className={cn(
+                  "atlas-control rounded-full border px-m text-200 font-semibold transition-colors",
+                  activePreset === id
+                    ? "border-primary/40 bg-primary/10 text-brand-foreground"
+                    : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-col gap-s lg:flex-row lg:items-center">
           <label className="relative min-w-0 flex-1">
             <span className="sr-only">Search governance findings</span>
             <Search className="icon-size-200 pointer-events-none absolute left-m top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -1830,12 +1817,14 @@ function FindingsSection({
               Reset
             </button>
           )}
+          </div>
         </div>
         <div className="flex items-center justify-between border-b border-border px-l py-m">
           <div>
             <h2 className="text-400 font-semibold">Action queue</h2>
             <p className="text-200 text-muted-foreground">
-              {findings.length} of {total} findings
+              {findings.length} of {total} findings · {groups.length}{" "}
+              {groups.length === 1 ? "rule" : "rules"}
             </p>
           </div>
         </div>
@@ -1853,65 +1842,86 @@ function FindingsSection({
             </p>
           </div>
         ) : (
-          <div className="grid gap-s p-s xl:grid-cols-2">
-            {findings.map((finding) => {
-              const meta = SEVERITY_META[finding.severity];
+          <ul aria-label="Findings by rule" className="divide-y divide-border">
+            {groups.map((group) => {
+              const meta = SEVERITY_META[group.severity];
+              const single = group.findings.length === 1 ? group.findings[0] : undefined;
+              const open = !single && (Boolean(search) || openRules.has(group.rule));
+              const regionId = `${listId}-${group.rule}`;
               return (
-                <article
-                  key={finding.id}
-                  className="flex flex-col rounded-xl border border-border bg-card p-m"
-                >
-                  <div className="flex items-start gap-m">
-                    <span className={`mt-xs h-2.5 w-2.5 shrink-0 rounded-full ${meta.dot}`} />
-                    <div className="min-w-0 flex-1">
+                <li key={group.rule} className="px-l py-m">
+                  <div className="flex flex-col gap-s lg:flex-row lg:items-start lg:justify-between lg:gap-l">
+                    <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-s">
                         <span
                           className={cn(
-                            "rounded-md border px-s py-xxs text-100 font-semibold uppercase tracking-wide",
+                            "rounded-md border px-s py-xxs text-200 font-semibold",
                             meta.className,
                           )}
                         >
                           {meta.label}
                         </span>
-                        <span className="text-100 font-semibold uppercase tracking-wide text-muted-foreground">
-                          {CATEGORY_LABEL[finding.category]}
+                        <span className="text-200 text-muted-foreground">
+                          {CATEGORY_LABEL[group.category]}
                         </span>
                       </div>
-                      <h3 className="mt-s text-300 font-semibold">
-                        {finding.title}
+                      <h3 className="mt-xs text-300 font-semibold">
+                        {single ? single.title : `${group.label} · ${group.findings.length} findings`}
                       </h3>
-                      <p className="mt-xs text-200 leading-300 text-muted-foreground">
-                        {finding.detail}
+                      {single && (
+                        <p className="mt-xxs text-200 leading-300 text-muted-foreground">
+                          {single.detail}
+                        </p>
+                      )}
+                      <p className="mt-xxs text-200 leading-300 text-foreground">
+                        {group.recommendation}
                       </p>
                     </div>
+                    {single ? (
+                      findingActions(single)
+                    ) : (
+                      <button
+                        type="button"
+                        aria-expanded={open}
+                        aria-controls={regionId}
+                        disabled={Boolean(search)}
+                        onClick={() => toggleRule(group.rule)}
+                        className="atlas-control inline-flex shrink-0 items-center gap-s self-start rounded-lg border border-border bg-card px-m text-200 font-semibold hover:bg-accent disabled:cursor-default"
+                      >
+                        <ChevronDown
+                          className={cn("icon-size-100 transition-transform motion-reduce:transition-none", !open && "-rotate-90")}
+                          aria-hidden="true"
+                        />
+                        {open ? "Hide findings" : `Show ${group.findings.length} findings`}
+                      </button>
+                    )}
                   </div>
-                  <div className="mt-m rounded-lg bg-secondary px-m py-s text-200 text-muted-foreground">
-                    {finding.recommendation}
-                  </div>
-                  <div className="atlas-row mt-m flex flex-wrap items-center gap-s">
-                    <button
-                      type="button"
-                      onClick={() => onNavigate(finding)}
-                      className="atlas-control inline-flex items-center gap-s px-s font-semibold text-primary hover:underline"
+                  {open && (
+                    <ul
+                      id={regionId}
+                      aria-label={`${group.label} findings`}
+                      className="mt-m divide-y divide-border rounded-lg border border-border"
                     >
-                      Open evidence
-                      <ArrowRight className="icon-size-100" />
-                    </button>
-                    <GovernanceExceptionControl
-                      findingId={finding.id}
-                      findingTitle={finding.title}
-                      exception={exceptions.get(finding.id)}
-                      canEdit={canManageExceptions}
-                      loading={exceptionsLoading}
-                      pending={exceptionPendingIds.has(finding.id)}
-                      onSave={onSaveException}
-                      onRemove={onRemoveException}
-                    />
-                  </div>
-                </article>
+                      {group.findings.map((finding) => (
+                        <li
+                          key={finding.id}
+                          className="flex flex-col gap-s px-m py-s lg:flex-row lg:items-center lg:justify-between"
+                        >
+                          <div className="min-w-0">
+                            <h4 className="text-300 font-semibold">{finding.title}</h4>
+                            <p className="text-200 leading-300 text-muted-foreground">
+                              {finding.detail}
+                            </p>
+                          </div>
+                          {findingActions(finding)}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
               );
             })}
-          </div>
+          </ul>
         )}
       </Card>
     </div>
@@ -2065,13 +2075,13 @@ function ChangesSection({
               <div className="flex flex-wrap items-start gap-s">
                 <span
                   className={cn(
-                    "rounded-md border px-s py-xxs text-100 font-semibold uppercase tracking-wide",
+                    "rounded-md border px-s py-xxs text-200 font-semibold",
                     changeTone(change),
                   )}
                 >
                   {changeAction(change)}
                 </span>
-                <span className="text-100 font-semibold uppercase tracking-wide text-muted-foreground">
+                <span className="text-200 font-semibold text-muted-foreground">
                   {CHANGE_DOMAIN_LABEL[change.domain]}
                 </span>
               </div>
@@ -2233,8 +2243,26 @@ function CoverageSection({
   const sectionEntries = Object.entries(syncSections ?? {}).sort(
     ([left], [right]) => left.localeCompare(right),
   );
+  const [view, setView] = useState<"families" | "quality" | "sensitivity">("families");
+  const missingValues = diagnostics.metrics.some((metric) => metric.state === "no-values");
+  const viewTrigger =
+    "atlas-control rounded-md px-m text-200 font-semibold text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-inset focus-visible:ring-offset-0 data-[state=active]:bg-card data-[state=active]:text-brand-foreground data-[state=active]:shadow-fabric-2";
   return (
-    <div className="flex flex-col gap-l">
+    <Tabs.Root
+      value={view}
+      onValueChange={(value) => setView(value as typeof view)}
+      className="flex flex-col gap-l"
+    >
+      <Tabs.List
+        aria-label="Coverage views"
+        className="inline-flex max-w-full flex-wrap gap-xxs self-start rounded-lg border border-border bg-secondary p-xxs"
+      >
+        <Tabs.Trigger value="families" className={viewTrigger}>Item families</Tabs.Trigger>
+        <Tabs.Trigger value="quality" className={viewTrigger}>Metadata quality</Tabs.Trigger>
+        <Tabs.Trigger value="sensitivity" className={viewTrigger}>Sensitivity</Tabs.Trigger>
+      </Tabs.List>
+
+      <Tabs.Content value="families" className="flex flex-col gap-l">
       <ItemFamilyCoverageSection data={snapshot} />
       {sectionEntries.length > 0 && (
         <Card className="overflow-hidden">
@@ -2255,7 +2283,7 @@ function CoverageSection({
                 </span>
                 <span
                   className={cn(
-                    "rounded-full border px-s py-xxs text-100 font-semibold uppercase tracking-wide",
+                    "rounded-full border px-s py-xxs text-200 font-semibold capitalize",
                     section.status === "complete"
                       ? "border-status-healthy/30 bg-status-healthy/10 text-status-healthy"
                       : section.status === "failed"
@@ -2271,7 +2299,15 @@ function CoverageSection({
           </div>
         </Card>
       )}
+      </Tabs.Content>
 
+      <Tabs.Content value="quality" className="flex flex-col gap-m">
+      {missingValues && (
+        <p role="note" className="text-200 leading-300 text-muted-foreground">
+          &ldquo;No value returned&rdquo; may indicate unavailable metadata, not a
+          confirmed governance failure.
+        </p>
+      )}
       <div className="grid gap-m sm:grid-cols-2 xl:grid-cols-3">
         {diagnostics.metrics.map((metric) => {
           const value =
@@ -2285,6 +2321,7 @@ function CoverageSection({
                     {metric.denominator
                       ? `${metric.numerator} of ${metric.denominator}`
                       : "Not applicable to the current inventory"}
+                    {metric.state === "no-values" && " · No value returned"}
                   </p>
                 </div>
                 <span
@@ -2297,12 +2334,6 @@ function CoverageSection({
               <div className="mt-m">
                 <ScoreMeter label={`${metric.label} coverage`} value={value} />
               </div>
-              {metric.state === "no-values" && (
-                <p className="mt-s text-200 text-muted-foreground">
-                  No value was returned. This may indicate unavailable metadata,
-                  not a confirmed governance failure.
-                </p>
-              )}
             </Card>
           );
         })}
@@ -2314,8 +2345,11 @@ function CoverageSection({
           Historical coverage is still loading.
         </div>
       )}
+      </Tabs.Content>
 
-      <SensitivityView embedded />
-    </div>
+      <Tabs.Content value="sensitivity">
+        <SensitivityView embedded />
+      </Tabs.Content>
+    </Tabs.Root>
   );
 }

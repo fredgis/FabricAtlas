@@ -4,8 +4,6 @@ import { relativeTime } from "../model";
 import { useAtlas } from "../store";
 import { Card } from "../ui";
 import { formatRunStart } from "../workspace-sync";
-import { HUB_WORKSPACE_SELECT_ID } from "../workspace-switch";
-import { WorkspaceSelector } from "./WorkspaceSelector";
 
 function portalWorkspaceUrl(workspaceId: string): string {
   const portal = (
@@ -56,11 +54,13 @@ export function WorkspaceOverviewPanel() {
         <header className="border-b border-border p-l">
           <h2 className="text-400 font-semibold leading-400">Active workspace</h2>
           <p className="mt-xxs text-200 leading-200 text-muted-foreground">
-            Every Atlas page reads the snapshot of this workspace.
+            Every Atlas page reads the snapshot of this workspace.{" "}
+            {workspaceScopes.length > 1
+              ? "Switch workspaces from the header."
+              : "Only one workspace is in the shared Atlas scope."}
           </p>
         </header>
         <div className="flex flex-col gap-l p-l">
-          <WorkspaceSelector id={HUB_WORKSPACE_SELECT_ID} />
           <dl>
             <Field label="Name">{workspace.displayName}</Field>
             <Field label="Fabric workspace ID">

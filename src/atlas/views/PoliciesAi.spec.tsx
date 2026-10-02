@@ -39,22 +39,24 @@ describe("PoliciesAiSection", () => {
     expect(screen.queryByText(/^(AI.safe|AI readiness|Compliant|Not exposed)$/i)).not.toBeInTheDocument();
   });
 
-  it("uses one honest unsupported-feature note instead of decorative disabled cards", () => {
+  it("keeps unrelated build notes and empty policy prose out of the AI inventory", () => {
     render(<PoliciesAiSection {...props()} />);
     expect(screen.queryByRole("button", { name: /Watchlists|Sync Brief/ })).not.toBeInTheDocument();
-    expect(screen.getByText(/Watchlists and Sync Brief are unavailable/)).toBeVisible();
+    expect(screen.queryByText(/Watchlists and Sync Brief are unavailable/)).not.toBeInTheDocument();
     expect(screen.getByText(/Policy collection is off/)).toBeVisible();
+    expect(screen.queryByText("Workspace settings only, not item restriction or exposure decisions.")).not.toBeInTheDocument();
+    expect(screen.getByText(/AI and Copilot exposure is not collected/)).toBeVisible();
   });
 
-  it("opens useful evidence by default on desktop, with four real summaries and a stable pane after filtering", () => {
+  it("opens useful evidence by default on desktop, with three real summaries and a stable pane after filtering", () => {
     render(<PoliciesAiSection {...props()} />);
     expect(screen.getByRole("region", { name: "Evidence details: Recorded agent" })).toBeVisible();
     expect(screen.getByRole("button", { name: /Inspect Recorded agent/ })).toHaveAttribute("aria-pressed", "true");
     const summary = screen.getByLabelText("Policy and AI inventory summary");
-    expect(within(summary).getAllByRole("definition").map((value) => value.textContent)).toEqual(["0", "1", "0", "1"]);
+    expect(within(summary).getAllByRole("definition").map((value) => value.textContent)).toEqual(["0", "1", "0"]);
     const inventory = screen.getByRole("table", { name: /AI governance inventory/ });
     expect(within(inventory).getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
-      "Asset", "Owner", "Sources", "Protection evidence", "AI exposure",
+      "Asset", "Owner", "Sources", "Protection evidence",
     ]);
     expect(inventory.parentElement?.parentElement).toHaveClass("atlas-ai-workbench");
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "no match" } });

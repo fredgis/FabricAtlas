@@ -114,25 +114,46 @@ describe("App global workspace selector", () => {
         expect(params.get("ctid")).toBe("tenant");
     });
 
-    it("restores focus to the Workspace Hub selector after its view remounts", async () => {
+    it("keeps the Workspace Hub on the shell switcher and restores its section after a switch", async () => {
         window.history.replaceState(null, "", "/?workspace.section=workspace#workspace");
         renderApp();
-        await headerSelector();
+        const selector = await headerSelector();
 
-        const original = document.getElementById(HUB_WORKSPACE_SELECT_ID) as HTMLSelectElement;
-        original.focus();
-        fireEvent.change(original, { target: { value: SECOND_WORKSPACE } });
+        expect(document.getElementById(HUB_WORKSPACE_SELECT_ID)).toBeNull();
+        expect(
+            screen.getAllByRole("combobox", { name: "Active workspace" }),
+        ).toEqual([selector]);
+        expect(screen.getByText(/Switch workspaces from the header/)).toBeInTheDocument();
 
-        await waitFor(() => {
-            const remounted = document.getElementById(HUB_WORKSPACE_SELECT_ID);
-            expect(remounted).not.toBe(original);
-            expect(remounted).toHaveFocus();
-        });
+        selector.focus();
+        fireEvent.change(selector, { target: { value: SECOND_WORKSPACE } });
+        await frames();
+
+        expect(selector).toHaveValue(SECOND_WORKSPACE);
+        expect(selector).toHaveFocus();
         expect(screen.getByRole("tab", { name: "Workspace" })).toHaveAttribute(
             "aria-selected",
             "true",
         );
         expect(window.location.search).toContain("workspace.section=workspace");
+    });
+
+    it("keeps Map & lineage and Access Review free of local workspace selectors", async () => {
+        window.history.replaceState(null, "", "/#map");
+        const { unmount } = renderApp();
+        const selector = await headerSelector();
+        expect(
+            screen.getAllByRole("combobox", { name: "Active workspace" }),
+        ).toEqual([selector]);
+        unmount();
+
+        window.history.replaceState(null, "", "/#access");
+        renderApp();
+        const accessSelector = await headerSelector();
+        expect(
+            screen.getAllByRole("combobox", { name: "Active workspace" }),
+        ).toEqual([accessSelector]);
+        expect(screen.queryByRole("combobox", { name: "Workspace" })).toBeNull();
     });
 
     it("offers the selector in the mobile navigation drawer and closes it after switching", async () => {
