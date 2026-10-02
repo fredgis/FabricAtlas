@@ -25,6 +25,9 @@ services:
       - http://127.0.0.1:5173
       - https://agile-lotus-88c0a929ca-centralus.webapp.fabricapps.net
       - https://epic-grass-a6e15dee0b-centralus.webapp.fabricapps.net
+      - http://localhost:5174
+      - http://127.0.0.1:5174
+      - https://sleek-mango-daf3df4502-centralus.webapp.fabricapps.net
   data:
     enabled: true
     dialect: mssql
