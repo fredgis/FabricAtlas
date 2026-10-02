@@ -48,6 +48,10 @@ const mocks = vi.hoisted(() => {
     mapSyncToAtlas: vi.fn(),
   };
 });
+const coreShadow = vi.hoisted(() => ({
+  startCoreCollectorShadow: vi.fn(),
+  completeCoreCollectorShadow: vi.fn(),
+}));
 
 vi.mock("@/lib/rayfin-client", () => ({
   getRayfinClient: () => ({ data: mocks.data }),
@@ -61,6 +65,7 @@ vi.mock("./live-sync", async (importOriginal) => {
     mapSyncToAtlas: mocks.mapSyncToAtlas,
   };
 });
+vi.mock("./core-collector-shadow", () => coreShadow);
 
 const workspaceId = "11111111-1111-4111-8111-111111111111";
 const identity = {
@@ -226,6 +231,8 @@ describe("Rayfin snapshot persistence", () => {
     mocks.mapSyncToAtlas
       .mockReset()
       .mockReturnValue(structuredClone(SAMPLE_DATA));
+    coreShadow.startCoreCollectorShadow.mockReset().mockResolvedValue(undefined);
+    coreShadow.completeCoreCollectorShadow.mockReset();
   });
 
   it("does not publish a Workspace marker when an individual write fails", async () => {
@@ -426,6 +433,25 @@ describe("Rayfin snapshot persistence", () => {
       }),
     ).rejects.toThrow(/configured Atlas sync administrator/i);
     expect(mocks.invokeSyncAll).not.toHaveBeenCalled();
+  });
+
+  it("runs the Rayfin Core collector in shadow with the Python correlation", async () => {
+    const shadowEnvelope = { schemaVersion: 2, syncMode: "base" };
+    coreShadow.startCoreCollectorShadow.mockResolvedValue(shadowEnvelope);
+    const raw = { schemaVersion: 2, syncMode: "complete" };
+    mocks.invokeSyncAll.mockResolvedValue(raw);
+
+    await runFabricSync(false, identity);
+
+    const correlationId = mocks.invokeSyncAll.mock.calls[0][4];
+    expect(coreShadow.startCoreCollectorShadow).toHaveBeenCalledWith(
+      workspaceId,
+      correlationId,
+    );
+    expect(coreShadow.completeCoreCollectorShadow).toHaveBeenCalledWith(
+      shadowEnvelope,
+      raw,
+    );
   });
 
   it("publishes the manifest only after all snapshot rows succeed", async () => {

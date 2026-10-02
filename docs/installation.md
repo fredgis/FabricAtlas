@@ -376,6 +376,18 @@ npm --prefix rayfin\functions run build
 `rayfin functions init` also refreshes Rayfin agent-skill files and `rayfin/.lockfile.json`;
 revert those unrelated changes before committing generated Functions contracts.
 
+For an isolated parity deployment only, enable the browser shadow adapter:
+
+```dotenv
+VITE_ATLAS_CORE_COLLECTOR_SHADOW=true
+```
+
+The existing Python sync and the Rayfin Core Function then start under the same
+correlation ID. Only the Python result can publish the snapshot. Atlas logs the
+bounded parity report after both complete; it never logs either raw payload.
+Leave the flag unset in stable deployments until the real comparison gate
+passes.
+
 ## Scripts
 
 | Command | What it does |

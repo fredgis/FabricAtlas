@@ -23,6 +23,10 @@ import {
   toItemType,
   type SyncIdentity,
 } from "./live-sync";
+import {
+  completeCoreCollectorShadow,
+  startCoreCollectorShadow,
+} from "./core-collector-shadow";
 import { normalizeLineageEdges } from "./lineage";
 import { DEPLOYMENT_ID } from "./release";
 import {
@@ -682,6 +686,10 @@ export async function runFabricSync(
   assertSyncActive(signal);
   const attempt = await startSyncAttempt(user, targetWorkspaceId);
   try {
+    const coreShadow = startCoreCollectorShadow(
+      attempt.workspaceId,
+      attempt.id,
+    );
     const raw = await invokeSyncAll(
       attempt.workspaceId,
       user,
@@ -689,6 +697,7 @@ export async function runFabricSync(
       signal,
       attempt.id,
     );
+    completeCoreCollectorShadow(await coreShadow, raw);
     reportProgress?.(62, "Workspace metadata complete");
     const atlas = mapSyncToAtlas(raw, WS_FALLBACK);
     reportProgress?.(66, "Building the governance catalog");
