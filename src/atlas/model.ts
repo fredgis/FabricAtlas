@@ -171,6 +171,8 @@ export interface Job {
   startedAt: string;
   durationSec: number;
   message?: string;
+  /** Fabric job instance ID, when the collector returned one. Not persisted on JobRun. */
+  runId?: string;
 }
 
 export interface ConfigKV {

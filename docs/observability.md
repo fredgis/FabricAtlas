@@ -1,16 +1,20 @@
-# Observability foundation (Phase 9)
+# Observability and operational incidents (Phase 9)
 
-Fabric Atlas does not collect live monitoring telemetry. The Phase 9 foundation
-adds three things to **Jobs & health**:
+Fabric Atlas does not collect live monitoring telemetry. Phase 9 adds to
+**Jobs & health**, Governance Radar and the incident feeds:
 
 - native links to the Fabric Monitor hub and to the Atlas app's own metrics
 - one model that separates *observed* failures from *inferred* downstream impact
+- allowlisted `OperationalIncident` records written during the existing browser
+  synchronization from sanitized Fabric job history
+- incident changes between two validated snapshots, fed into Governance Radar
+  and into the Sync Brief and Watchlist inputs
 - an explicit status for every monitoring source, including the ones Atlas
   cannot read
 
-Nothing in this foundation adds a collector, a stored incident entity or a
-background poll. When a monitoring source is unavailable, the validated catalog,
-lineage and job history stay usable.
+Nothing here adds a monitoring collector, a scheduled job or a background poll.
+When a monitoring source or the incident entity is unavailable, the validated
+catalog, lineage and job history stay usable.
 
 ## Evidence model
 
@@ -23,18 +27,85 @@ with its own chip.
 | Inferred | A consumer reachable downstream of the failed item | Normalized snapshot lineage (`LineageEdge`) | Dashed **Inferred impact** chip |
 
 - An observed incident carries the source workspace ID, item ID, job type, the
-  run start time (`occurredAt`) and the snapshot capture time (`observedAt`). Its
-  ID is the existing deterministic job search ID, so **Show this run** focuses
-  the exact row in Run history.
+  Fabric job instance ID when the collector returned one (`runId`), the run start
+  (`occurredAt`), the snapshot capture time (`observedAt`) and a stable incident
+  key `incident:v1:<workspace>:<item>:<job type>`. Its ID is the existing
+  deterministic job search ID, so **Show this run** focuses the exact row in Run
+  history.
 - A failure followed by a later run of the same item and job type is history,
   not a current incident. A running latest run is not treated as a failure.
-- Inferred impact is labelled "Not confirmed by monitoring". It walks only
-  downstream edges, never reports the failed item or upstream producers, and
-  records the hop distance. **Open impact in Map & lineage** opens the item in
-  focused impact mode (`?item=<id>&impact=focused#map`).
-- No inferred item is ever promoted to an observed incident. Phase 9 still has
-  to join observed telemetry to verified impact before any downstream item can be
-  shown as affected.
+- Downstream impact walks only downstream edges of the authoritative snapshot
+  lineage, never reports the failed item or upstream producers, and records the
+  hop distance. A consumer is **observed** only when it has its own observed
+  incident in the same snapshot ("also failing (observed)"); every other consumer
+  is **inferred** and "not confirmed by monitoring". **Open impact in Map &
+  lineage** opens the item in focused impact mode (`?item=<id>&impact=focused#map`).
+
+## Stored incident records
+
+`OperationalIncident` (`rayfin/data/OperationalIncident.ts`) stores one row per
+observed incident of a published snapshot. `src/atlas/operational-incident-store.ts`
+builds and writes the rows; `persistSync` calls it after the `Workspace` marker
+is created and before snapshot retention.
+
+- **Allowlist.** Workspace, snapshot, writer, incident key, item ID, item name,
+  item type, job type, run ID, run start, duration, observation time, first
+  observation and the `fabric-job-history` source. Failure reasons,
+  `JobRun.message`, logs, query text, business rows and tokens are never stored.
+  Item IDs and job types outside their expected character sets are skipped and
+  counted; control characters are removed from item names.
+- **Bounds and idempotency.** At most 500 rows per snapshot. Row IDs are
+  deterministic UUIDs of the snapshot and incident key, so a retried write does
+  not duplicate rows, and rows already present are not rewritten.
+- **First observation.** When the same incident key was already failing in the
+  immediately preceding published snapshot, `firstObservedAt` and
+  `firstObservedSnapshotId` are carried over; Jobs & health shows them as
+  "failing since".
+- **Retention.** Rows of the newest `snapshotRetentionCount` snapshots are kept;
+  older rows are deleted, at most 200 per synchronization.
+- **Failure handling.** A missing entity, an invalid row or a failed write only
+  logs a warning; the published snapshot stays valid. Jobs & health then states
+  that incidents are derived from the snapshot job history.
+- **Reads.** Only rows from configured synchronizer writers that pass contract
+  validation are used, and only when they match the same failing run as the
+  incident derived from the snapshot.
+
+## Incident changes, Radar, Sync Brief and Watchlists
+
+`diffIncidents` compares the incidents of two validated snapshots:
+
+| Status | Meaning |
+| --- | --- |
+| Opened | Failing now, not failing in the previous snapshot |
+| Persisting | Failing in both snapshots |
+| Recovered | A newer run of the same item and job type was captured and did not fail |
+| No longer reported | No newer run was captured; the failure may be outside the retained job history |
+
+- **Governance Radar** lists opened incidents once, replacing the new
+  failed-run finding of the same run. An incident is critical only when a
+  downstream consumer has its own observed failure; otherwise it is high. Its
+  detail states the inferred and observed downstream counts and that the failure
+  reason is not collected. The exported digest adds an *Operational incidents
+  opened* section followed by the provenance and limits. **Open evidence** opens
+  the run in Jobs & health.
+- **Sync Brief input.** `incidentBriefSection` groups the deltas and ranks the
+  widest downstream impact; `incidentBriefMarkdown` renders it with the compared
+  snapshot IDs and times, explicit empty groups, and the limits. Jobs & health
+  shows the counts since the previous snapshot and copies this Markdown.
+- **Watchlist input.** `incidentWatchEvents` returns, for watched item IDs, their
+  own opened or recovered incidents (observed) and opened upstream incidents
+  that reach them, labelled with the impact evidence.
+- The Sync Brief (#40) and Watchlists (#38) pages do not exist yet. Both feeds
+  are tested contracts ready for those pages; they are not rendered elsewhere.
+
+Every feed carries these limits:
+
+- Incidents come from Fabric job history captured at synchronization; nothing
+  newer than the snapshot is known.
+- Downstream impact is inferred from snapshot lineage unless the consumer has its
+  own observed failure.
+- Fabric failure reasons, logs, query text and business rows are not collected.
+- Workspace monitoring telemetry and Monitor hub alerts are not collected.
 
 ## Monitoring sources
 
@@ -123,7 +194,7 @@ claims that Fabric returned no detail.
 
 ## Remaining collector blockers
 
-The incident adapter stays unimplemented until each of these is resolved:
+These API-only portions stay deferred:
 
 1. **No read API for alerts.** Monitor hub alerts and App Metrics expose no
    documented read API, so Atlas can only link to them.
@@ -133,14 +204,15 @@ The incident adapter stays unimplemented until each of these is resolved:
 3. **No supported Kusto path.** Reading the monitoring KQL database needs a
    Kusto-audience token and at least Contributor access. The Rayfin Kusto
    connector is not documented, and Fabric Apps Functions use the AppBackend
-   owner identity, which is not proven to have that access.
-4. **No incident persistence contract.** The planned `OperationalIncident` entity,
-   its allowlisted fields (no logs, secrets, query text or business rows) and its
-   retention are not defined or reviewed yet.
-5. **No verified impact join.** Downstream impact stays inferred until an observed
-   telemetry row can be matched to a downstream item by a verified signal rather
-   than by snapshot lineage alone.
-6. **No failure reasons.** Showing Fabric's job error requires a reviewed
+   owner identity, which is not proven to have that access. Incidents therefore
+   come only from job history, not from workspace-monitoring telemetry.
+4. **No verified impact join.** Downstream impact stays inferred unless the
+   consumer has its own observed failure; no telemetry signal yet proves that a
+   consumer was affected by an upstream failure.
+5. **No failure reasons.** Showing Fabric's job error requires a reviewed
    redaction and length policy for `failureReason`, matching changes in the Python
    User Data Function and the Fabric Core collector, and parity tests before any
    message is persisted.
+6. **Synchronization-bound freshness.** Incidents update only when the
+   synchronizer runs a browser synchronization; scheduled collection stays
+   disabled until the scheduling gate passes.

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { AtlasData, Edge, Item, Job } from "./model";
 import {
+  applyIncidentRecords,
+  diffIncidents,
   fabricAppItemUrl,
   incidentImpact,
   MONITORING_SOURCES,
@@ -82,6 +84,7 @@ describe("observed incidents", () => {
       {
         evidence: "observed",
         id: searchJobId(NOTEBOOK, "Notebook run", "2026-10-01T06:00:00.000Z"),
+        key: `incident:v1:${WORKSPACE}:${NOTEBOOK}:notebook run`,
         source: "fabric-job-history",
         workspaceId: WORKSPACE,
         itemId: NOTEBOOK,
@@ -90,10 +93,44 @@ describe("observed incidents", () => {
         jobType: "Notebook run",
         occurredAt: "2026-10-01T06:00:00.000Z",
         observedAt: "2026-10-01T10:00:00.000Z",
+        recorded: false,
         durationSec: 42,
         message: "Spark session ended",
       },
     ]);
+  });
+
+  it("carries the Fabric run ID and overlays a stored record for the same run only", () => {
+    const failed = {
+      ...job(NOTEBOOK, "failed", "2026-10-01T06:00:00.000Z", "Notebook run"),
+      runId: "a0a0a0a0-0000-4000-8000-000000000001",
+    };
+    const [incident] = observedIncidents(data([failed]), "2026-10-02T06:00:00.000Z");
+    expect(incident.runId).toBe(failed.runId);
+
+    const [recorded] = applyIncidentRecords([incident], [
+      {
+        key: incident.key,
+        occurredAt: "2026-10-01T06:00:00.000Z",
+        observedAt: "2026-10-02T06:00:00.000Z",
+        firstObservedAt: "2026-10-01T07:00:00.000Z",
+      },
+    ]);
+    expect(recorded).toMatchObject({
+      recorded: true,
+      firstObservedAt: "2026-10-01T07:00:00.000Z",
+    });
+
+    const [otherRun] = applyIncidentRecords([incident], [
+      {
+        key: incident.key,
+        occurredAt: "2026-09-30T06:00:00.000Z",
+        observedAt: "2026-10-01T06:00:00.000Z",
+        firstObservedAt: "2026-09-30T07:00:00.000Z",
+      },
+    ]);
+    expect(otherRun.recorded).toBe(false);
+    expect(otherRun.firstObservedAt).toBeUndefined();
   });
 
   it("returns nothing when no job history is captured", () => {
@@ -132,6 +169,62 @@ describe("inferred downstream impact", () => {
     );
 
     expect(entry.impact.map((impact) => impact.itemId)).toEqual([REPORT]);
+  });
+
+  it("labels a consumer observed only when it has its own failure in the snapshot", () => {
+    const entries = incidentImpact(
+      data([
+        job(NOTEBOOK, "failed", "2026-10-01T06:00:00.000Z", "Notebook run"),
+        job(MODEL, "failed", "2026-10-01T07:00:00.000Z"),
+      ]),
+    );
+    const notebook = entries.find((entry) => entry.incident.itemId === NOTEBOOK)!;
+    const model = entries.find((entry) => entry.incident.itemId === MODEL)!;
+
+    expect(
+      notebook.impact.map((impact) => [impact.itemId, impact.evidence, impact.observedIncidentId]),
+    ).toEqual([
+      [LAKEHOUSE, "inferred", undefined],
+      [MODEL, "observed", model.incident.id],
+      [REPORT, "inferred", undefined],
+    ]);
+  });
+});
+
+describe("incident deltas between snapshots", () => {
+  const comparison = {
+    previousSnapshotId: "10000000-0000-4000-8000-0000000000a1",
+    currentSnapshotId: "10000000-0000-4000-8000-0000000000a2",
+    previousObservedAt: "2026-10-01T10:00:00.000Z",
+    currentObservedAt: "2026-10-02T10:00:00.000Z",
+  };
+
+  it("separates opened, persisting, recovered and no longer reported incidents", () => {
+    const previous = data([
+      job(NOTEBOOK, "failed", "2026-10-01T06:00:00.000Z", "Notebook run"),
+      job(MODEL, "failed", "2026-10-01T07:00:00.000Z"),
+      job(PIPELINE, "failed", "2026-10-01T05:00:00.000Z", "Pipeline run"),
+    ]);
+    const current = data([
+      job(NOTEBOOK, "failed", "2026-10-02T06:00:00.000Z", "Notebook run"),
+      job(MODEL, "completed", "2026-10-02T07:00:00.000Z"),
+      job(REPORT, "failed", "2026-10-02T08:00:00.000Z", "Refresh"),
+    ]);
+
+    const deltas = diffIncidents(previous, current, comparison);
+
+    expect(deltas.map((delta) => [delta.status, delta.incident.itemId])).toEqual([
+      ["opened", REPORT],
+      ["persisting", NOTEBOOK],
+      ["recovered", MODEL],
+      ["unreported", PIPELINE],
+    ]);
+    expect(deltas[2].recoveredBy).toEqual({
+      status: "completed",
+      startedAt: "2026-10-02T07:00:00.000Z",
+    });
+    expect(deltas[1].incident.occurredAt).toBe("2026-10-02T06:00:00.000Z");
+    expect(deltas[0].incident.observedAt).toBe(comparison.currentObservedAt);
   });
 });
 

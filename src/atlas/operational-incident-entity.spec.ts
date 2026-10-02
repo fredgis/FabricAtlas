@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 // Decorators are inspected through the TypeScript AST because the Vite test
 // transform does not evaluate Rayfin entity metadata.
-const path = resolve('rayfin', 'data', 'ItemRelationsEvidenceSnapshot.ts');
+const path = resolve('rayfin', 'data', 'OperationalIncident.ts');
 const source = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true);
 const entity = source.statements.find(ts.isClassDeclaration)!;
 
@@ -33,18 +33,19 @@ function field(name: string): ts.CallExpression {
   return calls(member)[0];
 }
 
-describe('ItemRelationsEvidenceSnapshot entity', () => {
+describe('OperationalIncident entity', () => {
   const permissions = calls(entity).filter((call) => call.expression.getText() === 'authenticated');
   const rule = (action: string) => permissions.filter((call) => actions(call).includes(action));
   const policy = (action: string) =>
     (option(rule(action)[0], 'policy', 1) as ts.ArrowFunction | undefined)?.body
       .getText(source)
       .replace(/\s+/g, '');
+  const names = entity.members.filter(ts.isPropertyDeclaration).map((member) => member.name.getText());
 
-  it('is registered additively in the schema after the earlier entities', () => {
+  it('is registered additively at the end of the schema', () => {
     const schema = readFileSync(resolve('rayfin', 'data', 'schema.ts'), 'utf8').replace(/\r\n/g, '\n');
-    expect(schema).toContain("ItemRelationsEvidenceSnapshot: ItemRelationsEvidenceSnapshot;");
-    expect(schema).toMatch(/SyncPayloadChunk,\n {2}ItemRelationsEvidenceSnapshot,\n/);
+    expect(schema).toContain('OperationalIncident: OperationalIncident;');
+    expect(schema.trim().endsWith('OperationalIncident,\n];')).toBe(true);
   });
 
   it('shares reads with the app audience and limits writes to the synchronizer', () => {
@@ -57,23 +58,43 @@ describe('ItemRelationsEvidenceSnapshot entity', () => {
     expect(rule('update')).toHaveLength(0);
   });
 
-  it('scopes rows by workspace, snapshot and envelope with bounded text', () => {
-    for (const name of ['id', 'workspace_id', 'snapshotId', 'evidenceId']) {
+  it('stores only allowlisted identity and timing fields', () => {
+    expect(names.sort()).toEqual(
+      [
+        'id',
+        'workspace_id',
+        'snapshotId',
+        'writerEmail',
+        'incidentKey',
+        'itemFabricId',
+        'itemName',
+        'itemType',
+        'jobType',
+        'runId',
+        'occurredAt',
+        'durationSec',
+        'observedAt',
+        'firstObservedAt',
+        'firstObservedSnapshotId',
+        'source',
+        'contractVersion',
+      ].sort(),
+    );
+    for (const forbidden of ['message', 'failureReason', 'error', 'log', 'query', 'payload']) {
+      expect(names).not.toContain(forbidden);
+    }
+    for (const name of ['id', 'workspace_id', 'snapshotId']) {
       expect(field(name).expression.getText()).toBe('uuid');
       expect(option(field(name), 'optional')).toBeUndefined();
     }
-    expect(option(field('correlationId'), 'optional')!.kind).toBe(ts.SyntaxKind.TrueKeyword);
-    expect(field('rowType').arguments.map((argument) => argument.getText())).toEqual([
-      "'manifest'",
-      "'chunk'",
+    expect(field('runId').expression.getText()).toBe('uuid');
+    expect(field('source').arguments.map((argument) => argument.getText())).toEqual([
+      "'fabric-job-history'",
     ]);
     for (const member of entity.members.filter(ts.isPropertyDeclaration)) {
       const [call] = calls(member);
       if (call.expression.getText() !== 'text') continue;
-      expect(Number(option(call, 'max')!.getText())).toBeLessThanOrEqual(3500);
+      expect(Number(option(call, 'max')!.getText())).toBeLessThanOrEqual(240);
     }
-    const names = entity.members.filter(ts.isPropertyDeclaration).map((member) => member.name.getText());
-    expect(names).not.toContain('sourceFabricId');
-    expect(names).not.toContain('accessToken');
   });
 });

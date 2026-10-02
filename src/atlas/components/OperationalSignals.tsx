@@ -1,20 +1,24 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   CircleAlert,
   CircleCheck,
   CircleDashed,
+  ClipboardCopy,
   ExternalLink,
   History,
   Waypoints,
 } from "lucide-react";
 import { ATLAS_CONFIG } from "../config";
+import { incidentBriefMarkdown, incidentBriefSection } from "../incident-feeds";
 import { relativeTime } from "../model";
 import {
+  diffIncidents,
   fabricAppItemUrl,
   fabricPortalContext,
   incidentImpact,
   MONITORING_SOURCES,
   monitorHubUrl,
+  type DownstreamImpact,
   type IncidentImpact,
   type MonitoringSource,
   type ObservedIncident,
@@ -22,6 +26,10 @@ import {
 } from "../observability";
 import { useAtlas } from "../store";
 import { Card, TypeGlyph, cn } from "../ui";
+import {
+  useOperationalIncidentRecords,
+  type IncidentRecordsState,
+} from "../use-operational-incidents";
 import { NativeLink } from "./NativeLink";
 
 const IMPACT_PREVIEW_COUNT = 4;
@@ -189,6 +197,17 @@ function MonitoringSourcesCard({ lastSyncedAt }: { lastSyncedAt?: string }) {
   );
 }
 
+function impactSummaryText(impact: readonly DownstreamImpact[]): string {
+  if (impact.length === 0) return "No downstream consumers in snapshot lineage.";
+  const observed = impact.filter((item) => item.evidence === "observed").length;
+  const inferred = impact.length - observed;
+  const parts = [
+    inferred > 0 && `${inferred} inferred, not confirmed by monitoring`,
+    observed > 0 && `${observed} also failing in this snapshot (observed)`,
+  ].filter(Boolean);
+  return `${impact.length} downstream item${impact.length === 1 ? "" : "s"} in snapshot lineage: ${parts.join("; ")}.`;
+}
+
 function IncidentRow({
   entry,
   onShowRuns,
@@ -220,6 +239,22 @@ function IncidentRow({
             </time>
             {incident.observedAt &&
               ` · captured ${relativeTime(incident.observedAt)}`}
+            {incident.firstObservedAt &&
+              incident.firstObservedAt !== incident.observedAt &&
+              ` · failing since ${exactTime(incident.firstObservedAt)}`}
+          </p>
+          <p className="mt-xxs text-200 text-muted-foreground">
+            {incident.recorded
+              ? "Stored incident record"
+              : "Derived from the snapshot job history"}
+            {incident.runId && (
+              <>
+                {" · Run "}
+                <span className="font-monospace" title={incident.runId}>
+                  {incident.runId.slice(0, 8)}
+                </span>
+              </>
+            )}
           </p>
           {incident.message ? (
             <p className="mt-xs line-clamp-2 break-words text-200 leading-200 text-foreground" title={incident.message}>
@@ -237,18 +272,16 @@ function IncidentRow({
         <div className="flex flex-wrap items-center gap-s">
           <EvidenceChip evidence="inferred" />
           <span className="text-200 text-muted-foreground">
-            {impact.length === 0
-              ? "No downstream consumers in snapshot lineage."
-              : `${impact.length} downstream item${impact.length === 1 ? "" : "s"} in snapshot lineage. Not confirmed by monitoring.`}
+            {impactSummaryText(impact)}
           </span>
         </div>
         {preview.length > 0 && (
           <ul
-            aria-label={`Inferred downstream impact of ${incident.itemName}`}
+            aria-label={`Downstream impact of ${incident.itemName}`}
             className="mt-s flex flex-col gap-xs"
           >
             {preview.map((item) => (
-              <li key={item.itemId} className="flex min-w-0 items-center gap-s text-200">
+              <li key={item.itemId} className="flex min-w-0 flex-wrap items-center gap-s text-200">
                 {item.itemType && <TypeGlyph type={item.itemType} size={20} />}
                 <span className="min-w-0 truncate font-semibold">
                   {item.itemName}
@@ -256,6 +289,14 @@ function IncidentRow({
                 <span className="shrink-0 text-muted-foreground">
                   {item.distance === 1 ? "direct consumer" : `${item.distance} hops`}
                 </span>
+                {item.evidence === "observed" ? (
+                  <span className="inline-flex shrink-0 items-center gap-xxs font-semibold text-foreground">
+                    <CircleAlert className="icon-size-100 text-status-failing" aria-hidden="true" />
+                    also failing (observed)
+                  </span>
+                ) : (
+                  <span className="shrink-0 text-muted-foreground">inferred</span>
+                )}
               </li>
             ))}
             {hidden > 0 && (
@@ -287,6 +328,115 @@ function IncidentRow({
   );
 }
 
+function recordsNote(state: IncidentRecordsState, derivedCount: number): string {
+  switch (state.status) {
+    case "ready":
+      return state.records.length > 0
+        ? `${state.records.length} stored incident record${state.records.length === 1 ? "" : "s"} for this snapshot.`
+        : derivedCount > 0
+          ? "No stored incident record for this snapshot; incidents are derived from its job history."
+          : "No stored incident record for this snapshot.";
+    case "loading":
+      return "Loading stored incident records…";
+    case "error":
+      return "Stored incident records could not be read; incidents are derived from the snapshot job history.";
+    default:
+      return state.reason === "not-deployed"
+        ? "Incident records are not deployed yet; incidents are derived from the snapshot job history."
+        : "Incidents are derived from the snapshot job history.";
+  }
+}
+
+function SincePreviousSnapshot() {
+  const { history, historyLoading } = useAtlas();
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const comparison = useMemo(() => {
+    const [currentSummary, previousSummary] = history.summaries;
+    if (!currentSummary || !previousSummary) return { state: "baseline" as const };
+    const current = history.snapshots.find(
+      (snapshot) => snapshot.snapshotId === currentSummary.snapshotId,
+    );
+    const previous = history.snapshots.find(
+      (snapshot) => snapshot.snapshotId === previousSummary.snapshotId,
+    );
+    if (!current || !previous) return { state: "loading" as const };
+    const context = {
+      previousSnapshotId: previous.snapshotId,
+      currentSnapshotId: current.snapshotId,
+      previousObservedAt: previous.syncedAt,
+      currentObservedAt: current.syncedAt,
+    };
+    return {
+      state: "ready" as const,
+      section: incidentBriefSection(
+        diffIncidents(previous.catalog, current.catalog, context),
+        context,
+      ),
+    };
+  }, [history]);
+
+  if (comparison.state === "baseline") {
+    return (
+      <p className="text-200 text-muted-foreground">
+        No previous snapshot to compare incidents with yet.
+      </p>
+    );
+  }
+  if (comparison.state === "loading") {
+    return (
+      <p role="status" className="text-200 text-muted-foreground">
+        {historyLoading
+          ? "Loading the previous snapshot to compare incidents…"
+          : "The previous snapshot is not loaded, so incident changes are not shown."}
+      </p>
+    );
+  }
+  const { section } = comparison;
+  const counts: Array<[string, number]> = [
+    ["opened", section.opened.length],
+    ["recovered", section.recovered.length],
+    ["still failing", section.persisting.length],
+    ["no longer reported", section.unreported.length],
+  ];
+  return (
+    <div className="flex flex-col gap-xs">
+      <p className="text-200 text-foreground">
+        <span className="font-semibold">Since the previous snapshot: </span>
+        {counts.map(([label, count]) => `${count} ${label}`).join(" · ")}
+      </p>
+      <p className="text-200 text-muted-foreground">
+        Compared {exactTime(section.provenance.previousObservedAt)} with{" "}
+        {exactTime(section.provenance.currentObservedAt)} from Fabric job history.
+      </p>
+      <div className="flex flex-wrap items-center gap-s">
+        <button
+          type="button"
+          onClick={() => {
+            const markdown = incidentBriefMarkdown(section);
+            void Promise.resolve()
+              .then(() => navigator.clipboard.writeText(markdown))
+              .then(
+                () => setCopyState("copied"),
+                () => setCopyState("failed"),
+              );
+          }}
+          className={BUTTON}
+        >
+          <ClipboardCopy className="icon-size-200" aria-hidden="true" />
+          Copy incident brief
+        </button>
+        <span role="status" className="text-200 text-muted-foreground">
+          {copyState === "copied"
+            ? "Markdown copied."
+            : copyState === "failed"
+              ? "Copy failed: the browser blocked clipboard access."
+              : ""}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function OperationalSignals({
   onShowRuns,
   onOpenImpact,
@@ -294,10 +444,20 @@ export function OperationalSignals({
   onShowRuns: (incident: ObservedIncident) => void;
   onOpenImpact?: (itemId: string) => void;
 }) {
-  const { data, lastSyncedAt } = useAtlas();
+  const { data, lastSyncedAt, isPreview } = useAtlas();
+  const records = useOperationalIncidentRecords(
+    isPreview,
+    data.workspace.fabricId,
+    data.workspace.snapshotId,
+  );
   const entries = useMemo(
-    () => incidentImpact(data, lastSyncedAt),
-    [data, lastSyncedAt],
+    () =>
+      incidentImpact(
+        data,
+        lastSyncedAt,
+        records.status === "ready" ? records.records : [],
+      ),
+    [data, lastSyncedAt, records],
   );
 
   return (
@@ -306,20 +466,24 @@ export function OperationalSignals({
       className="grid gap-l lg:grid-cols-[minmax(0,1.6fr)_minmax(300px,1fr)]"
     >
       <Card className="flex min-w-0 flex-col">
-        <header className="border-b border-border p-l">
+        <header className="flex flex-col gap-s border-b border-border p-l">
           <h2 className="text-400 font-semibold leading-400">
             Failures and downstream impact
           </h2>
-          <p className="mt-xxs text-200 leading-200 text-muted-foreground">
+          <p className="text-200 leading-200 text-muted-foreground">
             Observed failures are the latest recorded run of an item and job
-            type in the synchronized job history. Downstream impact is inferred
-            from snapshot lineage and has not been confirmed by any monitoring
-            source.
+            type in the synchronized job history. Downstream impact comes from
+            snapshot lineage: it is inferred unless the consumer has its own
+            observed failure.
           </p>
-          <div className="mt-s flex flex-wrap gap-s" aria-hidden="true">
+          <div className="flex flex-wrap gap-s" aria-hidden="true">
             <EvidenceChip evidence="observed" />
             <EvidenceChip evidence="inferred" />
           </div>
+          <p className="text-200 text-muted-foreground">
+            {recordsNote(records, entries.length)}
+          </p>
+          <SincePreviousSnapshot />
         </header>
         {entries.length === 0 ? (
           <p className="p-l text-200 leading-200 text-muted-foreground">

@@ -32,6 +32,9 @@ function renderJobs(jobs: Job[]) {
   harness.context = {
     data,
     lastSyncedAt: new Date().toISOString(),
+    isPreview: true,
+    history: { summaries: [], snapshots: [] },
+    historyLoading: false,
     savedViews: [],
     savedViewsLoading: false,
     savedViewsError: undefined,

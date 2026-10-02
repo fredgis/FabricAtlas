@@ -542,6 +542,43 @@ describe("validateRawSync", () => {
     );
   });
 
+  it("keeps a valid Fabric job instance ID as run identity and drops anything else", () => {
+    const raw = completeSync();
+    raw.items = [{ id: "notebook", type: "Notebook", displayName: "Load" }];
+    raw.jobs = [
+      {
+        id: "A0A0A0A0-0000-4000-8000-000000000001",
+        itemId: "notebook",
+        itemDisplayName: "Load",
+        jobType: "RunNotebook",
+        status: "Failed",
+        startTimeUtc: "2026-10-02T06:00:00Z",
+        endTimeUtc: "2026-10-02T06:01:00Z",
+      },
+      {
+        id: "not-a-run-id",
+        itemId: "notebook",
+        itemDisplayName: "Load",
+        jobType: "RunNotebook",
+        status: "Completed",
+        startTimeUtc: "2026-10-02T07:00:00Z",
+      },
+    ];
+
+    const atlas = mapSyncToAtlas(raw, {
+      fabricId: workspaceId,
+      displayName: "Atlas",
+      capacity: "",
+      region: "",
+    });
+
+    expect(atlas.jobs.map((job) => job.runId)).toEqual([
+      "a0a0a0a0-0000-4000-8000-000000000001",
+      undefined,
+    ]);
+    expect(atlas.jobs.every((job) => job.message === undefined)).toBe(true);
+  });
+
   it("does not invent lineage from matching display names", () => {
     const raw = completeSync();
     raw.items = [

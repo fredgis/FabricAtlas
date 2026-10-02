@@ -51,10 +51,13 @@ import type {
 import type { SavedView, SavedViewFilters } from "../saved-views";
 import {
   buildRadar,
+  radarEntries as buildRadarEntries,
   type FindingDelta,
+  type RadarEntry,
   type RadarResult,
   type RiskyChange,
 } from "../radar";
+import type { IncidentDelta } from "../observability";
 import type { FindingAcknowledgement } from "../finding-acks";
 import type { GovernanceException } from "../governance-exceptions";
 import { radarToMarkdown } from "../radar-markdown";
@@ -96,21 +99,12 @@ const SEVERITY_META: Record<
   },
 };
 
-interface RadarEntry {
-  id: string;
-  severity: GovernanceSeverity;
-  title: string;
-  detail: string;
-  occurrenceSnapshotId?: string;
-  delta?: FindingDelta;
-  risk?: RiskyChange;
-}
-
 const RADAR_SIGNALS = [
   "Access",
   "Sensitivity",
   "Lineage",
   "Consumed removals",
+  "Job failures",
 ] as const;
 
 function downloadMarkdown(content: string, filename: string): void {
@@ -452,28 +446,10 @@ export function GovernanceCenterView({
       ),
     [findingAcks],
   );
-  const allRadarEntries = useMemo<RadarEntry[]>(() => {
-    if (radar.state !== "ready") return [];
-    const findingsEntries = radar.deltas
-      .filter((delta) => delta.status === "new")
-      .map((delta) => ({
-        id: delta.finding.id,
-        severity: delta.finding.severity,
-        title: delta.finding.title,
-        detail: delta.finding.detail,
-        occurrenceSnapshotId: delta.sinceSnapshotId,
-        delta,
-      }));
-    const riskEntries = radar.riskyChanges.map((risk) => ({
-      id: risk.id,
-      severity: risk.severity,
-      title: risk.change.label,
-      detail: risk.detail,
-      occurrenceSnapshotId: radar.currentSnapshotId,
-      risk,
-    }));
-    return [...findingsEntries, ...riskEntries];
-  }, [radar]);
+  const allRadarEntries = useMemo<RadarEntry[]>(
+    () => buildRadarEntries(radar),
+    [radar],
+  );
   const radarEntries = useMemo(
     () =>
       allRadarEntries.filter((entry) => {
@@ -809,7 +785,15 @@ export function GovernanceCenterView({
           }
         }}
         onOpen={(entry) => {
-          if (entry.delta) {
+          if (entry.incident) {
+            onNavigate({
+              tab: "jobs",
+              focus: focusRequest({
+                itemId: entry.incident.incident.itemId,
+                jobId: entry.incident.incident.id,
+              }),
+            });
+          } else if (entry.delta) {
             onNavigate(navigationForFinding(entry.delta.finding));
           } else if (entry.risk) {
             const change = entry.risk.change;
@@ -850,6 +834,9 @@ export function GovernanceCenterView({
               riskyChanges: radarEntries
                 .map((entry) => entry.risk)
                 .filter((risk): risk is RiskyChange => !!risk),
+              incidents: radarEntries
+                .map((entry) => entry.incident)
+                .filter((incident): incident is IncidentDelta => !!incident),
             }),
             `fabric-atlas-radar-${currentSummary.syncedAt.slice(0, 10)}.md`,
           );
@@ -1202,7 +1189,7 @@ export function RadarPanel({
           <p className="mt-xxs text-200 text-muted-foreground">
             {firstSnapshotBaseline
               ? "The first validated snapshot arms the Radar; the next sync will produce risk deltas."
-              : "New high-priority findings and dangerous access, sensitivity, lineage or removal changes only."}
+              : "New high-priority findings and dangerous access, sensitivity, lineage, removal or job failure changes only."}
           </p>
         </div>
         {ready && entries.length > 0 && (

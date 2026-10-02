@@ -80,6 +80,8 @@ let msalApp: AtlasMsalClient & {
 let msalInitPromise: Promise<void> | null = null;
 const MSAL_INTERACTION_RETRY_ATTEMPTS = 20;
 const MSAL_INTERACTION_RETRY_DELAY_MS = 250;
+const JOB_RUN_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function normalized(value: unknown): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -2030,6 +2032,10 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
   const jobs: Job[] = (raw.jobs ?? []).map((j) => {
     const start = normalizeFabricTimestamp(j.startTimeUtc);
     const end = normalizeFabricTimestamp(j.endTimeUtc);
+    const runId =
+      typeof j.id === "string" && JOB_RUN_ID.test(j.id)
+        ? j.id.toLowerCase()
+        : undefined;
     return {
       itemFabricId: String(j.itemId ?? ""),
       itemName: String(j.itemDisplayName ?? j.itemId ?? ""),
@@ -2040,6 +2046,7 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
         start && end
           ? Math.max(0, Math.round((Date.parse(end) - Date.parse(start)) / 1000))
           : 0,
+      ...(runId ? { runId } : {}),
     };
   });
 

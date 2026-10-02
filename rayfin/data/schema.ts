@@ -23,6 +23,7 @@ import { SyncPayloadManifest } from './SyncPayloadManifest.js';
 import { SyncPayloadChunk } from './SyncPayloadChunk.js';
 import { ItemRelationsEvidenceSnapshot } from './ItemRelationsEvidenceSnapshot.js';
 import { AccessPolicyEvidence } from './AccessPolicyEvidence.js';
+import { OperationalIncident } from './OperationalIncident.js';
 
 /**
  * Schema type map — enables full type-safety through RayfinClient
@@ -54,6 +55,7 @@ export type AtlasSchema = {
   SyncPayloadChunk: SyncPayloadChunk;
   ItemRelationsEvidenceSnapshot: ItemRelationsEvidenceSnapshot;
   AccessPolicyEvidence: AccessPolicyEvidence;
+  OperationalIncident: OperationalIncident;
 };
 
 export const schema = [
@@ -82,4 +84,5 @@ export const schema = [
   SyncPayloadChunk,
   AccessPolicyEvidence,
   ItemRelationsEvidenceSnapshot,
+  OperationalIncident,
 ];

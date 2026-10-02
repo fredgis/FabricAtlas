@@ -23,6 +23,9 @@ function renderJobs(onNavigate = vi.fn()) {
   harness.context = {
     data,
     lastSyncedAt: new Date().toISOString(),
+    isPreview: true,
+    history: { summaries: [], snapshots: [] },
+    historyLoading: false,
     savedViews: [],
     savedViewsLoading: false,
     savedViewsError: undefined,
@@ -73,7 +76,7 @@ describe("JobsView operational signals", () => {
     });
     expect(
       within(incidents).getByRole("list", {
-        name: `Inferred downstream impact of ${notebook.itemName}`,
+        name: `Downstream impact of ${notebook.itemName}`,
       }),
     ).toHaveTextContent(lakehouse.displayName);
   });

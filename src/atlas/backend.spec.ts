@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => {
     "Comment",
     "SyncRun",
     "ItemRelationsEvidenceSnapshot",
+    "OperationalIncident",
   ];
   const data = Object.fromEntries(
     names.map((name) => {
@@ -691,6 +692,63 @@ describe("Rayfin snapshot persistence", () => {
     await runFabricSync(false, identity);
 
     expect(mocks.data.ItemRelationsEvidenceSnapshot.create).not.toHaveBeenCalled();
+  });
+
+  it("records observed incidents after the snapshot marker without free text", async () => {
+    const synced = structuredClone(SAMPLE_DATA);
+    const bronze = synced.jobs[0];
+    synced.jobs.push({
+      ...bronze,
+      status: "failed",
+      startedAt: new Date(Date.now() - 60_000).toISOString(),
+      message: "Spark session terminated for user secret@example.com",
+      runId: "a0a0a0a0-0000-4000-8000-000000000001",
+    });
+    mocks.mapSyncToAtlas.mockReturnValue(synced);
+
+    await runFabricSync(false, identity);
+
+    const marker = mocks.data.Workspace.create.mock.calls[0][0];
+    const incidentApi = mocks.data.OperationalIncident;
+    expect(incidentApi.create).toHaveBeenCalledTimes(1);
+    const [row] = incidentApi.create.mock.calls[0];
+    expect(row).toMatchObject({
+      workspace_id: workspaceId,
+      snapshotId: marker.snapshotId,
+      writerEmail: identity.email,
+      itemFabricId: bronze.itemFabricId,
+      jobType: bronze.jobType,
+      runId: "a0a0a0a0-0000-4000-8000-000000000001",
+      source: "fabric-job-history",
+    });
+    expect(JSON.stringify(row)).not.toMatch(/secret|Spark session/);
+    expect(incidentApi.create.mock.invocationCallOrder[0]).toBeGreaterThan(
+      mocks.data.Workspace.create.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("keeps a published sync successful when incident storage fails", async () => {
+    const synced = structuredClone(SAMPLE_DATA);
+    synced.jobs.push({
+      ...synced.jobs[0],
+      status: "failed",
+      startedAt: new Date(Date.now() - 60_000).toISOString(),
+    });
+    mocks.mapSyncToAtlas.mockReturnValue(synced);
+    mocks.data.OperationalIncident.create.mockRejectedValue(
+      new Error("incident table missing"),
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    await expect(runFabricSync(false, identity)).resolves.toMatchObject({
+      workspace: { snapshotId: expect.any(String) },
+    });
+    expect(mocks.data.Workspace.create).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      "[atlas] operational incident storage failed",
+      { type: "Error" },
+    );
+    warn.mockRestore();
   });
 
   it("publishes the manifest only after all snapshot rows succeed", async () => {

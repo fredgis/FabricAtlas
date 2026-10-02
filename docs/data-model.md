@@ -211,6 +211,36 @@ envelopes per workspace are kept. Old rows are never rewritten; the entity is
 additive and needs no data migration. See
 [item-relations-evidence.md](item-relations-evidence.md#persisted-evidence).
 
+## OperationalIncident
+
+Observed operational incidents derived from the sanitized Fabric job history of
+a published snapshot: the latest captured run of one item and job type failed.
+Rows are written by the browser synchronization after the `Workspace` marker,
+never before it, and a failed or missing write does not fail the sync.
+
+`workspace_id`, `snapshotId`, `writerEmail`, `incidentKey` (240,
+`incident:v1:<workspace>:<item>:<job type>`), `itemFabricId` (100), `itemName`
+(200), `itemType?` (60), `jobType` (60), `runId?` (Fabric job instance UUID),
+`occurredAt` (run start), `durationSec?`, `observedAt` (snapshot sync time),
+`firstObservedAt`, `firstObservedSnapshotId?`, `source` (`fabric-job-history`),
+`contractVersion` (1)
+
+The field list is an allowlist. Fabric failure reasons, `JobRun.message`, logs,
+query text, business rows and tokens are never stored. Job types and item IDs
+outside their expected character sets are skipped and counted, at most 500 rows
+are written per snapshot, and row IDs are deterministic per snapshot and
+incident key so retries do not duplicate rows. `firstObservedAt` is carried from
+the immediately preceding published snapshot when the same incident key was
+already failing there. Downstream impact is not stored; it is joined at read
+time from the same snapshot's lineage. Readers trust only configured
+synchronizer writers and validate every row. Reads are shared with the
+authenticated app audience; creates require the configured synchronizer
+subject and matching `writerEmail`, deletes require the synchronizer subject,
+and there is no update. Rows for the newest `snapshotRetentionCount` snapshots
+are kept. The entity is additive and needs no data migration; until it is
+deployed, Atlas derives incidents from the snapshot job history and says so.
+See [observability.md](observability.md#stored-incident-records).
+
 ## Phase 2 durable synchronization probe
 
 These three additive entities are separate from immutable snapshots and the existing `SyncRun`

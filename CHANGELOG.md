@@ -30,8 +30,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   synchronized job history are shown apart from downstream impact inferred
   from snapshot lineage, with a Monitoring sources card that marks workspace
   monitoring as not collected and links to the verified Monitor hub Job runs,
-  Alerts and Applications pages and to the app's Metrics. No collector or
-  incident entity is added.
+  Alerts and Applications pages and to the app's Metrics.
+- Additive `OperationalIncident` entity. After the snapshot marker, the browser
+  synchronization stores one allowlisted row per observed job-failure incident
+  (workspace, item, job type, Fabric run ID, run start, observation and first
+  observation time; never failure reasons, logs or query text). A missing
+  entity or failed write never fails the sync. Downstream impact is joined from
+  snapshot lineage and labelled observed only when the consumer is failing too.
+  Opened incidents feed Governance Radar and its digest; tested Sync Brief and
+  Watchlist incident feeds are ready for those pages, and Jobs & health shows
+  incident changes since the previous snapshot with a Markdown copy.
 - **Map & lineage** gains Graph, Evidence and Changes tabs. Evidence lists
   every relationship with its sources and a provenance pane; Changes lists
   lineage added, removed or broken between the last two snapshots. Legacy

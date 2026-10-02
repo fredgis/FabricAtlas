@@ -141,6 +141,7 @@ describe("RadarPanel", () => {
     deltas: [],
     riskyChanges: [],
     observedChanges: [],
+    incidents: [],
     provenanceComplete: true,
   };
   const baseProps = {
@@ -167,7 +168,7 @@ describe("RadarPanel", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByLabelText("Radar monitored signals"),
-    ).toHaveTextContent("AccessSensitivityLineageConsumed removals");
+    ).toHaveTextContent("AccessSensitivityLineageConsumed removalsJob failures");
   });
 
   it("shows an armed baseline immediately after the first snapshot", () => {
@@ -188,7 +189,7 @@ describe("RadarPanel", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByLabelText("Radar monitored signals"),
-    ).toHaveTextContent("AccessSensitivityLineageConsumed removals");
+    ).toHaveTextContent("AccessSensitivityLineageConsumed removalsJob failures");
   });
 
   it("links non-risky synchronized changes from the clear Radar state", () => {

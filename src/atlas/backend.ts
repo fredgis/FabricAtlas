@@ -38,6 +38,11 @@ import {
 } from "./item-relations-evidence-store";
 import { runKqlCollectorShadow } from "./kql-collector-shadow";
 import {
+  OPERATIONAL_INCIDENT_ENTITY,
+  persistOperationalIncidents,
+  type OperationalIncidentApi,
+} from "./operational-incident-store";
+import {
   runPowerBiCollectorShadow,
   runSqlCollectorShadow,
 } from "./remaining-collectors-shadow";
@@ -893,6 +898,59 @@ async function persistShadowItemRelationsEvidence(
   }
 }
 
+/**
+ * Records observed incidents of the snapshot that was just published. It never
+ * throws: incident evidence is derived and optional, so a missing entity or a
+ * failed write must not fail the authoritative synchronization.
+ */
+async function persistSnapshotIncidents(
+  attempt: SyncAttempt,
+  atlas: AtlasData,
+  syncedAt: Date,
+): Promise<void> {
+  const api = attempt.data[OPERATIONAL_INCIDENT_ENTITY] as unknown as
+    | OperationalIncidentApi
+    | undefined;
+  if (!api?.select || !api.create || !api.delete) {
+    console.warn("[atlas] OperationalIncident entity is not deployed");
+    return;
+  }
+  try {
+    const markers = trustedMarkers(
+      await readTrustedWorkspaceMarkers(
+        readerFor(attempt.data),
+        attempt.workspaceId,
+      ),
+      attempt.workspaceId,
+    );
+    const previousSnapshotId = markers
+      .map((marker) => String(marker.snapshotId))
+      .find((snapshotId) => !sameText(snapshotId, attempt.snapshotId));
+    const result = await persistOperationalIncidents(
+      {
+        workspaceId: attempt.workspaceId,
+        snapshotId: attempt.snapshotId,
+        writerEmail: attempt.writerEmail,
+        observedAt: syncedAt.toISOString(),
+        data: atlas,
+        previousSnapshotId,
+      },
+      api,
+    );
+    if (result.skipped || result.truncated || result.retentionWarning) {
+      console.warn("[atlas] operational incidents partially stored", {
+        skipped: result.skipped,
+        truncated: result.truncated,
+        retentionWarning: !!result.retentionWarning,
+      });
+    }
+  } catch (error) {
+    console.warn("[atlas] operational incident storage failed", {
+      type: error instanceof Error ? error.name : "unknown",
+    });
+  }
+}
+
 /** Replace the catalog rows in the Rayfin DB with a freshly synced snapshot. */
 async function persistSync(
   atlas: AtlasData,
@@ -1347,6 +1405,10 @@ async function persistSync(
   if (attempt.itemRelationsCollection && !signal?.aborted) {
     reportProgress?.(98, "Storing Item Relations evidence");
     await persistShadowItemRelationsEvidence(attempt, atlas);
+  }
+  if (!signal?.aborted) {
+    reportProgress?.(98, "Recording operational incidents");
+    await persistSnapshotIncidents(attempt, atlas, syncedAt);
   }
   reportProgress?.(99, "Applying snapshot retention");
   try {

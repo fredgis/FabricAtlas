@@ -128,6 +128,7 @@ See [data-model.md](data-model.md) for fields.
 | `WorkspaceScope` | Administrator-selected workspaces shared with the app audience |
 | `SynchronizerAuthority` | Synchronizer-only Function caller sentinel |
 | `ItemRelationsEvidenceSnapshot` | Chunked, non-authoritative Item Relations API (Beta) evidence per workspace and snapshot |
+| `OperationalIncident` | Allowlisted observed job-failure incidents per workspace and snapshot, from sanitized job history |
 
 ## Phase 2 persistence probe (no cutover)
 
@@ -852,23 +853,45 @@ the current grant payload. OneLake and DLP remain manual/unsupported until verif
 exist; the fictional restriction counts and principals in the concept image are
 never production fixtures.
 
-## Phase 9 observability foundation
+## Phase 9 observability and incidents
 
 Jobs & health separates *observed* failures from *inferred* downstream impact
 (`src/atlas/observability.ts`). An observed incident is the latest recorded run
 of an item and job type that failed in the synchronized Fabric job history. It
-carries the workspace, item, job type, run start and snapshot capture time.
-Inferred impact walks normalized snapshot lineage downstream from that item and
-is always labelled as not confirmed by monitoring. Neither is persisted.
+carries the workspace, item, job type, Fabric run ID when collected, run start
+and snapshot capture time, plus a stable incident key
+(`incident:v1:<workspace>:<item>:<job type>`).
+
+After the `Workspace` marker is published, the browser synchronization writes
+one allowlisted `OperationalIncident` row per incident
+(`src/atlas/operational-incident-store.ts`). Rows never contain failure
+reasons, logs, query text or business rows; their IDs are deterministic per
+snapshot and incident key, and `firstObservedAt` carries over while the same
+key keeps failing between published snapshots. A missing entity or failed
+write only logs a warning. Jobs & health overlays stored records on the
+incidents derived from the snapshot (run ID, failing since) and states when
+records are unavailable.
+
+Downstream impact walks authoritative, normalized snapshot lineage from the
+failed item. A consumer is labelled observed only when it has its own observed
+incident in the same snapshot; every other consumer stays inferred and is never
+stored. `diffIncidents` compares two validated snapshots into opened,
+persisting, recovered (a newer run was captured) and no-longer-reported
+incidents. Governance Radar lists opened incidents once (replacing the
+failed-run finding of the same run), raises them to critical only when a
+consumer is also failing, and adds them to the exported digest with
+provenance and limits. `src/atlas/incident-feeds.ts` builds the incident
+section and Markdown of a Sync Brief and Watchlist events from the same deltas;
+Jobs & health shows the section and copies it as Markdown.
 
 The Monitoring sources card states what Atlas collects: job history only.
 Workspace monitoring is shown as not collected. Monitor hub alerts and Fabric
 App Metrics are shown as Fabric portal only, with links to the verified Monitor
 hub routes (`/monitoringhub/jobs`, `/alerts`, `/applications`) and to the
-deployed app item when its IDs are configured. No collector, entity or Preview
-flag is added. See [observability.md](observability.md) for the routes,
-workspace monitoring permissions, retention and cost prerequisites, and the
-remaining collector blockers.
+deployed app item when its IDs are configured. See
+[observability.md](observability.md) for the routes, workspace monitoring
+permissions, retention and cost prerequisites, and the remaining collector
+blockers.
 
 ## Sync
 

@@ -20,22 +20,35 @@ export type OperationalEvidence = "observed" | "inferred";
 export interface ObservedIncident {
   evidence: "observed";
   id: string;
+  /** Stable across snapshots while the same item and job type keep failing. */
+  key: string;
   source: "fabric-job-history";
   workspaceId: string;
   itemId: string;
   itemName: string;
   itemType?: ItemType;
   jobType: string;
+  /** Fabric job instance ID, when the collector returned one. */
+  runId?: string;
   /** When the failed run started, as reported by Fabric. */
   occurredAt: string;
   /** When Atlas captured the run: the snapshot synchronization time. */
   observedAt?: string;
+  /** First synchronization that captured this failure, from persisted records. */
+  firstObservedAt?: string;
+  /** Whether a persisted `OperationalIncident` record backs this incident. */
+  recorded: boolean;
   durationSec: number;
   message?: string;
 }
 
-export interface InferredImpact {
-  evidence: "inferred";
+/**
+ * A consumer reachable downstream of an incident in snapshot lineage. It is
+ * `observed` only when that consumer has its own observed failure in the same
+ * snapshot; otherwise the impact is inferred and unconfirmed.
+ */
+export interface DownstreamImpact {
+  evidence: OperationalEvidence;
   incidentId: string;
   itemId: string;
   itemName: string;
@@ -43,11 +56,16 @@ export interface InferredImpact {
   /** Lineage hops from the failed item. */
   distance: number;
   basis: "snapshot-lineage";
+  /** The consumer's own observed incident, when `evidence` is `observed`. */
+  observedIncidentId?: string;
 }
+
+/** @deprecated Use `DownstreamImpact`; kept for existing imports. */
+export type InferredImpact = DownstreamImpact;
 
 export interface IncidentImpact {
   incident: ObservedIncident;
-  impact: InferredImpact[];
+  impact: DownstreamImpact[];
 }
 
 export type MonitoringSourceId =
@@ -132,6 +150,37 @@ export const MONITORING_SOURCES: readonly MonitoringSource[] = [
   },
 ];
 
+/** Stable incident identity: one failing item and job type in one workspace. */
+export function incidentKey(
+  workspaceId: string,
+  itemId: string,
+  jobType: string,
+): string {
+  return [
+    "incident",
+    "v1",
+    workspaceId.trim().toLowerCase(),
+    itemId.trim().toLowerCase(),
+    jobType.trim().toLowerCase(),
+  ].join(":");
+}
+
+type LatestRuns = Map<string, AtlasData["jobs"][number]>;
+
+function latestRunByItemAndType(jobs: AtlasData["jobs"]): LatestRuns {
+  const latest: LatestRuns = new Map();
+  for (const job of jobs) {
+    const started = new Date(job.startedAt).getTime();
+    if (Number.isNaN(started)) continue;
+    const key = `${job.itemFabricId.toLowerCase()}\u0000${job.jobType.toLowerCase()}`;
+    const current = latest.get(key);
+    if (!current || new Date(current.startedAt).getTime() < started) {
+      latest.set(key, job);
+    }
+  }
+  return latest;
+}
+
 /**
  * Failed runs whose item and job type have no newer recorded run. A failure
  * followed by a later run is history, not a current incident.
@@ -141,31 +190,24 @@ export function observedIncidents(
   observedAt?: string,
 ): ObservedIncident[] {
   const itemById = new Map(data.items.map((item) => [item.fabricId, item]));
-  const latest = new Map<string, AtlasData["jobs"][number]>();
-  for (const job of data.jobs) {
-    const started = new Date(job.startedAt).getTime();
-    if (Number.isNaN(started)) continue;
-    const key = `${job.itemFabricId}\u0000${job.jobType}`;
-    const current = latest.get(key);
-    if (!current || new Date(current.startedAt).getTime() < started) {
-      latest.set(key, job);
-    }
-  }
-  return [...latest.values()]
+  return [...latestRunByItemAndType(data.jobs).values()]
     .filter((job) => job.status === "failed")
     .map((job) => {
       const item = itemById.get(job.itemFabricId);
       return {
         evidence: "observed" as const,
         id: searchJobId(job.itemFabricId, job.jobType, job.startedAt),
+        key: incidentKey(data.workspace.fabricId, job.itemFabricId, job.jobType),
         source: "fabric-job-history" as const,
         workspaceId: data.workspace.fabricId,
         itemId: job.itemFabricId,
         itemName: item?.displayName ?? job.itemName,
         itemType: item?.itemType,
         jobType: job.jobType,
+        ...(job.runId ? { runId: job.runId } : {}),
         occurredAt: job.startedAt,
         observedAt,
+        recorded: false,
         durationSec: job.durationSec,
         message: job.message?.trim() || undefined,
       };
@@ -178,14 +220,59 @@ export function observedIncidents(
     );
 }
 
-/** Joins each observed incident to the consumers reachable in snapshot lineage. */
-export function incidentImpact(
-  data: Pick<AtlasData, "workspace" | "items" | "edges" | "jobs">,
-  observedAt?: string,
+/** Persisted fields that enrich a derived incident for the same snapshot. */
+export interface IncidentRecordFields {
+  key: string;
+  occurredAt: string;
+  runId?: string;
+  observedAt: string;
+  firstObservedAt: string;
+}
+
+/**
+ * Overlays persisted `OperationalIncident` records on incidents derived from
+ * the same snapshot. Only a record for the same failing run is trusted.
+ */
+export function applyIncidentRecords(
+  incidents: readonly ObservedIncident[],
+  records: readonly IncidentRecordFields[],
+): ObservedIncident[] {
+  const byKey = new Map(records.map((record) => [record.key, record]));
+  return incidents.map((incident) => {
+    const record = byKey.get(incident.key);
+    if (
+      !record ||
+      Date.parse(record.occurredAt) !== Date.parse(incident.occurredAt)
+    ) {
+      return incident;
+    }
+    return {
+      ...incident,
+      runId: incident.runId ?? record.runId,
+      observedAt: record.observedAt,
+      firstObservedAt: record.firstObservedAt,
+      recorded: true,
+    };
+  });
+}
+
+/**
+ * Joins each observed incident to the consumers reachable in authoritative
+ * snapshot lineage. A consumer is labelled observed only when it has its own
+ * observed incident; every other consumer stays inferred.
+ */
+export function joinIncidentImpact(
+  data: Pick<AtlasData, "items" | "edges">,
+  incidents: readonly ObservedIncident[],
 ): IncidentImpact[] {
-  const incidents = observedIncidents(data, observedAt);
   if (incidents.length === 0) return [];
   const itemById = new Map(data.items.map((item) => [item.fabricId, item]));
+  const failingByItem = new Map<string, ObservedIncident>();
+  for (const incident of incidents) {
+    if (!failingByItem.has(incident.itemId)) {
+      failingByItem.set(incident.itemId, incident);
+    }
+  }
   const index = createLineageIndex(
     normalizeLineageEdges(data.items, data.edges),
   );
@@ -193,16 +280,18 @@ export function incidentImpact(
     const downstream = getLineageImpact(index, incident.itemId).downstream;
     const impact = [...downstream.ids]
       .filter((id) => id !== incident.itemId)
-      .map((id) => {
+      .map((id): DownstreamImpact => {
         const item = itemById.get(id);
+        const ownIncident = failingByItem.get(id);
         return {
-          evidence: "inferred" as const,
+          evidence: ownIncident ? "observed" : "inferred",
           incidentId: incident.id,
           itemId: id,
           itemName: item?.displayName ?? id,
           itemType: item?.itemType,
           distance: downstream.distance.get(id) ?? Number.POSITIVE_INFINITY,
-          basis: "snapshot-lineage" as const,
+          basis: "snapshot-lineage",
+          ...(ownIncident ? { observedIncidentId: ownIncident.id } : {}),
         };
       })
       .sort(
@@ -213,6 +302,106 @@ export function incidentImpact(
     return { incident, impact };
   });
 }
+
+/** Derives incidents for one snapshot and joins them to its lineage. */
+export function incidentImpact(
+  data: Pick<AtlasData, "workspace" | "items" | "edges" | "jobs">,
+  observedAt?: string,
+  records: readonly IncidentRecordFields[] = [],
+): IncidentImpact[] {
+  return joinIncidentImpact(
+    data,
+    applyIncidentRecords(observedIncidents(data, observedAt), records),
+  );
+}
+
+export type IncidentDeltaStatus =
+  | "opened"
+  | "persisting"
+  | "recovered"
+  | "unreported";
+
+export interface IncidentDelta {
+  status: IncidentDeltaStatus;
+  key: string;
+  /** The current incident, or the previous one when it is no longer failing. */
+  incident: ObservedIncident;
+  impact: DownstreamImpact[];
+  /** The newer run that ended the incident, when one was captured. */
+  recoveredBy?: { status: AtlasData["jobs"][number]["status"]; startedAt: string };
+}
+
+export interface IncidentComparison {
+  previousSnapshotId: string;
+  currentSnapshotId: string;
+  previousObservedAt: string;
+  currentObservedAt: string;
+}
+
+const DELTA_ORDER: Record<IncidentDeltaStatus, number> = {
+  opened: 0,
+  persisting: 1,
+  recovered: 2,
+  unreported: 3,
+};
+
+/**
+ * Compares the incidents of two validated snapshots. An incident is recovered
+ * only when a newer run of the same item and job type was captured; when the
+ * job is simply absent from the newer history it is reported as unreported.
+ */
+export function diffIncidents(
+  previous: Pick<AtlasData, "workspace" | "items" | "edges" | "jobs">,
+  current: Pick<AtlasData, "workspace" | "items" | "edges" | "jobs">,
+  comparison: IncidentComparison,
+): IncidentDelta[] {
+  const before = incidentImpact(previous, comparison.previousObservedAt);
+  const after = incidentImpact(current, comparison.currentObservedAt);
+  const beforeByKey = new Map(before.map((entry) => [entry.incident.key, entry]));
+  const afterByKey = new Map(after.map((entry) => [entry.incident.key, entry]));
+  const latestCurrent = latestRunByItemAndType(current.jobs);
+  const deltas: IncidentDelta[] = [];
+  for (const entry of after) {
+    deltas.push({
+      status: beforeByKey.has(entry.incident.key) ? "persisting" : "opened",
+      key: entry.incident.key,
+      incident: entry.incident,
+      impact: entry.impact,
+    });
+  }
+  for (const entry of before) {
+    if (afterByKey.has(entry.incident.key)) continue;
+    const newer = latestCurrent.get(
+      `${entry.incident.itemId.toLowerCase()}\u0000${entry.incident.jobType.toLowerCase()}`,
+    );
+    const recovered =
+      !!newer &&
+      Date.parse(newer.startedAt) > Date.parse(entry.incident.occurredAt);
+    deltas.push({
+      status: recovered ? "recovered" : "unreported",
+      key: entry.incident.key,
+      incident: entry.incident,
+      impact: entry.impact,
+      ...(recovered
+        ? { recoveredBy: { status: newer.status, startedAt: newer.startedAt } }
+        : {}),
+    });
+  }
+  return deltas.sort(
+    (left, right) =>
+      DELTA_ORDER[left.status] - DELTA_ORDER[right.status] ||
+      left.incident.itemName.localeCompare(right.incident.itemName) ||
+      left.key.localeCompare(right.key),
+  );
+}
+
+/** Provenance and limits that travel with every incident feed. */
+export const INCIDENT_LIMITATIONS = [
+  "Incidents come from Fabric job history captured at synchronization; nothing newer than the snapshot is known.",
+  "Downstream impact is inferred from snapshot lineage unless the consumer has its own observed failure.",
+  "Fabric failure reasons, logs, query text and business rows are not collected.",
+  "Workspace monitoring telemetry and Monitor hub alerts are not collected.",
+] as const;
 
 export type MonitorHubPage = "jobs" | "alerts" | "applications";
 

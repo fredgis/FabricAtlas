@@ -784,6 +784,21 @@ npm test -- src\atlas\workspace-source-provenance.spec.ts src\atlas\source-prove
 npm --prefix rayfin\functions run build
 ```
 
+## Operational incidents
+
+`OperationalIncident` is an additive entity with no flag. Deploy it with a normal `npx rayfin up`
+(no `--force`). Until it exists, synchronization logs `OperationalIncident entity is not
+deployed` and Jobs & health derives incidents from the snapshot job history. After deploying,
+run one synchronization with a recently failed job in the workspace, then confirm in Jobs &
+health that the incident shows **Stored incident record** with its run ID. Nothing is
+collected beyond the existing job history; see [observability.md](observability.md). Validate
+with:
+
+```powershell
+npm test -- src\atlas\observability.spec.ts src\atlas\operational-incident-store.spec.ts src\atlas\operational-incident-entity.spec.ts src\atlas\incident-feeds.spec.ts src\atlas\radar.spec.ts src\atlas\backend.spec.ts src\atlas\durable-sync-policy.spec.ts
+npm --prefix rayfin\functions run build
+```
+
 ## Scripts
 
 | Command | What it does |
