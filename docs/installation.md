@@ -328,8 +328,10 @@ users fail closed before the Fabric request. Successful responses contain only w
 display name, type and capacity ID, with bounded pagination, retries and response size.
 
 `WorkspaceScope` persists only the rows the administrator selects. Its rows are shared with the
-authenticated app audience; all mutations require the configured synchronizer subject. Deploy the
-additive entity and Function contract with the normal command:
+authenticated app audience; all mutations require the configured synchronizer subject. Removal is
+blocked while shared Atlas rows still reference the workspace. Do not bypass that guard until a
+reviewed archival and deletion workflow covers synchronized rows, shared governance state and
+append-only team notes. Deploy the additive entity and Function contract with the normal command:
 
 ```powershell
 npx rayfin up --tenant <tenant-id> --workspace <workspace-name>

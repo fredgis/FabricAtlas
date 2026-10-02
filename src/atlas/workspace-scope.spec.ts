@@ -20,6 +20,10 @@ const mocks = vi.hoisted(() => ({
   orderBy: vi.fn(),
   first: vi.fn(),
   invoke: vi.fn(),
+  sharedExecute: vi.fn(),
+  sharedFirst: vi.fn(),
+  sharedSelect: vi.fn(),
+  sharedWhere: vi.fn(),
 }));
 
 vi.mock("./config", () => ({
@@ -32,22 +36,40 @@ vi.mock("./config", () => ({
 }));
 
 vi.mock("@/lib/rayfin-client", () => ({
-  getRayfinClient: () => ({
-    data: {
-      WorkspaceScope: {
+  getRayfinClient: () => {
+    const scope = {
         select: mocks.select,
         create: mocks.create,
         update: mocks.update,
         delete: mocks.delete,
         findById: mocks.findById,
+    };
+    const sharedQuery = {
+      where: mocks.sharedWhere,
+      first: mocks.sharedFirst,
+      execute: mocks.sharedExecute,
+    };
+    mocks.sharedSelect.mockReturnValue(sharedQuery);
+    mocks.sharedWhere.mockReturnValue(sharedQuery);
+    mocks.sharedFirst.mockReturnValue(sharedQuery);
+    return {
+      data: new Proxy(
+        { WorkspaceScope: scope },
+        {
+          get(target, property) {
+            return property === "WorkspaceScope"
+              ? target.WorkspaceScope
+              : { select: mocks.sharedSelect };
+          },
+        },
+      ),
+      functions: {
+        workspaceDiscover: {
+          invoke: mocks.invoke,
+        },
       },
-    },
-    functions: {
-      workspaceDiscover: {
-        invoke: mocks.invoke,
-      },
-    },
-  }),
+    };
+  },
 }));
 
 const admin = {
@@ -71,6 +93,7 @@ describe("workspace scope", () => {
     mocks.create.mockImplementation(async (row) => row);
     mocks.update.mockResolvedValue(undefined);
     mocks.delete.mockResolvedValue(undefined);
+    mocks.sharedExecute.mockResolvedValue([]);
   });
 
   it("uses the configured host until an explicit shared scope exists", async () => {
@@ -166,6 +189,27 @@ describe("workspace scope", () => {
     await expect(
       removeWorkspaceScope(false, admin, HOST_ID),
     ).rejects.toThrow("At least one workspace");
+    expect(mocks.delete).not.toHaveBeenCalled();
+  });
+
+  it("keeps selected scope while shared Atlas rows still exist", async () => {
+    mocks.execute.mockResolvedValue([
+      {
+        id: HOST_ID,
+        displayName: "Host workspace",
+        selectedAt: "2026-10-02T10:00:00.000Z",
+      },
+      {
+        id: OTHER_ID,
+        displayName: "Selected workspace",
+        selectedAt: "2026-10-02T10:01:00.000Z",
+      },
+    ]);
+    mocks.sharedExecute.mockResolvedValue([{ id: "shared-row" }]);
+
+    await expect(
+      removeWorkspaceScope(false, admin, OTHER_ID),
+    ).rejects.toThrow("reviewed archival and deletion workflow");
     expect(mocks.delete).not.toHaveBeenCalled();
   });
 });

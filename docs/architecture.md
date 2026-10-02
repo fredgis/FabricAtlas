@@ -156,7 +156,9 @@ optional-parameter typegen limitation.
 `WorkspaceScope` stores only administrator-selected workspaces. Authenticated app users can read
 those selected rows so navigation can expose the shared scope. Create, update and delete remain
 restricted to the configured synchronizer subject, and create also requires the configured writer
-email. Unselected discovery results are never persisted.
+email. Unselected discovery results are never persisted. Scope removal is refused when any shared
+catalog, note, governance or synchronization row still references the workspace. A separate
+reviewed archival and deletion policy is required before previously shared data can be hidden.
 
 The `workspaceDiscover` Function lists workspaces through the Fabric REST API with the AppBackend
 application identity. Before requesting Fabric, it performs a no-result read against the

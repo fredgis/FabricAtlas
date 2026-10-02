@@ -67,7 +67,10 @@ expose every workspace available to the AppBackend owner.
 Before the first explicit scope change, the configured deployment workspace is
 used as an in-memory fallback. Selecting another workspace persists that
 fallback first, which makes later add and remove operations explicit. The scope
-manager refuses to remove the final selected row.
+manager refuses to remove the final selected row. It also refuses removal while
+shared Atlas rows still reference the workspace, because dropping only the
+scope row would not revoke app-audience access to catalog data or append-only
+team notes.
 
 ## FabricItem
 

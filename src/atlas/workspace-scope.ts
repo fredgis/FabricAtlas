@@ -48,8 +48,50 @@ interface ScopeApi {
   delete: (where: { id: string }) => Promise<unknown>;
 }
 
+interface SharedScopeQuery {
+  where: (filter: Record<string, { eq: string }>) => SharedScopeQuery;
+  first: (count: number) => SharedScopeQuery;
+  execute: () => Promise<{ id: string }[]>;
+}
+
+interface SharedScopeApi {
+  select: (fields: readonly ["id"]) => SharedScopeQuery;
+}
+
+const SHARED_WORKSPACE_ENTITIES = [
+  ["Workspace", "fabricId"],
+  ["FabricItem", "workspace_id"],
+  ["LineageEdge", "workspace_id"],
+  ["Principal", "workspace_id"],
+  ["AccessGrant", "workspace_id"],
+  ["JobRun", "workspace_id"],
+  ["ConfigEntry", "workspace_id"],
+  ["Comment", "workspace_id"],
+  ["SyncRun", "workspace_id"],
+  ["GovernancePolicy", "workspace_id"],
+  ["GovernanceException", "workspace_id"],
+  ["SyncJob", "workspace_id"],
+] as const;
+
 function scopeApi(): ScopeApi {
   return getRayfinClient().data.WorkspaceScope as unknown as ScopeApi;
+}
+
+async function workspaceHasSharedData(id: string): Promise<boolean> {
+  const data = getRayfinClient().data as unknown as Record<
+    string,
+    SharedScopeApi
+  >;
+  const rows = await Promise.all(
+    SHARED_WORKSPACE_ENTITIES.map(([entity, field]) =>
+      data[entity]
+        .select(["id"])
+        .where({ [field]: { eq: id } })
+        .first(1)
+        .execute(),
+    ),
+  );
+  return rows.some((records) => records.length > 0);
 }
 
 function workspaceId(value: unknown): string {
@@ -281,6 +323,11 @@ export async function removeWorkspaceScope(
   }
   if (selected.length <= 1) {
     throw new Error("At least one workspace must remain selected.");
+  }
+  if (await workspaceHasSharedData(targetId)) {
+    throw new Error(
+      "This workspace has shared Atlas data. Scope removal requires a reviewed archival and deletion workflow.",
+    );
   }
   await scopeApi().delete({ id: targetId });
 }
