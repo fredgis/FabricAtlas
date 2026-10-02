@@ -10,9 +10,11 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@microsoft/fabric-user-data-functions": "1.36.2"
+    "@microsoft/fabric-user-data-functions": "1.36.2",
+    "@microsoft/rayfin-data": "1.36.2"
   },
   "devDependencies": {
+    "@types/node": "^24.0.0",
     "typescript": "^5.8.0",
     "rimraf": "^6.0.0"
   }

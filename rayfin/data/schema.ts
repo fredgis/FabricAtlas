@@ -13,6 +13,9 @@ import { AccessReviewEvent } from './AccessReviewEvent.js';
 import { FindingAck } from './FindingAck.js';
 import { GovernancePolicy } from './GovernancePolicy.js';
 import { GovernanceException } from './GovernanceException.js';
+import { SyncJob } from './SyncJob.js';
+import { SyncTask } from './SyncTask.js';
+import { SyncCommand } from './SyncCommand.js';
 
 /**
  * Schema type map — enables full type-safety through RayfinClient
@@ -34,6 +37,9 @@ export type AtlasSchema = {
   FindingAck: FindingAck;
   GovernancePolicy: GovernancePolicy;
   GovernanceException: GovernanceException;
+  SyncJob: SyncJob;
+  SyncTask: SyncTask;
+  SyncCommand: SyncCommand;
 };
 
 export const schema = [
@@ -52,4 +58,7 @@ export const schema = [
   FindingAck,
   GovernancePolicy,
   GovernanceException,
+  SyncJob,
+  SyncTask,
+  SyncCommand,
 ];

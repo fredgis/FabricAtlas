@@ -255,6 +255,52 @@ keeps `rayfin/functions/src/types.ts` generated and writes the host URL to
 only development builds use. After changing a `udf.func()` signature without the dev host running,
 rerun `npx rayfin functions init` without `--force` to rebuild and regenerate the types.
 
+## Phase 2 local validation only
+
+The local durable synchronization spike registers `syncStart`, `syncContinue`, `syncStatus` and
+`syncCancel` alongside `ping`. It only writes its three additive checkpoint entities. Browser
+Sync still uses the published Python UDF and existing snapshot writer. Do not apply schema,
+publish Functions, or connect the UI as part of this phase.
+
+Generate Functions contracts and runtime metadata through the supported CLI, never by editing
+`src/types.ts` or `runtimemetadata.json`. The re-run preserves existing source and performs the
+Functions dependency install/build locally:
+
+```powershell
+npx --no-install rayfin functions init
+npm test -- src\atlas\durable-sync.spec.ts src\atlas\durable-sync-policy.spec.ts src\lib\rayfin-client.spec.ts
+npm test
+npm run lint
+npm run build
+npm --prefix rayfin\functions run build
+```
+
+All inputs require `protocolVersion: 1` and strict RFC UUIDs. Start with a fresh request UUID,
+retain it if an invocation fails, and serialize all mutating invocations across hosts. The first
+continue request commits a completed task and a `waiting` job. Retrying that request reads the
+same slice; a fresh continue UUID finalizes the probe. A running claim can only resume with its
+original request UUID or be cancelled. Status is read-only and queries only shared job rows.
+None of these calls schedules subsequent execution, and closing the browser does not keep a
+worker running.
+
+Rayfin 1.36.2 typegen emits an optional handler parameter as a required property whose type
+includes `undefined`. Runtime metadata correctly marks `syncStatus.jobId` optional. Until that
+CLI limitation is resolved, a typed client must explicitly supply `jobId: undefined` to ask for
+the active/latest job; JSON serialization omits the value:
+
+```ts
+await client.functions.syncStatus.invoke({ protocolVersion: 1, workspaceId, jobId: undefined });
+```
+
+The generated files remain unmodified by hand. Resolve this optional-input typing limitation
+before exposing a consumer that requires the exact omission-friendly typed signature.
+
+Local tests verify pure logic, a test-only fluent-client transport and authored permission
+declarations; they do not call Fabric or a deployed Data API. Deployed uniqueness, caller-scoped
+permissions and interruption recovery still need an explicitly authorized integration phase.
+Distributed claims and scheduling remain blockers for any later architecture that requires them.
+There is no deployment or browser cutover in this spike.
+
 ## Scripts
 
 | Command | What it does |

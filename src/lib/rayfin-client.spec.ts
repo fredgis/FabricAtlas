@@ -115,10 +115,12 @@ describe("Rayfin Functions contract", () => {
   it("types ping as a no-input client call returning the ping payload", () => {
     type Functions = AtlasRayfinClient["functions"];
 
-    expectTypeOf<keyof AppFunctionsSchema>().toEqualTypeOf<"ping">();
+    expectTypeOf<keyof AppFunctionsSchema>().toEqualTypeOf<
+      "ping" | "syncStart" | "syncContinue" | "syncStatus" | "syncCancel"
+    >();
     expectTypeOf<AppFunctionsSchema["ping"]["input"]>().toEqualTypeOf<Record<string, never>>();
     expectTypeOf<AppFunctionsSchema["ping"]["output"]>().toEqualTypeOf<PingResult>();
-    expectTypeOf<keyof Functions>().toEqualTypeOf<"ping">();
+    expectTypeOf<keyof Functions>().toEqualTypeOf<keyof AppFunctionsSchema>();
     expectTypeOf<Functions["ping"]["invoke"]>().toBeCallableWith();
     expectTypeOf<Functions["ping"]["invoke"]>().returns.toEqualTypeOf<Promise<PingResult>>();
   });

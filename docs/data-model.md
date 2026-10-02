@@ -135,6 +135,59 @@ attempt.
 `finishedAt?`, `status`, `itemsSynced?`, `durationMs?`, `failureCode?`,
 `failureMessage?`, `triggeredBy?`, `summary?`
 
+## Phase 2 durable synchronization probe
+
+These three additive entities are separate from immutable snapshots and the existing `SyncRun`
+audit. The deployed browser still uses the Python UDF/browser synchronization flow. The probe
+allocates a candidate `snapshotId` but never publishes its manifest or writes snapshot children.
+Its UUID references are scalar fields, with no navigation to a `Workspace` manifest.
+
+### SyncJob
+
+`id`, `workspace_id`, `snapshotId`, `protocolVersion`, `state`, `phase`, `revision`,
+`totalTasks`, `completedTasks`, `createdAt`, `updatedAt`, `finishedAt?`, `failureCode?`,
+`failureMessage?`, `activeKey?`, `initiatedBySubject?`, `initiatedByEmail?`
+
+Protocol version is 1, phase is `probe`, and state is `queued`, `running`, `waiting`, `completed`,
+`failed` or `cancelled`. The spike plans one task; `totalTasks` is the planned count even if task
+creation was interrupted. A unique 80-character `activeKey` reserves one
+active job per workspace. Terminal jobs retain a unique released key rather than NULL, so multiple
+terminal jobs work with MSSQL unique constraints. Revision advances on job state transitions.
+Failure code/message bounds are 64/240 characters; optional initiator fields are bounded at 160
+and remain unset until a trusted runtime claim accessor is available.
+
+Authenticated app users can read jobs. Create, update and delete require
+`claims.sub == SYNC_WRITER_SUBJECT`.
+
+### SyncTask
+
+`id`, `workspace_id`, `jobId`, `taskKey`, `kind`, `state`, `attemptCount`,
+`claimRequestId?`, `createdAt`, `updatedAt`, `finishedAt?`, `failureCode?`, `failureMessage?`
+
+The unique 80-character `taskKey` and UUID derive from job and `probe` kind. States are `pending`,
+`running`, `completed`, `failed` or `cancelled`. A claim records the original request UUID and
+increments the probe's attempt count once. Only that request may resume a running checkpoint;
+there is no lease expiry or takeover. Failure fields use the same 64/240-character bounds.
+Every action, including read, requires the synchronizer subject.
+
+### SyncCommand
+
+`id`, `workspace_id`, `recordKey`, `requestId`, `command`, `jobId?`, `inputHash`,
+`state`, `createdAt`, `completedAt?`, `outcomeCode?`
+
+Commands are `start`, `continue` or `cancel`; state is `accepted`, `completed` or `failed`.
+The globally unique 80-character record key binds a request UUID. The 64-character input hash
+includes operation, protocol, workspace and optional job. A different input cannot reuse the same
+request UUID, even across workspaces or command kinds. The 64-character outcome field checkpoints
+the intended slice before work and the final allowlisted outcome afterward. Transient unconfirmed
+writes leave commands accepted for recovery with the original input. Every action requires the
+synchronizer subject.
+
+These rows store no browser token, arbitrary endpoint, request body or business data. There is no
+separate workspace-state row. Uniqueness and persisted read-back support retries under serialized
+invocations; they do not establish distributed atomic task claims. See
+[architecture.md](architecture.md#phase-2-persistence-probe-no-cutover) for the concurrency boundary.
+
 ## SavedView
 
 A personal named view over Atlas navigation and filters.
