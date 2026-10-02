@@ -194,7 +194,7 @@ released in 1.12.2 to 1.12.4 and are not part of this port.
 **Map & lineage** stays the only lineage navigation entry. Legacy `#map-beta`
 links resolve to `#map` with Preview evidence included.
 
-- **Local tabs.** Graph, Evidence and Changes, kept in the URL as `view`.
+- **Local tabs.** Graph, Evidence, Changes and X-Ray, kept in the URL as `view`.
 - **Preview control.** `Include Item Relations API evidence (Preview)` renders
   only when `VITE_ATLAS_FEATURE_ITEM_RELATIONS` is on, is unchecked by default
   and is kept in the URL as `preview=item-relations`. When checked, it shows
@@ -218,8 +218,11 @@ links resolve to `#map` with Preview evidence included.
 - **Graph.** `buildPreviewOverlay` draws disagreeing Beta edges only: dashed
   purple for data flow, dash-dot purple for control or lifecycle, amber for
   direction conflicts. Agreeing and visibility relations are not drawn twice.
-  Endpoints outside the snapshot sit in a right-hand lane ordered by
-  workspace and name, so snapshot node positions never move. Midpoint buttons
+  Endpoints outside the snapshot sit in lanes right of the layout: column 0
+  holds endpoints next to visible snapshot items, and **Expand** reveals a
+  lane node's other stored neighbours in the next column without moving
+  anything already shown (see [lineage-depth.md](lineage-depth.md#33-cross-workspace-expansion)).
+  Snapshot node positions never move. Midpoint buttons
   open the relationship evidence pane. The legend lists sources: Atlas
   snapshot (verified), Item Relations API (Beta, observed), Beta control or
   lifecycle, and Conflict (review needed).

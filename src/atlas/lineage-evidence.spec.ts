@@ -262,6 +262,121 @@ describe("Preview graph overlay", () => {
   });
 });
 
+describe("cross-workspace expansion from stored evidence", () => {
+  const SECOND = "bbbbbbbb-0000-4000-8000-000000000002";
+  const THIRD = "bbbbbbbb-0000-4000-8000-000000000003";
+  const OTHER_WORKSPACE = "33333333-3333-4333-8333-333333333333";
+  const external = (id: string, name: string, workspaceId = EXTERNAL_WORKSPACE) => ({
+    id,
+    workspaceId,
+    type: "Lakehouse",
+    displayName: name,
+  });
+  const model = buildLineageEvidence({
+    items,
+    edges,
+    workspaceId: WORKSPACE,
+    evidence: createItemRelationsEvidence(WORKSPACE, OBSERVED, [
+      query(MODEL, "upstream", {
+        items: [
+          external(EXTERNAL, "Shared lakehouse"),
+          external(SECOND, "Raw zone", OTHER_WORKSPACE),
+          external(THIRD, "Archive", OTHER_WORKSPACE),
+        ],
+        relations: [
+          { itemId: MODEL, dependentOnItemId: EXTERNAL, relationType: "Shortcut" },
+          { itemId: EXTERNAL, dependentOnItemId: SECOND, relationType: "Shortcut" },
+          { itemId: EXTERNAL, dependentOnItemId: THIRD, relationType: "FutureRelation" },
+          { itemId: SECOND, dependentOnItemId: EXTERNAL, relationType: "PushData" },
+        ],
+        workspaces: [
+          { id: EXTERNAL_WORKSPACE, displayName: "Shared data" },
+          { id: OTHER_WORKSPACE, displayName: "Raw data" },
+        ],
+      }),
+    ]),
+  });
+  const options = {
+    laneX: 900,
+    nodeWidth: 220,
+    rowGap: 100,
+    top: 46,
+    visibleItemIds: new Set(items.map((entry) => entry.fabricId)),
+  };
+  const key = (workspaceId: string, id: string) => itemRelationsNodeKey(workspaceId, id);
+
+  it("shows only endpoints next to the snapshot until a node is expanded", () => {
+    const overlay = buildPreviewOverlay(model, WORKSPACE, options);
+
+    expect(overlay.laneNodes).toEqual([
+      expect.objectContaining({
+        key: key(EXTERNAL_WORKSPACE, EXTERNAL),
+        column: 0,
+        hiddenNeighbors: 2,
+        expanded: false,
+      }),
+    ]);
+    expect(overlay.edges).toHaveLength(1);
+  });
+
+  it("reveals stored neighbours in the next column without moving existing nodes", () => {
+    const collapsed = buildPreviewOverlay(model, WORKSPACE, options);
+    const expanded = buildPreviewOverlay(model, WORKSPACE, {
+      ...options,
+      expandedKeys: [key(EXTERNAL_WORKSPACE, EXTERNAL)],
+    });
+    const first = (overlay: typeof collapsed) =>
+      overlay.laneNodes.find((node) => node.key === key(EXTERNAL_WORKSPACE, EXTERNAL));
+
+    expect({ x: first(expanded)!.x, y: first(expanded)!.y }).toEqual({
+      x: first(collapsed)!.x,
+      y: first(collapsed)!.y,
+    });
+    expect(
+      expanded.laneNodes
+        .filter((node) => node.column === 1)
+        .map((node) => [node.endpoint.displayName, node.y]),
+    ).toEqual([
+      ["Archive", 46],
+      ["Raw zone", 146],
+    ]);
+    expect(expanded.edges.map((edge) => edge.entry.edge.relation.relationType).sort()).toEqual([
+      "FutureRelation",
+      "PushData",
+      "Shortcut",
+      "Shortcut",
+    ]);
+    expect(expanded.expansions).toEqual([
+      expect.objectContaining({ revealed: 2, withheld: 0 }),
+    ]);
+  });
+
+  it("is idempotent, ignores unknown keys and bounds each expansion", () => {
+    const repeated = buildPreviewOverlay(model, WORKSPACE, {
+      ...options,
+      expandedKeys: [
+        key(EXTERNAL_WORKSPACE, EXTERNAL),
+        key(EXTERNAL_WORKSPACE, EXTERNAL),
+        key(OTHER_WORKSPACE, "cccccccc-0000-4000-8000-000000000001"),
+      ],
+    });
+    const bounded = buildPreviewOverlay(model, WORKSPACE, {
+      ...options,
+      maxRevealPerExpansion: 1,
+      expandedKeys: [key(EXTERNAL_WORKSPACE, EXTERNAL)],
+    });
+
+    expect(repeated.laneNodes).toHaveLength(3);
+    expect(repeated.expansions).toHaveLength(1);
+    expect(bounded.laneNodes).toHaveLength(2);
+    expect(bounded.expansions[0]).toMatchObject({ revealed: 1, withheld: 1 });
+    expect(
+      bounded.laneNodes.find((node) => node.key === key(EXTERNAL_WORKSPACE, EXTERNAL))
+        ?.hiddenNeighbors,
+    ).toBe(1);
+  });
+});
+
 describe("lineage changes", () => {
   it("lists added, removed and broken-state lineage with item names", () => {
     const base: AtlasData = {

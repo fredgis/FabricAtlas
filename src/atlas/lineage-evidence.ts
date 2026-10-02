@@ -289,6 +289,18 @@ export interface PreviewLaneNode {
   endpoint: RelationshipEndpoint;
   x: number;
   y: number;
+  /** 0 for endpoints next to the snapshot, then one column per expansion hop. */
+  column: number;
+  /** Stored Beta neighbours outside the snapshot that are still hidden. */
+  hiddenNeighbors: number;
+  expanded: boolean;
+}
+
+export interface PreviewExpansion {
+  key: string;
+  endpoint: RelationshipEndpoint;
+  revealed: number;
+  withheld: number;
 }
 
 export interface PreviewOverlay {
@@ -301,6 +313,8 @@ export interface PreviewOverlay {
   laneNodes: PreviewLaneNode[];
   laneWidth: number;
   laneHeight: number;
+  /** Applied expansions in order; unknown or hidden keys are ignored. */
+  expansions: PreviewExpansion[];
 }
 
 export interface PreviewOverlayOptions {
@@ -310,75 +324,143 @@ export interface PreviewOverlayOptions {
   nodeWidth: number;
   rowGap: number;
   top: number;
+  /** Horizontal distance between lane columns. */
+  columnGap?: number;
+  /** Composite keys of expanded lane nodes, in the order they were expanded. */
+  expandedKeys?: readonly string[];
+  maxRevealPerExpansion?: number;
+  maxLaneNodes?: number;
+}
+
+export const PREVIEW_MAX_REVEAL_PER_EXPANSION = 12;
+export const PREVIEW_MAX_LANE_NODES = 60;
+
+function endpointOrder(left: RelationshipEndpoint, right: RelationshipEndpoint): number {
+  return (
+    (left.workspaceName ?? left.workspaceId).localeCompare(
+      right.workspaceName ?? right.workspaceId,
+    ) ||
+    left.displayName.localeCompare(right.displayName) ||
+    left.key.localeCompare(right.key)
+  );
 }
 
 /**
- * Places endpoints that are not in the snapshot in a separate lane to the
- * right of the staged layout. Snapshot nodes keep their layout positions, and
- * lane order depends only on evidence, never on selection.
+ * Places endpoints that are not in the snapshot in lanes to the right of the
+ * staged layout. Column 0 holds endpoints next to visible snapshot items;
+ * expanding a lane node reveals its other stored neighbours in the next
+ * column, appended below existing nodes so nothing already shown moves.
+ * Expansion only reads persisted evidence and is bounded per step and in
+ * total. Snapshot node positions are never changed.
  */
 export function buildPreviewOverlay(
   model: LineageEvidenceModel,
   workspaceId: string,
   options: PreviewOverlayOptions,
 ): PreviewOverlay {
-  const visibleKeys = new Set(
-    [...options.visibleItemIds].map((id) =>
-      itemRelationsNodeKey(workspaceId, id),
-    ),
+  const visibleSnapshotKeys = new Set(
+    [...options.visibleItemIds].map((id) => itemRelationsNodeKey(workspaceId, id)),
   );
-  const laneEndpoints = new Map<string, RelationshipEndpoint>();
-  const edges: PreviewOverlay["edges"] = [];
+  const maxReveal = options.maxRevealPerExpansion ?? PREVIEW_MAX_REVEAL_PER_EXPANSION;
+  const maxLane = options.maxLaneNodes ?? PREVIEW_MAX_LANE_NODES;
+  const columnGap = options.columnGap ?? options.nodeWidth + 72;
+
+  const candidates: Array<PreviewOverlay["edges"][number] & {
+    endpoints: [RelationshipEndpoint, RelationshipEndpoint];
+  }> = [];
+  const endpoints = new Map<string, RelationshipEndpoint>();
+  const neighbors = new Map<string, Set<string>>();
   for (const relationship of model.relationships) {
     for (const entry of relationship.preview) {
       if (!isDrawnPreviewEdge(entry)) continue;
-      const endpoints = [entry.edge.sourceKey, entry.edge.targetKey].map(
-        (key) =>
-          key === relationship.source.key
-            ? relationship.source
-            : relationship.target,
-      );
-      if (
-        endpoints.some(
-          (endpoint) => endpoint.inSnapshot && !visibleKeys.has(endpoint.key),
-        )
-      ) {
-        continue;
-      }
-      for (const endpoint of endpoints) {
-        if (!endpoint.inSnapshot) laneEndpoints.set(endpoint.key, endpoint);
-      }
-      edges.push({
+      const pair = [entry.edge.sourceKey, entry.edge.targetKey].map((key) =>
+        key === relationship.source.key ? relationship.source : relationship.target,
+      ) as [RelationshipEndpoint, RelationshipEndpoint];
+      candidates.push({
         relationshipId: relationship.id,
         entry,
         sourceKey: entry.edge.sourceKey,
         targetKey: entry.edge.targetKey,
+        endpoints: pair,
       });
+      for (const endpoint of pair) endpoints.set(endpoint.key, endpoint);
+      const [left, right] = pair;
+      neighbors.set(left.key, (neighbors.get(left.key) ?? new Set()).add(right.key));
+      neighbors.set(right.key, (neighbors.get(right.key) ?? new Set()).add(left.key));
     }
   }
-  const laneNodes = [...laneEndpoints.values()]
-    .sort(
-      (left, right) =>
-        (left.workspaceName ?? left.workspaceId).localeCompare(
-          right.workspaceName ?? right.workspaceId,
-        ) ||
-        left.displayName.localeCompare(right.displayName) ||
-        left.key.localeCompare(right.key),
+
+  const lane = new Map<string, { column: number; row: number }>();
+  const rowsPerColumn: number[] = [];
+  const place = (key: string, column: number) => {
+    const row = rowsPerColumn[column] ?? 0;
+    rowsPerColumn[column] = row + 1;
+    lane.set(key, { column, row });
+  };
+  const isOutside = (key: string) => endpoints.get(key)?.inSnapshot === false;
+
+  const firstColumn = [...endpoints.values()]
+    .filter(
+      (endpoint) =>
+        !endpoint.inSnapshot &&
+        [...(neighbors.get(endpoint.key) ?? [])].some((neighbor) =>
+          visibleSnapshotKeys.has(neighbor),
+        ),
     )
-    .map((endpoint, index) => ({
-      key: endpoint.key,
-      endpoint,
-      x: options.laneX,
-      y: options.top + index * options.rowGap,
+    .sort(endpointOrder)
+    .slice(0, maxLane);
+  for (const endpoint of firstColumn) place(endpoint.key, 0);
+
+  const expansions: PreviewExpansion[] = [];
+  const expanded = new Set<string>();
+  for (const key of options.expandedKeys ?? []) {
+    const origin = lane.get(key);
+    if (!origin || expanded.has(key)) continue;
+    expanded.add(key);
+    const hidden = [...(neighbors.get(key) ?? [])]
+      .filter((neighbor) => isOutside(neighbor) && !lane.has(neighbor))
+      .map((neighbor) => endpoints.get(neighbor)!)
+      .sort(endpointOrder);
+    const room = Math.max(0, Math.min(maxReveal, maxLane - lane.size));
+    for (const endpoint of hidden.slice(0, room)) place(endpoint.key, origin.column + 1);
+    expansions.push({
+      key,
+      endpoint: endpoints.get(key)!,
+      revealed: Math.min(room, hidden.length),
+      withheld: Math.max(0, hidden.length - room),
+    });
+  }
+
+  const shown = (endpoint: RelationshipEndpoint) =>
+    endpoint.inSnapshot ? visibleSnapshotKeys.has(endpoint.key) : lane.has(endpoint.key);
+  const edges = candidates
+    .filter((candidate) => candidate.endpoints.every(shown))
+    .map(({ relationshipId, entry, sourceKey, targetKey }) => ({
+      relationshipId,
+      entry,
+      sourceKey,
+      targetKey,
     }));
+
+  const laneNodes: PreviewLaneNode[] = [...lane.entries()].map(([key, slot]) => ({
+    key,
+    endpoint: endpoints.get(key)!,
+    x: options.laneX + slot.column * columnGap,
+    y: options.top + slot.row * options.rowGap,
+    column: slot.column,
+    hiddenNeighbors: [...(neighbors.get(key) ?? [])].filter(
+      (neighbor) => isOutside(neighbor) && !lane.has(neighbor),
+    ).length,
+    expanded: expanded.has(key),
+  }));
+  const columns = rowsPerColumn.length;
   return {
     edges,
     laneNodes,
-    laneWidth: laneNodes.length > 0 ? options.nodeWidth + 96 : 0,
+    laneWidth: columns > 0 ? (columns - 1) * columnGap + options.nodeWidth + 96 : 0,
     laneHeight:
-      laneNodes.length > 0
-        ? options.top + laneNodes.length * options.rowGap
-        : 0,
+      columns > 0 ? options.top + Math.max(...rowsPerColumn) * options.rowGap : 0,
+    expansions,
   };
 }
 

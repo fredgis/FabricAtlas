@@ -41,6 +41,7 @@ const KNOWN_KEYS = new Set([
   "inspector",
   "view",
   "preview",
+  "expand",
 ]);
 const KNOWN_PREFIXES = [
   "catalog.",
@@ -49,6 +50,8 @@ const KNOWN_PREFIXES = [
   "access.",
   "jobs.",
   "workspace.",
+  "tm.",
+  "xray.",
 ];
 const ASSET_KINDS = new Set<string>(ASSET_OBJECT_KINDS);
 const GOVERNANCE_SECTIONS = new Set([
@@ -192,7 +195,9 @@ export function parseAtlasLocation(
         "inspector",
         "view",
         "preview",
-      ].some((key) => params.has(key));
+        "expand",
+      ].some((key) => params.has(key)) ||
+      [...params.keys()].some((key) => key.startsWith("tm.") || key.startsWith("xray."));
     return {
       tab,
       focus: hasMapState

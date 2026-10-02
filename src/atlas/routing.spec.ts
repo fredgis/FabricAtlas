@@ -256,10 +256,17 @@ describe("Atlas routing", () => {
       urlForNavigation(
         {
           pathname: "/",
-          search: "?ctid=tenant&view=evidence&preview=item-relations&item=a",
+          search:
+            "?ctid=tenant&view=evidence&preview=item-relations&item=a&expand=x&tm.from=a&tm.to=b&xray.model=m",
         },
         { tab: "catalog" },
       ),
     ).toBe("/?ctid=tenant#catalog");
+    expect(
+      parseAtlasLocation({ hash: "#map", search: "?tm.from=a&tm.to=b" }),
+    ).toMatchObject({ tab: "map", focus: { requestId: expect.any(String) } });
+    expect(
+      parseAtlasLocation({ hash: "#map", search: "?xray.object=m" }),
+    ).toMatchObject({ tab: "map", focus: { requestId: expect.any(String) } });
   });
 });

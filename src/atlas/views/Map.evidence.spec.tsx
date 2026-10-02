@@ -98,6 +98,40 @@ const loadPartialEvidence: ItemRelationsEvidenceLoader = async () => ({
     stopReasons: ["deadline-exhausted"],
   },
 });
+const SECOND_EXTERNAL = "20000000-0000-4000-8000-000000000002";
+const OTHER_WORKSPACE = "40000000-0000-4000-8000-0000000000f0";
+const loadChainEvidence: ItemRelationsEvidenceLoader = async () => ({
+  envelope: JSON.parse(
+    JSON.stringify(
+      createItemRelationsEvidence(WORKSPACE, OBSERVED, [
+        recordItemRelationsResponse(MODEL, "upstream", OBSERVED, {
+          items: [
+            {
+              id: EXTERNAL,
+              workspaceId: EXTERNAL_WORKSPACE,
+              type: "Lakehouse",
+              displayName: "Shared reference lakehouse",
+            },
+            {
+              id: SECOND_EXTERNAL,
+              workspaceId: OTHER_WORKSPACE,
+              type: "Warehouse",
+              displayName: "Raw landing warehouse",
+            },
+          ],
+          relations: [
+            { itemId: MODEL, dependentOnItemId: EXTERNAL, relationType: "Shortcut" },
+            { itemId: EXTERNAL, dependentOnItemId: SECOND_EXTERNAL, relationType: "Datasource" },
+          ],
+          workspaces: [
+            { id: EXTERNAL_WORKSPACE, displayName: "Shared data" },
+            { id: OTHER_WORKSPACE, displayName: "Raw data" },
+          ],
+        }),
+      ]),
+    ),
+  ),
+});
 
 function renderMap(
   props: Parameters<typeof MapView>[0] = {},
@@ -135,7 +169,7 @@ describe("Map & lineage unified evidence", () => {
       within(views)
         .getAllByRole("tab")
         .map((tab) => tab.textContent),
-    ).toEqual(["Graph", "Evidence", "Changes"]);
+    ).toEqual(["Graph", "Evidence", "Changes", "X-Ray"]);
     expect(screen.getByRole("tab", { name: "Graph" })).toHaveAttribute(
       "aria-selected",
       "true",
@@ -363,6 +397,49 @@ describe("Map & lineage unified evidence", () => {
     expect(
       screen.getByText("Stopped early: deadline-exhausted"),
     ).toBeInTheDocument();
+  });
+
+  it("expands stored cross-workspace relations without moving shown nodes", async () => {
+    const { container } = renderMap(
+      { itemRelationsEnabled: true, loadItemRelationsEvidence: loadChainEvidence },
+      "/?preview=item-relations#map",
+    );
+    const expand = await screen.findByRole("button", {
+      name: "Expand stored relations of Shared reference lakehouse (1 hidden)",
+    });
+    const lane = () => [...container.querySelectorAll<HTMLElement>("[data-preview-node]")];
+    const first = lane()[0];
+    const position = { left: first.style.left, top: first.style.top };
+    expect(lane()).toHaveLength(1);
+
+    fireEvent.click(expand);
+
+    expect(lane()).toHaveLength(2);
+    expect({ left: lane()[0].style.left, top: lane()[0].style.top }).toEqual(position);
+    expect(screen.getByText("Raw landing warehouse")).toBeInTheDocument();
+    const path = screen.getByRole("navigation", { name: "Cross-workspace exploration path" });
+    expect(path).toHaveTextContent("Shared data: Shared reference lakehouse");
+    expect(new URL(window.location.href).searchParams.get("expand")).toBe(
+      `${EXTERNAL_WORKSPACE}:${EXTERNAL}`,
+    );
+
+    fireEvent.click(within(path).getByRole("button", { name: "Reset exploration" }));
+
+    expect(lane()).toHaveLength(1);
+    expect(new URL(window.location.href).searchParams.has("expand")).toBe(false);
+  });
+
+  it("restores expansions from the URL and ignores malformed keys", async () => {
+    const { container } = renderMap(
+      { itemRelationsEnabled: true, loadItemRelationsEvidence: loadChainEvidence },
+      `/?preview=item-relations&expand=${EXTERNAL_WORKSPACE}:${EXTERNAL},not-a-key#map`,
+    );
+
+    expect(await screen.findByText("Raw landing warehouse")).toBeInTheDocument();
+    expect(container.querySelectorAll("[data-preview-node]")).toHaveLength(2);
+    expect(new URL(window.location.href).searchParams.get("expand")).toBe(
+      `${EXTERNAL_WORKSPACE}:${EXTERNAL}`,
+    );
   });
 
   it("never reaches the backend for evidence in preview builds", async () => {

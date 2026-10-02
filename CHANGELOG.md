@@ -49,6 +49,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   chunks after the Atlas snapshot is published, and read back by Map &
   lineage. The status line reports partial coverage, early stops and evidence
   from an earlier snapshot. `LineageEdge` is never written.
+- **Map & lineage → Changes** compares any two retained snapshots as a lineage
+  time machine (one stable union graph with Before, Changes and After views,
+  historical ghosts for removed items, reversed and changed relationships, and
+  Change Center links) and as a deterministic breaking change guard (removed
+  or retyped schema objects, changed measure expressions, removed or reversed
+  lineage and lost ownership, with downstream impact from the earlier
+  snapshot, filters and a Markdown brief).
+- **Map & lineage → X-Ray** explores every table, measure and column of a
+  semantic model with resolved DAX dependencies, explicit unresolved or
+  ambiguous references, cycle detection, direct or transitive impact and
+  evidence export.
+- Item Relations (Beta) lane nodes can be expanded from stored evidence, one
+  bounded hop at a time, without moving shown nodes. Live expansion of
+  external items, Ontology metrics and Ontology inheritance are recorded as
+  dated deferred capabilities.
 - Optional OneLake Catalog Search (Preview) discovery in the `Ctrl+K` palette
   behind the default-off `VITE_ATLAS_FEATURE_CATALOG_SEARCH` flag. The
   synchronizer-only `searchCatalogPreview` Function calls the fixed Catalog

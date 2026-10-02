@@ -61,12 +61,14 @@ Rayfin Data API (Data API Builder)  ──  Fabric SQL database (mssql)
 - `src/atlas/item-relations-evidence.ts` is the pure Item Relations API (Beta) evidence contract
   selectively ported from the experiment branch. It never writes `LineageEdge`. See
   [item-relations-evidence.md](item-relations-evidence.md).
-- **Map & lineage** is the single lineage screen, with local Graph, Evidence and Changes tabs.
+- **Map & lineage** is the single lineage screen, with local Graph, Evidence, Changes and X-Ray tabs.
   `src/atlas/lineage-evidence.ts` groups normalized Atlas snapshot edges and optional Item
   Relations evidence by endpoint pair and source; the Graph overlays Beta edges without changing
   the staged layout. The `Include Item Relations API evidence (Preview)` checkbox appears only
   when the `item-relations` flag is on, and it shows Beta evidence only from a persisted,
-  validated `ItemRelationsEvidenceSnapshot` envelope for the active workspace.
+  validated `ItemRelationsEvidenceSnapshot` envelope for the active workspace. Changes holds the
+  lineage time machine and breaking change guard; X-Ray holds the semantic model DAX dependency
+  explorer. See [lineage-depth.md](lineage-depth.md) for rules, limits and deferred capabilities.
 - `ItemRelationsEvidenceSnapshot` stores non-authoritative Item Relations evidence written after a
   published snapshot by the bounded collector shadow. It is never read into `LineageEdge`.
 

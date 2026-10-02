@@ -18,6 +18,7 @@ import {
   FlaskConical,
   GitBranch,
   Maximize2,
+  Plus,
   RotateCcw,
   Search,
   Table2,
@@ -42,6 +43,7 @@ import {
   RelationshipEvidencePane,
 } from "../components/RelationshipEvidencePane";
 import { ResizableInspector } from "../components/ResizableInspector";
+import { SemanticXRayPanel } from "../components/SemanticXRayPanel";
 import { isFeatureEnabled } from "../feature-flags";
 import {
   ITEM_RELATIONS_FEATURE_ID,
@@ -133,13 +135,30 @@ const PREVIEW_LANE_TOP = 46;
 
 type Mode = "items" | "objects";
 type InspectorTab = "summary" | "schema" | "access" | "runs";
-type LineageView = "graph" | "evidence" | "changes";
+type LineageView = "graph" | "evidence" | "changes" | "xray";
 
 const LINEAGE_VIEWS: Array<{ id: LineageView; label: string }> = [
   { id: "graph", label: "Graph" },
   { id: "evidence", label: "Evidence" },
   { id: "changes", label: "Changes" },
+  { id: "xray", label: "X-Ray" },
 ];
+
+const COMPOSITE_KEY =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const MAX_EXPANSIONS = 20;
+
+function initialExpandedKeys(): string[] {
+  return [
+    ...new Set(
+      new URL(window.location.href).searchParams
+        .get("expand")
+        ?.split(",")
+        .map((key) => key.trim().toLowerCase())
+        .filter((key) => COMPOSITE_KEY.test(key)) ?? [],
+    ),
+  ].slice(0, MAX_EXPANSIONS);
+}
 
 interface Point {
   x: number;
@@ -218,7 +237,7 @@ function hashTab(): string {
 
 function initialLineageView(): LineageView {
   const requested = searchParam("view");
-  return requested === "evidence" || requested === "changes"
+  return requested === "evidence" || requested === "changes" || requested === "xray"
     ? requested
     : "graph";
 }
@@ -556,6 +575,7 @@ export function MapView({
   const [includePreview, setIncludePreview] = useState(initialPreview);
   const [evidenceAttempt, setEvidenceAttempt] = useState(0);
   const [relationshipId, setRelationshipId] = useState("");
+  const [expandedKeys, setExpandedKeys] = useState<string[]>(initialExpandedKeys);
   const previewActive = itemRelationsEnabled && includePreview;
   const previewState = useItemRelationsEvidence(
     data.workspace.fabricId,
@@ -716,11 +736,13 @@ export function MapView({
             nodeWidth: NODE_W,
             rowGap: NODE_ROW_GAP,
             top: PREVIEW_LANE_TOP,
+            expandedKeys,
           })
         : undefined,
     [
       data.workspace.fabricId,
       evidenceModel,
+      expandedKeys,
       layout.width,
       mode,
       previewEvidence,
@@ -964,12 +986,18 @@ export function MapView({
     else url.searchParams.delete("view");
     if (previewActive) url.searchParams.set("preview", PREVIEW_PARAM);
     else url.searchParams.delete("preview");
+    if (previewActive && expandedKeys.length > 0) {
+      url.searchParams.set("expand", expandedKeys.join(","));
+    } else {
+      url.searchParams.delete("expand");
+    }
     if (url.hash.replace(/^#/, "").split("?")[0] === "map-beta") {
       url.hash = "#map";
     }
     window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
   }, [
     activeId,
+    expandedKeys,
     healthFilter,
     impactMode,
     lineageView,
@@ -1516,9 +1544,46 @@ export function MapView({
             currentSnapshotId={data.workspace.snapshotId}
             onRetry={() => setEvidenceAttempt((attempt) => attempt + 1)}
           />
+          {previewOverlay && previewOverlay.expansions.length > 0 && (
+            <nav
+              aria-label="Cross-workspace exploration path"
+              className="flex flex-wrap items-center gap-x-s gap-y-xxs rounded-lg border border-lineage-upstream/30 bg-card px-m py-s text-200"
+            >
+              <span className="font-semibold text-foreground">Explored</span>
+              <span className="text-muted-foreground">
+                {data.workspace.displayName}
+              </span>
+              {previewOverlay.expansions.map((expansion) => (
+                <span key={expansion.key} className="flex items-center gap-xs">
+                  <ChevronRight className="icon-size-100 text-muted-foreground" aria-hidden="true" />
+                  <span className="text-foreground">
+                    {expansion.endpoint.workspaceName ?? "Workspace name not reported"}:{" "}
+                    {expansion.endpoint.displayName}
+                  </span>
+                  <span className="text-muted-foreground">
+                    +{expansion.revealed}
+                    {expansion.withheld > 0 ? `, ${expansion.withheld} not shown (limit)` : ""}
+                  </span>
+                </span>
+              ))}
+              <button
+                type="button"
+                onClick={() => setExpandedKeys([])}
+                className="ml-auto font-semibold text-primary hover:underline"
+              >
+                Reset exploration
+              </button>
+            </nav>
+          )}
         </div>
       )}
 
+      <Tabs.Content
+        value="xray"
+        className="flex min-h-0 flex-1 flex-col focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+      >
+        <SemanticXRayPanel />
+      </Tabs.Content>
       <Tabs.Content
         value="evidence"
         className="flex min-h-0 flex-1 flex-col focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
@@ -2156,6 +2221,25 @@ export function MapView({
                             : node.endpoint.workspaceName ?? "other workspace"}
                         </span>
                       </span>
+                      {node.hiddenNeighbors > 0 && !node.expanded && (
+                        <button
+                          type="button"
+                          aria-expanded={false}
+                          aria-label={`Expand stored relations of ${node.endpoint.displayName} (${node.hiddenNeighbors} hidden)`}
+                          title={`Show ${node.hiddenNeighbors} more stored relation${node.hiddenNeighbors === 1 ? "" : "s"}`}
+                          onClick={() =>
+                            setExpandedKeys((current) =>
+                              current.includes(node.key) || current.length >= MAX_EXPANSIONS
+                                ? current
+                                : [...current, node.key],
+                            )
+                          }
+                          className="flex h-[28px] min-w-[28px] shrink-0 items-center justify-center gap-xxs rounded-full border border-lineage-upstream/70 bg-card px-xs text-200 font-semibold text-lineage-upstream hover:bg-lineage-upstream/10"
+                        >
+                          <Plus className="icon-size-100" aria-hidden="true" />
+                          {node.hiddenNeighbors}
+                        </button>
+                      )}
                     </div>
                   ))}
                   {overlayHandles.map((handle) => {
