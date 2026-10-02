@@ -47,7 +47,11 @@ brokered authentication. It runs as an item inside a Microsoft Fabric workspace.
 git clone https://github.com/fredgis/FabricAtlas.git
 cd FabricAtlas
 npm ci
+npm ci --prefix rayfin/functions
 ```
+
+The Rayfin Functions package in `rayfin/functions/` has its own lockfile. `npx rayfin up` builds it
+but does not install its dependencies.
 
 To scaffold from the reusable template instead:
 
@@ -88,7 +92,7 @@ are not supported — see
 ## 4. Deploy to Fabric
 
 Deployment provisions the backend (Fabric SQL database + Rayfin Data API, storage, static hosting,
-Fabric auth), applies the schema, and publishes the app — in one command.
+Rayfin Functions, Fabric auth), applies the schema, and publishes the app — in one command.
 
 ```powershell
 npx rayfin login                       # sign in with Entra ID (target the tenant that owns the workspace)
@@ -243,6 +247,13 @@ npx rayfin up
 Use `--force` only when you have reviewed a destructive schema change (drop column / alter type). If
 the app was deleted and re-created, remove `rayfin/.deployments.json` first so a fresh item is
 created, then re-add the new hosting origin to the app registration.
+
+Rayfin Functions ship with the same `npx rayfin up`. To debug them against an existing deployment,
+run `npx rayfin dev functions apply` (requires Azure Functions Core Tools). It starts a local host,
+keeps `rayfin/functions/src/types.ts` generated and writes the host URL to
+`RAYFIN_PUBLIC_FUNCTIONS_URL`. `npm run dev` exposes that value as `VITE_RAYFIN_FUNCTIONS_URL`, which
+only development builds use. After changing a `udf.func()` signature without the dev host running,
+rerun `npx rayfin functions init` without `--force` to rebuild and regenerate the types.
 
 ## Scripts
 

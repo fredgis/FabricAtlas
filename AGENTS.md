@@ -16,6 +16,8 @@ jobs, configuration and team notes. It never stores workspace business data.
 - `src/atlas/lineage.ts` normalizes and lays out lineage graphs.
 - `src/atlas/views/` contains the application pages.
 - `rayfin/data/` contains the persisted entity model.
+- `rayfin/functions/` contains Rayfin Functions; its `src/types.ts` and
+  `runtimemetadata.json` are generated, so never edit them by hand.
 - `fabric/udf/atlas_sync_functions/` contains the server-side Fabric metadata sync.
 
 ## Rules

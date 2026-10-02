@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "2.0",
+  "functions": [
+    {
+      "functionName": "ping",
+      "delegateParameters": [],
+      "contextAudiences": []
+    }
+  ]
+}

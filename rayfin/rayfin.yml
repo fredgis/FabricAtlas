@@ -1,6 +1,6 @@
-id: fabricatlas
-name: FabricAtlas
-version: 1.12.4
+id: fabric-atlas-fabcon
+name: Fabric Atlas FabCon
+version: 2.0.0-alpha.1
 services:
   auth:
     enabled: true
@@ -19,4 +19,8 @@ services:
     buildCommand: npm run build:fabric
     indexDocument: index.html
   functions:
-    enabled: false
+    enabled: true
+    path: rayfin/functions
+    buildCommand: npm run build
+    auth:
+      type: application

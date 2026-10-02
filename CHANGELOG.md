@@ -4,6 +4,21 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0-alpha.1] - Unreleased
+
+### Added
+
+- Rayfin TypeScript Functions foundation with a typed, bounded `ping`
+  contract.
+- A shared registry and compact notice component for Preview, Beta and
+  private-preview API evidence.
+
+### Changed
+
+- Upgraded the complete Rayfin package family from 1.34.0 to 1.36.2.
+- The FabCon integration branch deploys as the isolated
+  `fabric-atlas-fabcon` Rayfin application.
+
 ## [1.12.4] - 2026-09-17
 
 ### Fixed
