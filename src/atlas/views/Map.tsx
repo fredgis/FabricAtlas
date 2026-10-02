@@ -46,6 +46,7 @@ import {
 import { ResizableInspector } from "../components/ResizableInspector";
 import { SemanticXRayPanel } from "../components/SemanticXRayPanel";
 import { ToggleSwitch } from "../components/ToggleSwitch";
+import { WorkspaceSelector } from "../components/WorkspaceSelector";
 import { isFeatureEnabled } from "../feature-flags";
 import {
   ITEM_RELATIONS_FEATURE_ID,
@@ -1617,18 +1618,15 @@ export function MapView({
           ))}
         </Tabs.List>
         {itemRelationsEnabled && (
-          <label className="flex min-h-[var(--atlas-touch-target)] cursor-pointer items-center gap-s text-300 font-semibold text-foreground">
-            <input
-              type="checkbox"
-              checked={includePreview}
-              onChange={(event) => {
-                setIncludePreview(event.target.checked);
-                setRelationshipId("");
-              }}
-              className="icon-size-200 shrink-0 cursor-pointer accent-lineage-upstream"
-            />
-            Include Item Relations API evidence (Preview)
-          </label>
+          <ToggleSwitch
+            checked={includePreview}
+            onChange={(checked) => {
+              setIncludePreview(checked);
+              setRelationshipId("");
+            }}
+            label="Item Relations API evidence (Preview)"
+            tone="preview"
+          />
         )}
       </div>
       {previewActive && (
@@ -1706,21 +1704,16 @@ export function MapView({
         className="flex min-h-0 flex-1 flex-col focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
       >
       <div className="atlas-toolbar flex flex-wrap items-center border-b border-border bg-card px-l py-s shadow-fabric-2">
-        <span
-          className="flex min-h-[var(--atlas-control-height)] max-w-[260px] items-center gap-s rounded-lg border border-input bg-card px-m text-300 text-foreground"
-          title="Map & lineage shows the active workspace. Other workspaces appear only through Item Relations (Beta) evidence."
-        >
-          <Database className="icon-size-200 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <span className="truncate">
-            <span className="sr-only">Workspace scope: </span>
-            {data.workspace.displayName || "Active workspace"}
+        <WorkspaceSelector
+          id="map-workspace-selector"
+          compact
+          className="min-w-[180px] max-w-[260px]"
+        />
+        {externalWorkspaceCount > 0 && (
+          <span className="shrink-0 whitespace-nowrap rounded-md bg-lineage-upstream/10 px-s py-xxs text-200 font-semibold text-lineage-upstream">
+            +{externalWorkspaceCount} workspaces via Beta
           </span>
-          {externalWorkspaceCount > 0 && (
-            <span className="shrink-0 whitespace-nowrap text-200 text-lineage-upstream">
-              +{externalWorkspaceCount} via Beta
-            </span>
-          )}
-        </span>
+        )}
         <div className="flex rounded-md border border-border bg-secondary p-[2px]">
           {(["items", "objects"] as const).map((value) => (
             <button

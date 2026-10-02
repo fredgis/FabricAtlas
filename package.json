@@ -31,6 +31,8 @@
   },
   "dependencies": {
     "@azure/msal-browser": "^4.30.0",
+    "@microsoft/fabric-visuals": "^4.1.0",
+    "@microsoft/fabric-visuals-core": "^4.1.0",
     "@microsoft/rayfin-auth-provider-fabric": "1.36.2",
     "@microsoft/rayfin-client": "1.36.2",
     "@microsoft/rayfin-core": "1.36.2",

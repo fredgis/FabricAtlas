@@ -146,8 +146,8 @@ function renderMap(
 }
 
 function previewCheckbox() {
-  return screen.getByRole("checkbox", {
-    name: "Include Item Relations API evidence (Preview)",
+  return screen.getByRole("switch", {
+    name: "Item Relations API evidence (Preview)",
   });
 }
 

@@ -177,6 +177,21 @@ export function SemanticXRayPanel() {
         </label>
       </header>
 
+      <div className="flex items-start gap-m rounded-lg border border-primary/20 bg-primary/5 p-m">
+        <Info className="mt-xxs icon-size-200 shrink-0 text-brand-foreground" aria-hidden="true" />
+        <div className="text-200 leading-300">
+          <p className="font-semibold text-foreground">What X-Ray shows</p>
+          <p className="mt-xxs text-muted-foreground">
+            X-Ray resolves DAX references between synchronized measures and
+            columns in one semantic model. Open a table, select an object, then
+            use <strong>Depends on</strong> for its inputs or <strong>Used by</strong>
+            for its consumers. Direct shows one hop; Transitive follows the
+            complete resolved chain. Report visual usage and runtime queries
+            are not exposed by Fabric and are not inferred.
+          </p>
+        </div>
+      </div>
+
       <div className="flex flex-wrap gap-s">
         <Metric label="Tables" value={xray.tables.length} />
         <Metric label="Measures" value={xray.measureCount} />
@@ -235,7 +250,10 @@ export function SemanticXRayPanel() {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-m xl:flex-row">
-        <ul aria-label="Model objects by table" className="flex min-w-0 flex-1 flex-col gap-xs">
+        <ul
+          aria-label="Model objects by table"
+          className="flex min-h-0 min-w-0 flex-1 flex-col gap-xs overflow-y-auto pr-xs"
+        >
           {xray.tables.map((table) => {
             const visible = table.objectKeys
               .map((key) => xray.objects.get(key)!)
@@ -244,7 +262,7 @@ export function SemanticXRayPanel() {
             const open = !!normalizedQuery || openTables.has(table.name);
             const impacted = table.objectKeys.filter((key) => impact?.keys.has(key)).length;
             return (
-              <li key={table.name} className="overflow-hidden rounded-lg border border-border bg-card">
+              <li key={table.name} className="shrink-0 overflow-hidden rounded-lg border border-border bg-card">
                 <button
                   type="button"
                   aria-expanded={open}

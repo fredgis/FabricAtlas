@@ -29,11 +29,16 @@ describe("SemanticXRayPanel", () => {
   it("starts with every table collapsed and counts the complete model", () => {
     renderPanel();
 
-    const tables = within(screen.getByRole("list", { name: "Model objects by table" }))
+    const objectList = screen.getByRole("list", { name: "Model objects by table" });
+    const tables = within(objectList)
       .getAllByRole("button")
       .filter((button) => button.hasAttribute("aria-expanded"));
     expect(tables.length).toBeGreaterThan(1);
     expect(tables.every((button) => button.getAttribute("aria-expanded") === "false")).toBe(true);
+    expect(objectList).toHaveClass("overflow-y-auto");
+    expect(table("revenue_by_month").closest("li")).toHaveClass("shrink-0");
+    expect(screen.getByText("What X-Ray shows")).toBeInTheDocument();
+    expect(screen.getByText(/Report visual usage and runtime queries/)).toBeInTheDocument();
     const model = SAMPLE_DATA.items.find((item) => item.itemType === "SemanticModel")!;
     const measures = (SAMPLE_DATA.schema?.[model.fabricId] ?? []).reduce(
       (sum, entry) => sum + entry.measures.length,
