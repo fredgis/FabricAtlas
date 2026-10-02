@@ -12,6 +12,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   contract.
 - A shared registry and compact notice component for Preview, Beta and
   private-preview API evidence.
+- A pure, flag-gated Item Relations API (Beta) evidence contract selectively
+  ported from `experiment/item-relations-api`: response validation,
+  per-family direction (including `PushData` and `CascadeDelete`), unknown
+  relation types, cross-workspace node keys, cycles, prior-evidence
+  preservation and comparison with authoritative lineage. It is not wired to
+  a screen or to synchronization yet.
 
 ### Changed
 
