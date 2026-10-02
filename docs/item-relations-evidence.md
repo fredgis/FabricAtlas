@@ -3,8 +3,9 @@
 `src/atlas/item-relations-evidence.ts` holds the reusable part of the Fabric
 Item Relations API (Beta) experiment. It is a pure frontend/test-side module:
 it does not call Fabric, acquire tokens, persist rows, change the Python UDF or
-write `LineageEdge`. No screen imports it yet, and production synchronization
-is unchanged.
+write `LineageEdge`. **Map & lineage** reads it through
+`src/atlas/lineage-evidence.ts` (see [Phase 5 UI](#phase-5-unified-lineage-ui));
+production synchronization is unchanged.
 
 ## Capability boundary
 
@@ -172,30 +173,69 @@ Not ported from the experiment:
   replaces collection with the `workspaceCollectItemRelations` Function; the
   browser shadow call, batching across Function invocations and persistence
   are not wired yet.
-- `ItemRelationsBetaSnapshot` and its chunked persistence. Phase 5 must add a
-  separate, additive evidence entity that stores the schema-version 1 envelope;
-  Preview rows stay separate from `LineageEdge`.
-- `MapBeta.tsx`, the `map-beta` tab, routing and navigation. Phase 5 replaces
-  them with the single **Map & lineage** entry, the
-  `Include Item Relations API evidence (Preview)` checkbox and the Graph,
-  Evidence and Changes tabs. Legacy `#map-beta` URLs redirect there.
-- The `StagedLayoutItem` widening of `buildStagedLayout`, which Phase 5 adds
-  only if it lays out non-snapshot nodes.
+- `ItemRelationsBetaSnapshot` and its chunked persistence. A separate,
+  additive evidence entity that stores the schema-version 1 envelope is still
+  required; Preview rows stay separate from `LineageEdge`.
+- `MapBeta.tsx`, the `map-beta` tab and its navigation entry. They are replaced
+  by the single **Map & lineage** screen described below.
+- The `StagedLayoutItem` widening of `buildStagedLayout`. The Phase 5 overlay
+  places non-snapshot endpoints in a separate lane instead, so the staged
+  layout still receives snapshot items only.
 - The experiment Rayfin application ID, package version, release version and
   redirect URIs.
 
 The experiment's GraphQL write retries and cancellation fixes were already
 released in 1.12.2 to 1.12.4 and are not part of this port.
 
+## Phase 5 unified lineage UI
+
+**Map & lineage** stays the only lineage navigation entry. Legacy `#map-beta`
+links resolve to `#map` with Preview evidence included.
+
+- **Local tabs.** Graph, Evidence and Changes, kept in the URL as `view`.
+- **Preview control.** `Include Item Relations API evidence (Preview)` renders
+  only when `VITE_ATLAS_FEATURE_ITEM_RELATIONS` is on, is unchecked by default
+  and is kept in the URL as `preview=item-relations`. When checked, it shows
+  `PreviewApiNotice` and a status line for loading, none persisted, error with
+  retry, or collection time and coverage.
+- **Evidence source.** `useItemRelationsEvidence` loads only persisted
+  envelopes through an `ItemRelationsEvidenceLoader` and validates them with
+  `parseItemRelationsEvidence` for the active workspace. The default
+  `loadPersistedItemRelationsEvidence` returns `null` because no evidence
+  entity exists yet, so production shows "No persisted Item Relations
+  evidence" and draws nothing. The UI never collects or invents evidence.
+- **Unified model.** `buildLineageEvidence` normalizes snapshot `Edge` values
+  from source to consumer, compares them with Preview edges through
+  `compareItemRelationsWithLineage`, and groups both by endpoint pair. Each
+  relationship gets one agreement status: `conflict`, `agree`, `unverified`,
+  `preview-only`, `cross-workspace`, `snapshot-only`, `not-covered`,
+  `not-lineage` or `snapshot` (Preview not loaded).
+- **Graph.** `buildPreviewOverlay` draws disagreeing Beta edges only: dashed
+  purple for data flow, dash-dot purple for control or lifecycle, amber for
+  direction conflicts. Agreeing and visibility relations are not drawn twice.
+  Endpoints outside the snapshot sit in a right-hand lane ordered by
+  workspace and name, so snapshot node positions never move. Midpoint buttons
+  open the relationship evidence pane. The legend lists sources: Atlas
+  snapshot (verified), Item Relations API (Beta, observed), Beta control or
+  lifecycle, and Conflict (review needed).
+- **Evidence.** Coverage counts, failure codes, unresolved relations and
+  cycles; a searchable, filterable relationship list; and the provenance
+  pane, which shows each source's own statement, drawn direction, relation
+  family, observation time, preserved state and the conflict callout.
+- **Changes.** Atlas snapshot lineage added, removed or changed broken state
+  between the last two snapshots. Beta evidence has no history and is never
+  mixed into these changes.
+
 ## Phase 5 integration checklist
 
-- Persist and load `ItemRelationsEvidence` through a dedicated entity, then
-  merge each new collection with `mergeItemRelationsEvidence`.
-- Pass `normalizeLineageEdges` output to `compareItemRelationsWithLineage`.
-- Draw verified scanner edges with the existing teal treatment, Preview edges
-  with dashed purple and conflicts in amber. Keep control, lifecycle and
-  visibility edges visually separate from data flow.
-- Show `unresolved`, `cycles`, coverage counts, failure codes and
+- [x] Pass `normalizeLineageEdges` output to `compareItemRelationsWithLineage`.
+- [x] Draw verified snapshot edges with the existing treatment, Preview edges
+  with dashed purple and conflicts in amber, with control and lifecycle edges
+  visually separate from data flow.
+- [x] Show `unresolved`, `cycles`, coverage counts, failure codes and
   `observedAt` in the evidence inspector.
-- Confirm the `CascadeDelete` and `HiddenInWorkspace` orientations against real
-  tenant responses before C is adopted.
+- [ ] Persist and load `ItemRelationsEvidence` through a dedicated entity,
+  then merge each new collection with `mergeItemRelationsEvidence`. Plug the
+  reader in as the `ItemRelationsEvidenceLoader`.
+- [ ] Confirm the `CascadeDelete` and `HiddenInWorkspace` orientations against
+  real tenant responses before C is adopted.

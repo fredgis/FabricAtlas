@@ -632,7 +632,9 @@ This Function uses the AppBackend application identity, so that identity must be
 root items. Missing access is recorded per query as `unauthorized` or `insufficient-privileges`.
 The API is Beta and not recommended for production use. Its real-tenant response size,
 pagination and relation coverage are not yet verified; keep it behind the default-off
-`VITE_ATLAS_FEATURE_ITEM_RELATIONS` flag. Validate with:
+`VITE_ATLAS_FEATURE_ITEM_RELATIONS` flag. With the flag on, **Map & lineage** shows the
+`Include Item Relations API evidence (Preview)` checkbox. It reads persisted evidence only, and
+this build has no evidence store, so it reports that no evidence is available. Validate with:
 
 ```powershell
 npx --no-install rayfin functions init

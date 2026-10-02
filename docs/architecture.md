@@ -53,9 +53,15 @@ Rayfin Data API (Data API Builder)  ──  Fabric SQL database (mssql)
   `PreviewApiNotice` so API maturity, version, documentation, observation boundary and limitations
   stay explicit instead of being encoded in page-specific copy.
 - `src/atlas/item-relations-evidence.ts` is the pure Item Relations API (Beta) evidence contract
-  selectively ported from the experiment branch. It stays behind the `item-relations` flag, is not
-  wired to a screen or to synchronization, and never writes `LineageEdge`. See
+  selectively ported from the experiment branch. It never writes `LineageEdge`. See
   [item-relations-evidence.md](item-relations-evidence.md).
+- **Map & lineage** is the single lineage screen, with local Graph, Evidence and Changes tabs.
+  `src/atlas/lineage-evidence.ts` groups normalized Atlas snapshot edges and optional Item
+  Relations evidence by endpoint pair and source; the Graph overlays Beta edges without changing
+  the staged layout. The `Include Item Relations API evidence (Preview)` checkbox appears only
+  when the `item-relations` flag is on, and it shows Beta evidence only if a persisted envelope
+  exists. No evidence store is wired yet, so the checkbox currently reports that none is
+  available.
 
 ## Phase 12 compatibility decisions (2026-10-02)
 

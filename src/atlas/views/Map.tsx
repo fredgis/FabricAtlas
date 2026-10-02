@@ -8,12 +8,14 @@ import {
 } from "react";
 import {
   Activity,
+  AlertTriangle,
   Check,
   ChevronDown,
   ChevronRight,
   Copy,
   ExternalLink,
   FileDown,
+  FlaskConical,
   GitBranch,
   Maximize2,
   RotateCcw,
@@ -25,8 +27,36 @@ import {
 } from "lucide-react";
 import * as Tabs from "@radix-ui/react-tabs";
 import { ImpactReportDialog } from "../components/ImpactReportDialog";
+import { ItemRelationsEvidenceStatus } from "../components/ItemRelationsEvidenceStatus";
+import { LineageChangesPanel } from "../components/LineageChangesPanel";
+import { LineageEvidencePanel } from "../components/LineageEvidencePanel";
+import {
+  LineageSourceLegend,
+  PREVIEW_CONTROL_DASH,
+  PREVIEW_DATA_DASH,
+} from "../components/LineageSourceLegend";
 import { MetadataObjectImpactDialog } from "../components/MetadataObjectImpactDialog";
+import { PreviewApiNotice } from "../components/PreviewApiNotice";
+import {
+  AgreementChip,
+  RelationshipEvidencePane,
+} from "../components/RelationshipEvidencePane";
 import { ResizableInspector } from "../components/ResizableInspector";
+import { isFeatureEnabled } from "../feature-flags";
+import {
+  ITEM_RELATIONS_FEATURE_ID,
+  itemRelationsNodeKey,
+} from "../item-relations-evidence";
+import {
+  loadPersistedItemRelationsEvidence,
+  useItemRelationsEvidence,
+  type ItemRelationsEvidenceLoader,
+} from "../item-relations-evidence-source";
+import {
+  buildLineageEvidence,
+  buildPreviewOverlay,
+  type RelationshipEvidence,
+} from "../lineage-evidence";
 import {
   metadataObjectKindLabel,
   verifiedMetadataEdgesForItem,
@@ -93,9 +123,21 @@ const NODE_ROW_GAP = 100;
 const OBJECT_ROW_GAP = 100;
 const UP = "var(--color-lineage-upstream)";
 const DOWN = "var(--color-lineage-downstream)";
+const PREVIEW = "var(--color-lineage-upstream)";
+const CONFLICT = "var(--color-status-warning)";
+const PREVIEW_PARAM = "item-relations";
+const PREVIEW_LANE_GAP = 24;
+const PREVIEW_LANE_TOP = 46;
 
 type Mode = "items" | "objects";
 type InspectorTab = "summary" | "schema" | "access" | "runs";
+type LineageView = "graph" | "evidence" | "changes";
+
+const LINEAGE_VIEWS: Array<{ id: LineageView; label: string }> = [
+  { id: "graph", label: "Graph" },
+  { id: "evidence", label: "Evidence" },
+  { id: "changes", label: "Changes" },
+];
 
 interface Point {
   x: number;
@@ -166,6 +208,22 @@ function searchParam(name: string): string {
 
 function initialMode(): Mode {
   return searchParam("lineage") === "objects" ? "objects" : "items";
+}
+
+function hashTab(): string {
+  return window.location.hash.replace(/^#/, "").split("?")[0];
+}
+
+function initialLineageView(): LineageView {
+  const requested = searchParam("view");
+  return requested === "evidence" || requested === "changes"
+    ? requested
+    : "graph";
+}
+
+// Legacy `#map-beta` links open the single map with Preview evidence enabled.
+function initialPreview(): boolean {
+  return searchParam("preview") === PREVIEW_PARAM || hashTab() === "map-beta";
 }
 
 function initialInspectorTab(): InspectorTab {
@@ -422,7 +480,13 @@ function InspectorTabButton({
   );
 }
 
-export function MapView() {
+export function MapView({
+  itemRelationsEnabled = isFeatureEnabled(ITEM_RELATIONS_FEATURE_ID),
+  loadItemRelationsEvidence = loadPersistedItemRelationsEvidence,
+}: {
+  itemRelationsEnabled?: boolean;
+  loadItemRelationsEvidence?: ItemRelationsEvidenceLoader;
+} = {}) {
   const { data, currentUser } = useAtlas();
   const { items, edges, comments, config, principals, jobs } = data;
   const inspectorWidth = useDisplayPreference(
@@ -480,6 +544,48 @@ export function MapView() {
   const [zoom, setZoom] = useState(1);
   const [copied, setCopied] = useState(false);
   const [impactReportOpen, setImpactReportOpen] = useState(false);
+  const [lineageView, setLineageView] =
+    useState<LineageView>(initialLineageView);
+  const [includePreview, setIncludePreview] = useState(initialPreview);
+  const [evidenceAttempt, setEvidenceAttempt] = useState(0);
+  const [relationshipId, setRelationshipId] = useState("");
+  const previewActive = itemRelationsEnabled && includePreview;
+  const previewState = useItemRelationsEvidence(
+    data.workspace.fabricId,
+    previewActive,
+    loadItemRelationsEvidence,
+    evidenceAttempt,
+  );
+  const previewEvidence =
+    previewState.status === "ready" ? previewState.evidence : null;
+  const evidenceModel = useMemo(
+    () =>
+      buildLineageEvidence({
+        items,
+        edges,
+        workspaceId: data.workspace.fabricId,
+        workspaceName: data.workspace.displayName,
+        evidence: previewEvidence,
+      }),
+    [
+      data.workspace.displayName,
+      data.workspace.fabricId,
+      edges,
+      items,
+      previewEvidence,
+    ],
+  );
+  const itemNames = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const node of evidenceModel.previewGraph?.nodes ?? []) {
+      if (node.displayName) names.set(node.id, node.displayName);
+    }
+    for (const item of items) {
+      names.set(item.fabricId.toLowerCase(), item.displayName);
+    }
+    return names;
+  }, [evidenceModel.previewGraph, items]);
+  const selectedRelationship = evidenceModel.byId.get(relationshipId);
   const dragging = useRef<{
     id: string;
     ids: string[];
@@ -594,15 +700,50 @@ export function MapView() {
     [resolvedFocusId, visibleEdges, visibleItems],
   );
   const posOf = (id: string) => drag[id] ?? layout.positions.get(id) ?? { x: 0, y: 0 };
+  const previewOverlay = useMemo(
+    () =>
+      previewEvidence && mode === "items"
+        ? buildPreviewOverlay(evidenceModel, data.workspace.fabricId, {
+            visibleItemIds: visibleIds,
+            laneX: layout.width + PREVIEW_LANE_GAP,
+            nodeWidth: NODE_W,
+            rowGap: NODE_ROW_GAP,
+            top: PREVIEW_LANE_TOP,
+          })
+        : undefined,
+    [
+      data.workspace.fabricId,
+      evidenceModel,
+      layout.width,
+      mode,
+      previewEvidence,
+      visibleIds,
+    ],
+  );
   const bounds = useMemo(() => {
     let width = layout.width;
     let height = layout.height;
+    if (previewOverlay && previewOverlay.laneNodes.length > 0) {
+      width = Math.max(
+        width,
+        layout.width + PREVIEW_LANE_GAP + previewOverlay.laneWidth,
+      );
+      height = Math.max(height, previewOverlay.laneHeight + 48);
+    }
     Object.values(drag).forEach((point) => {
       width = Math.max(width, point.x + NODE_W + 48);
       height = Math.max(height, point.y + NODE_H + 48);
     });
     return { width, height };
-  }, [drag, layout.height, layout.width]);
+  }, [drag, layout.height, layout.width, previewOverlay]);
+  const incidentRelationships = useMemo(() => {
+    if (!previewEvidence || !activeId) return [];
+    const key = itemRelationsNodeKey(data.workspace.fabricId, activeId);
+    return evidenceModel.relationships.filter(
+      (relationship) =>
+        relationship.source.key === key || relationship.target.key === key,
+    );
+  }, [activeId, data.workspace.fabricId, evidenceModel, previewEvidence]);
   const selectedMetadataEdges = useMemo(
     () => verifiedMetadataEdgesForItem(data.objectEdges, activeId),
     [activeId, data.objectEdges],
@@ -812,13 +953,22 @@ export function MapView() {
     }
     if (tab !== "summary") url.searchParams.set("inspector", tab);
     else url.searchParams.delete("inspector");
+    if (lineageView !== "graph") url.searchParams.set("view", lineageView);
+    else url.searchParams.delete("view");
+    if (previewActive) url.searchParams.set("preview", PREVIEW_PARAM);
+    else url.searchParams.delete("preview");
+    if (url.hash.replace(/^#/, "").split("?")[0] === "map-beta") {
+      url.hash = "#map";
+    }
     window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
   }, [
     activeId,
     healthFilter,
     impactMode,
+    lineageView,
     mode,
     objects.table,
+    previewActive,
     query,
     resolvedObjectKindFilter,
     resolvedSourceFilter,
@@ -904,6 +1054,7 @@ export function MapView() {
       setSelId(id);
     }
     resetObjectContext(false, id);
+    setRelationshipId("");
     setTab("summary");
   };
 
@@ -913,6 +1064,7 @@ export function MapView() {
     setFocusId(itemId);
     setSelectedItemIds(new Set([itemId]));
     resetObjectContext(true, itemId);
+    setRelationshipId("");
     setTypeFilter("all");
     setHealthFilter("all");
     setTab("summary");
@@ -1204,6 +1356,59 @@ export function MapView() {
     ? `${portal}/groups/${encodeURIComponent(data.workspace.fabricId)}/list?experience=power-bi`
     : portal;
 
+  const laneByKey = new Map(
+    (previewOverlay?.laneNodes ?? []).map((node) => [node.key, node]),
+  );
+  const overlayPoint = (
+    relationship: RelationshipEvidence,
+    key: string,
+  ): Point => {
+    const lane = laneByKey.get(key);
+    if (lane) return lane;
+    return posOf(
+      key === relationship.source.key
+        ? relationship.source.id
+        : relationship.target.id,
+    );
+  };
+  const overlayHandles = (() => {
+    const handles = new Map<
+      string,
+      {
+        relationship: RelationshipEvidence;
+        point: Point;
+        conflict: boolean;
+        relationTypes: string[];
+      }
+    >();
+    for (const overlayEdge of previewOverlay?.edges ?? []) {
+      const relationship = evidenceModel.byId.get(overlayEdge.relationshipId);
+      if (!relationship) continue;
+      const existing = handles.get(relationship.id);
+      const relationType = overlayEdge.entry.edge.relation.relationType;
+      if (existing) {
+        existing.conflict ||= overlayEdge.entry.status === "direction-conflict";
+        existing.relationTypes.push(relationType);
+        continue;
+      }
+      const source = overlayPoint(relationship, overlayEdge.sourceKey);
+      const target = overlayPoint(relationship, overlayEdge.targetKey);
+      handles.set(relationship.id, {
+        relationship,
+        point: {
+          x: (source.x + NODE_W + target.x) / 2,
+          y: (source.y + target.y + NODE_H) / 2,
+        },
+        conflict: overlayEdge.entry.status === "direction-conflict",
+        relationTypes: [relationType],
+      });
+    }
+    return [...handles.values()];
+  })();
+  const selectedAuthoritativeKeys = new Set(
+    (selectedRelationship?.authoritative ?? []).map(lineageEdgeKey),
+  );
+
   return (
     <div className="flex h-full min-h-[720px] flex-col xl:min-h-0">
       <div className="atlas-page-header flex flex-wrap items-end justify-between border-b border-border">
@@ -1211,7 +1416,15 @@ export function MapView() {
           <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-lineage-downstream">
             Workspace topology
           </div>
-          <h1 className="mt-[3px] text-[22px] font-bold">Map &amp; lineage</h1>
+          <div className="mt-[3px] flex flex-wrap items-center gap-s">
+            <h1 className="text-[22px] font-bold">Map &amp; lineage</h1>
+            {previewActive && (
+              <span className="inline-flex items-center gap-xs rounded-md border border-lineage-upstream/40 bg-lineage-upstream/10 px-s py-xxs text-200 font-semibold text-lineage-upstream">
+                <FlaskConical className="icon-size-100" aria-hidden="true" />
+                Beta evidence · evaluation
+              </span>
+            )}
+          </div>
           <div className="mt-[3px] text-[12px] text-muted-foreground">
             Trace dependencies, inspect objects and estimate downstream change impact.
           </div>
@@ -1222,18 +1435,105 @@ export function MapView() {
             ["Links", edges.length],
             ["Upstream", upstream.length],
             ["Downstream", downstream.length],
+            ...(previewEvidence
+              ? [
+                  [
+                    "Beta relations",
+                    evidenceModel.previewGraph?.edges.length ?? 0,
+                  ],
+                  ["Conflicts to review", evidenceModel.counts.conflict],
+                ]
+              : []),
           ].map(([label, value]) => (
             <div
               key={label}
               className="min-w-[78px] rounded-lg border border-border bg-card px-[10px] py-[7px] shadow-fabric-2"
             >
-              <div className="font-numeric text-[15px] font-bold">{value}</div>
+              <div
+                className={cn(
+                  "font-numeric text-[15px] font-bold",
+                  label === "Conflicts to review" &&
+                    Number(value) > 0 &&
+                    "text-status-warning",
+                )}
+              >
+                {value}
+              </div>
               <div className="text-[10px] text-muted-foreground">{label}</div>
             </div>
           ))}
         </div>
       </div>
 
+      <Tabs.Root
+        value={lineageView}
+        onValueChange={(value) => setLineageView(value as LineageView)}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+      <div className="flex flex-wrap items-center justify-between gap-x-l border-b border-border bg-card px-l">
+        <Tabs.List
+          aria-label="Map and lineage views"
+          className="-mx-xs flex overflow-x-auto px-xs"
+        >
+          {LINEAGE_VIEWS.map(({ id, label }) => (
+            <Tabs.Trigger
+              key={id}
+              value={id}
+              className="relative flex min-h-[var(--atlas-touch-target)] shrink-0 items-center whitespace-nowrap px-l text-300 text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-inset focus-visible:ring-offset-0 data-[state=active]:font-semibold data-[state=active]:text-brand-foreground data-[state=active]:after:absolute data-[state=active]:after:inset-x-s data-[state=active]:after:bottom-0 data-[state=active]:after:h-xxs data-[state=active]:after:rounded-full data-[state=active]:after:bg-primary dark:data-[state=active]:after:bg-brand-foreground"
+            >
+              {label}
+            </Tabs.Trigger>
+          ))}
+        </Tabs.List>
+        {itemRelationsEnabled && (
+          <label className="flex min-h-[var(--atlas-touch-target)] cursor-pointer items-center gap-s text-300 font-semibold text-foreground">
+            <input
+              type="checkbox"
+              checked={includePreview}
+              onChange={(event) => {
+                setIncludePreview(event.target.checked);
+                setRelationshipId("");
+              }}
+              className="icon-size-200 shrink-0 cursor-pointer accent-lineage-upstream"
+            />
+            Include Item Relations API evidence (Preview)
+          </label>
+        )}
+      </div>
+      {previewActive && (
+        <div className="flex flex-col gap-s border-b border-border bg-secondary px-l py-s">
+          <PreviewApiNotice featureIds={[ITEM_RELATIONS_FEATURE_ID]} />
+          <ItemRelationsEvidenceStatus
+            state={previewState}
+            model={evidenceModel}
+            onRetry={() => setEvidenceAttempt((attempt) => attempt + 1)}
+          />
+        </div>
+      )}
+
+      <Tabs.Content
+        value="evidence"
+        className="flex min-h-0 flex-1 flex-col focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+      >
+        <LineageEvidencePanel
+          model={evidenceModel}
+          previewState={previewState}
+          snapshotSyncedAt={data.workspace.syncedAt}
+          itemNames={itemNames}
+          selectedId={relationshipId}
+          onSelect={setRelationshipId}
+        />
+      </Tabs.Content>
+      <Tabs.Content
+        value="changes"
+        className="flex min-h-0 flex-1 flex-col focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+      >
+        <LineageChangesPanel previewIncluded={previewActive} />
+      </Tabs.Content>
+      <Tabs.Content
+        value="graph"
+        className="flex min-h-0 flex-1 flex-col focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+      >
       <div className="atlas-toolbar flex flex-wrap items-center border-b border-border bg-card px-l py-s shadow-fabric-2">
         <div className="flex rounded-md border border-border bg-secondary p-[2px]">
           {(["items", "objects"] as const).map((value) => (
@@ -1583,6 +1883,8 @@ export function MapView() {
                         ["up", UP],
                         ["down", DOWN],
                         ["broken", "var(--color-destructive)"],
+                        ["preview", PREVIEW],
+                        ["conflict", CONFLICT],
                       ].map(([id, fill]) => (
                         <marker
                           key={id}
@@ -1603,7 +1905,8 @@ export function MapView() {
                       const key = lineageEdgeKey(edge);
                       const isUp = impact.upstream.edgeKeys.has(key);
                       const isDown = impact.downstream.edgeKeys.has(key);
-                      const active = isUp || isDown;
+                      const active =
+                        isUp || isDown || selectedAuthoritativeKeys.has(key);
                       const color = edge.broken
                         ? "var(--color-destructive)"
                         : isUp
@@ -1647,6 +1950,49 @@ export function MapView() {
                                     ? "down"
                                     : "default"
                             })`}
+                          />
+                        </g>
+                      );
+                    })}
+                    {previewOverlay?.edges.map((overlayEdge) => {
+                      const relationship = evidenceModel.byId.get(
+                        overlayEdge.relationshipId,
+                      );
+                      if (!relationship) return null;
+                      const { edge, status } = overlayEdge.entry;
+                      const conflict = status === "direction-conflict";
+                      const selectedEdge =
+                        relationship.id === relationshipId;
+                      const flow = edge.semantics.flow;
+                      return (
+                        <g
+                          key={edge.id}
+                          data-evidence-source={edge.evidenceSource}
+                        >
+                          <title>
+                            {`Item Relations API (Beta): ${edge.relation.relationType}`}
+                          </title>
+                          <path
+                            d={curve(
+                              overlayPoint(relationship, overlayEdge.sourceKey),
+                              overlayPoint(relationship, overlayEdge.targetKey),
+                            )}
+                            fill="none"
+                            stroke={conflict ? CONFLICT : PREVIEW}
+                            strokeWidth={selectedEdge ? 2.8 : 1.8}
+                            strokeOpacity={
+                              selectedEdge
+                                ? 1
+                                : impactMode && activeId
+                                  ? 0.25
+                                  : 0.85
+                            }
+                            strokeDasharray={
+                              flow === "control" || flow === "lifecycle"
+                                ? PREVIEW_CONTROL_DASH
+                                : PREVIEW_DATA_DASH
+                            }
+                            markerEnd={`url(#atlas-${conflict ? "conflict" : "preview"})`}
                           />
                         </g>
                       );
@@ -1759,6 +2105,75 @@ export function MapView() {
                           </span>
                         </span>
                         <HealthDot health={item.health} />
+                      </button>
+                    );
+                  })}
+                  {previewOverlay && previewOverlay.laneNodes.length > 0 && (
+                    <div
+                      className="pointer-events-none absolute top-[9px] flex items-center gap-[7px] text-[10px] font-bold uppercase tracking-[0.12em] text-lineage-upstream"
+                      style={{
+                        left: layout.width + PREVIEW_LANE_GAP,
+                        width: NODE_W,
+                      }}
+                    >
+                      <span>Beta · outside snapshot</span>
+                      <span className="h-px flex-1 bg-lineage-upstream/40" />
+                    </div>
+                  )}
+                  {previewOverlay?.laneNodes.map((node) => (
+                    <div
+                      key={node.key}
+                      data-preview-node
+                      title={`${node.endpoint.displayName} (${node.endpoint.workspaceName ?? "workspace name not reported"})`}
+                      className="absolute z-[3] flex items-center gap-[10px] rounded-lg border border-dashed border-lineage-upstream/70 bg-card px-[12px] text-left shadow-fabric-2"
+                      style={{
+                        left: node.x,
+                        top: node.y,
+                        width: NODE_W,
+                        height: NODE_H,
+                      }}
+                    >
+                      <TypeGlyph
+                        type={(node.endpoint.itemType ?? "Unknown") as Item["itemType"]}
+                        size={34}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="line-clamp-2 break-words text-200 font-semibold leading-200">
+                          {node.endpoint.displayName}
+                        </span>
+                        <span className="mt-xs line-clamp-1 text-200 leading-200 text-muted-foreground">
+                          {typeMeta(node.endpoint.itemType).label} ·{" "}
+                          {node.endpoint.isLocal
+                            ? "not in snapshot"
+                            : node.endpoint.workspaceName ?? "other workspace"}
+                        </span>
+                      </span>
+                    </div>
+                  ))}
+                  {overlayHandles.map((handle) => {
+                    const { relationship } = handle;
+                    const selectedHandle = relationship.id === relationshipId;
+                    return (
+                      <button
+                        key={relationship.id}
+                        type="button"
+                        onClick={() => setRelationshipId(relationship.id)}
+                        aria-label={`${handle.conflict ? "Direction conflict" : "Item Relations evidence"}: ${relationship.source.displayName} to ${relationship.target.displayName}, ${handle.relationTypes.join(", ")}. Show relationship evidence`}
+                        title={handle.conflict ? "Direction differs between sources" : "Item Relations API (Beta) evidence"}
+                        className={cn(
+                          "absolute z-[6] flex h-[28px] w-[28px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-card shadow-fabric-4 hover:scale-110",
+                          handle.conflict
+                            ? "border-status-warning text-status-warning"
+                            : "border-lineage-upstream/70 text-lineage-upstream",
+                          selectedHandle && "ring-2 ring-ring",
+                        )}
+                        style={{ left: handle.point.x, top: handle.point.y }}
+                      >
+                        {handle.conflict ? (
+                          <AlertTriangle className="icon-size-200" aria-hidden="true" />
+                        ) : (
+                          <FlaskConical className="icon-size-100" aria-hidden="true" />
+                        )}
                       </button>
                     );
                   })}
@@ -2031,22 +2446,10 @@ export function MapView() {
             </div>
           )}
 
-          <div className="sticky bottom-[14px] left-[14px] z-20 ml-[14px] flex w-fit flex-wrap items-center gap-[12px] rounded-lg border border-border bg-card px-[11px] py-[8px] text-[10px] text-muted-foreground shadow-fabric-4">
-            <span className="flex items-center gap-[5px] text-lineage-upstream">
-              <span className="w-[18px] border-t-2 border-dashed border-lineage-upstream" /> upstream
-            </span>
-            <span className="flex items-center gap-[5px] text-lineage-downstream">
-              <span className="h-[2px] w-[18px] bg-lineage-downstream" /> downstream
-            </span>
-            <span className="flex items-center gap-[5px]">
-              <HealthDot health="healthy" size={7} /> healthy
-            </span>
-            <span>
-              {mode === "items"
-                ? "Ctrl/Cmd+click to multi-select · drag selection"
-                : "Ctrl/Cmd+click to multi-select · drag objects"}
-            </span>
-          </div>
+          <LineageSourceLegend
+            mode={mode}
+            previewIncluded={Boolean(previewOverlay)}
+          />
 
           <div className="sticky bottom-[14px] float-right z-20 mr-[14px] flex w-fit items-center gap-[3px] rounded-lg border border-border bg-card p-[3px] shadow-fabric-4">
             <button
@@ -2086,6 +2489,14 @@ export function MapView() {
           error={inspectorWidth.error}
           className="border-t border-border bg-card xl:border-l xl:border-t-0"
         >
+          {selectedRelationship ? (
+            <RelationshipEvidencePane
+              relationship={selectedRelationship}
+              snapshotSyncedAt={data.workspace.syncedAt}
+              itemNames={itemNames}
+              onClose={() => setRelationshipId("")}
+            />
+          ) : (
           <Tabs.Root
             value={tab}
             onValueChange={(value) => setTab(value as InspectorTab)}
@@ -2228,6 +2639,46 @@ export function MapView() {
                         ))}
                       </div>
                     </div>
+                    {previewEvidence && (
+                      <div>
+                        <SectionLabel>
+                          Relationship evidence · {incidentRelationships.length}
+                        </SectionLabel>
+                        <div className="mt-[7px] flex flex-col gap-xxs">
+                          {incidentRelationships.length === 0 && (
+                            <span className="text-200 text-muted-foreground">
+                              Neither source reports a relationship for this
+                              item.
+                            </span>
+                          )}
+                          {incidentRelationships.slice(0, 8).map((relationship) => (
+                            <button
+                              key={relationship.id}
+                              type="button"
+                              onClick={() => setRelationshipId(relationship.id)}
+                              className="atlas-row flex min-h-[var(--atlas-touch-target)] flex-wrap items-center gap-s rounded-lg px-[7px] text-left hover:bg-accent"
+                            >
+                              <span className="min-w-0 flex-1 break-words text-200 font-semibold">
+                                {relationship.source.displayName}{" "}
+                                <span aria-hidden="true">→</span>
+                                <span className="sr-only"> to </span>{" "}
+                                {relationship.target.displayName}
+                              </span>
+                              <AgreementChip agreement={relationship.agreement} />
+                            </button>
+                          ))}
+                          {incidentRelationships.length > 8 && (
+                            <button
+                              type="button"
+                              onClick={() => setLineageView("evidence")}
+                              className="self-start text-200 font-semibold text-primary hover:underline"
+                            >
+                              View all {incidentRelationships.length} in Evidence
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
                     {[
                       ["Downstream", downstream, impact.downstream.distance],
                       ["Upstream", upstream, impact.upstream.distance],
@@ -2452,8 +2903,11 @@ export function MapView() {
           )}
         </aside>
           </Tabs.Root>
+          )}
         </ResizableInspector>
       </div>
+      </Tabs.Content>
+      </Tabs.Root>
       {metadataReportObject ? (
         <MetadataObjectImpactDialog
           data={data}

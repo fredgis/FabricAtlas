@@ -1,0 +1,103 @@
+import { AlertTriangle, Info, Loader2, RefreshCw } from "lucide-react";
+import type { ItemRelationsEvidenceState } from "../item-relations-evidence-source";
+import type { LineageEvidenceModel } from "../lineage-evidence";
+import { relativeTime } from "../model";
+
+/** One-line state of persisted Item Relations evidence below the Preview notice. */
+export function ItemRelationsEvidenceStatus({
+  state,
+  model,
+  onRetry,
+}: {
+  state: ItemRelationsEvidenceState;
+  model: LineageEvidenceModel;
+  onRetry: () => void;
+}) {
+  if (state.status === "off") return null;
+  if (state.status === "loading") {
+    return (
+      <div
+        role="status"
+        aria-busy="true"
+        className="flex items-center gap-s rounded-lg border border-border bg-card px-m py-s text-200 text-muted-foreground"
+      >
+        <Loader2 className="icon-size-200 animate-spin" aria-hidden="true" />
+        Loading persisted Item Relations evidence…
+      </div>
+    );
+  }
+  if (state.status === "error") {
+    return (
+      <div
+        role="alert"
+        className="flex flex-wrap items-center gap-m rounded-lg border border-destructive/35 bg-destructive/10 px-m py-s text-200 leading-200 text-foreground"
+      >
+        <AlertTriangle
+          className="icon-size-200 shrink-0 text-destructive"
+          aria-hidden="true"
+        />
+        <span className="min-w-0 flex-1 break-words">
+          {state.message} Atlas snapshot lineage is unchanged.
+        </span>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="inline-flex min-h-[var(--atlas-touch-target)] items-center gap-s rounded-md border border-input bg-card px-l text-300 font-semibold hover:bg-accent sm:min-h-[var(--atlas-control-height)]"
+        >
+          <RefreshCw className="icon-size-200" aria-hidden="true" />
+          Retry
+        </button>
+      </div>
+    );
+  }
+  if (state.status === "empty") {
+    return (
+      <div
+        role="status"
+        className="flex items-start gap-s rounded-lg border border-border bg-card px-m py-s text-200 leading-200 text-foreground"
+      >
+        <Info
+          className="icon-size-200 shrink-0 text-muted-foreground"
+          aria-hidden="true"
+        />
+        <p>
+          <span className="font-semibold">
+            No persisted Item Relations evidence for this workspace.
+          </span>{" "}
+          <span className="text-muted-foreground">
+            The graph, evidence and changes show Atlas snapshot lineage only.
+            Collection stays an explicit administrator action.
+          </span>
+        </p>
+      </div>
+    );
+  }
+  const graph = model.previewGraph;
+  return (
+    <div
+      role="status"
+      className="flex flex-wrap items-center gap-x-m gap-y-xxs rounded-lg border border-border bg-card px-m py-s text-200 text-muted-foreground"
+    >
+      <span title={state.evidence.collectedAt}>
+        Collected {relativeTime(state.evidence.collectedAt)}
+      </span>
+      {graph && (
+        <span>
+          {graph.coverage.complete} complete · {graph.coverage.preserved}{" "}
+          preserved · {graph.coverage.failed} failed queries
+        </span>
+      )}
+      <span>{model.counts.agree} agree with Atlas snapshot lineage</span>
+      <span
+        className={
+          model.counts.conflict > 0
+            ? "font-semibold text-status-warning"
+            : undefined
+        }
+      >
+        {model.counts.conflict}{" "}
+        {model.counts.conflict === 1 ? "conflict" : "conflicts"} to review
+      </span>
+    </div>
+  );
+}

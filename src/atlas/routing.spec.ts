@@ -215,4 +215,29 @@ describe("Atlas routing", () => {
       },
     });
   });
+
+  it("folds legacy map-beta links into the single Map & lineage tab", () => {
+    expect(parseAtlasLocation({ hash: "#map-beta", search: "" })).toMatchObject({
+      tab: "map",
+      focus: { requestId: expect.any(String) },
+    });
+    expect(
+      parseAtlasLocation({
+        hash: "#map",
+        search: "?view=evidence&preview=item-relations",
+      }),
+    ).toMatchObject({ tab: "map", focus: { requestId: expect.any(String) } });
+  });
+
+  it("drops map view and Preview state when navigating elsewhere", () => {
+    expect(
+      urlForNavigation(
+        {
+          pathname: "/",
+          search: "?ctid=tenant&view=evidence&preview=item-relations&item=a",
+        },
+        { tab: "catalog" },
+      ),
+    ).toBe("/?ctid=tenant#catalog");
+  });
 });

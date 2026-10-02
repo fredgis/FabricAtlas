@@ -39,6 +39,8 @@ const KNOWN_KEYS = new Set([
   "source",
   "objectKind",
   "inspector",
+  "view",
+  "preview",
 ]);
 const KNOWN_PREFIXES = [
   "catalog.",
@@ -162,6 +164,8 @@ function parseTab(hash: string): {
   if (raw === "config") return { tab: "workspace", legacySection: "configuration" };
   if (raw === "comments") return { tab: "workspace", legacySection: "notes" };
   if (raw === "sensitivity") return { tab: "governance", legacySection: "coverage" };
+  // The experimental second lineage page folds into the single map.
+  if (raw === "map-beta") return { tab: "map" };
   const tab = raw as Tab;
   return { tab: TABS.has(tab) ? tab : "overview" };
 }
@@ -173,18 +177,22 @@ export function parseAtlasLocation(
   const { tab, legacySection } = parseTab(location.hash);
 
   if (tab === "map") {
-    const hasMapState = [
-      "lineage",
-      "item",
-      "q",
-      "type",
-      "health",
-      "impact",
-      "table",
-      "source",
-      "objectKind",
-      "inspector",
-    ].some((key) => params.has(key));
+    const hasMapState =
+      location.hash.replace(/^#/, "").split("?")[0] === "map-beta" ||
+      [
+        "lineage",
+        "item",
+        "q",
+        "type",
+        "health",
+        "impact",
+        "table",
+        "source",
+        "objectKind",
+        "inspector",
+        "view",
+        "preview",
+      ].some((key) => params.has(key));
     return {
       tab,
       focus: hasMapState
