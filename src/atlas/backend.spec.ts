@@ -374,6 +374,7 @@ describe("Rayfin snapshot persistence", () => {
   });
 
   it("persists and reloads the authenticated comment display name", async () => {
+    const targetWorkspaceId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     const comment = {
       id: "33333333-3333-4333-8333-333333333333",
       authorId: identity.id,
@@ -383,9 +384,10 @@ describe("Rayfin snapshot persistence", () => {
       createdAt: "2026-08-30T15:00:00.000Z",
     };
 
-    await persistComment(false, comment);
+    await persistComment(false, comment, targetWorkspaceId);
     expect(mocks.data.Comment.create).toHaveBeenCalledWith(
       expect.objectContaining({
+        workspace_id: targetWorkspaceId,
         authorId: identity.id,
         authorName: identity.email,
         authorEmail: identity.email,
@@ -399,7 +401,7 @@ describe("Rayfin snapshot persistence", () => {
       ),
     ]);
 
-    const comments = await loadCommentsFromDb(false);
+    const comments = await loadCommentsFromDb(false, targetWorkspaceId);
     expect(comments).toEqual([
       expect.objectContaining({
         authorName: identity.email,

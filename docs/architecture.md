@@ -166,9 +166,14 @@ synchronizer-only `SyncCommand` policy. This fails closed for other app users wi
 raw Rayfin token. The Function paginates with bounded retries, validates continuation origins,
 limits response size and returns only workspace ID, display name, type and capacity ID.
 
-This foundation does not yet switch the active workspace, run a multi-workspace task graph or add
-the Workspace Hub Synchronization tab. The configured deployment workspace remains the fallback
-until the administrator persists an explicit shared scope.
+The Atlas store now exposes the shared scope and one active workspace ID. Changing that ID clears
+the previous workspace state, rehydrates only the selected workspace and scopes comments, history,
+saved views, governance state and synchronization writes to that ID. Late hydration from the prior
+workspace is discarded through the existing operation generation guard.
+
+The visible workspace selector, multi-workspace task graph and Workspace Hub Synchronization tab
+are not added yet. The configured deployment workspace remains the fallback until the
+administrator persists an explicit shared scope.
 
 ## Authorization and collaboration scope
 

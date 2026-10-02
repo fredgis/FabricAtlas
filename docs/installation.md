@@ -337,8 +337,10 @@ append-only team notes. Deploy the additive entity and Function contract with th
 npx rayfin up --tenant <tenant-id> --workspace <workspace-name>
 ```
 
-The current release does not yet switch the UI between scopes or synchronize several workspaces.
-The configured deployment workspace remains the fallback until an explicit scope is persisted.
+The store can switch and rehydrate an active selected workspace, and every backend read/write takes
+that workspace ID explicitly. The visible selector and multi-workspace synchronization action are
+not added yet. The configured deployment workspace remains the fallback until an explicit scope
+is persisted.
 
 ## Scripts
 

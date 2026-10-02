@@ -498,8 +498,9 @@ async function dataApi(): Promise<Record<string, EntityApi>> {
   return getRayfinClient().data as unknown as Record<string, EntityApi>;
 }
 
-function workspaceId(): string {
+function workspaceId(explicitWorkspaceId?: string): string {
   return (
+    explicitWorkspaceId ??
     (window as unknown as { __atlasWorkspaceId?: string }).__atlasWorkspaceId ??
     ATLAS_CONFIG.workspaceId
   );
@@ -548,12 +549,15 @@ function requireSyncWriter(user: SyncIdentity): string {
   return writerEmail;
 }
 
-async function startSyncAttempt(user: SyncIdentity): Promise<SyncAttempt> {
+async function startSyncAttempt(
+  user: SyncIdentity,
+  targetWorkspaceId?: string,
+): Promise<SyncAttempt> {
   const attempt: SyncAttempt = {
     id: crypto.randomUUID(),
     snapshotId: crypto.randomUUID(),
     workspaceId: requiredExactPersistedText(
-      workspaceId(),
+      workspaceId(targetWorkspaceId),
       PERSISTED_TEXT_LIMITS.reference.fabricId,
       "Workspace ID",
     ),
@@ -629,6 +633,7 @@ async function updateSyncAttempt(
 export async function persistComment(
   isPreview: boolean,
   comment: Comment,
+  targetWorkspaceId?: string,
 ): Promise<void> {
   if (isPreview) return;
   if (
@@ -642,7 +647,7 @@ export async function persistComment(
   }
   const data = await dataApi();
   await data.Comment.create({
-    workspace_id: workspaceId(),
+    workspace_id: workspaceId(targetWorkspaceId),
     itemFabricId: comment.itemFabricId,
     authorId: comment.authorId,
     authorName: comment.authorEmail,
@@ -664,6 +669,7 @@ export async function runFabricSync(
   user: SyncIdentity,
   reportProgress?: SyncProgressReporter,
   signal?: AbortSignal,
+  targetWorkspaceId?: string,
 ): Promise<AtlasData | null> {
   if (isPreview) {
     reportProgress?.(15, "Preparing preview sync");
@@ -674,7 +680,7 @@ export async function runFabricSync(
     return null;
   }
   assertSyncActive(signal);
-  const attempt = await startSyncAttempt(user);
+  const attempt = await startSyncAttempt(user, targetWorkspaceId);
   try {
     const raw = await invokeSyncAll(
       attempt.workspaceId,
@@ -2167,10 +2173,11 @@ function commentsFromRows(rows: Row[], wid: string): Comment[] {
 
 export async function loadCommentsFromDb(
   isPreview: boolean,
+  targetWorkspaceId?: string,
 ): Promise<Comment[]> {
   if (isPreview) return [];
   const data = await dataApi();
-  const wid = workspaceId();
+  const wid = workspaceId(targetWorkspaceId);
   const read = readerFor(data);
   const rows = await read("Comment", { workspace_id: { eq: wid } });
   return commentsFromRows(rows, wid);
@@ -2205,11 +2212,14 @@ function syncRunsFromRows(rows: Row[], fallbackTime: string): AtlasData["syncRun
  * `null` in preview or when nothing has been synced yet (so the caller shows
  * the empty state), and never exposes an incomplete snapshot.
  */
-export async function loadFromDb(isPreview: boolean): Promise<AtlasData | null> {
+export async function loadFromDb(
+  isPreview: boolean,
+  targetWorkspaceId?: string,
+): Promise<AtlasData | null> {
   if (isPreview) return null;
   try {
     const data = await dataApi();
-    const wid = workspaceId();
+    const wid = workspaceId(targetWorkspaceId);
     const read = readerFor(data);
     const workspaceRows = await readTrustedWorkspaceMarkers(read, wid);
     let syncRows: Row[] = [];
@@ -2258,10 +2268,11 @@ export async function loadFromDb(isPreview: boolean): Promise<AtlasData | null> 
 export async function loadHistoricalSnapshotFromDb(
   isPreview: boolean,
   snapshotId: string,
+  targetWorkspaceId?: string,
 ): Promise<HistoricalSnapshot | undefined> {
   if (isPreview || !snapshotId) return undefined;
   const data = await dataApi();
-  const wid = workspaceId();
+  const wid = workspaceId(targetWorkspaceId);
   const read = readerFor(data);
   const workspaceRows = await readTrustedWorkspaceMarkers(
     read,
@@ -2297,6 +2308,7 @@ export async function loadHistoryFromDb(
   isPreview: boolean,
   currentData: AtlasData,
   limit = ATLAS_CONFIG.snapshotRetentionCount,
+  targetWorkspaceId?: string,
 ): Promise<AtlasHistory> {
   const cap = Math.max(0, Math.floor(limit));
   if (cap === 0) return buildAtlasHistory([]);
@@ -2314,7 +2326,7 @@ export async function loadHistoryFromDb(
   }
 
   const data = await dataApi();
-  const wid = workspaceId();
+  const wid = workspaceId(targetWorkspaceId);
   const read = readerFor(data);
   const workspaceRows = await readTrustedWorkspaceMarkers(read, wid);
   const currentTime = Date.parse(current.syncedAt);

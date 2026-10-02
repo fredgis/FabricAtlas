@@ -40,6 +40,9 @@ const governanceExceptionBackend = vi.hoisted(() => ({
   saveGovernanceException: vi.fn(),
   deleteGovernanceException: vi.fn(),
 }));
+const workspaceScopeBackend = vi.hoisted(() => ({
+  loadWorkspaceScopes: vi.fn(),
+}));
 const currentUser = {
   id: "user-1",
   name: "admin@example.com",
@@ -51,6 +54,7 @@ vi.mock("./saved-views", () => savedViewBackend);
 vi.mock("./finding-acks", () => findingAckBackend);
 vi.mock("./governance-policy", () => governancePolicyBackend);
 vi.mock("./governance-exceptions", () => governanceExceptionBackend);
+vi.mock("./workspace-scope", () => workspaceScopeBackend);
 
 function Harness() {
   const atlas = useAtlas();
@@ -61,6 +65,14 @@ function Harness() {
       </button>
       <button type="button" onClick={atlas.cancelSync}>
         Cancel sync
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          atlas.selectWorkspace("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+        }
+      >
+        Switch workspace
       </button>
       <button type="button" onClick={() => void atlas.addComment("New note")}>
         Add comment
@@ -162,6 +174,10 @@ function Harness() {
         {atlas.data.comments.at(-1)?.authorName ?? ""}
       </span>
       <span data-testid="workspace-name">{atlas.data.workspace.displayName}</span>
+      <span data-testid="active-workspace">{atlas.activeWorkspaceId}</span>
+      <span data-testid="workspace-scope-count">
+        {atlas.workspaceScopes.length}
+      </span>
       <span data-testid="requires-sync">
         {String(atlas.requiresDeploymentSync)}
       </span>
@@ -178,6 +194,16 @@ describe("AtlasProvider synchronization", () => {
     ATLAS_CONFIG.syncAdminEmail = currentUser.email;
     ATLAS_CONFIG.syncAdminSubject = currentUser.id;
     ATLAS_CONFIG.previousSyncWriters = [];
+    ATLAS_CONFIG.workspaceId = "11111111-1111-4111-8111-111111111111";
+    ATLAS_CONFIG.workspaceName = "Primary workspace";
+    workspaceScopeBackend.loadWorkspaceScopes.mockReset().mockResolvedValue([
+      {
+        id: ATLAS_CONFIG.workspaceId,
+        displayName: ATLAS_CONFIG.workspaceName,
+        workspaceType: "Workspace",
+        persisted: false,
+      },
+    ]);
     backend.loadFromDb.mockReset();
     backend.loadCommentsFromDb.mockReset().mockResolvedValue([]);
     backend.loadHistoryFromDb.mockReset();
@@ -429,6 +455,7 @@ describe("AtlasProvider synchronization", () => {
         authorName: principal.email,
         authorEmail: principal.email,
       }),
+      SAMPLE_DATA.workspace.fabricId,
     );
   });
 
@@ -454,6 +481,71 @@ describe("AtlasProvider synchronization", () => {
       expect(screen.getByTestId("comments-error")).toHaveTextContent(
         "notes unavailable",
       ),
+    );
+  });
+
+  it("hydrates only the selected shared workspace", async () => {
+    const secondaryId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    workspaceScopeBackend.loadWorkspaceScopes.mockResolvedValue([
+      {
+        id: ATLAS_CONFIG.workspaceId,
+        displayName: "Primary workspace",
+        workspaceType: "Workspace",
+        persisted: true,
+      },
+      {
+        id: secondaryId,
+        displayName: "Secondary workspace",
+        workspaceType: "Workspace",
+        persisted: true,
+      },
+    ]);
+    const primary = structuredClone(SAMPLE_DATA);
+    primary.workspace.fabricId = ATLAS_CONFIG.workspaceId;
+    primary.workspace.displayName = "Primary workspace";
+    const secondary = structuredClone(SAMPLE_DATA);
+    secondary.workspace.fabricId = secondaryId;
+    secondary.workspace.displayName = "Secondary workspace";
+    secondary.items = [];
+    backend.loadFromDb.mockImplementation(
+      async (_isPreview: boolean, targetWorkspaceId: string) =>
+        targetWorkspaceId === secondaryId ? secondary : primary,
+    );
+
+    render(
+      <AtlasProvider isPreview={false} currentUser={currentUser}>
+        <Harness />
+      </AtlasProvider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("workspace-name")).toHaveTextContent(
+        "Primary workspace",
+      ),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Switch workspace" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("active-workspace")).toHaveTextContent(
+        secondaryId,
+      ),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("workspace-name")).toHaveTextContent(
+        "Secondary workspace",
+      ),
+    );
+    expect(backend.loadFromDb).toHaveBeenCalledWith(false, secondaryId);
+    expect(backend.loadCommentsFromDb).toHaveBeenCalledWith(
+      false,
+      secondaryId,
+    );
+    expect(savedViewBackend.loadSavedViews).toHaveBeenCalledWith(
+      false,
+      secondaryId,
+      currentUser.id,
     );
   });
 
@@ -919,6 +1011,7 @@ describe("AtlasProvider synchronization", () => {
       expect(backend.loadHistoricalSnapshotFromDb).toHaveBeenCalledWith(
         false,
         "older-snapshot",
+        ATLAS_CONFIG.workspaceId,
       ),
     );
     await waitFor(() =>
