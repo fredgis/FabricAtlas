@@ -53,8 +53,6 @@ export const ACCESS_EVIDENCE_LABEL: Record<AccessEvidenceState, string> = {
 
 export const GRANT_ONLY_NOTICE =
   "Collected grants do not prove unrestricted data access. Restrictions and group membership are not evaluated.";
-export const WHAT_IF_UNAVAILABLE_REASON =
-  "What-if is unavailable until the read-only grant-removal contract and evidence coverage are verified. No Fabric permissions are changed.";
 
 export type AccessCoverageFilter = "all" | AccessEvidenceState;
 
@@ -164,6 +162,30 @@ export function evaluatedAccessLayers(coverage: AccessEvidenceCoverage): string 
 
 export function accessLayerSummary(coverage: AccessEvidenceCoverage): string {
   return coverage.layers
+    .map((layer) =>
+      `${ACCESS_LAYER_LABEL[layer.layer]}: ${ACCESS_EVIDENCE_LABEL[layer.state]}`,
+    )
+    .join("; ");
+}
+
+export function unknownAccessLayers(
+  coverage: AccessEvidenceCoverage,
+): AccessLayerEvidence[] {
+  return (Object.keys(ACCESS_LAYER_LABEL) as AccessEvidenceLayer[]).flatMap(
+    (layer) => {
+      const evidence = coverage.layers.find((entry) => entry.layer === layer);
+      if (evidence?.state === "observed") return [];
+      return [evidence ?? {
+        layer,
+        state: "unavailable",
+        reason: "No coverage record is available for this layer.",
+      } as AccessLayerEvidence];
+    },
+  );
+}
+
+export function unknownAccessLayerSummary(coverage: AccessEvidenceCoverage): string {
+  return unknownAccessLayers(coverage)
     .map((layer) =>
       `${ACCESS_LAYER_LABEL[layer.layer]}: ${ACCESS_EVIDENCE_LABEL[layer.state]}`,
     )

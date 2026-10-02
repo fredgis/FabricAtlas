@@ -269,7 +269,7 @@ function resolveGrant(
   };
 }
 
-function highestAccess(grants: Grant[]): AccessLevel {
+export function highestRecordedGrant(grants: readonly Grant[]): AccessLevel {
   return grants.reduce<AccessLevel>(
     (highest, grant) =>
       ACCESS_RANK[grant.accessLevel] > ACCESS_RANK[highest]
@@ -305,7 +305,7 @@ export function buildAccessReviewRows(
       const applicableGrants = grouped
         .map(({ grant }) => grant)
         .sort(compareGrants);
-      const effectiveAccess = highestAccess(applicableGrants);
+      const effectiveAccess = highestRecordedGrant(applicableGrants);
       const effectiveGrants = applicableGrants.filter(
         (grant) => grant.accessLevel === effectiveAccess,
       );

@@ -8,7 +8,8 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import { buildAccessReviewRows } from "../governance";
 import { accessRowsToCsv } from "../access-export";
-import { GRANT_ONLY_NOTICE, WHAT_IF_UNAVAILABLE_REASON } from "../access-coverage";
+import { GRANT_ONLY_NOTICE } from "../access-coverage";
+import { WHAT_IF_NOTICE } from "../access-what-if";
 import type { AccessReviewHistory } from "../access-reviews";
 import { SAMPLE_DATA } from "../model";
 import { AtlasProvider } from "../store";
@@ -367,15 +368,15 @@ describe("AccessView", () => {
     );
   });
 
-  it("states evaluated layers on every matrix row and keeps What-if disabled with a reason", () => {
+  it("states evaluated layers on every matrix row and labels What-if as recorded grants only", () => {
     renderAccess();
     for (const row of screen.getAllByRole("option", { name: /Review .+ access to/ })) {
       expect(row).toHaveAccessibleName(/Highest recorded grant.+Restrictions not evaluated.+Evaluated layers:/);
       expect(row).toHaveClass("focus-visible:ring-ring");
     }
-    expect(screen.getByRole("button", { name: "What-if" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "What-if" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "What-if" }))
-      .toHaveAccessibleDescription(WHAT_IF_UNAVAILABLE_REASON);
+      .toHaveAccessibleDescription(WHAT_IF_NOTICE);
     expect(screen.getByText(GRANT_ONLY_NOTICE)).toBeVisible();
     expect(screen.queryByText(/effective permission|reachable pairs|no restrictions|none observed/i))
       .not.toBeInTheDocument();

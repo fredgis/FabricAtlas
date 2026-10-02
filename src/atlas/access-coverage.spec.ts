@@ -6,6 +6,8 @@ import {
   evaluatedAccessLayers,
   matchesAccessCoverage,
   parseAccessCoverageFilter,
+  unknownAccessLayerSummary,
+  unknownAccessLayers,
   type AccessLayerEvidence,
 } from "./access-coverage";
 import type { Grant, WorkspaceInfo } from "./model";
@@ -25,6 +27,22 @@ const workspace: WorkspaceInfo = {
 };
 
 describe("grant-only access evidence coverage", () => {
+  it("lists every missing coverage layer as unavailable, not absent", () => {
+    const coverage = { state: "unavailable" as const, layers: [] };
+    expect(unknownAccessLayers(coverage)).toHaveLength(6);
+    expect(unknownAccessLayerSummary(coverage)).toContain("Workspace grants: Evidence unavailable");
+    expect(unknownAccessLayerSummary(coverage)).toContain("OneLake security: Evidence unavailable");
+    expect(unknownAccessLayerSummary(coverage)).not.toMatch(/none|no restrictions/i);
+  });
+
+  it("keeps partial grant layers in the unknown list alongside modeled observations", () => {
+    const coverage = buildAccessEvidenceCoverage(grants, {
+      ...workspace, syncSections: { access: { status: "failed", code: "TIMEOUT" } },
+    });
+    expect(evaluatedAccessLayers(coverage)).toContain("Workspace grants (partial evidence)");
+    expect(unknownAccessLayerSummary(coverage)).toContain("Workspace grants: Partial");
+    expect(unknownAccessLayerSummary(coverage)).toContain("Item grants: Partial");
+  });
   it("keeps observed grants separate from unsupported and unavailable restrictions", () => {
     const coverage = buildAccessEvidenceCoverage(grants, workspace);
     expect(coverage).toMatchObject({

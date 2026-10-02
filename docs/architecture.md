@@ -741,21 +741,51 @@ data-plane and row/column restrictions remain outside this grant-only assessment
 No restriction-free state is emitted by this foundation.
 
 The five-column matrix follows the issue #42 hierarchy: principal, item, granted
-level, restrictions and coverage. The existing evidence inspector has numbered
-grant, restriction-evidence and assessment sections. Existing semantic tokens,
-typography and density are preserved so the hierarchy works in both themes.
+level, restrictions and coverage. The right evidence inspector follows the
+image's numbered grant, restriction-evidence and assessment sections, with
+actual source/role/reference records beside the grant explanation. It becomes a
+managed Radix drawer below the token-defined desktop breakpoint, with initial
+focus, Tab containment, Escape dismissal and focus restoration. The drawer does
+not discard a What-if scenario when closed or resized.
+Existing semantic tokens, typography and density preserve the Fabric-aligned
+ledger language in both themes (ENERGY 1 / RHYTHM 2 / MOTION 1); numbered sections
+separate observed grants from unknown restrictions rather than decorative steps.
 The coverage filter matches any evidence layer, with `Partial` also matching the
 overall assessment. It is retained in navigation and personal saved views.
 Workspace display is scoped to the active snapshot, not an all-workspace query.
 CSV and copied summaries carry sources, workspace/snapshot identity, snapshot
-observation time and the grant-only limitation. Missing provenance says
+observation time, unknown/incomplete layers and the grant-only limitation. Missing provenance says
 `Not recorded`; snapshot time is not a fabricated per-API observation time.
 
-What-if is visibly disabled pending the reviewed read-only grant-removal contract
-and verified evidence coverage. No permission changes, Fabric Policies reads,
-OneLake role reads, DLP reads, restriction entities or new collectors are added.
-Personal decisions remain bound to the existing grant evidence and do not certify
-restriction coverage.
+### Read-only grant What-if (#37)
+
+`src/atlas/access-what-if.ts` models only the selected pair's recorded workspace
+and item grant paths, using the same `highestRecordedGrant` engine as Access
+Review. Users can exclude an individual path, all recorded workspace-inherited
+paths or all recorded item paths, then immediately reset the scenario. Exact
+duplicate observations are one modeled path because the current grant contract
+has no collector grant ID; aliases and distinct sources are not merged by name.
+Every remaining path lists its recorded source, scope, role and principal
+reference. Missing roles and provenance stay `Not recorded`.
+
+Current and simulated highest recorded grants appear side by side. The unchanged
+case explains remaining grants; the no-positive-grant case explicitly does not
+prove removal of actual access. Group membership changes, OneLake security, DLP,
+Fabric Policies and other data-plane/row/column restrictions are not simulated.
+Exports state the original grant layers modeled even when all their recorded
+paths are excluded. Partial, denied and missing layer evidence remains explicit.
+
+Scenario exclusions live only in component state. They reset on pair, source
+snapshot/evidence or mode changes and are never put into navigation URLs or
+personal saved views. The mode and selected pair can use existing navigation,
+but personal write controls are hidden in What-if. Markdown and scenario CSV
+downloads contain the selected metadata, excluded and remaining paths, snapshot
+provenance and limits; no tokens, credentials or unmodeled policy results are
+exported. This view has no permission mutation or Fabric write-back route.
+
+No Fabric Policies reads, OneLake role reads, DLP reads, restriction entities or
+new collectors are added. Personal decisions in Review matrix and Principals
+remain bound to existing grant evidence and do not certify restriction coverage.
 
 Source grants must not be confused with access to Atlas. All selected workspace
 metadata remains shared with the authenticated app audience; delegated connector
@@ -764,9 +794,9 @@ Personal review decisions and saved views remain subject-scoped.
 
 Remaining Phase 6 work: verify the Fabric Policies Preview tenant/region/identity
 contract, add persisted restriction evidence and bounded read-only adapters,
-integrate per-source provenance/observation times, complete the responsive managed
-inspector, and implement #37 read-only simulations with explicitly evaluated
-layers. OneLake and DLP remain manual/unsupported until verified public contracts
+integrate per-source provenance/observation times and stable collector grant
+identities, and validate supported policy applicability before expanding the
+grant-only assessment. OneLake and DLP remain manual/unsupported until verified public contracts
 exist; the fictional restriction counts and principals in the concept image are
 never production fixtures.
 

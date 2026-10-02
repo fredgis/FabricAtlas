@@ -260,6 +260,9 @@ body,
 }
 
 :root {
+  --atlas-evidence-breakpoint: 80rem;
+  --atlas-evidence-overlay-z: 130;
+  --atlas-evidence-panel-z: 131;
   --atlas-control-height: 36px;
   --atlas-control-padding: 6px;
   --atlas-row-padding: 10px;

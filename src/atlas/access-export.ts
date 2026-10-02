@@ -5,6 +5,7 @@ import {
   GRANT_ONLY_NOTICE,
   accessLayerSummary,
   evaluatedAccessLayers,
+  unknownAccessLayerSummary,
 } from "./access-coverage";
 
 const FLAG_LABEL: Record<NonNullable<Grant["flag"]>, string> = {
@@ -50,6 +51,7 @@ export function accessRowsToCsv(rows: AccessReviewRow[]): string {
     "Coverage",
     "Evaluated layers",
     "Layer evidence",
+    "Unknown or incomplete layers",
     "Grant sources",
     "Workspace ID",
     "Snapshot ID",
@@ -73,6 +75,7 @@ export function accessRowsToCsv(rows: AccessReviewRow[]): string {
       ACCESS_EVIDENCE_LABEL[row.coverage.state],
       evaluatedAccessLayers(row.coverage),
       accessLayerSummary(row.coverage),
+      unknownAccessLayerSummary(row.coverage),
       row.applicableGrants.map((grant) =>
         `${grant.itemFabricId ? "Item" : "Workspace"}: ${grant.source}${grant.roleName ? ` (${grant.roleName})` : ""}`,
       ).join("; "),
