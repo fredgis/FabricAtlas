@@ -20,6 +20,28 @@ export type GovernanceSection =
   | "coverage"
   | "posture";
 
+export type WorkspaceSection =
+  | "workspace"
+  | "synchronization"
+  | "configuration"
+  | "notes";
+
+export const WORKSPACE_SECTIONS: readonly WorkspaceSection[] = [
+  "workspace",
+  "synchronization",
+  "configuration",
+  "notes",
+];
+
+export const DEFAULT_WORKSPACE_SECTION: WorkspaceSection = "synchronization";
+
+export function isWorkspaceSection(value: unknown): value is WorkspaceSection {
+  return (
+    typeof value === "string" &&
+    (WORKSPACE_SECTIONS as readonly string[]).includes(value)
+  );
+}
+
 export interface AtlasFocusRequest {
   requestId: string;
   itemId?: string;
@@ -30,7 +52,7 @@ export interface AtlasFocusRequest {
   objectName?: string;
   objectId?: string;
   objectKind?: AssetObjectKind;
-  workspaceSection?: "configuration" | "notes";
+  workspaceSection?: WorkspaceSection;
   governanceSection?: GovernanceSection;
   query?: string;
   filters?: SavedViewFilters;

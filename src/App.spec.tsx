@@ -118,6 +118,35 @@ describe("App", () => {
         expect(document.title).toBe("Workspace Hub | Fabric Atlas");
     });
 
+    it("shows a single run banner on the Workspace Hub synchronization section", async () => {
+        window.history.replaceState(null, "", "/#workspace");
+        renderApp();
+
+        fireEvent.click(
+            await screen.findByRole("button", { name: "Synchronize now" }),
+        );
+        expect(
+            await screen.findByRole("heading", {
+                name: "Synchronization is running in this browser tab",
+            }),
+        ).toBeInTheDocument();
+        expect(
+            screen.queryByRole("region", {
+                name: "Workspace synchronization status",
+            }),
+        ).toBeNull();
+        expect(window.location.search).toContain(
+            "workspace.section=synchronization",
+        );
+
+        fireEvent.mouseDown(screen.getByRole("tab", { name: "Configuration" }));
+        expect(
+            await screen.findByRole("region", {
+                name: "Workspace synchronization status",
+            }),
+        ).toBeInTheDocument();
+    });
+
     it("opens Overview signals with shareable filters", async () => {
         renderApp();
         fireEvent.click(

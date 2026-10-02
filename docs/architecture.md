@@ -304,9 +304,25 @@ the previous workspace state, rehydrates only the selected workspace and scopes 
 saved views, governance state and synchronization writes to that ID. Late hydration from the prior
 workspace is discarded through the existing operation generation guard.
 
-The visible workspace selector and Workspace Hub Synchronization tab are not added yet.
-The v2 multi-workspace graph is an internal disabled framework. The configured deployment workspace remains the fallback until the
-administrator persists an explicit shared scope.
+Workspace Hub exposes the shared scope through four local tabs: Workspace, Synchronization,
+Configuration and Team notes (`workspace.section` in the URL, Synchronization by default). The
+Workspace tab and the first-sync gate both render a native `Active workspace` selector, so a user
+who switches to an unsynchronized workspace can always return to a published one. The
+Synchronization tab projects only real store state: the in-flight browser run, the selected
+workspaces, persisted `SyncRun` audit rows and the configured synchronizer. Only the active
+workspace has a known status; other selected workspaces are reported as not loaded until opened.
+`Manage scope` uses `workspaceDiscover` and is rendered only for the configured synchronizer while
+the `fabric-app-functions` flag is enabled.
+
+`SYNC_BACKEND_CAPABILITIES` in `src/atlas/workspace-sync.ts` keeps background runs and scheduled
+runs closed. The UI therefore states that a run executes in the synchronizer's browser tab through
+the Python User Data Function, shows the schedule as disabled with the verified reason and does not
+render resume or schedule-editing controls. The multi-workspace task graph is not added yet. The
+configured deployment workspace remains the fallback until the administrator persists an explicit
+shared scope.
+
+The v2 multi-workspace graph remains an internal fail-closed framework until collector payload
+adapters and an externally serialized claim path are integrated.
 
 ### Fabric Core collector stage (dual-run, no cutover)
 

@@ -3,7 +3,9 @@ import type {
   AtlasNavigation,
   GovernanceSection,
   Tab,
+  WorkspaceSection,
 } from "./navigation";
+import { isWorkspaceSection } from "./navigation";
 import type { SavedViewFilters } from "./saved-views";
 import { ITEM_TYPES } from "./model";
 import { ASSET_OBJECT_KINDS } from "./catalog-objects";
@@ -109,7 +111,6 @@ const JOB_STATUSES = new Set([
   "running",
   "cancelled",
 ]);
-const WORKSPACE_SECTIONS = new Set(["configuration", "notes"]);
 const POSTURE_PILLARS = new Set([
   "documentation",
   "ownership",
@@ -155,7 +156,7 @@ function filters(
 
 function parseTab(hash: string): {
   tab: Tab;
-  legacySection?: "configuration" | "notes" | "coverage";
+  legacySection?: WorkspaceSection | "coverage";
 } {
   const raw = hash.replace(/^#/, "").split("?")[0];
   if (raw === "config") return { tab: "workspace", legacySection: "configuration" };
@@ -322,22 +323,17 @@ export function parseAtlasLocation(
     };
   }
   if (tab === "workspace") {
+    const section = value(params, "workspace.section");
     return {
       tab,
       focus: request({
         itemId: value(params, "workspace.item"),
         commentId: value(params, "workspace.comment"),
-        workspaceSection:
-          legacySection === "notes" || legacySection === "configuration"
-            ? legacySection
-            : (allowed(
-                params,
-                "workspace.section",
-                WORKSPACE_SECTIONS,
-              ) as
-                | "configuration"
-                | "notes"
-                | undefined),
+        workspaceSection: isWorkspaceSection(legacySection)
+          ? legacySection
+          : isWorkspaceSection(section)
+            ? section
+            : undefined,
       }),
     };
   }

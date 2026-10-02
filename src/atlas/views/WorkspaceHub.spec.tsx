@@ -5,28 +5,77 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AtlasProvider } from "../store";
 import { WorkspaceHubView } from "./WorkspaceHub";
 
-describe("WorkspaceHubView", () => {
-  it("supports keyboard navigation between configuration and notes", async () => {
-    render(
-      <AtlasProvider isPreview>
-        <WorkspaceHubView />
-      </AtlasProvider>,
-    );
+function renderHub(props: Parameters<typeof WorkspaceHubView>[0] = {}) {
+  return render(
+    <AtlasProvider isPreview>
+      <WorkspaceHubView {...props} />
+    </AtlasProvider>,
+  );
+}
 
-    const configuration = screen.getByRole("tab", {
-      name: /Configuration/,
+describe("WorkspaceHubView", () => {
+  it("opens on Synchronization with the four hub sections in order", () => {
+    const onStateChange = vi.fn();
+    renderHub({ onStateChange });
+
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Workspace Hub" }),
+    ).toBeInTheDocument();
+    expect(
+      screen
+        .getAllByRole("tab")
+        .map((tab) => tab.textContent),
+    ).toEqual(["Workspace", "Synchronization", "Configuration", "Team notes"]);
+    expect(
+      screen.getByRole("tab", { name: "Synchronization" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByRole("heading", { name: "Selected workspaces" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Recent synchronization runs" }),
+    ).toBeInTheDocument();
+    expect(onStateChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        tab: "workspace",
+        focus: expect.objectContaining({ workspaceSection: "synchronization" }),
+      }),
+    );
+  });
+
+  it("supports keyboard navigation across every hub section", async () => {
+    renderHub();
+
+    const synchronization = screen.getByRole("tab", {
+      name: "Synchronization",
     });
     await act(async () => {
-      configuration.focus();
-      fireEvent.keyDown(configuration, { key: "ArrowRight" });
+      synchronization.focus();
+      fireEvent.keyDown(synchronization, { key: "ArrowLeft" });
     });
-
     await waitFor(() =>
-      expect(screen.getByRole("tab", { name: /Team notes/ })).toHaveAttribute(
+      expect(screen.getByRole("tab", { name: "Workspace" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      ),
+    );
+    expect(
+      screen.getByRole("heading", { name: "Active workspace" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: "Active workspace" }),
+    ).toBeDisabled();
+
+    const workspace = screen.getByRole("tab", { name: "Workspace" });
+    await act(async () => {
+      fireEvent.keyDown(workspace, { key: "End" });
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Team notes" })).toHaveAttribute(
         "aria-selected",
         "true",
       ),
@@ -34,5 +83,15 @@ describe("WorkspaceHubView", () => {
     expect(
       screen.getByRole("heading", { name: "Team feed" }),
     ).toBeInTheDocument();
+  });
+
+  it("honours routed sections", () => {
+    renderHub({
+      focus: { requestId: "route", workspaceSection: "configuration" },
+    });
+
+    expect(
+      screen.getByRole("tab", { name: "Configuration" }),
+    ).toHaveAttribute("aria-selected", "true");
   });
 });

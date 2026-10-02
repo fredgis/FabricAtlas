@@ -59,6 +59,43 @@ describe("Atlas routing", () => {
     });
   });
 
+  it("round-trips every Workspace Hub section and rejects unknown ones", () => {
+    for (const section of [
+      "workspace",
+      "synchronization",
+      "configuration",
+      "notes",
+    ] as const) {
+      const url = urlForNavigation(
+        { pathname: "/", search: "?ctid=tenant" },
+        {
+          tab: "workspace",
+          focus: { requestId: "ignored", workspaceSection: section },
+        },
+      );
+
+      expect(url).toBe(
+        `/?ctid=tenant&workspace.section=${section}#workspace`,
+      );
+      expect(
+        parseAtlasLocation({
+          hash: "#workspace",
+          search: url.slice(url.indexOf("?"), url.indexOf("#")),
+        }),
+      ).toMatchObject({
+        tab: "workspace",
+        focus: { workspaceSection: section },
+      });
+    }
+
+    expect(
+      parseAtlasLocation({
+        hash: "#workspace",
+        search: "?workspace.section=schedule",
+      }),
+    ).toEqual({ tab: "workspace" });
+  });
+
   it("preserves unrelated host parameters and removes stale Atlas state", () => {
     expect(
       urlForNavigation(

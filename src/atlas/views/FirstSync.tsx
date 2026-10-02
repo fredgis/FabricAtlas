@@ -16,6 +16,7 @@ import {
 import { useThemeContext } from "@/hooks/theme.context";
 import { ATLAS_CONFIG } from "../config";
 import { SynchronizationProgress } from "../components/SynchronizationProgress";
+import { WorkspaceSelector } from "../components/WorkspaceSelector";
 import { REPOSITORY_URL } from "../release";
 import { useAtlas } from "../store";
 import { syncContactMessage } from "../sync-contact";
@@ -254,6 +255,8 @@ export function FirstSyncView() {
                     {syncing ? `${syncProgress}%` : "01"}
                   </div>
                 </div>
+
+                <WorkspaceSelector hideWhenSingle className="mt-l" />
 
                 <button
                   type="button"

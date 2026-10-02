@@ -39,10 +39,12 @@ import { useAtlas } from "./atlas/store";
 import { CommandPalette } from "./atlas/components/CommandPalette";
 import { SynchronizationProgress } from "./atlas/components/SynchronizationProgress";
 import {
+  DEFAULT_WORKSPACE_SECTION,
   navigationForSearch,
   type AtlasFocusRequest,
   type AtlasNavigation,
   type Tab,
+  type WorkspaceSection,
 } from "./atlas/navigation";
 import {
   parseAtlasLocation,
@@ -208,6 +210,9 @@ function App() {
   const [focus, setFocus] = useState<AtlasFocusRequest | undefined>(
     initialNavigation.focus,
   );
+  const [workspaceSection, setWorkspaceSection] = useState<
+    WorkspaceSection | undefined
+  >(initialNavigation.focus?.workspaceSection);
   const [commandOpen, setCommandOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
@@ -306,6 +311,7 @@ function App() {
       const navigation = parseAtlasLocation(window.location);
       setTab(navigation.tab);
       setFocus(navigation.focus);
+      setWorkspaceSection(navigation.focus?.workspaceSection);
     };
     window.addEventListener("hashchange", onHash);
     window.addEventListener("popstate", onHash);
@@ -335,12 +341,16 @@ function App() {
       );
       setTab(next.tab);
       setFocus(next.focus);
+      setWorkspaceSection(next.focus?.workspaceSection);
       setNavOpen(false);
     },
     [],
   );
 
   const replaceViewState = useCallback((navigation: AtlasNavigation) => {
+    if (navigation.tab === "workspace") {
+      setWorkspaceSection(navigation.focus?.workspaceSection);
+    }
     window.history.replaceState(
       null,
       "",
@@ -349,6 +359,10 @@ function App() {
   }, []);
 
   const nav = (t: Tab) => navigate(t);
+  // The Synchronization section renders its own run banner.
+  const hubShowsSynchronization =
+    tab === "workspace" &&
+    (workspaceSection ?? DEFAULT_WORKSPACE_SECTION) === "synchronization";
 
   if (!isPreview && hydrating) return <AtlasBootView />;
   if (!isPreview && (!hasData || requiresDeploymentSync)) {
@@ -489,7 +503,7 @@ function App() {
             <Avatar name={currentUser.name} size={30} />
           </div>
         </header>
-        {(syncing || syncProgress > 0) && (
+        {(syncing || syncProgress > 0) && !hubShowsSynchronization && (
           <SynchronizationProgress
             key={syncStartedAt}
             progress={syncProgress}
@@ -561,6 +575,7 @@ function App() {
               {tab === "workspace" && (
                 <WorkspaceHubView
                   focus={focus}
+                  section={workspaceSection}
                   onStateChange={replaceViewState}
                 />
               )}

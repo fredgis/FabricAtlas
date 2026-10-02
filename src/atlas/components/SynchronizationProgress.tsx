@@ -103,7 +103,7 @@ export function SynchronizationProgress({
       <ol
         aria-label="Synchronization phases"
         className={cn(
-          "mt-m grid grid-cols-5 gap-xs",
+          "mt-m grid grid-cols-4 gap-xs",
           compact && "hidden sm:grid",
         )}
       >

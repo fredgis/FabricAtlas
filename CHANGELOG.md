@@ -18,9 +18,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   relation types, cross-workspace node keys, cycles, prior-evidence
   preservation and comparison with authoritative lineage. It is not wired to
   a screen or to synchronization yet.
+- Workspace Hub Synchronization tab with the run banner, selected workspaces,
+  a disabled schedule card that states why scheduling is unavailable, and
+  recent `SyncRun` history. Workspace Hub also gains a Workspace tab, and the
+  first-sync gate can switch back to another selected workspace.
 
 ### Changed
 
+- Synchronization progress uses four run phases (Discover, Collect, Validate,
+  Publish) mapped from the existing browser milestones.
 - Upgraded the complete Rayfin package family from 1.34.0 to 1.36.2.
 - The FabCon integration branch deploys as the isolated
   `fabric-atlas-fabcon` Rayfin application.

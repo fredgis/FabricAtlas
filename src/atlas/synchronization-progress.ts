@@ -1,9 +1,30 @@
+// Browser synchronization milestones grouped into the run states shared with
+// the planned durable model: discovering, collecting, validating, publishing.
 export const SYNC_PHASES = [
-  { label: "Connect", threshold: 0 },
-  { label: "Discover", threshold: 8 },
-  { label: "Map", threshold: 62 },
-  { label: "Persist", threshold: 70 },
-  { label: "Finalize", threshold: 97 },
+  {
+    label: "Discover",
+    activeLabel: "Discovering",
+    threshold: 0,
+    detail: "Authorize access and read the workspace topology",
+  },
+  {
+    label: "Collect",
+    activeLabel: "Collecting",
+    threshold: 20,
+    detail: "Collect item metadata by item type",
+  },
+  {
+    label: "Validate",
+    activeLabel: "Validating",
+    threshold: 60,
+    detail: "Validate the payload and build the governance catalog",
+  },
+  {
+    label: "Publish",
+    activeLabel: "Publishing",
+    threshold: 70,
+    detail: "Write the snapshot, then publish its manifest last",
+  },
 ] as const;
 
 export function syncPhaseIndex(progress: number): number {
