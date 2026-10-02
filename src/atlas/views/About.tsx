@@ -10,6 +10,7 @@ import {
   Package,
 } from "lucide-react";
 import { pythonCollectorRollbackEnabled } from "../browser-collector-sync";
+import { PageHeader } from "../components/PageHeader";
 import {
   APP_VERSION,
   BUILD_COMMIT,
@@ -71,7 +72,11 @@ export function AboutView() {
     : "Rayfin collectors with Python compatibility";
 
   return (
-    <div className="atlas-content-frame flex min-h-full items-center p-xl lg:p-xxl">
+    <div className="atlas-content-frame flex min-h-full flex-col gap-l p-l sm:p-xxl">
+      <PageHeader
+        title="About Fabric Atlas"
+        purpose="Version, runtime and project links."
+      />
       <Card className="atlas-fabric-hero relative isolate w-full overflow-hidden border-border shadow-fabric-4">
         <div className="atlas-overview-beam" aria-hidden="true" />
         <div className="grid lg:grid-cols-[1.2fr_0.8fr]">
