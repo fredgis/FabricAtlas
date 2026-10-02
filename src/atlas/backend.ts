@@ -29,6 +29,7 @@ import {
   coreCollectorShadowEnabled,
   startCoreCollectorShadow,
 } from "./core-collector-shadow";
+import { runDefinitionCollectorShadow } from "./definition-collector-shadow";
 import { normalizeLineageEdges } from "./lineage";
 import { DEPLOYMENT_ID } from "./release";
 import {
@@ -528,6 +529,7 @@ interface SyncAttempt {
   data: Record<string, EntityApi>;
   user: SyncIdentity;
   coreParitySummary?: string;
+  definitionShadowSummary?: string;
 }
 
 function textOrFallback(value: unknown, fallback: string): string {
@@ -693,6 +695,13 @@ export async function runFabricSync(
       attempt.workspaceId,
       attempt.id,
     );
+    const definitionShadow = coreShadow.then((coreEnvelope) =>
+      runDefinitionCollectorShadow(
+        attempt.workspaceId,
+        attempt.id,
+        coreEnvelope,
+      ),
+    );
     const raw = await invokeSyncAll(
       attempt.workspaceId,
       user,
@@ -709,6 +718,7 @@ export async function runFabricSync(
     } else if (coreCollectorShadowEnabled()) {
       attempt.coreParitySummary = "Core parity unavailable";
     }
+    attempt.definitionShadowSummary = await definitionShadow;
     reportProgress?.(62, "Workspace metadata complete");
     const atlas = mapSyncToAtlas(raw, WS_FALLBACK);
     reportProgress?.(66, "Building the governance catalog");
@@ -1166,6 +1176,7 @@ async function persistSync(
   const syncSummary = [
     `${atlas.items.length} items · ${atlas.edges.length} lineage edges · ${atlas.principals.length} principals · ${atlas.jobs.length} jobs`,
     attempt.coreParitySummary,
+    attempt.definitionShadowSummary,
   ]
     .filter((value): value is string => !!value)
     .join(" · ");

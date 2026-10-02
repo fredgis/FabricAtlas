@@ -54,6 +54,9 @@ const coreShadow = vi.hoisted(() => ({
   coreCollectorShadowEnabled: vi.fn(),
   coreCollectorParitySummary: vi.fn(),
 }));
+const definitionShadow = vi.hoisted(() => ({
+  runDefinitionCollectorShadow: vi.fn(),
+}));
 
 vi.mock("@/lib/rayfin-client", () => ({
   getRayfinClient: () => ({ data: mocks.data }),
@@ -68,6 +71,7 @@ vi.mock("./live-sync", async (importOriginal) => {
   };
 });
 vi.mock("./core-collector-shadow", () => coreShadow);
+vi.mock("./definition-collector-shadow", () => definitionShadow);
 
 const workspaceId = "11111111-1111-4111-8111-111111111111";
 const identity = {
@@ -239,6 +243,9 @@ describe("Rayfin snapshot persistence", () => {
     coreShadow.coreCollectorParitySummary
       .mockReset()
       .mockReturnValue("Core parity core-match");
+    definitionShadow.runDefinitionCollectorShadow
+      .mockReset()
+      .mockResolvedValue(undefined);
   });
 
   it("does not publish a Workspace marker when an individual write fails", async () => {
@@ -459,6 +466,9 @@ describe("Rayfin snapshot persistence", () => {
       },
       discrepancies: [],
     });
+    definitionShadow.runDefinitionCollectorShadow.mockResolvedValue(
+      "Definitions shadow complete=2; unsupported=0; failed=0",
+    );
 
     await runFabricSync(false, identity);
 
@@ -471,10 +481,23 @@ describe("Rayfin snapshot persistence", () => {
       shadowEnvelope,
       raw,
     );
+    expect(
+      definitionShadow.runDefinitionCollectorShadow,
+    ).toHaveBeenCalledWith(
+      workspaceId,
+      correlationId,
+      shadowEnvelope,
+    );
     expect(mocks.data.SyncRun.update).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         summary: expect.stringContaining("Core parity core-match"),
+      }),
+    );
+    expect(mocks.data.SyncRun.update).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        summary: expect.stringContaining("Definitions shadow complete=2"),
       }),
     );
   });

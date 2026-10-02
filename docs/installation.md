@@ -380,11 +380,14 @@ For an isolated parity deployment only, enable the browser shadow adapter:
 
 ```dotenv
 VITE_ATLAS_CORE_COLLECTOR_SHADOW=true
+VITE_ATLAS_DEFINITION_COLLECTOR_SHADOW=true
 ```
 
 The existing Python sync and the Rayfin Core Function then start under the same
-correlation ID. Only the Python result can publish the snapshot. Atlas logs the
-bounded parity report after both complete; it never logs either raw payload.
+correlation ID. Supported definition items from the Core inventory are passed
+to `workspaceCollectDefinitions` in bounded batches. Only the Python result can
+publish the snapshot. Atlas stores bounded Core and definition status summaries
+in `SyncRun`; it never stores or logs either raw payload.
 Leave the flag unset in stable deployments until the real comparison gate
 passes.
 
