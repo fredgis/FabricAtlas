@@ -32,6 +32,10 @@ import {
 import { runDefinitionCollectorShadow } from "./definition-collector-shadow";
 import { runItemRelationsCollectorShadow } from "./item-relations-collector-shadow";
 import { runKqlCollectorShadow } from "./kql-collector-shadow";
+import {
+  runPowerBiCollectorShadow,
+  runSqlCollectorShadow,
+} from "./remaining-collectors-shadow";
 import { normalizeLineageEdges } from "./lineage";
 import { DEPLOYMENT_ID } from "./release";
 import {
@@ -115,7 +119,7 @@ const PERSISTED_TEXT_LIMITS = {
   },
   syncRun: {
     triggeredBy: 160,
-    summary: 1000,
+    summary: 2000,
   },
 } as const;
 const PERSISTED_TRUNCATION_MARKER = " [truncated]";
@@ -552,6 +556,8 @@ interface SyncAttempt {
   definitionShadowSummary?: string;
   itemRelationsShadowSummary?: string;
   kqlShadowSummary?: string;
+  sqlShadowSummary?: string;
+  powerBiShadowSummary?: string;
 }
 
 function textOrFallback(value: unknown, fallback: string): string {
@@ -747,6 +753,26 @@ export async function runFabricSync(
       ),
       "KQL shadow timed-out",
     );
+    const sqlShadow = boundedShadowSummary(
+      coreShadow.then((coreEnvelope) =>
+        runSqlCollectorShadow(
+          attempt.workspaceId,
+          attempt.id,
+          coreEnvelope,
+        ),
+      ),
+      "SQL shadow timed-out",
+    );
+    const powerBiShadow = boundedShadowSummary(
+      coreShadow.then((coreEnvelope) =>
+        runPowerBiCollectorShadow(
+          attempt.workspaceId,
+          attempt.id,
+          coreEnvelope,
+        ),
+      ),
+      "Power BI shadow timed-out",
+    );
     const raw = await invokeSyncAll(
       attempt.workspaceId,
       user,
@@ -767,10 +793,14 @@ export async function runFabricSync(
       attempt.definitionShadowSummary,
       attempt.itemRelationsShadowSummary,
       attempt.kqlShadowSummary,
+      attempt.sqlShadowSummary,
+      attempt.powerBiShadowSummary,
     ] = await Promise.all([
       definitionShadow,
       itemRelationsShadow,
       kqlShadow,
+      sqlShadow,
+      powerBiShadow,
     ]);
     reportProgress?.(62, "Workspace metadata complete");
     const atlas = mapSyncToAtlas(raw, WS_FALLBACK);
@@ -1232,6 +1262,8 @@ async function persistSync(
     attempt.definitionShadowSummary,
     attempt.itemRelationsShadowSummary,
     attempt.kqlShadowSummary,
+    attempt.sqlShadowSummary,
+    attempt.powerBiShadowSummary,
   ]
     .filter((value): value is string => !!value)
     .join(" · ");

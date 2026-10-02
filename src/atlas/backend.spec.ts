@@ -63,6 +63,10 @@ const itemRelationsShadow = vi.hoisted(() => ({
 const kqlShadow = vi.hoisted(() => ({
   runKqlCollectorShadow: vi.fn(),
 }));
+const remainingShadows = vi.hoisted(() => ({
+  runSqlCollectorShadow: vi.fn(),
+  runPowerBiCollectorShadow: vi.fn(),
+}));
 
 vi.mock("@/lib/rayfin-client", () => ({
   getRayfinClient: () => ({ data: mocks.data }),
@@ -80,6 +84,7 @@ vi.mock("./core-collector-shadow", () => coreShadow);
 vi.mock("./definition-collector-shadow", () => definitionShadow);
 vi.mock("./item-relations-collector-shadow", () => itemRelationsShadow);
 vi.mock("./kql-collector-shadow", () => kqlShadow);
+vi.mock("./remaining-collectors-shadow", () => remainingShadows);
 
 const workspaceId = "11111111-1111-4111-8111-111111111111";
 const identity = {
@@ -258,6 +263,12 @@ describe("Rayfin snapshot persistence", () => {
       .mockReset()
       .mockResolvedValue(undefined);
     kqlShadow.runKqlCollectorShadow
+      .mockReset()
+      .mockResolvedValue(undefined);
+    remainingShadows.runSqlCollectorShadow
+      .mockReset()
+      .mockResolvedValue(undefined);
+    remainingShadows.runPowerBiCollectorShadow
       .mockReset()
       .mockResolvedValue(undefined);
   });
@@ -489,6 +500,12 @@ describe("Rayfin snapshot persistence", () => {
     kqlShadow.runKqlCollectorShadow.mockResolvedValue(
       "KQL shadow complete=2; unsupported=0; failed=0; schemas=1",
     );
+    remainingShadows.runSqlCollectorShadow.mockResolvedValue(
+      "SQL shadow complete=1; unsupported=0; failed=0",
+    );
+    remainingShadows.runPowerBiCollectorShadow.mockResolvedValue(
+      "Power BI shadow items=2",
+    );
 
     await runFabricSync(false, identity);
 
@@ -516,6 +533,18 @@ describe("Rayfin snapshot persistence", () => {
       shadowEnvelope,
     );
     expect(kqlShadow.runKqlCollectorShadow).toHaveBeenCalledWith(
+      workspaceId,
+      correlationId,
+      shadowEnvelope,
+    );
+    expect(remainingShadows.runSqlCollectorShadow).toHaveBeenCalledWith(
+      workspaceId,
+      correlationId,
+      shadowEnvelope,
+    );
+    expect(
+      remainingShadows.runPowerBiCollectorShadow,
+    ).toHaveBeenCalledWith(
       workspaceId,
       correlationId,
       shadowEnvelope,
