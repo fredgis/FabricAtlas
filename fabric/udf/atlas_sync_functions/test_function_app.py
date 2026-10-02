@@ -4251,6 +4251,22 @@ class CollectorCompatibilityCleanupTests(unittest.TestCase):
     workspace_id = "11111111-1111-4111-8111-111111111111"
     lakehouse_id = "22222222-2222-4222-8222-222222222222"
 
+    def test_compatibility_plan_accepts_namespaced_fabric_item_types(self):
+        plan = function_app._compatibility_plan(json.dumps({
+            "version": 1,
+            "stage": "scanner",
+            "items": [{
+                "id": self.lakehouse_id,
+                "type": "Microsoft.WaaS.BusinessProcessSolutions",
+                "collectors": [],
+            }],
+            "schemaItemIds": [],
+        }))
+        self.assertEqual(
+            plan["items"][0]["type"],
+            "Microsoft.WaaS.BusinessProcessSolutions",
+        )
+
     def test_removed_collectors_have_no_production_definition_or_call_site(self):
         tree = ast.parse(module_path.read_text(encoding="utf-8"))
         definitions = {

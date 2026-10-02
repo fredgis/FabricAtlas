@@ -5496,7 +5496,7 @@ def _compatibility_plan(value):
             if not isinstance(item, dict) or set(item) != {"id", "type", "collectors"}:
                 raise ValueError()
             item["id"] = _item_id(item["id"])
-            if item["id"] in seen or not isinstance(item["type"], str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{0,63}", item["type"]):
+            if item["id"] in seen or not isinstance(item["type"], str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9._-]{0,127}", item["type"]):
                 raise ValueError()
             seen.add(item["id"])
             collectors = item["collectors"]
