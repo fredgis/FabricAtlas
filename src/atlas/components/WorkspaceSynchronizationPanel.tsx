@@ -36,6 +36,7 @@ import {
   type RecentRunRow,
   type ScopeWorkspaceRow,
 } from "../workspace-sync";
+import { useWorkspaceSwitch } from "../workspace-switch";
 import { WorkspaceScopeDialog } from "./WorkspaceScopeDialog";
 
 export const LIVE_RUN_ROW_ID = "atlas-live-sync-run";
@@ -434,13 +435,13 @@ function SelectedWorkspacesCard() {
     workspaceScopesError,
     reloadWorkspaceScopes,
     activeWorkspaceId,
-    selectWorkspace,
     syncing,
     syncProgress,
     syncError,
     lastSyncedAt,
     canSync,
   } = useAtlas();
+  const switchWorkspace = useWorkspaceSwitch();
   const [scopeOpen, setScopeOpen] = useState(false);
   const switchHintId = useId();
   const rows = scopeWorkspaceRows({
@@ -568,7 +569,7 @@ function SelectedWorkspacesCard() {
                   {!row.active && (
                     <button
                       type="button"
-                      onClick={() => selectWorkspace(row.id)}
+                      onClick={() => switchWorkspace(row.id)}
                       disabled={syncing}
                       aria-describedby={syncing ? switchHintId : undefined}
                       aria-label={`Open ${row.displayName}`}

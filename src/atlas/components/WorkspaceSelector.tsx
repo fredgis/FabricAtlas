@@ -2,29 +2,41 @@ import { useId } from "react";
 import { AlertTriangle } from "lucide-react";
 import { useAtlas } from "../store";
 import { cn } from "../ui";
+import { useWorkspaceSwitch } from "../workspace-switch";
+
+const SYNC_LOCK_HINT =
+  "Cancel the active synchronization before changing workspace.";
 
 export function WorkspaceSelector({
+  id,
   className,
   hideWhenSingle = false,
+  compact = false,
 }: {
+  id?: string;
   className?: string;
   hideWhenSingle?: boolean;
+  /** Visually hides the label and hint for toolbars; both stay programmatic. */
+  compact?: boolean;
 }) {
   const {
     workspaceScopes,
     workspaceScopesLoading,
     workspaceScopesError,
     activeWorkspaceId,
-    selectWorkspace,
     syncing,
   } = useAtlas();
-  const selectId = useId();
+  const switchWorkspace = useWorkspaceSwitch();
+  const generatedId = useId();
   const hintId = useId();
+  const selectId = id ?? generatedId;
   const single = workspaceScopes.length < 2;
-  if (hideWhenSingle && single && !workspaceScopesError) return null;
+  if (hideWhenSingle && single && (compact || !workspaceScopesError)) {
+    return null;
+  }
 
   const hint = syncing
-    ? "Cancel the active synchronization before changing workspace."
+    ? SYNC_LOCK_HINT
     : workspaceScopesLoading
       ? "Loading the shared workspace scope."
       : single
@@ -32,17 +44,34 @@ export function WorkspaceSelector({
         : `${workspaceScopes.length} workspaces are in the shared Atlas scope.`;
 
   return (
-    <div className={cn("flex min-w-0 flex-col gap-xs", className)}>
-      <label htmlFor={selectId} className="text-200 font-semibold text-foreground">
+    <div
+      className={cn(
+        "flex min-w-0",
+        compact ? "items-center" : "flex-col gap-xs",
+        className,
+      )}
+    >
+      <label
+        htmlFor={selectId}
+        className={
+          compact ? "sr-only" : "text-200 font-semibold text-foreground"
+        }
+      >
         Active workspace
       </label>
       <select
         id={selectId}
         value={activeWorkspaceId}
         aria-describedby={hintId}
+        title={syncing ? SYNC_LOCK_HINT : undefined}
         disabled={syncing || workspaceScopesLoading || single}
-        onChange={(event) => selectWorkspace(event.target.value)}
-        className="min-h-[var(--atlas-touch-target)] w-full min-w-0 rounded-md border border-input bg-card px-m text-300 text-foreground disabled:opacity-70 sm:min-h-[var(--atlas-control-height)]"
+        onChange={(event) => switchWorkspace(event.target.value, selectId)}
+        className={cn(
+          "w-full min-w-0 rounded-md border border-input bg-card text-foreground disabled:opacity-70",
+          compact
+            ? "min-h-[var(--atlas-touch-target)] truncate pl-s pr-xl text-[length:var(--text-300)] font-semibold md:min-h-[var(--atlas-control-height)]"
+            : "min-h-[var(--atlas-touch-target)] px-m text-[length:var(--text-300)] sm:min-h-[var(--atlas-control-height)]",
+        )}
       >
         {!workspaceScopes.some((scope) => scope.id === activeWorkspaceId) && (
           <option value={activeWorkspaceId} disabled>
@@ -55,10 +84,15 @@ export function WorkspaceSelector({
           </option>
         ))}
       </select>
-      <p id={hintId} className="text-200 leading-200 text-muted-foreground">
+      <p
+        id={hintId}
+        className={
+          compact ? "sr-only" : "text-200 leading-200 text-muted-foreground"
+        }
+      >
         {hint}
       </p>
-      {workspaceScopesError && (
+      {workspaceScopesError && !compact && (
         <p
           role="alert"
           className="flex items-start gap-xs text-200 leading-200 text-foreground"

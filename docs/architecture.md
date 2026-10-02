@@ -305,9 +305,15 @@ saved views, governance state and synchronization writes to that ID. Late hydrat
 workspace is discarded through the existing operation generation guard.
 
 Workspace Hub exposes the shared scope through four local tabs: Workspace, Synchronization,
-Configuration and Team notes (`workspace.section` in the URL, Synchronization by default). The
-Workspace tab and the first-sync gate both render a native `Active workspace` selector, so a user
-who switches to an unsynchronized workspace can always return to a published one. The
+Configuration and Team notes (`workspace.section` in the URL, Synchronization by default). When
+the shared scope holds more than one workspace, the application header renders a compact native
+`Active workspace` selector from `WorkspaceScope` (inside the navigation drawer below the `md`
+breakpoint), so every shared view shows which workspace it reads. The Workspace tab and the
+first-sync gate keep their own selector, so a user who switches to an unsynchronized workspace can
+always return to a published one. Every selector is disabled while a synchronization runs.
+Switching goes through the shell: it re-reads the current URL so filters written with
+`replaceState` survive the remount, keeps the route unchanged and returns focus to the
+originating selector, or its header or first-sync equivalent, after the new snapshot loads. The
 Synchronization tab projects only real store state: the in-flight browser run, the selected
 workspaces, persisted `SyncRun` audit rows and the configured synchronizer. Only the active
 workspace has a known status; other selected workspaces are reported as not loaded until opened.

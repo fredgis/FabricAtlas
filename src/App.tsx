@@ -58,6 +58,15 @@ import {
 import { buildSearchIndex } from "./atlas/search";
 import { workspaceDetailLabel } from "./atlas/workspace-display";
 import {
+  captureWorkspaceFocus,
+  DRAWER_WORKSPACE_SELECT_ID,
+  HEADER_WORKSPACE_SELECT_ID,
+  restoreWorkspaceFocus,
+  WorkspaceSwitchContext,
+  type WorkspaceFocusCapture,
+} from "./atlas/workspace-switch";
+import { WorkspaceSelector } from "./atlas/components/WorkspaceSelector";
+import {
   isDisplayDensity,
   useDisplayPreference,
 } from "./atlas/display-preferences";
@@ -121,6 +130,8 @@ function SidebarContent({
   onNavigate: (tab: Tab) => void;
 }) {
   const workspaceDetail = workspaceDetailLabel(data.workspace);
+  const { workspaceScopes } = useAtlas();
+  const switchable = workspaceScopes.length > 1;
 
   return (
     <>
@@ -183,9 +194,18 @@ function SidebarContent({
           <div className="text-[10px] font-semibold uppercase tracking-[0.08em]">
             Fabric workspace
           </div>
-          <div className="mt-[2px] text-[13px] font-bold text-foreground">
-            {data.workspace.displayName}
-          </div>
+          {mobile && switchable ? (
+            <WorkspaceSelector
+              id={DRAWER_WORKSPACE_SELECT_ID}
+              compact
+              hideWhenSingle
+              className="mt-[4px]"
+            />
+          ) : (
+            <div className="mt-[2px] text-[13px] font-bold text-foreground">
+              {data.workspace.displayName}
+            </div>
+          )}
           {workspaceDetail && (
             <div className="mt-[4px] text-[11px]">{workspaceDetail}</div>
           )}
@@ -236,7 +256,15 @@ function App() {
     isPreview,
     hasData,
     requiresDeploymentSync,
+    workspaceScopes,
+    activeWorkspaceId,
+    selectWorkspace,
   } = useAtlas();
+  const workspaceSwitchable = workspaceScopes.length > 1;
+  const pendingWorkspaceFocus = useRef<WorkspaceFocusCapture | undefined>(
+    undefined,
+  );
+  const suppressRouteFocus = useRef(false);
   const density = useDisplayPreference(
     currentUser.id,
     data.workspace.fabricId,
@@ -274,6 +302,11 @@ function App() {
     document.title = `${label} | Fabric Atlas`;
     if (initialFocusPending.current) {
       initialFocusPending.current = false;
+      return;
+    }
+    // A workspace switch re-reads the route; the switching control keeps focus.
+    if (suppressRouteFocus.current) {
+      suppressRouteFocus.current = false;
       return;
     }
     if (tab === "catalog" && focus?.itemId) return;
@@ -358,6 +391,61 @@ function App() {
     );
   }, []);
 
+  const switchWorkspace = useCallback(
+    (workspaceId: string, focusId?: string) => {
+      if (
+        syncing ||
+        workspaceId === activeWorkspaceId ||
+        !workspaceScopes.some((scope) => scope.id === workspaceId)
+      ) {
+        selectWorkspace(workspaceId);
+        return;
+      }
+      // Views remount for the new snapshot; rebuild their focus from the
+      // current URL so filters written with replaceState are not lost.
+      const navigation = parseAtlasLocation(window.location);
+      suppressRouteFocus.current = true;
+      window.requestAnimationFrame(() => {
+        suppressRouteFocus.current = false;
+      });
+      pendingWorkspaceFocus.current = captureWorkspaceFocus(focusId);
+      setTab(navigation.tab);
+      setFocus(navigation.focus);
+      setWorkspaceSection(navigation.focus?.workspaceSection);
+      setNavOpen(false);
+      selectWorkspace(workspaceId);
+    },
+    [activeWorkspaceId, selectWorkspace, syncing, workspaceScopes],
+  );
+
+  const activeSnapshotLoaded =
+    isPreview ||
+    (!hydrating &&
+      data.workspace.fabricId.toLowerCase() === activeWorkspaceId);
+  useEffect(() => {
+    const capture = pendingWorkspaceFocus.current;
+    if (!capture || !activeSnapshotLoaded) return;
+    let frame = 0;
+    let attempts = 0;
+    const restore = () => {
+      if (pendingWorkspaceFocus.current !== capture) return;
+      if (restoreWorkspaceFocus(capture)) {
+        pendingWorkspaceFocus.current = undefined;
+        return;
+      }
+      attempts += 1;
+      if (attempts < 30) {
+        frame = window.requestAnimationFrame(restore);
+        return;
+      }
+      pendingWorkspaceFocus.current = undefined;
+      const active = document.activeElement;
+      if (!active || active === document.body) mainRef.current?.focus();
+    };
+    frame = window.requestAnimationFrame(restore);
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeSnapshotLoaded, activeWorkspaceId]);
+
   const nav = (t: Tab) => navigate(t);
   // The Synchronization section renders its own run banner.
   const hubShowsSynchronization =
@@ -366,10 +454,15 @@ function App() {
 
   if (!isPreview && hydrating) return <AtlasBootView />;
   if (!isPreview && (!hasData || requiresDeploymentSync)) {
-    return <FirstSyncView />;
+    return (
+      <WorkspaceSwitchContext.Provider value={switchWorkspace}>
+        <FirstSyncView />
+      </WorkspaceSwitchContext.Provider>
+    );
   }
 
   return (
+    <WorkspaceSwitchContext.Provider value={switchWorkspace}>
     <Dialog.Root open={navOpen} onOpenChange={setNavOpen}>
     <div className="atlas-shell-canvas relative flex h-screen overflow-hidden text-foreground">
       <button
@@ -393,7 +486,7 @@ function App() {
       {/* Main */}
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="atlas-toolbar relative flex min-h-[52px] shrink-0 items-center justify-between border-b border-border bg-card px-m shadow-fabric-2 sm:px-l lg:px-xl">
-          <div className="flex min-w-0 items-center gap-[8px]">
+          <div className="flex min-w-0 flex-1 items-center gap-[8px]">
             <Dialog.Trigger asChild>
               <button
                 type="button"
@@ -403,14 +496,32 @@ function App() {
                 <Menu size={17} />
               </button>
             </Dialog.Trigger>
-            <div className="truncate text-[12px] text-muted-foreground sm:text-[13px]">
-              <span className="hidden sm:inline">Fabric · </span>
-              <b className="text-foreground">{data.workspace.displayName}</b>
-              <span className="hidden sm:inline">
-                {" "}
-                · {NAV.find((n) => n.id === tab)?.label}
-              </span>
-            </div>
+            {workspaceSwitchable ? (
+              <div className="flex min-w-0 items-center gap-xs text-[12px] text-muted-foreground sm:text-[13px]">
+                <span className="hidden shrink-0 sm:inline">Fabric ·</span>
+                <b className="min-w-0 truncate text-foreground md:hidden">
+                  {data.workspace.displayName}
+                </b>
+                <WorkspaceSelector
+                  id={HEADER_WORKSPACE_SELECT_ID}
+                  compact
+                  hideWhenSingle
+                  className="hidden max-w-[16rem] md:flex"
+                />
+                <span className="hidden shrink-0 xl:inline">
+                  · {NAV.find((n) => n.id === tab)?.label}
+                </span>
+              </div>
+            ) : (
+              <div className="truncate text-[12px] text-muted-foreground sm:text-[13px]">
+                <span className="hidden sm:inline">Fabric · </span>
+                <b className="text-foreground">{data.workspace.displayName}</b>
+                <span className="hidden sm:inline">
+                  {" "}
+                  · {NAV.find((n) => n.id === tab)?.label}
+                </span>
+              </div>
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-[8px] sm:gap-[12px] lg:gap-[14px]">
             <button
@@ -619,6 +730,7 @@ function App() {
         </Dialog.Portal>
       )}
     </Dialog.Root>
+    </WorkspaceSwitchContext.Provider>
   );
 }
 

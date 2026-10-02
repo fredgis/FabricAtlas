@@ -20,6 +20,7 @@ import { WorkspaceSelector } from "../components/WorkspaceSelector";
 import { REPOSITORY_URL } from "../release";
 import { useAtlas } from "../store";
 import { syncContactMessage } from "../sync-contact";
+import { FIRST_SYNC_WORKSPACE_SELECT_ID } from "../workspace-switch";
 
 const CAPABILITIES = [
   {
@@ -256,7 +257,11 @@ export function FirstSyncView() {
                   </div>
                 </div>
 
-                <WorkspaceSelector hideWhenSingle className="mt-l" />
+                <WorkspaceSelector
+                  id={FIRST_SYNC_WORKSPACE_SELECT_ID}
+                  hideWhenSingle
+                  className="mt-l"
+                />
 
                 <button
                   type="button"

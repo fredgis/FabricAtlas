@@ -1,0 +1,148 @@
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import App from "@/App";
+import { SAMPLE_DATA } from "@/atlas/model";
+import { AtlasProvider } from "@/atlas/store";
+import {
+    DRAWER_WORKSPACE_SELECT_ID,
+    HEADER_WORKSPACE_SELECT_ID,
+    HUB_WORKSPACE_SELECT_ID,
+} from "@/atlas/workspace-switch";
+import { ThemeContext } from "@/hooks/theme.context";
+
+const SECOND_WORKSPACE = "9a2a1b5e-58e3-4c43-9a8f-1f7c6f3f2a10";
+
+vi.mock("@/atlas/workspace-scope", async (importOriginal) => {
+    const actual =
+        await importOriginal<typeof import("@/atlas/workspace-scope")>();
+    const { SAMPLE_DATA: sample } = await import("@/atlas/model");
+    return {
+        ...actual,
+        loadWorkspaceScopes: vi.fn(async () => [
+            {
+                id: sample.workspace.fabricId,
+                displayName: sample.workspace.displayName,
+                persisted: true,
+                selectedAt: "2026-10-01T08:00:00.000Z",
+            },
+            {
+                id: "9a2a1b5e-58e3-4c43-9a8f-1f7c6f3f2a10",
+                displayName: "Second workspace",
+                persisted: true,
+                selectedAt: "2026-10-01T08:00:00.000Z",
+            },
+        ]),
+    };
+});
+
+function renderApp() {
+    return render(
+        <ThemeContext.Provider value={{ isDark: false, toggleTheme: () => undefined }}>
+            <AtlasProvider isPreview>
+                <App />
+            </AtlasProvider>
+        </ThemeContext.Provider>,
+    );
+}
+
+async function headerSelector(): Promise<HTMLSelectElement> {
+    await waitFor(() =>
+        expect(document.getElementById(HEADER_WORKSPACE_SELECT_ID)).not.toBeNull(),
+    );
+    return document.getElementById(HEADER_WORKSPACE_SELECT_ID) as HTMLSelectElement;
+}
+
+function frames(count = 40): Promise<void> {
+    return act(async () => {
+        await new Promise<void>((resolve) => setTimeout(resolve, count * 17));
+    });
+}
+
+describe("App global workspace selector", () => {
+    beforeEach(() => {
+        localStorage.clear();
+    });
+
+    it("scopes every view through a labelled header selector built from WorkspaceScope", async () => {
+        window.history.replaceState(null, "", "/?ctid=tenant&jobs.status=failed#jobs");
+        renderApp();
+
+        const selector = await headerSelector();
+        expect(selector).toHaveAccessibleName("Active workspace");
+        expect(selector).toHaveValue(SAMPLE_DATA.workspace.fabricId);
+        expect(
+            within(selector).getAllByRole("option").map((option) => option.textContent),
+        ).toEqual([SAMPLE_DATA.workspace.displayName, "Second workspace"]);
+
+        selector.focus();
+        fireEvent.change(selector, { target: { value: SECOND_WORKSPACE } });
+        await frames();
+
+        expect(selector).toHaveValue(SECOND_WORKSPACE);
+        expect(selector).toHaveFocus();
+        expect(window.location.hash).toBe("#jobs");
+        expect(window.location.search).toContain("ctid=tenant");
+        expect(window.location.search).toContain("jobs.status=failed");
+    });
+
+    it("blocks switching while a synchronization is running", async () => {
+        window.history.replaceState(null, "", "/#overview");
+        renderApp();
+        const selector = await headerSelector();
+
+        fireEvent.click(screen.getByRole("button", { name: "Sync" }));
+
+        expect(selector).toBeDisabled();
+        expect(selector).toHaveAccessibleDescription(
+            "Cancel the active synchronization before changing workspace.",
+        );
+        await waitFor(() => expect(selector).toBeEnabled(), { timeout: 3_000 });
+        expect(selector).toHaveValue(SAMPLE_DATA.workspace.fabricId);
+    });
+
+    it("restores focus to the Workspace Hub selector after its view remounts", async () => {
+        window.history.replaceState(null, "", "/?workspace.section=workspace#workspace");
+        renderApp();
+        await headerSelector();
+
+        const original = document.getElementById(HUB_WORKSPACE_SELECT_ID) as HTMLSelectElement;
+        original.focus();
+        fireEvent.change(original, { target: { value: SECOND_WORKSPACE } });
+
+        await waitFor(() => {
+            const remounted = document.getElementById(HUB_WORKSPACE_SELECT_ID);
+            expect(remounted).not.toBe(original);
+            expect(remounted).toHaveFocus();
+        });
+        expect(screen.getByRole("tab", { name: "Workspace" })).toHaveAttribute(
+            "aria-selected",
+            "true",
+        );
+        expect(window.location.search).toContain("workspace.section=workspace");
+    });
+
+    it("offers the selector in the mobile navigation drawer and closes it after switching", async () => {
+        window.history.replaceState(null, "", "/#catalog");
+        renderApp();
+        const header = await headerSelector();
+
+        const trigger = screen.getByRole("button", { name: "Open navigation" });
+        fireEvent.click(trigger);
+        const drawer = screen.getByRole("dialog", { name: "Primary navigation" });
+        const drawerSelector = within(drawer).getByRole("combobox", {
+            name: "Active workspace",
+        });
+        expect(drawerSelector).toHaveAttribute("id", DRAWER_WORKSPACE_SELECT_ID);
+
+        fireEvent.change(drawerSelector, { target: { value: SECOND_WORKSPACE } });
+
+        await waitFor(() =>
+            expect(
+                screen.queryByRole("dialog", { name: "Primary navigation" }),
+            ).toBeNull(),
+        );
+        expect(header).toHaveValue(SECOND_WORKSPACE);
+        await waitFor(() => expect(trigger).toHaveFocus());
+        expect(window.location.hash).toBe("#catalog");
+    });
+});

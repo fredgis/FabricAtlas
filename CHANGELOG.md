@@ -22,6 +22,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   a disabled schedule card that states why scheduling is unavailable, and
   recent `SyncRun` history. Workspace Hub also gains a Workspace tab, and the
   first-sync gate can switch back to another selected workspace.
+- A compact global `Active workspace` selector in the application header (in
+  the navigation drawer on narrow screens) when the shared scope holds more
+  than one workspace. Switching is blocked during synchronization and keeps
+  the route and focus.
 
 ### Changed
 

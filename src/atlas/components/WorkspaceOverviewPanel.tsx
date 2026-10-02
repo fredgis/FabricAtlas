@@ -4,6 +4,7 @@ import { relativeTime } from "../model";
 import { useAtlas } from "../store";
 import { Card } from "../ui";
 import { formatRunStart } from "../workspace-sync";
+import { HUB_WORKSPACE_SELECT_ID } from "../workspace-switch";
 import { WorkspaceSelector } from "./WorkspaceSelector";
 
 function portalWorkspaceUrl(workspaceId: string): string {
@@ -59,7 +60,7 @@ export function WorkspaceOverviewPanel() {
           </p>
         </header>
         <div className="flex flex-col gap-l p-l">
-          <WorkspaceSelector />
+          <WorkspaceSelector id={HUB_WORKSPACE_SELECT_ID} />
           <dl>
             <Field label="Name">{workspace.displayName}</Field>
             <Field label="Fabric workspace ID">

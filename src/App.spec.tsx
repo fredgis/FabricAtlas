@@ -62,6 +62,17 @@ describe("App", () => {
         expect(document.body).not.toBeEmptyDOMElement();
     });
 
+    it("shows the single scoped workspace name without a selector", async () => {
+        renderApp();
+        await act(async () => undefined);
+        expect(
+            screen.queryByRole("combobox", { name: "Active workspace" }),
+        ).toBeNull();
+        expect(screen.getByRole("banner")).toHaveTextContent(
+            "AlpineRent",
+        );
+    });
+
     it("applies and restores the personal display density", () => {
         const app = renderApp();
         expect(document.documentElement).toHaveAttribute("data-atlas-density", "comfortable");
