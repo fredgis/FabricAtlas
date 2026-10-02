@@ -6,6 +6,7 @@ import {
   ExternalLink,
   GitBranch,
   GitCommitHorizontal,
+  FlaskConical,
   Map,
   Package,
 } from "lucide-react";
@@ -13,9 +14,18 @@ import { Card, SectionLabel } from "../ui";
 import {
   APP_VERSION,
   BUILD_COMMIT,
+  BUILD_DATE,
+  FUNCTIONS_API_VERSION,
+  RAYFIN_SDK_VERSION,
   REPOSITORY_URL,
+  SNAPSHOT_CONTRACT_ID,
   releaseUrl,
 } from "../release";
+import { atlasFeatureFlags } from "../feature-flags";
+import {
+  PREVIEW_API_REGISTRY,
+  previewMaturityLabel,
+} from "../preview-api";
 
 const CLONE_COMMAND = `git clone ${REPOSITORY_URL}.git`;
 
@@ -50,6 +60,7 @@ function ProjectLink({
 
 export function AboutView() {
   const [copied, setCopied] = useState(false);
+  const featureFlags = atlasFeatureFlags();
 
   const copyCloneCommand = async () => {
     try {
@@ -62,7 +73,7 @@ export function AboutView() {
   };
 
   return (
-    <div className="atlas-content-frame flex min-h-full items-center p-xl lg:p-xxl">
+    <div className="atlas-content-frame flex min-h-full flex-col justify-center gap-l p-xl lg:p-xxl">
       <Card className="atlas-fabric-hero relative isolate w-full overflow-hidden border-border shadow-fabric-4">
         <div className="atlas-overview-beam" aria-hidden="true" />
         <div className="grid lg:grid-cols-[1.25fr_0.75fr]">
@@ -163,6 +174,83 @@ export function AboutView() {
               ))}
             </div>
           </aside>
+        </div>
+      </Card>
+
+      <Card className="w-full overflow-hidden">
+        <div className="border-b border-border px-l py-m">
+          <SectionLabel>Runtime &amp; compatibility</SectionLabel>
+          <h2 className="mt-xs font-heading text-500 font-bold">
+            Deployment coverage
+          </h2>
+          <p className="mt-xs text-200 text-muted-foreground">
+            Versions and gated Preview capabilities compiled into this build.
+          </p>
+        </div>
+
+        <div className="grid gap-s border-b border-border p-l sm:grid-cols-2 xl:grid-cols-5">
+          {[
+            ["Application", APP_VERSION],
+            ["Rayfin SDK", RAYFIN_SDK_VERSION],
+            ["Functions API", `v${FUNCTIONS_API_VERSION}`],
+            ["Snapshot contract", SNAPSHOT_CONTRACT_ID],
+            ["Built", BUILD_DATE],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-lg border border-border bg-secondary p-m">
+              <div className="text-100 font-semibold uppercase tracking-wide text-muted-foreground">
+                {label}
+              </div>
+              <div
+                className="mt-xs truncate font-mono text-200 font-semibold"
+                title={value}
+              >
+                {value}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="divide-y divide-border">
+          {featureFlags.map((flag) => {
+            const descriptor = PREVIEW_API_REGISTRY[flag.id];
+            return (
+              <section
+                key={flag.id}
+                className="grid gap-m px-l py-m lg:grid-cols-[minmax(0,1fr)_auto_auto]"
+                aria-labelledby={`coverage-${flag.id}`}
+              >
+                <div className="min-w-0">
+                  <h3
+                    id={`coverage-${flag.id}`}
+                    className="flex items-center gap-s text-300 font-semibold"
+                  >
+                    <FlaskConical
+                      className="icon-size-100 text-lineage-upstream"
+                      aria-hidden="true"
+                    />
+                    {descriptor.productName}
+                  </h3>
+                  <p className="mt-xxs text-200 text-muted-foreground">
+                    {descriptor.evidenceBoundary}
+                  </p>
+                </div>
+                <span className="text-200 text-muted-foreground">
+                  {previewMaturityLabel(descriptor.maturity)} ·{" "}
+                  {descriptor.apiVersion}
+                </span>
+                <span
+                  className={
+                    flag.enabled
+                      ? "inline-flex w-fit items-center rounded-md border border-status-healthy/30 bg-status-healthy/10 px-s py-xxs text-200 font-semibold text-status-healthy"
+                      : "inline-flex w-fit items-center rounded-md border border-border bg-secondary px-s py-xxs text-200 font-semibold text-muted-foreground"
+                  }
+                  title={flag.environmentVariable}
+                >
+                  {flag.enabled ? "Enabled" : "Disabled"}
+                </span>
+              </section>
+            );
+          })}
         </div>
       </Card>
     </div>
