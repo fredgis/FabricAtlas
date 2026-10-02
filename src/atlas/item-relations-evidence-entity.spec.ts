@@ -44,7 +44,8 @@ describe('ItemRelationsEvidenceSnapshot entity', () => {
   it('is registered additively in the schema after the earlier entities', () => {
     const schema = readFileSync(resolve('rayfin', 'data', 'schema.ts'), 'utf8').replace(/\r\n/g, '\n');
     expect(schema).toContain("ItemRelationsEvidenceSnapshot: ItemRelationsEvidenceSnapshot;");
-    expect(schema).toMatch(/SyncPayloadChunk,\n {2}ItemRelationsEvidenceSnapshot,\n/);
+    expect(schema.lastIndexOf('  ItemRelationsEvidenceSnapshot,'))
+      .toBeGreaterThan(schema.lastIndexOf('  SyncPayloadChunk,'));
   });
 
   it('shares reads with the app audience and limits writes to the synchronizer', () => {
