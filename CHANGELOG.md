@@ -70,6 +70,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   Search endpoint with bounded pages, results, time and retries, and returns
   allowlisted, source-labelled metadata with coverage. Results follow the
   unchanged snapshot results and never delete or hide snapshot evidence.
+- An item-family capability registry covering all 51 documented Fabric item
+  types, Materialized Lake Views and OneLake shortcuts as Lakehouse-adjacent
+  derived families, KQL materialized views, and Workload Hub and unknown
+  types. Each family states catalog, objects, lineage, access and operations
+  coverage independently; the Catalog drawer shows it as **Atlas coverage**,
+  and an API-backed inventory gap list drives bounded follow-ups.
+- A read-only, adapter-only `workspaceCollectSourceProvenance` Function for
+  documented OneLake shortcuts, mirrored database definitions and status, and
+  MLV execution definitions, plus a pure provenance contract that creates
+  edges only from explicit IDs, records missing identifiers as unresolved and
+  keeps policy origin separate from destination enforcement, which is never
+  claimed as verified.
 
 ### Changed
 
@@ -99,6 +111,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   error detail and link to the Monitor hub, instead of "No additional detail".
 - The Preview API notice keeps its compact type size; its size class was
   dropped when combined with a text color.
+- Catalog Search keeps dotted Workload Hub item types such as
+  `Microsoft.WaaS.BusinessProcessSolutions` instead of skipping them as
+  malformed entries.
 
 ## [1.12.4] - 2026-09-17
 

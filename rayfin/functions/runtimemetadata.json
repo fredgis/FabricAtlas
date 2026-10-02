@@ -400,60 +400,6 @@
       ]
     },
     {
-      "functionName": "workspaceCollectPowerBiScanner",
-      "delegateParameters": [
-        {
-          "name": "ctx",
-          "type": "RayfinContext<AtlasSchema>",
-          "optional": false,
-          "hasDefault": false,
-          "position": 0,
-          "isFabricParameter": false
-        },
-        {
-          "name": "protocolVersion",
-          "type": "1",
-          "optional": false,
-          "hasDefault": false,
-          "position": 1,
-          "isFabricParameter": false
-        },
-        {
-          "name": "tenantId",
-          "type": "SyncUuidInput",
-          "optional": false,
-          "hasDefault": false,
-          "position": 2,
-          "isFabricParameter": false
-        },
-        {
-          "name": "workspaceId",
-          "type": "SyncUuidInput",
-          "optional": false,
-          "hasDefault": false,
-          "position": 3,
-          "isFabricParameter": false
-        },
-        {
-          "name": "expectedItems",
-          "type": "ScannerExpectedItemsInput",
-          "optional": false,
-          "hasDefault": false,
-          "position": 4,
-          "isFabricParameter": false
-        },
-        {
-          "name": "correlationId",
-          "type": "SyncUuidInput | null",
-          "optional": false,
-          "hasDefault": true,
-          "position": 5,
-          "isFabricParameter": false
-        }
-      ],
-      "contextAudiences": []
-    },
-    {
       "functionName": "searchCatalogPreview",
       "delegateParameters": [
         {
@@ -510,6 +456,108 @@
           "optional": false,
           "hasDefault": false,
           "position": 6,
+          "isFabricParameter": false
+        }
+      ],
+      "contextAudiences": [
+        "Fabric"
+      ]
+    },
+    {
+      "functionName": "workspaceCollectPowerBiScanner",
+      "delegateParameters": [
+        {
+          "name": "ctx",
+          "type": "RayfinContext<AtlasSchema>",
+          "optional": false,
+          "hasDefault": false,
+          "position": 0,
+          "isFabricParameter": false
+        },
+        {
+          "name": "protocolVersion",
+          "type": "1",
+          "optional": false,
+          "hasDefault": false,
+          "position": 1,
+          "isFabricParameter": false
+        },
+        {
+          "name": "tenantId",
+          "type": "SyncUuidInput",
+          "optional": false,
+          "hasDefault": false,
+          "position": 2,
+          "isFabricParameter": false
+        },
+        {
+          "name": "workspaceId",
+          "type": "SyncUuidInput",
+          "optional": false,
+          "hasDefault": false,
+          "position": 3,
+          "isFabricParameter": false
+        },
+        {
+          "name": "expectedItems",
+          "type": "ScannerExpectedItemsInput",
+          "optional": false,
+          "hasDefault": false,
+          "position": 4,
+          "isFabricParameter": false
+        },
+        {
+          "name": "correlationId",
+          "type": "SyncUuidInput | null",
+          "optional": false,
+          "hasDefault": true,
+          "position": 5,
+          "isFabricParameter": false
+        }
+      ],
+      "contextAudiences": []
+    },
+    {
+      "functionName": "workspaceCollectSourceProvenance",
+      "delegateParameters": [
+        {
+          "name": "ctx",
+          "type": "RayfinContext<AtlasSchema, AudienceType.Fabric>",
+          "optional": false,
+          "hasDefault": false,
+          "position": 0,
+          "isFabricParameter": false
+        },
+        {
+          "name": "protocolVersion",
+          "type": "1",
+          "optional": false,
+          "hasDefault": false,
+          "position": 1,
+          "isFabricParameter": false
+        },
+        {
+          "name": "workspaceId",
+          "type": "SyncUuidInput",
+          "optional": false,
+          "hasDefault": false,
+          "position": 2,
+          "isFabricParameter": false
+        },
+        {
+          "name": "items",
+          "type": "SourceProvenanceItemsInput",
+          "optional": false,
+          "hasDefault": false,
+          "position": 3,
+          "isFabricParameter": false
+        },
+        {
+          "name": "correlationId",
+          "type": "SyncUuidInput | null",
+          "optional": false,
+          "hasDefault": true,
+          "position": 4,
           "isFabricParameter": false
         }
       ],

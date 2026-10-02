@@ -35,6 +35,26 @@ describe("CatalogView layout", () => {
     expect(screen.getByRole("dialog", { name: `${model.displayName} details` })).toBeVisible();
   });
 
+  it("shows the item family coverage in the detail drawer", () => {
+    const model = SAMPLE_DATA.items.find((item) => item.itemType === "SemanticModel")!;
+    render(<CatalogView />);
+    fireEvent.click(screen.getByRole("button", { name: "Table" }));
+    const table = within(screen.getByRole("region", { name: "Catalog table" }));
+    fireEvent.click(table.getByRole("button", { name: /Semantic model/i }));
+    fireEvent.click(table.getByRole("button", { name: `Open details for ${model.displayName}` }));
+    const drawer = within(screen.getByRole("dialog", { name: `${model.displayName} details` }));
+    expect(drawer.getByRole("button", { name: "Coverage" })).toBeVisible();
+    const coverage = within(drawer.getByRole("region", { name: "Atlas coverage" }));
+    expect(coverage.getAllByRole("term").map((term) => term.textContent)).toEqual([
+      "Catalog",
+      "Objects",
+      "Lineage",
+      "Access",
+      "Operations",
+    ]);
+    expect(coverage.getByText(/Restrictions are not evaluated/)).toBeVisible();
+  });
+
   it("expands search results without changing the default collapsed groups", () => {
     const model = SAMPLE_DATA.items.find((item) => item.itemType === "SemanticModel")!;
     render(<CatalogView />);

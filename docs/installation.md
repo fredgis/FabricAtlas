@@ -753,6 +753,37 @@ npm test -- src\atlas\catalog-search-function.spec.ts src\atlas\catalog-search.s
 npm --prefix rayfin\functions run build
 ```
 
+## Source provenance stage
+
+`workspaceCollectSourceProvenance` declares only the Fabric audience and is not called by the
+browser yet. It reads OneLake shortcuts on Lakehouse, Warehouse and KQL database items, mirrored
+database properties, definition and status, and Lakehouse MLV execution definitions:
+
+```ts
+await client.functions.workspaceCollectSourceProvenance.invoke({
+  protocolVersion: 1,
+  workspaceId,
+  items: [{ id: lakehouseId, type: "Lakehouse" }, { id: mirroredDatabaseId, type: "MirroredDatabase" }],
+  correlationId: null,
+});
+```
+
+The AppBackend application identity needs read access to each item. For delegated callers the
+documented scopes are `OneLake.Read.All` (shortcuts), `Lakehouse.Read.All` or `Item.Read.All` (MLV
+execution definitions), `MirroredDatabase.Read.All` or `Item.Read.All` (properties and status) and
+`MirroredDatabase.ReadWrite.All` or `Item.ReadWrite.All` (definition). Mirrored database
+`getDefinition` requires write permission; a denial is `unsupported/read-write-permission-required`
+and never fails the properties or replication state. Inactive capacities report
+`endpoint-unsupported`. Verified on
+2026-10-02 with a delegated user token against the reference workspaces; the deployed application
+identity is not yet verified. See [source-provenance.md](source-provenance.md). Validate with:
+
+```powershell
+npx --no-install rayfin functions init
+npm test -- src\atlas\workspace-source-provenance.spec.ts src\atlas\source-provenance.spec.ts src\atlas\item-families.spec.ts src\atlas\durable-sync.spec.ts src\lib\rayfin-client.spec.ts
+npm --prefix rayfin\functions run build
+```
+
 ## Scripts
 
 | Command | What it does |

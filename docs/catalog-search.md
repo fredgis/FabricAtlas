@@ -100,8 +100,10 @@ is returned, because resuming would skip them silently.
   fields are dropped. IDs are lowercased and each entry has a stable
   `key` (`item:{id}`, `workspace:{id}` or `entry:{kind}:{id}`), first-wins
   across pages. Future `type` and `catalogEntryType` values are preserved
-  verbatim. Malformed entries are skipped and counted instead of failing the
-  page.
+  verbatim, including dotted Workload Hub item types such as
+  `Microsoft.WaaS.BusinessProcessSolutions` (observed in the reference tenant
+  on 2026-10-02). Malformed entries are skipped and counted instead of failing
+  the page.
 - `continuationToken` for the next page, kept after a retryable stop so the
   failed page can be retried.
 

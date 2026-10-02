@@ -265,6 +265,9 @@ describe("Catalog Search navigation", () => {
   it("labels known and future item types readably", () => {
     expect(catalogEntryTypeLabel("SemanticModel")).toBe("Semantic model");
     expect(catalogEntryTypeLabel("Workspace")).toBe("Workspace");
-    expect(catalogEntryTypeLabel("MirroredAzureDatabricksCatalog")).toBe("Mirrored Azure Databricks Catalog");
+    expect(catalogEntryTypeLabel("MirroredAzureDatabricksCatalog")).toBe("Mirrored Azure Databricks catalog");
+    expect(catalogEntryTypeLabel("Microsoft.WaaS.BusinessProcessSolutions")).toBe(
+      "Business Process Solutions (Microsoft.WaaS)",
+    );
   });
 });

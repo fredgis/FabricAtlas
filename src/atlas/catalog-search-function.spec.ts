@@ -474,6 +474,13 @@ describe("searchCatalogPreview collection", () => {
     expect(sanitizeCatalogEntry({ id: REPORT, type: "Report", catalogEntryType: "FabricItem" })).toBeUndefined();
     expect(sanitizeCatalogEntry({ ...item(REPORT, "Sales"), type: "Report<script>" })).toBeUndefined();
     expect(sanitizeCatalogEntry({ ...item(REPORT, "Sales\u202E") })).toBeUndefined();
+    expect(sanitizeCatalogEntry({ ...item(REPORT, "Sales"), type: "Publisher..Item" })).toBeUndefined();
+  });
+
+  it("keeps dotted Workload Hub item types observed in a real tenant", () => {
+    expect(
+      sanitizeCatalogEntry(item(REPORT, "Process solution", "Microsoft.WaaS.BusinessProcessSolutions"))?.entry.type,
+    ).toBe("Microsoft.WaaS.BusinessProcessSolutions");
   });
 });
 

@@ -179,6 +179,9 @@ const CONTINUATION_TOKEN = /^[\x21-\x7E]+$/;
 const UNSAFE_TEXT = /[\p{Cc}\u202A-\u202E\u2066-\u2069]/u;
 const SEARCHABLE = /[\p{L}\p{N}]/u;
 const ENTRY_KIND = /^[A-Za-z][A-Za-z0-9]{0,49}$/;
+// Workload Hub items report dotted types such as `Publisher.Workload.ItemType`.
+const ITEM_TYPE = /^[A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*){0,4}$/;
+const MAX_ITEM_TYPE_LENGTH = 100;
 const MAX_DISPLAY_NAME_LENGTH = 300;
 const MAX_DESCRIPTION_LENGTH = 500;
 const FILTER_TYPES = new Set<string>(CATALOG_SEARCH_FILTER_TYPES);
@@ -333,7 +336,9 @@ export function sanitizeCatalogEntry(value: unknown): SanitizedEntry | undefined
       ? value.catalogEntryType
       : undefined;
   const type =
-    typeof value.type === "string" && ENTRY_KIND.test(value.type)
+    typeof value.type === "string" &&
+    value.type.length <= MAX_ITEM_TYPE_LENGTH &&
+    ITEM_TYPE.test(value.type)
       ? value.type
       : undefined;
   const displayName = safeText(value.displayName, MAX_DISPLAY_NAME_LENGTH);

@@ -5,7 +5,7 @@ import type {
   CatalogSearchFailureCode,
 } from "../../rayfin/functions/src/catalog-search";
 import type { AppFunctionsSchema } from "../../rayfin/functions/src/types";
-import { ITEM_TYPES } from "./model";
+import { itemFamilyLabel } from "./item-families";
 import type { PreviewFeatureId } from "./preview-api";
 import type { SearchIndexEntry, SearchResult } from "./search";
 
@@ -165,7 +165,7 @@ function parseEntry(value: unknown): CatalogSearchEntry | undefined {
     typeof id !== "string" ||
     !UUID.test(id) ||
     !boundedString(catalogEntryType, 50) ||
-    !boundedString(type, 50) ||
+    !boundedString(type, 100) ||
     !boundedString(displayName, 300) ||
     (value.description !== undefined && !boundedString(value.description, 500)) ||
     (value.workspaceId !== undefined &&
@@ -424,11 +424,7 @@ export function resolveCatalogEntry(
 }
 
 export function catalogEntryTypeLabel(type: string): string {
-  const known = (ITEM_TYPES as Record<string, { label: string }>)[type];
-  if (known) return known.label;
-  return type
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2");
+  return itemFamilyLabel(type);
 }
 
 export const CATALOG_SEARCH_AVAILABILITY_MESSAGE: Record<

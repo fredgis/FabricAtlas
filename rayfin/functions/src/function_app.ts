@@ -57,6 +57,11 @@ import {
 import { workspaceCollectPowerBiScanner } from './workspace-powerbi-scanner.js';
 import type { ScannerExpectedItemsInput, ScannerStageEnvelope } from './powerbi-scanner-projection.js';
 import { workspaceCollectAccessPolicyEvidence, type PolicyCollectionResult } from './workspace-policy-evidence.js';
+import {
+  workspaceCollectSourceProvenance,
+  type SourceProvenanceItemsInput,
+  type SourceProvenanceStageEnvelope,
+} from './workspace-source-provenance.js';
 
 const udf = new UserDataFunctions();
 
@@ -206,6 +211,21 @@ udf.func(
     correlationId: SyncUuidInput | null = null,
   ): Promise<ScannerStageEnvelope> =>
     workspaceCollectPowerBiScanner(ctx, protocolVersion, tenantId, workspaceId, expectedItems, correlationId),
+  [],
+);
+
+// Read-only source provenance from documented shortcut, mirroring and MLV execution-definition
+// contracts. Explicit IDs only; never authoritative and never published as a snapshot.
+udf.func(
+  'workspaceCollectSourceProvenance',
+  async (
+    ctx: RayfinContext<AtlasSchema, AudienceType.Fabric>,
+    protocolVersion: 1,
+    workspaceId: SyncUuidInput,
+    items: SourceProvenanceItemsInput,
+    correlationId: SyncUuidInput | null = null,
+  ): Promise<SourceProvenanceStageEnvelope> =>
+    workspaceCollectSourceProvenance(ctx, protocolVersion, workspaceId, items, correlationId),
   [],
 );
 

@@ -24,6 +24,7 @@ import {
 import { useAtlas } from "../store";
 import { isCatalogLayout, useDisplayPreference } from "../display-preferences";
 import { CatalogTable } from "../components/CatalogTable";
+import { ItemCoveragePanel } from "../components/ItemCoveragePanel";
 import {
   Avatar,
   EndorsementChip,
@@ -258,6 +259,7 @@ export function CatalogView({
   const drawerSections = detail
     ? [
         { key: "properties", label: "Properties" },
+        { key: "coverage", label: "Coverage" },
         ...(dUp.length || dDown.length
           ? [{ key: "lineage", label: "Lineage" }]
           : []),
@@ -838,6 +840,8 @@ export function CatalogView({
                     }
                   />
                 </DrawerSection>
+
+                <ItemCoveragePanel itemType={detail.itemType} jobs={dJobs} />
 
                 {(dUp.length > 0 || dDown.length > 0) && (
                   <DrawerSection

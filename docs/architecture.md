@@ -556,6 +556,29 @@ the authoritative Atlas view; others open their workspace in Fabric. See
 [catalog-search.md](catalog-search.md) for the contract, bounds and the remaining
 application-identity verification.
 
+### Item families and source provenance (Phase 8)
+
+`src/atlas/item-families.ts` is the item-family capability registry. It registers all 51
+documented Fabric `ItemType` values (kept identical to the Catalog Search allowlist), derived
+families (`MaterializedLakeView`, `KQLMaterializedView`, `OneLakeShortcut`) and explicit
+fallbacks for Workload Hub and unknown types. Each family states catalog, objects, lineage,
+access and operations coverage independently as collected, partial, adapter only, deferred,
+unsupported, excluded by design or not applicable. The Catalog item drawer renders it as
+**Atlas coverage**, and `inventoryGapList` produces the API-backed gap list. MLVs are never
+fabricated as top-level items: awareness comes from `RefreshMaterializedLakeViews` jobs on the
+parent Lakehouse and from MLV execution definitions. See [item-families.md](item-families.md).
+
+`workspaceCollectSourceProvenance` is a read-only, adapter-only Function behind the
+`SynchronizerAuthority` gate. It projects documented OneLake shortcuts, mirrored database
+properties, `mirroring.json` and mirroring status, and MLV execution definitions into explicit
+IDs: OneLake target workspace/item IDs, Fabric connection IDs, landing-zone and SQL endpoint IDs.
+URLs, buckets, subpaths, source database names and free text are dropped. The pure
+`buildSourceProvenance` contract in `src/atlas/source-provenance.ts` turns that evidence into
+deterministic, namespaced provenance edges, unresolved records for missing identifiers and
+policy-origin evidence whose destination enforcement is always `not-verified`. Nothing is
+published to snapshots or `LineageEdge` until the durable cutover. See
+[source-provenance.md](source-provenance.md).
+
 ### KQL metadata stage (dual-run)
 
 `workspaceCollectKqlMetadata` takes `protocolVersion: 1`, a strict workspace UUID, 1-16 unique
