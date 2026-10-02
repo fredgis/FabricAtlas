@@ -581,6 +581,53 @@ npm test -- src\atlas\kql-schema.spec.ts src\atlas\workspace-kql-metadata.spec.t
 npm --prefix rayfin\functions run build
 ```
 
+## SQL metadata stage
+
+`workspaceCollectSqlMetadata` declares exactly `AudienceType.Fabric` and `AudienceType.Sql`. It
+returns SQL Database, Warehouse and Lakehouse SQL analytics endpoint item properties plus
+structural catalog metadata. It is read-only, non-authoritative and not called by the browser yet:
+
+```ts
+await client.functions.workspaceCollectSqlMetadata.invoke({
+  protocolVersion: 1,
+  workspaceId,
+  items: [
+    { id: sqlDatabaseId, type: "SQLDatabase" },
+    { id: warehouseId, type: "Warehouse" },
+    { id: lakehouseId, type: "Lakehouse" },
+  ],
+  correlationId: null,
+});
+```
+
+Callers pass only item IDs and types; the Function reads the SQL host and database from the
+documented Fabric REST item routes with the Fabric token and then queries fixed `sys.*` catalog
+views with the SQL token. Pass a Lakehouse, not its `SQLEndpoint` item: the documented
+SQL analytics endpoint route uses the Lakehouse GUID as the database, so `SQLEndpoint` items are
+reported as `unsupported/parent-item-required`.
+
+The AppBackend application identity needs read permission on each item and permission to connect
+to each SQL Database, Warehouse and Lakehouse SQL analytics endpoint. SQL catalog views apply
+metadata visibility, so an identity without `VIEW DEFINITION` (or a workspace role that implies
+it) receives only the objects it can see. Missing SQL permission is reported per item as
+`schema: unsupported/authorization-failed` and never fails the item properties. A missing Sql token
+is `unsupported/token-unavailable`.
+
+The Functions package adds `mssql` (the driver documented by Rayfin for `AudienceType.Sql`) and
+pins `tedious` to `^19.2.2` with an npm override: `tedious` 20 requires Node.js 22, while the Rayfin
+Functions bundler targets Node.js 20. `rayfin up` inlines both into the Functions bundle.
+
+Not yet verified in a deployed tenant: outbound TDS from the Functions host, the minted Sql token
+against each endpoint kind, the Lakehouse-GUID database route, `TOP (@rowLimit)` and key-constraint
+catalog support in Warehouse and SQL analytics endpoints, and metadata visibility for the
+AppBackend identity. Validate with:
+
+```powershell
+npx --no-install rayfin functions init
+npm test -- src\atlas\sql-catalog.spec.ts src\atlas\workspace-sql-metadata.spec.ts src\atlas\durable-sync.spec.ts src\lib\rayfin-client.spec.ts
+npm --prefix rayfin\functions run build
+```
+
 ## Scripts
 
 | Command | What it does |

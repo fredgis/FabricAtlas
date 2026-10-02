@@ -31,6 +31,11 @@ import {
   type KqlMetadataStageEnvelope,
 } from './workspace-kql-metadata.js';
 import {
+  workspaceCollectSqlMetadata,
+  type SqlMetadataItemsInput,
+  type SqlMetadataStageEnvelope,
+} from './workspace-sql-metadata.js';
+import {
   workspaceDiscover,
   type WorkspaceDiscoveryResult,
 } from './workspace-discovery.js';
@@ -117,6 +122,21 @@ udf.func(
     correlationId: SyncUuidInput | null = null,
   ): Promise<KqlMetadataStageEnvelope> =>
     workspaceCollectKqlMetadata(ctx, protocolVersion, workspaceId, items, correlationId),
+  [],
+);
+
+// Read-only SQL catalog structure for SQL Database, Warehouse and Lakehouse SQL endpoints.
+// Fabric REST supplies trusted coordinates; the SQL audience runs fixed parameterized `sys.*` queries.
+udf.func(
+  'workspaceCollectSqlMetadata',
+  async (
+    ctx: RayfinContext<AtlasSchema, AudienceType.Fabric | AudienceType.Sql>,
+    protocolVersion: 1,
+    workspaceId: SyncUuidInput,
+    items: SqlMetadataItemsInput,
+    correlationId: SyncUuidInput | null = null,
+  ): Promise<SqlMetadataStageEnvelope> =>
+    workspaceCollectSqlMetadata(ctx, protocolVersion, workspaceId, items, correlationId),
   [],
 );
 

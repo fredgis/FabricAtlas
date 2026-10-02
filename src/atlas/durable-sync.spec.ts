@@ -584,7 +584,7 @@ describe('generated durable Functions contracts', () => {
     const durableNames = ['syncStart', 'syncContinue', 'syncStatus', 'syncCancel'];
     expect(metadata.functions.map((fn) => fn.functionName))
       .toEqual(['syncGraphStart', 'syncGraphContinue', 'syncGraphStatus', 'syncGraphCancel',
-        'ping', 'workspaceDiscover', 'workspaceCollectCore', 'workspaceCollectDefinitions', 'workspaceCollectItemRelations', 'workspaceCollectKqlMetadata', ...durableNames]);
+        'ping', 'workspaceDiscover', 'workspaceCollectCore', 'workspaceCollectDefinitions', 'workspaceCollectItemRelations', 'workspaceCollectKqlMetadata', 'workspaceCollectSqlMetadata', 'workspaceCollectPowerBi', ...durableNames]);
     for (const name of durableNames) {
       const fn = metadata.functions.find((candidate) => candidate.functionName === name)!;
       expect(fn.contextAudiences).toEqual([]);
