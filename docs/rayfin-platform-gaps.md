@@ -31,10 +31,14 @@ and cannot rediscover the workspace or run an unrequested collector.
 |---|---|---|
 | Power BI admin scanner | Access, scanner metadata and authoritative item lineage | The optional Secret Store service-principal scanner needs operator credentials, tenant settings and live parity before activation |
 | Semantic-model scanner fallback | Schema only for definitions that explicitly report unsupported | Definition access can require write permission or be blocked by sensitivity labels |
-| Lakehouse object coverage | REST object kinds and selected downstream-model merges | SQL catalog structure does not reproduce every existing object/source boundary |
 | Legacy report pages | PBIR-Legacy page fallback | The supported definition path does not cover every legacy report |
 | Kusto data plane | Live schema fallback where available | Rayfin Functions expose no documented Kusto audience |
-| SQL data plane | Exact per-item fallback after an explicit Sql-stage failure | Application-identity catalog visibility varies by endpoint permission |
+
+Lakehouse Tables REST, Warehouse catalogs, SQL Database catalogs, item
+properties and supported definitions run only through Rayfin Functions.
+Application-identity permission failures remain explicit partial or
+unsupported evidence and do not route those migrated collectors back through
+Python.
 
 The UDF keeps its 180-second execution deadline, bounded retries,
 same-origin continuation validation, page/record limits, 25 MiB envelope cap

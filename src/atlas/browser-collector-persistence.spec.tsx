@@ -35,6 +35,10 @@ const table = (workspaceId: string) => ({
   name: estate(workspaceId).table, source: "Downstream semantic model", objectType: "Table",
   columns: [{ name: "Id", dataType: "Int64" }], measures: [],
 });
+const lakeTable = (workspaceId: string) => ({
+  ...table(workspaceId),
+  source: "Fabric Lakehouse Tables REST",
+});
 
 function memoryEntity() {
   const rows: Record<string, unknown>[] = [];
@@ -125,14 +129,29 @@ function installBoundaries() {
         password: "PROVENANCE_SECRET_CANARY", businessRows: ["BUSINESS_DATA_CANARY"],
       };
     }),
-    workspaceCollectSqlMetadata: invoke((input) => ({
-      ...context(input, "sql-metadata"),
-      items: (input.items as { id: string; type: string }[]).map((item) => ({ ...item, ...complete() })),
-      catalogs: { [estate(String(input.workspaceId)).lake]: unsupported("token-unavailable") },
-      schema: {}, artifactMetadata: {}, config: [],
-      sections: { sqlProperties: complete(), sqlSchema: unsupported("token-unavailable") },
-      capabilities: { sqlSchema: unsupported("token-unavailable") },
-    })),
+    workspaceCollectSqlMetadata: invoke((input) => {
+      const workspaceId = String(input.workspaceId);
+      const lake = estate(workspaceId).lake;
+      return {
+        ...context(input, "sql-metadata"),
+        items: (input.items as { id: string; type: string }[]).map((item) => ({ ...item, ...complete() })),
+        catalogs: {
+          [lake]: fixture.unavailable
+            ? unsupported("token-unavailable")
+            : { ...complete(), lakehouseTables: complete() },
+        },
+        schema: fixture.unavailable ? {} : { [lake]: [lakeTable(workspaceId)] },
+        artifactMetadata: {},
+        config: [],
+        sections: {
+          sqlProperties: complete(),
+          sqlSchema: fixture.unavailable ? unsupported("token-unavailable") : complete(),
+        },
+        capabilities: {
+          sqlSchema: fixture.unavailable ? unsupported("token-unavailable") : complete(),
+        },
+      };
+    }),
     workspaceCollectDefinitions: invoke((input) => ({
       ...context(input, "definitions"),
       items: (input.items as { id: string; type: string }[]).map((item) => ({ ...item, ...complete() })),
@@ -159,13 +178,12 @@ function installBoundaries() {
       workspace: { id: workspaceId }, correlationId, requestedItemIds: plan.items.map((item) => item.id),
       completedItemIds: plan.items.map((item) => item.id), remainingItemIds: [], itemFailures: {},
       compatibilityCollectors: Object.fromEntries(plan.items.map((item) => [item.id, item.collectors])),
-      schema: plan.stage === "scanner" && !fixture.unavailable && plan.schemaItemIds.includes(e.lake)
-        ? { [e.lake]: [table(workspaceId)] } : {},
+      schema: {},
       config: [], jobs: [], access: plan.stage === "scanner" ? [grant, { ...grant }] : [],
       lineage: plan.stage === "scanner" ? [{ source: e.lake, target: e.model, relation: "Direct Lake" }] : [],
       objectEdges: [], artifactMetadata: {}, itemMetadata: {},
       sections: plan.stage === "scanner"
-        ? { ...Object.fromEntries(["scanner", "access", "lineage", "schema", "config"].map((name) => [name, complete()])), storageSchema: fixture.unavailable ? unsupported("scanner-schema-unavailable") : { status: "complete", code: "partial-unsupported" } }
+        ? Object.fromEntries(["scanner", "access", "lineage", "schema", "config"].map((name) => [name, complete()]))
         : { lakehouseTables: unsupported("endpoint-unsupported") },
       capabilities: plan.stage === "scanner" ? Object.fromEntries(["endorsement", "sensitivity", "tags", "ownership"].map((name) => [name, complete()])) : {},
       errors: [], syncedAt: NOW,
@@ -204,20 +222,20 @@ describe("two-workspace collection, publication and hydration", () => {
     ATLAS_CONFIG.previousSyncWriters = [];
   });
 
-  it("retains each workspace's fallback schemas, unique scanner grants and real coverage after switching", async () => {
+  it("retains each workspace's Rayfin schemas, unique scanner grants and real coverage after switching", async () => {
     const data = installBoundaries();
     await runFabricSync(false, user, undefined, undefined, FIRST);
     await runFabricSync(false, user, undefined, undefined, SECOND);
     const reloaded = await loadFromDb(false, SECOND);
     expect(reloaded?.schema?.[estate(SECOND).lake]).toEqual(expect.arrayContaining([
-      table(SECOND),
+      lakeTable(SECOND),
       expect.objectContaining({ name: "silver.MirrorOrders", objectType: "Shortcut", columns: [] }),
     ]));
     expect(reloaded?.schema?.[estate(FIRST).lake]).toBeUndefined();
     expect(reloaded?.grants.filter((grant) => grant.source === "directShare")).toHaveLength(1);
     expect(reloaded?.workspace.syncSections?.definitions).toEqual(complete());
-    expect(reloaded?.workspace.syncSections?.sqlSchema).toEqual(unsupported("token-unavailable"));
-    expect(reloaded?.workspace.syncSections?.storageSchema).toEqual({ status: "complete", code: "partial-unsupported" });
+    expect(reloaded?.workspace.syncSections?.sqlSchema).toEqual(complete());
+    expect(reloaded?.workspace.syncSections?.storageSchema).toEqual(complete());
     for (const workspaceId of [FIRST, SECOND]) {
       const hydrated = await loadFromDb(false, workspaceId);
       const e = estate(workspaceId);
@@ -280,7 +298,7 @@ describe("two-workspace collection, publication and hydration", () => {
     expect(reloaded?.schema?.[e.lake]).toEqual([
       expect.objectContaining({ name: "silver.MirrorOrders", objectType: "Shortcut", columns: [] }),
     ]);
-    expect(reloaded?.schema?.[e.lake]).not.toContainEqual(table(SECOND));
+    expect(reloaded?.schema?.[e.lake]).not.toContainEqual(lakeTable(SECOND));
     expect(reloaded?.schema?.[e.mirror]).toEqual([
       expect.objectContaining({ name: "OPS.ORDERS", objectType: "Mirrored table", columns: [] }),
     ]);
@@ -310,6 +328,6 @@ describe("two-workspace collection, publication and hydration", () => {
     );
     const reloaded = await loadFromDb(false, SECOND);
     expect(reloaded?.workspace.snapshotId).toBe(previous?.workspace.snapshotId);
-    expect(reloaded?.schema?.[estate(SECOND).lake]).toContainEqual(table(SECOND));
+    expect(reloaded?.schema?.[estate(SECOND).lake]).toContainEqual(lakeTable(SECOND));
   });
 });

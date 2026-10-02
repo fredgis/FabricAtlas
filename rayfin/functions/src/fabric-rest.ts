@@ -152,6 +152,7 @@ export type FabricQuery = Readonly<{
   beta?: true;
   type?: "Report" | "SemanticModel";
   format?: "TMSL";
+  maxResults?: 100;
 }>;
 
 export interface FabricPagedOptions {
@@ -178,7 +179,7 @@ interface FabricSendOptions {
 function allowlistedQuery(query: FabricQuery | undefined): URLSearchParams {
   const params = new URLSearchParams();
   if (!query) return params;
-  if (Object.keys(query).some((key) => !["beta", "type", "format"].includes(key))) {
+  if (Object.keys(query).some((key) => !["beta", "type", "format", "maxResults"].includes(key))) {
     throw new FabricRestError("invalid-response");
   }
   if (query.beta !== undefined) {
@@ -194,6 +195,10 @@ function allowlistedQuery(query: FabricQuery | undefined): URLSearchParams {
   if (query.format !== undefined) {
     if (query.format !== "TMSL") throw new FabricRestError("invalid-response");
     params.set("format", query.format);
+  }
+  if (query.maxResults !== undefined) {
+    if (query.maxResults !== 100) throw new FabricRestError("invalid-response");
+    params.set("maxResults", String(query.maxResults));
   }
   return params;
 }

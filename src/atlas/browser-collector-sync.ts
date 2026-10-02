@@ -39,6 +39,7 @@ const PROVENANCE = new Set(["Lakehouse", "Warehouse", "KQLDatabase", "MirroredDa
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const STOP = new Set(["deadline-exhausted", "request-timeout", "cancelled", "response-size-exceeded", "request-budget-exhausted"]);
 const SOURCE_SECTION = "Collector capability";
+const RETAINED_PYTHON_COLLECTORS = new Set<CompatibilityCollector>(["kqlDataPlane", "reportPages"]);
 
 /** Rollback changes collection only, not the existing writer or authorization gate. */
 export function pythonCollectorRollbackEnabled(): boolean {
@@ -139,7 +140,7 @@ export async function collectBrowserWorkspace(
   const sources: NonNullable<RawSync["collectorSources"]> = { core: { source: "rayfin" } };
   const plans = new Map<string, { id: string; type: string; collectors: CompatibilityCollector[] }>();
   const fallback = (item: Item, collector: CompatibilityCollector, code: string) => {
-    if (!/^[a-z0-9-]{1,80}$/.test(code)) fail();
+    if (!RETAINED_PYTHON_COLLECTORS.has(collector) || !/^[a-z0-9-]{1,80}$/.test(code)) fail();
     const current = plans.get(item.id) ?? { id: item.id, type: item.type, collectors: [] };
     if (!current.collectors.includes(collector)) current.collectors.push(collector);
     plans.set(item.id, current);
@@ -175,7 +176,6 @@ export async function collectBrowserWorkspace(
     if (new TextEncoder().encode(JSON.stringify(raw)).byteLength > 26 * 1024 * 1024) fail();
   };
   const schemaFallbackIds: string[] = [];
-  const storageFallbackIds = new Set<string>();
   const knownStorageSchemas = new Set<string>();
   const partialStorageSchemas = new Set<string>();
   for (let offset = 0; offset < items.length; offset += 8) {
@@ -205,7 +205,7 @@ export async function collectBrowserWorkspace(
       const accepted = new Set<string>();
       for (const item of result.items) {
         if (successful(item)) { accepted.add(item.id); active(item, "definitions"); }
-        else fallback(item, "definitions", item.code ?? "definition-unavailable");
+        else sources[`definitions:${item.id}`] = { source: "unsupported", code: item.code ?? "definition-unavailable" };
       }
       merge({ artifactMetadata: Object.fromEntries(Object.entries(result.artifactMetadata).filter(([id]) => accepted.has(id))),
         config: result.config.filter((entry) => accepted.has(entry.itemId)),
@@ -218,40 +218,36 @@ export async function collectBrowserWorkspace(
       const accepted = new Set<string>();
       for (const item of result.items) {
         const catalog = result.catalogs[item.id];
-        if (catalog && successful(catalog)) {
+        if (catalog) status(catalog);
+        if (catalog?.code && STOP.has(catalog.code)) fail();
+        if (catalog?.status === "complete") {
           const tables = result.schema[item.id];
           if (!Array.isArray(tables)) fail();
           accepted.add(item.id);
-          if (
-            (item.type === "Lakehouse" || item.type === "Warehouse") &&
-            tables.length === 0
-          ) {
-            if (!schemaFallbackIds.includes(item.id)) {
-              schemaFallbackIds.push(item.id);
-            }
-            storageFallbackIds.add(item.id);
-            sources[`sqlSchema:${item.id}`] = {
-              source: "unsupported",
-              code: "empty-inventory-unverified",
-            };
-          } else {
+          sources[`sqlSchema:${item.id}`] = {
+            source: "rayfin",
+            ...(catalog.code ? { code: catalog.code } : {}),
+          };
+          if (item.type === "Warehouse") {
             knownStorageSchemas.add(item.id);
-            active(item, "sqlSchema");
-          }
-        }
-        else if (item.type === "SQLDatabase") fallback(item, "sqlDataPlane", catalog?.code ?? item.code ?? "sql-not-live-validated");
-        else {
-          sources[`sqlSchema:${item.id}`] = { source: "unsupported", code: catalog?.code ?? item.code ?? "parent-item-required" };
-          if (item.type === "Lakehouse" || item.type === "Warehouse") {
-            if (!schemaFallbackIds.includes(item.id)) {
-              schemaFallbackIds.push(item.id);
+          } else if (item.type === "Lakehouse") {
+            const direct = catalog.lakehouseTables;
+            if (direct) {
+              status(direct);
+              if (direct.code && STOP.has(direct.code)) fail();
+              if (direct.status === "complete") knownStorageSchemas.add(item.id);
             }
-            storageFallbackIds.add(item.id);
           }
+          if (/partial|truncated/.test(catalog.code ?? "")) {
+            partialStorageSchemas.add(item.id);
+          }
+        } else {
+          sources[`sqlSchema:${item.id}`] = { source: "unsupported", code: catalog?.code ?? item.code ?? "parent-item-required" };
         }
         if (successful(item)) active(item, "sqlProperties");
-        else if (item.type !== "SQLEndpoint") fallback(item, "itemDetails", item.code ?? "properties-unavailable");
-        if (item.type === "Lakehouse") fallback(item, "lakehouseTables", "rest-object-kinds-not-covered-by-sql");
+        else if (item.type !== "SQLEndpoint") {
+          sources[`sqlProperties:${item.id}`] = { source: "unsupported", code: item.code ?? "properties-unavailable" };
+        }
       }
       merge({ schema: Object.fromEntries(Object.entries(result.schema).filter(([id]) => accepted.has(id))),
         config: result.config, sections: result.sections, capabilities: result.capabilities });
@@ -263,7 +259,9 @@ export async function collectBrowserWorkspace(
       const schema: NonNullable<RawSync["schema"]> = {};
       for (const item of result.items) {
         if (successful(item)) active(item, "kqlProperties");
-        else if (item.type === "Eventhouse" || item.type === "KQLDatabase") fallback(item, "itemDetails", item.code ?? "properties-unavailable");
+        else if (item.type === "Eventhouse" || item.type === "KQLDatabase") {
+          sources[`kqlProperties:${item.id}`] = { source: "unsupported", code: item.code ?? "properties-unavailable" };
+        }
         const structure = result.schemas[item.id];
         if (item.type === "KQLDatabase" && structure && successful(structure)) {
           active(item, "kqlDefinition");
@@ -312,22 +310,7 @@ export async function collectBrowserWorkspace(
     if (!successful(status(scanner.sections?.[name]))) fail();
   }
   sources.scanner = { source: "python-compatibility", code: "service-principal-scanner-not-live-validated" };
-  const scannerSchema = { ...scanner.schema };
-  for (const itemId of storageFallbackIds) {
-    const tables = scannerSchema[itemId];
-    if (!Array.isArray(tables)) continue;
-    const coverage = scanner.sections?.storageSchema;
-    if (tables.length || (coverage?.status === "complete" && !coverage.code)) {
-      knownStorageSchemas.add(itemId);
-      if (/partial|truncated/.test(coverage?.code ?? "") ||
-        tables.some((table) => table.source === "Downstream semantic model")) {
-        partialStorageSchemas.add(itemId);
-      }
-    } else {
-      delete scannerSchema[itemId];
-    }
-  }
-  merge({ ...scanner, jobs: [], schema: scannerSchema });
+  merge({ ...scanner, jobs: [] });
   raw.itemMetadata = { ...core.itemMetadata, ...scanner.itemMetadata };
   raw.sections = { ...raw.sections, scanner: scanner.sections!.scanner, access: scanner.sections!.access,
     lineage: scanner.sections!.lineage, schema: { status: "complete" }, config: { status: "complete" } };
@@ -350,8 +333,8 @@ export async function collectBrowserWorkspace(
       }
       if (Object.keys(result.itemFailures ?? {}).length) fail();
       const sectionFor: Partial<Record<CompatibilityCollector, string>> = {
-        definitions: "definitions", kqlDataPlane: "kqlSchema", sqlDataPlane: "sqlSchema",
-        itemDetails: "itemDetails", lakehouseTables: "lakehouseTables", reportPages: "reportPages", jobs: "jobs",
+        kqlDataPlane: "kqlSchema",
+        reportPages: "reportPages",
       };
       for (const item of remaining) {
         for (const collector of item.collectors) {
@@ -367,21 +350,7 @@ export async function collectBrowserWorkspace(
           }
         }
       }
-      const schema = { ...result.schema };
-      for (const item of remaining) {
-        if (item.type !== "Lakehouse" || !item.collectors.includes("lakehouseTables")) continue;
-        const collected =
-          result.compatibilityStatus?.[item.id]?.lakehouseTables ??
-          result.sections?.lakehouseTables;
-        if (!collected || collected.status !== "complete") delete schema[item.id];
-        else if (Array.isArray(schema[item.id])) {
-          knownStorageSchemas.add(item.id);
-          if (storageFallbackIds.has(item.id) && /partial|truncated/.test(collected.code ?? "")) {
-            partialStorageSchemas.add(item.id);
-          }
-        }
-      }
-      merge({ ...result, schema });
+      merge(result);
       remaining = result.remainingItemIds.map((id) => expected.get(id)!);
     }
     if (remaining.length) fail();
@@ -398,9 +367,7 @@ export async function collectBrowserWorkspace(
       ? { source: "unsupported", code: "storage-schema-unavailable" }
       : !knownSchema
         ? { source: "rayfin", code: "source-provenance-only" }
-        : storageFallbackIds.has(item.id)
-          ? { source: "python-compatibility", code: "bounded-storage-fallback" }
-          : { source: "rayfin" };
+        : { source: "rayfin" };
     if (!available) delete raw.schema![item.id];
     raw.config!.push({
       itemId: item.id, section: "Storage schema coverage", label: "Status",

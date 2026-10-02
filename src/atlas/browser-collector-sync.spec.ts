@@ -138,25 +138,29 @@ function storageHarness(type: "Lakehouse" | "Warehouse", available = true) {
   h.functions.workspaceCollectCore.invoke.mockResolvedValueOnce(storageCore);
   h.functions.workspaceCollectSqlMetadata.invoke.mockResolvedValueOnce({
     ...common("sql-metadata", [{ id: SQL, type, ...complete() }]),
-    catalogs: { [SQL]: unsupported("token-unavailable") }, schema: {}, artifactMetadata: {}, config: [],
-    sections: { sqlProperties: complete(), sqlSchema: unsupported("token-unavailable") },
-    capabilities: { sqlSchema: unsupported("token-unavailable") },
-  });
-  const original = h.compatibility.getMockImplementation()!;
-  h.compatibility.mockImplementation(async (plan) => {
-    const result = await original(plan);
-    if (plan.stage === "scanner") {
-      result.schema = available && plan.schemaItemIds.includes(SQL)
-        ? { [SQL]: [table("dbo.Orders", "Power BI admin scanner")] }
-        : {};
-      result.sections!.storageSchema = available ? complete() : unsupported("scanner-schema-unavailable");
-    } else if (type === "Lakehouse") {
-      result.schema = { [SQL]: [] };
-      result.sections!.lakehouseTables = unsupported("endpoint-unsupported");
-      result.compatibilityStatus![SQL].lakehouseTables =
-        unsupported("endpoint-unsupported");
-    }
-    return result;
+    catalogs: {
+      [SQL]: available
+        ? {
+            ...complete(),
+            ...(type === "Lakehouse" ? { lakehouseTables: complete() } : {}),
+          }
+        : unsupported("token-unavailable"),
+    },
+    schema: available
+      ? {
+          [SQL]: [table(
+            "dbo.Orders",
+            type === "Lakehouse" ? "Fabric Lakehouse Tables REST" : "Fabric Warehouse system catalog",
+          )],
+        }
+      : {},
+    artifactMetadata: {},
+    config: [],
+    sections: {
+      sqlProperties: complete(),
+      sqlSchema: available ? complete() : unsupported("token-unavailable"),
+    },
+    capabilities: { sqlSchema: available ? complete() : unsupported("token-unavailable") },
   });
   return h;
 }
@@ -223,31 +227,21 @@ describe("active browser collector composition", () => {
     expect(JSON.stringify(result.raw.capabilities)).not.toContain("collector-not-migrated");
   });
   it.each([
-    ["Lakehouse", "Power BI admin scanner"], ["Warehouse", "Power BI admin scanner"],
-    ["Lakehouse", "Downstream semantic model"], ["Warehouse", "Downstream semantic model"],
-  ] as const)("restores bounded %s schema from %s when SQL structure is unavailable", async (type, source) => {
+    ["Lakehouse", "Fabric Lakehouse Tables REST"],
+    ["Warehouse", "Fabric Warehouse system catalog"],
+  ] as const)("keeps %s schema in the Rayfin collector with %s", async (type, source) => {
     const h = storageHarness(type);
-    const original = h.compatibility.getMockImplementation()!;
-    h.compatibility.mockImplementation(async (plan) => {
-      const result = await original(plan);
-      if (plan.stage === "scanner") {
-        result.schema = { [SQL]: [table("dbo.Orders", source)] };
-        result.sections!.storageSchema = source === "Downstream semantic model"
-          ? { status: "complete", code: "partial-unsupported" } : complete();
-      }
-      return result;
-    });
     const result = await collectBrowserWorkspace(WS, identity, RUN, undefined, undefined, h.deps);
 
     expect(result.raw.schema?.[SQL]).toEqual([table("dbo.Orders", source)]);
-    expect(result.raw.sections?.sqlSchema).toEqual(unsupported("token-unavailable"));
-    expect(result.raw.capabilities?.sqlSchema).toEqual(unsupported("token-unavailable"));
-    expect(h.compatibility.mock.calls[0][0].schemaItemIds).toEqual([SQL]);
+    expect(result.raw.sections?.sqlSchema).toEqual(complete());
+    expect(result.raw.capabilities?.sqlSchema).toEqual(complete());
+    expect(h.compatibility.mock.calls[0][0].schemaItemIds).toEqual([]);
     expect(h.functions.workspaceCollectSqlMetadata.invoke).toHaveBeenCalledTimes(1);
     expect(h.legacy).not.toHaveBeenCalled();
     expect(result.raw.config).toContainEqual({
       itemId: SQL, section: "Storage schema coverage", label: "Status",
-      value: source === "Downstream semantic model" ? "complete: partial-unsupported" : "complete",
+      value: "complete",
     });
   });
   it.each(["Lakehouse", "Warehouse"] as const)("publishes unsupported %s coverage instead of 'Storage schema inventory was unavailable. The previous snapshot was preserved.'", async (type) => {
@@ -316,7 +310,7 @@ describe("active browser collector composition", () => {
     expect(raw.schema?.[SQL]).toBeUndefined();
     expect(raw.sections?.storageSchema).toEqual(unsupported("storage-schema-unavailable"));
   });
-  it("falls back when a complete SQL stage returns an unverified empty Lakehouse catalog", async () => {
+  it("accepts a verified empty Lakehouse inventory from Rayfin", async () => {
     const h = harness();
     const storageCore = core();
     storageCore.items = storageCore.items.map((item) =>
@@ -325,29 +319,13 @@ describe("active browser collector composition", () => {
     h.functions.workspaceCollectCore.invoke.mockResolvedValueOnce(storageCore);
     h.functions.workspaceCollectSqlMetadata.invoke.mockResolvedValueOnce({
       ...common("sql-metadata", [{ id: SQL, type: "Lakehouse", ...complete() }]),
-      catalogs: { [SQL]: complete() },
+      catalogs: { [SQL]: { ...complete(), lakehouseTables: complete() } },
       schema: { [SQL]: [] },
       artifactMetadata: {},
       config: [],
       sections: { sqlProperties: complete(), sqlSchema: complete() },
       capabilities: { sqlSchema: complete() },
     });
-    const original = h.compatibility.getMockImplementation()!;
-    h.compatibility.mockImplementation(async (plan) => {
-      const result = await original(plan);
-      if (plan.stage === "scanner") {
-        result.schema = {};
-        result.sections!.storageSchema = unsupported("scanner-schema-unavailable");
-      } else {
-        result.schema = {
-          [SQL]: [table("silver.Orders", "Fabric Lakehouse Tables REST")],
-        };
-        result.sections!.lakehouseTables = complete();
-        result.compatibilityStatus![SQL].lakehouseTables = complete();
-      }
-      return result;
-    });
-
     const { raw } = await collectBrowserWorkspace(
       WS,
       identity,
@@ -357,17 +335,12 @@ describe("active browser collector composition", () => {
       h.deps,
     );
 
-    expect(h.compatibility.mock.calls[0][0].schemaItemIds).toContain(SQL);
-    expect(raw.schema?.[SQL]).toEqual([
-      table("silver.Orders", "Fabric Lakehouse Tables REST"),
-    ]);
-    expect(raw.collectorSources?.[`sqlSchema:${SQL}`]).toEqual({
-      source: "unsupported",
-      code: "empty-inventory-unverified",
-    });
+    expect(h.compatibility.mock.calls[0][0].schemaItemIds).not.toContain(SQL);
+    expect(raw.schema?.[SQL]).toEqual([]);
+    expect(raw.collectorSources?.[`sqlSchema:${SQL}`]).toEqual({ source: "rayfin" });
     expect(raw.sections?.storageSchema).toEqual(complete());
   });
-  it("keeps successful Lakehouse schemas when another item fails in the same compatibility batch", async () => {
+  it("keeps a successful Rayfin Lakehouse schema when another Lakehouse fails", async () => {
     const h = harness();
     const storageCore = core();
     storageCore.items = storageCore.items.map((item) => ({
@@ -382,41 +355,19 @@ describe("active browser collector composition", () => {
         { id: SQL, type: "Lakehouse", ...complete() },
       ]),
       catalogs: {
-        [ONTOLOGY]: unsupported("token-unavailable"),
-        [SQL]: unsupported("token-unavailable"),
+        [ONTOLOGY]: { status: "failed", code: "upstream-failure" },
+        [SQL]: { ...complete(), lakehouseTables: complete() },
       },
-      schema: {},
+      schema: {
+        [SQL]: [table("silver.Valid", "Fabric Lakehouse Tables REST")],
+      },
       artifactMetadata: {},
       config: [],
       sections: {
         sqlProperties: complete(),
-        sqlSchema: unsupported("token-unavailable"),
+        sqlSchema: { status: "complete", code: "partial-unsupported" },
       },
-      capabilities: { sqlSchema: unsupported("token-unavailable") },
-    });
-    const original = h.compatibility.getMockImplementation()!;
-    h.compatibility.mockImplementation(async (plan) => {
-      const result = await original(plan);
-      if (plan.stage === "scanner") {
-        result.schema = {};
-        result.sections!.storageSchema =
-          unsupported("scanner-schema-unavailable");
-      } else {
-        result.schema = {
-          [SQL]: [table("silver.Valid", "Fabric Lakehouse Tables REST")],
-          [ONTOLOGY]: [],
-        };
-        result.sections!.lakehouseTables = {
-          status: "failed",
-          code: "upstream-failure",
-        };
-        result.compatibilityStatus![SQL].lakehouseTables = complete();
-        result.compatibilityStatus![ONTOLOGY].lakehouseTables = {
-          status: "failed",
-          code: "upstream-failure",
-        };
-      }
-      return result;
+      capabilities: { sqlSchema: { status: "complete", code: "partial-unsupported" } },
     });
 
     const { raw } = await collectBrowserWorkspace(
@@ -437,24 +388,31 @@ describe("active browser collector composition", () => {
       code: "partial-unsupported",
     });
   });
-  it("merges usable partial Lakehouse REST inventory with the scanner fallback", async () => {
+  it("keeps usable partial Lakehouse REST inventory from Rayfin", async () => {
     const h = storageHarness("Lakehouse");
-    const original = h.compatibility.getMockImplementation()!;
-    h.compatibility.mockImplementation(async (plan) => {
-      const result = await original(plan);
-      if (plan.stage === "items") {
-        result.schema = { [SQL]: [table("silver.Orders", "Fabric Lakehouse Tables REST")] };
-        result.sections!.lakehouseTables = { status: "complete", code: "partial-unsupported" };
-        result.compatibilityStatus![SQL].lakehouseTables = {
+    h.functions.workspaceCollectSqlMetadata.invoke.mockReset();
+    h.functions.workspaceCollectSqlMetadata.invoke.mockResolvedValueOnce({
+      ...common("sql-metadata", [{ id: SQL, type: "Lakehouse", ...complete() }]),
+      catalogs: {
+        [SQL]: {
           status: "complete",
           code: "partial-unsupported",
-        };
-      }
-      return result;
+          lakehouseTables: { status: "complete", code: "partial-unsupported" },
+        },
+      },
+      schema: {
+        [SQL]: [
+          table("dbo.Orders", "Fabric SQL analytics endpoint system catalog"),
+          table("silver.Orders", "Fabric Lakehouse Tables REST"),
+        ],
+      },
+      artifactMetadata: {},
+      config: [],
+      sections: { sqlProperties: complete(), sqlSchema: { status: "complete", code: "partial-unsupported" } },
+      capabilities: { sqlSchema: { status: "complete", code: "partial-unsupported" } },
     });
     const result = await collectBrowserWorkspace(WS, identity, RUN, undefined, undefined, h.deps);
     expect(result.raw.schema?.[SQL]?.map((entry) => entry.name)).toEqual(["dbo.Orders", "silver.Orders"]);
-    expect(result.raw.sections?.lakehouseTables).toEqual({ status: "complete", code: "partial-unsupported" });
     expect(result.raw.sections?.storageSchema).toEqual({ status: "complete", code: "partial-unsupported" });
   });
   it("rejects foreign or truncated provenance instead of publishing misleading coverage", async () => {
@@ -497,15 +455,19 @@ describe("active browser collector composition", () => {
     const plans = h.compatibility.mock.calls.flatMap(([plan]) => plan.items);
     expect(plans.some((item) => item.collectors.includes("definitions") || item.collectors.includes("sqlDataPlane"))).toBe(false);
   });
-  it("uses explicit bounded per-item fallback when definition identity is not live validated", async () => {
+  it("does not route a migrated definition collector back through Python", async () => {
     const h = harness();
     h.functions.workspaceCollectDefinitions.invoke.mockImplementationOnce(async () => ({
       ...common("definitions", [{ id: ONTOLOGY, type: "Ontology", ...unsupported("read-write-permission-required") }]),
       artifactMetadata: {}, config: [],
     }));
     const result = await collectBrowserWorkspace(WS, identity, RUN, undefined, undefined, h.deps);
-    expect(h.compatibility.mock.calls[1][0].items).toContainEqual({ id: ONTOLOGY, type: "Ontology", collectors: ["definitions"] });
-    expect(result.raw.collectorSources?.[`definitions:${ONTOLOGY}`]?.source).toBe("python-compatibility");
+    expect(h.compatibility.mock.calls.flatMap(([plan]) => plan.items)
+      .some((item) => item.collectors.includes("definitions"))).toBe(false);
+    expect(result.raw.collectorSources?.[`definitions:${ONTOLOGY}`]).toEqual({
+      source: "unsupported",
+      code: "read-write-permission-required",
+    });
   });
   it.each(["workspace", "correlation", "duplicate", "foreign-schema"])("rejects %s mismatch without legacy authority downgrade", async (kind) => {
     const h = harness();

@@ -24,6 +24,7 @@ import {
   projectSqlObjects,
   projectSqlPrimaryKeys,
   projectSqlSchemaNames,
+  safeIdentifier,
   sqlCatalogParameters,
   trustedSqlDatabaseName,
   trustedSqlHost,
@@ -69,6 +70,8 @@ export const COLLECT_SQL_METADATA_LIMITS = {
   executionBudgetMs: 150_000,
   maxItems: 8,
   maxRequests: 32,
+  maxLakehousePages: 100,
+  maxLakehouseRecords: 50_000,
   minItemStartMs: 20_000,
   sqlConnectTimeoutMs: 15_000,
   sqlQueryTimeoutMs: 20_000,
@@ -80,7 +83,7 @@ export const COLLECT_SQL_METADATA_LIMITS = {
   maxCatalogRows: 50_000,
   maxKeyRows: 5_000,
   maxQueryBytes: 8 * 1024 * 1024,
-  maxObjectsPerItem: 1_000,
+  maxObjectsPerItem: 50_000,
   maxColumnsPerObject: 1_024,
   // Projected schema tables and Config facts across the batch.
   maxSchemaBytes: 16 * 1024 * 1024,
@@ -141,7 +144,9 @@ export type SqlMetadataStatus = {
 export type SqlCatalogSource =
   | "fabric-sql-database-catalog"
   | "fabric-warehouse-catalog"
-  | "fabric-lakehouse-sql-endpoint-catalog";
+  | "fabric-lakehouse-sql-endpoint-catalog"
+  | "fabric-lakehouse-tables-rest"
+  | "fabric-lakehouse-rest-and-sql-catalog";
 
 /** Structural catalog evidence per SQL-capable item; objects live in `schema`. */
 export type SqlCatalogEvidence = {
@@ -157,6 +162,8 @@ export type SqlCatalogEvidence = {
   foreignKeys?: number;
   /** Schema-name and key-constraint queries; a failure keeps the object inventory. */
   structure?: SqlMetadataStatus;
+  /** Direct Lakehouse table inventory from the documented Fabric REST API. */
+  lakehouseTables?: SqlMetadataStatus;
   /** A collection limit was reached; the projection is incomplete. */
   truncated?: true;
   /** Catalog names that were not safe to render and were skipped. */
@@ -166,7 +173,7 @@ export type SqlCatalogEvidence = {
 /** The reviewed Atlas schema-table contract (`RawSync.schema`). */
 export type SqlSchemaTable = {
   name: string;
-  objectType: "SQL table" | "SQL view" | "SQL endpoint table" | "SQL endpoint view";
+  objectType: string;
   source: string;
   columns: { name: string; dataType: string }[];
   measures: never[];
@@ -493,6 +500,101 @@ export function sqlSchemaTables(kind: SqlEndpointKind, objects: readonly SqlCata
   }));
 }
 
+type LakehouseRestCollection = {
+  evidence: SqlMetadataStatus;
+  tables?: SqlSchemaTable[];
+  schemas?: string[];
+  truncated?: true;
+  rejectedNames?: number;
+};
+
+/** Python `_table_records`: flatten legacy lists and schema-enabled table trees. */
+function lakehouseTableRecords(value: unknown): Record<string, unknown>[] {
+  if (Array.isArray(value)) return value.flatMap(lakehouseTableRecords);
+  if (!isRecord(value)) return [];
+  const nested = ["data", "value", "tables"].flatMap((key) =>
+    Array.isArray(value[key]) ? lakehouseTableRecords(value[key]) : [],
+  );
+  if (nested.length) return nested;
+  return value.name && ("columns" in value || "type" in value || "format" in value) ? [value] : [];
+}
+
+function lakehouseRestTables(
+  values: readonly unknown[],
+  limits: CollectSqlMetadataLimits,
+): Omit<LakehouseRestCollection, "evidence"> {
+  const tables: SqlSchemaTable[] = [];
+  const schemas = new Set<string>();
+  let truncated = false;
+  let rejectedNames = 0;
+  for (const value of lakehouseTableRecords(values)) {
+    const name = safeIdentifier(value.name);
+    const schemaName = safeIdentifier(value.schema ?? value.schemaName ?? value.schema_name);
+    if (!name) {
+      rejectedNames += 1;
+      continue;
+    }
+    if (tables.length >= limits.maxObjectsPerItem) {
+      truncated = true;
+      continue;
+    }
+    if (schemaName) schemas.add(schemaName);
+    const columns: SqlSchemaTable["columns"] = [];
+    if (Array.isArray(value.columns)) {
+      for (const columnValue of value.columns) {
+        if (!isRecord(columnValue)) continue;
+        const columnName = safeIdentifier(columnValue.name);
+        if (!columnName) {
+          rejectedNames += 1;
+          continue;
+        }
+        if (columns.length >= limits.maxColumnsPerObject) {
+          truncated = true;
+          continue;
+        }
+        columns.push({
+          name: columnName,
+          dataType: safeIdentifier(columnValue.dataType ?? columnValue.type) ?? "column",
+        });
+      }
+    }
+    tables.push({
+      name: schemaName ? qualifiedName(schemaName, name) : name,
+      objectType: safeIdentifier(value.objectType ?? value.type) ?? "Table",
+      source: "Fabric Lakehouse Tables REST",
+      columns,
+      measures: [],
+    });
+  }
+  return {
+    tables,
+    schemas: [...schemas],
+    ...(truncated ? { truncated: true as const } : {}),
+    ...(rejectedNames ? { rejectedNames } : {}),
+  };
+}
+
+function mergeLakehouseTables(
+  restTables: readonly SqlSchemaTable[],
+  sqlTables: readonly SqlSchemaTable[],
+): SqlSchemaTable[] {
+  const merged = new Map<string, SqlSchemaTable>();
+  for (const table of [...restTables, ...sqlTables]) {
+    const key = table.name.trim().toLocaleLowerCase();
+    const previous = merged.get(key);
+    if (!previous) {
+      merged.set(key, table);
+      continue;
+    }
+    const columns = new Map(previous.columns.map((column) => [column.name.toLocaleLowerCase(), column]));
+    for (const column of table.columns) {
+      columns.set(column.name.toLocaleLowerCase(), { ...columns.get(column.name.toLocaleLowerCase()), ...column });
+    }
+    merged.set(key, { ...previous, ...table, columns: [...columns.values()] });
+  }
+  return [...merged.values()];
+}
+
 /** Python `_sql_catalog_projection` facts as Config rows. */
 export function sqlKeyConfig(itemId: string, primaryKeys: readonly SqlPrimaryKey[], foreignKeys: readonly SqlForeignKey[]): SqlConfigEntry[] {
   return [
@@ -679,11 +781,59 @@ export async function collectWorkspaceSqlMetadata(
     return sqlStatusCode(classifySqlError(error, phase));
   };
 
+  const collectLakehouseRest = async (
+    item: SqlMetadataItemInput,
+  ): Promise<LakehouseRestCollection> => {
+    let code: SqlMetadataStatusCode | undefined;
+    if (signal?.aborted) code = "cancelled";
+    else if (deadline.remaining() <= limits.minItemStartMs) code = "deadline-exhausted";
+    else if (budget.remaining === 0) code = "request-budget-exhausted";
+    if (code) {
+      stopCode ??= code;
+      addError(`lakehouseTables:${item.id}: ${code}`);
+      return { evidence: { status: "failed", code } };
+    }
+    try {
+      const pages = await client.getPaged(
+        `/v1/workspaces/${request.workspaceId}/lakehouses/${item.id}/tables`,
+        {
+          query: { maxResults: 100 },
+          maxPages: limits.maxLakehousePages,
+          maxResponseBytes: limits.maxResponseBytes,
+        },
+        budget,
+      );
+      const values: unknown[] = [];
+      for (const page of pages) {
+        if (!Array.isArray(page.data)) throw new FabricRestError("invalid-response");
+        if (values.length + page.data.length > limits.maxLakehouseRecords) {
+          throw new FabricRestError("record-limit-exceeded");
+        }
+        values.push(...page.data);
+      }
+      const projection = lakehouseRestTables(values, limits);
+      const projectionCode: SqlMetadataStatusCode | undefined =
+        projection.truncated ? "projection-truncated" :
+          projection.rejectedNames ? "partial-unsupported" : undefined;
+      return {
+        evidence: { status: "complete", ...(projectionCode ? { code: projectionCode } : {}) },
+        ...projection,
+      };
+    } catch (error) {
+      const failure = fabricSafeErrorCode(error, true);
+      const unsupported = failure === "endpoint-unsupported";
+      if (!unsupported) addError(`lakehouseTables:${item.id}: ${failure}`);
+      if (PROPERTY_STOP_CODES.has(failure)) stopCode ??= failure;
+      return { evidence: { status: unsupported ? "unsupported" : "failed", code: failure } };
+    }
+  };
+
   const collectCatalog = async (
     item: SqlMetadataItemInput,
     kind: SqlEndpointKind,
     target: SqlConnectionTarget,
     token: string,
+    trackOutcome: boolean,
   ): Promise<{ evidence: SqlCatalogEvidence; tables?: SqlSchemaTable[]; facts?: SqlConfigEntry[] }> => {
     let session: SqlCatalogSession;
     try {
@@ -732,7 +882,7 @@ export async function collectWorkspaceSqlMetadata(
           if (SQL_STOP_CODES.has(code) && !stopCode) {
             // Record the stop before this item's success so the section names the real cause.
             stopCode = code;
-            track(schemaTracker, "failed", code);
+            if (trackOutcome) track(schemaTracker, "failed", code);
           }
         }
       }
@@ -767,10 +917,11 @@ export async function collectWorkspaceSqlMetadata(
     item: SqlMetadataItemInput,
     kind: SqlEndpointKind,
     projection: SqlPropertyProjection,
+    trackOutcome = true,
   ): Promise<{ evidence: SqlCatalogEvidence; tables?: SqlSchemaTable[]; facts?: SqlConfigEntry[] }> => {
     const settle = (status: SqlMetadataStatus): { evidence: SqlCatalogEvidence } => {
       const result = status.status === "unsupported" ? "unsupported" : "failed";
-      track(schemaTracker, result, status.code);
+      if (trackOutcome) track(schemaTracker, result, status.code);
       if (result === "failed") addError(`sqlSchema:${item.id}: ${status.code}`);
       if (status.code && SQL_STOP_CODES.has(status.code)) stopCode ??= status.code;
       return { evidence: { status: result, ...(status.code ? { code: status.code } : {}) } };
@@ -780,11 +931,11 @@ export async function collectWorkspaceSqlMetadata(
     if (runtimeUnavailable) return settle({ status: "unsupported", code: "tds-runtime-unavailable" });
     preStop("sqlSchema", schemaTracker, false);
     if (stopCode) {
-      track(schemaTracker, "failed", "not-attempted");
+      if (trackOutcome) track(schemaTracker, "failed", "not-attempted");
       return { evidence: { status: "failed", code: "not-attempted" } };
     }
     try {
-      const collected = await collectCatalog(item, kind, projection.target!, sqlToken);
+      const collected = await collectCatalog(item, kind, projection.target!, sqlToken, trackOutcome);
       const size = byteLength(collected.tables) + byteLength(collected.facts);
       if (usedSchemaBytes + size > limits.maxSchemaBytes) {
         // The aggregate schema budget is spent; later items are not attempted.
@@ -794,12 +945,67 @@ export async function collectWorkspaceSqlMetadata(
         return { evidence: { status: "failed", code: "response-size-exceeded" } };
       }
       usedSchemaBytes += size;
-      track(schemaTracker, "success", collected.evidence.code);
+      if (trackOutcome) track(schemaTracker, "success", collected.evidence.code);
       return collected;
     } catch (error) {
       const code = failureCode(error, "query");
       return settle({ status: SCHEMA_UNSUPPORTED_CODES.has(code) ? "unsupported" : "failed", code });
     }
+  };
+
+  const combineLakehouseSchema = (
+    rest: LakehouseRestCollection,
+    sql: { evidence: SqlCatalogEvidence; tables?: SqlSchemaTable[]; facts?: SqlConfigEntry[] },
+  ): { evidence: SqlCatalogEvidence; tables?: SqlSchemaTable[]; facts?: SqlConfigEntry[] } => {
+    const restComplete = rest.evidence.status === "complete";
+    const sqlComplete = sql.evidence.status === "complete";
+    if (restComplete || sqlComplete) {
+      const tables = mergeLakehouseTables(rest.tables ?? [], sql.tables ?? []);
+      const truncated = Boolean(rest.truncated || sql.evidence.truncated);
+      const rejectedNames = (rest.rejectedNames ?? 0) + (sql.evidence.rejectedNames ?? 0);
+      const partial =
+        rest.evidence.status !== "complete" ||
+        sql.evidence.status !== "complete" ||
+        rest.evidence.code === "partial-unsupported" ||
+        sql.evidence.code === "partial-unsupported";
+      const code: SqlMetadataStatusCode | undefined =
+        truncated || rest.evidence.code === "projection-truncated" || sql.evidence.code === "projection-truncated"
+          ? "projection-truncated"
+          : partial || rejectedNames
+            ? "partial-unsupported"
+            : undefined;
+      const schemas = [...new Set([...(sql.evidence.schemas ?? []), ...(rest.schemas ?? [])])];
+      return {
+        evidence: {
+          status: "complete",
+          ...(code ? { code } : {}),
+          source: restComplete && sqlComplete
+            ? "fabric-lakehouse-rest-and-sql-catalog"
+            : restComplete
+              ? "fabric-lakehouse-tables-rest"
+              : "fabric-lakehouse-sql-endpoint-catalog",
+          schemas,
+          tables: tables.filter((table) => !table.objectType.toLocaleLowerCase().includes("view")).length,
+          views: tables.filter((table) => table.objectType.toLocaleLowerCase().includes("view")).length,
+          columns: tables.reduce((total, table) => total + table.columns.length, 0),
+          primaryKeys: sql.evidence.primaryKeys ?? 0,
+          foreignKeys: sql.evidence.foreignKeys ?? 0,
+          ...(sql.evidence.structure ? { structure: sql.evidence.structure } : {}),
+          lakehouseTables: rest.evidence,
+          ...(truncated ? { truncated: true as const } : {}),
+          ...(rejectedNames ? { rejectedNames } : {}),
+        },
+        tables,
+        facts: sql.facts,
+      };
+    }
+    const failed = rest.evidence.status === "failed" || sql.evidence.status === "failed";
+    const evidence: SqlCatalogEvidence = {
+      status: failed ? "failed" : "unsupported",
+      code: rest.evidence.code ?? sql.evidence.code ?? "upstream-failure",
+      lakehouseTables: rest.evidence,
+    };
+    return { evidence };
   };
 
   for (const item of request.items) {
@@ -836,7 +1042,34 @@ export async function collectWorkspaceSqlMetadata(
       if (PROPERTY_STOP_CODES.has(code)) stopCode ??= code;
       continue;
     }
-    const collected = await collectSchema(item, route.kind, projection);
+    let collected: { evidence: SqlCatalogEvidence; tables?: SqlSchemaTable[]; facts?: SqlConfigEntry[] };
+    if (route.kind === "lakehouse-sql-endpoint") {
+      const sql = await collectSchema(item, route.kind, projection, false);
+      const rest = await collectLakehouseRest(item);
+      collected = combineLakehouseSchema(rest, sql);
+      const addedBytes = Math.max(0, byteLength(collected.tables) - byteLength(sql.tables));
+      if (usedSchemaBytes + addedBytes > limits.maxSchemaBytes) {
+        collected = {
+          evidence: {
+            status: "failed",
+            code: "response-size-exceeded",
+            lakehouseTables: rest.evidence,
+          },
+        };
+        stopCode ??= "response-size-exceeded";
+        addError(`sqlSchema:${item.id}: response-size-exceeded`);
+      } else {
+        usedSchemaBytes += addedBytes;
+      }
+      const outcome = collected.evidence.status === "complete"
+        ? "success"
+        : collected.evidence.status === "unsupported"
+          ? "unsupported"
+          : "failed";
+      track(schemaTracker, outcome, collected.evidence.code);
+    } else {
+      collected = await collectSchema(item, route.kind, projection);
+    }
     items.push({
       ...item,
       status: "complete",
@@ -850,7 +1083,23 @@ export async function collectWorkspaceSqlMetadata(
       schema[item.id] = collected.tables;
       config.push(...(collected.facts ?? []));
     }
-    if (route.kind !== "lakehouse-sql-endpoint") {
+    if (route.kind === "lakehouse-sql-endpoint") {
+      const lakehouseStatus = collected.evidence.lakehouseTables;
+      config.push({
+        itemId: item.id,
+        section: "Inventory",
+        label: "Lakehouse Tables REST",
+        value: `${lakehouseStatus?.status ?? "failed"}${lakehouseStatus?.code ? `: ${lakehouseStatus.code}` : ""}`,
+      });
+      config.push({
+        itemId: item.id,
+        section: "Inventory",
+        label: "Coverage",
+        value: collected.tables
+          ? "Lakehouse Tables REST inventory merged with SQL analytics endpoint columns when available."
+          : "Lakehouse table inventory was unavailable.",
+      });
+    } else {
       config.push({
         itemId: item.id,
         section: "Inventory",

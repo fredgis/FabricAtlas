@@ -1682,9 +1682,7 @@ export function createCompatibilityInvoker(
     }
     const needed = new Set<keyof typeof OPTIONAL_METADATA_TOKEN_SCOPES>();
     for (const item of plan.items) {
-      if (item.collectors.includes("definitions") && !tokens.definitionToken) needed.add("definitionToken");
       if (item.collectors.includes("kqlDataPlane") && !tokens.kustoToken) needed.add("kustoToken");
-      if (item.collectors.includes("sqlDataPlane") && !tokens.sqlToken) needed.add("sqlToken");
     }
     Object.assign(tokens, await acquireOptionalMetadataTokens(identity, true, signal, needed));
     for (let attempt = 0; attempt < MAX_BASE_SLICE_ATTEMPTS; attempt++) {

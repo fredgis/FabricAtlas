@@ -76,16 +76,15 @@ Rayfin Data API (Data API Builder)  ──  Fabric SQL database (mssql)
 | Evidence | Primary collector | Compatibility path |
 |---|---|---|
 | Workspace, items, roles and jobs | Rayfin `workspaceCollectCore` | Python rollback only |
-| Lakehouse, Warehouse and SQL Database tables, views and columns | Rayfin `workspaceCollectSqlMetadata` over the SQL audience | Python `sync_compatibility` only when the SQL catalog is unavailable or an empty result cannot be verified |
-| Lakehouse table identities not exposed through SQL | Rayfin Fabric REST collector target | Temporary Python Lakehouse Tables REST fallback until that projection is fully ported |
+| Lakehouse, Warehouse and SQL Database tables, views and columns | Rayfin `workspaceCollectSqlMetadata` over Fabric REST and the SQL audience | None; partial or unavailable application-identity coverage stays explicit |
 | Shortcuts, mirroring and source provenance | Rayfin `workspaceCollectSourceProvenance` | None; shortcuts identify targets but do not expose target columns |
-| Ontology, Graph Model and Data Agent definitions | Rayfin `workspaceCollectDefinitions` | Python only for explicit permission or format gaps |
+| Ontology, Graph Model and Data Agent definitions | Rayfin `workspaceCollectDefinitions` | None; permission or format gaps stay explicit |
 | KQL definition structure | Rayfin `workspaceCollectKqlMetadata` | Python Kusto data-plane fallback because Rayfin 1.36.2 has no Kusto audience |
 | Power BI schema and PBIR structure | Rayfin `workspaceCollectPowerBi` | Python admin scanner for access and authoritative scanner lineage because Rayfin 1.36.2 has no documented Power BI audience |
 
 The browser composes these results per item. One failed optional collector does
 not erase another item's valid schema. Python is a bounded compatibility
-adapter, not the primary Lakehouse collector and not a scheduler.
+adapter only for documented platform gaps, not a scheduler.
 - Preview and Beta integrations are registered in `src/atlas/preview-api.ts`. Screens reuse
   `PreviewApiNotice` so API maturity, version, documentation, observation boundary and limitations
   stay explicit instead of being encoded in page-specific copy.

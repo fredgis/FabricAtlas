@@ -42,6 +42,7 @@ const SQL_DB_URL = `${BASE}/sqlDatabases/${SQL_DB}`;
 const SECOND_DB_URL = `${BASE}/sqlDatabases/${SECOND_DB}`;
 const WAREHOUSE_URL = `${BASE}/warehouses/${WAREHOUSE}`;
 const LAKEHOUSE_URL = `${BASE}/lakehouses/${LAKEHOUSE}`;
+const LAKEHOUSE_TABLES_URL = `${LAKEHOUSE_URL}/tables?maxResults=100`;
 const DB_HOST = "fixture-db.database.fabric.microsoft.com";
 const DW_HOST = "fixture-dw.datawarehouse.fabric.microsoft.com";
 const LH_HOST = "fixture-lh.datawarehouse.fabric.microsoft.com";
@@ -134,6 +135,9 @@ function routes(overrides: Routes = {}): Routes {
     [SECOND_DB_URL]: () => json(sqlDatabase({ databaseName: SECOND_DB_NAME }, { id: SECOND_DB })),
     [WAREHOUSE_URL]: () => json(warehouse()),
     [LAKEHOUSE_URL]: () => json(lakehouse()),
+    [LAKEHOUSE_TABLES_URL]: () => json({
+      data: [{ name: "trips", schema: "dbo", type: "Table", columns: [] }],
+    }),
     ...overrides,
   };
 }
@@ -414,11 +418,18 @@ describe("SQL metadata identity and audience boundary", () => {
     );
     expect(connects).toEqual([]);
     expect(envelope.items.map((item) => item.status)).toEqual(["complete", "complete", "complete"]);
-    for (const id of [SQL_DB, WAREHOUSE, LAKEHOUSE]) {
+    for (const id of [SQL_DB, WAREHOUSE]) {
       expect(catalogStatus(envelope, id)).toEqual({ status: "unsupported", code: "token-unavailable" });
     }
-    expect(envelope.sections.sqlSchema).toEqual({ status: "unsupported", code: "token-unavailable" });
-    expect(envelope.schema).toEqual({});
+    expect(catalogStatus(envelope, LAKEHOUSE)).toEqual({ status: "complete", code: "partial-unsupported" });
+    expect(envelope.sections.sqlSchema).toEqual({ status: "complete", code: "partial-unsupported" });
+    expect(envelope.schema[LAKEHOUSE]).toEqual([{
+      name: "dbo.trips",
+      objectType: "Table",
+      source: "Fabric Lakehouse Tables REST",
+      columns: [],
+      measures: [],
+    }]);
     expect(envelope.errors).toEqual([]);
   });
 });
@@ -457,7 +468,7 @@ describe("SQL metadata trusted coordinates and mixed batches", () => {
     const { result, fetchImpl, sql } = collect(routes(), items);
     const envelope = await result;
 
-    expect(urls(fetchImpl)).toEqual([SQL_DB_URL, WAREHOUSE_URL, LAKEHOUSE_URL]);
+    expect(urls(fetchImpl)).toEqual([SQL_DB_URL, WAREHOUSE_URL, LAKEHOUSE_URL, LAKEHOUSE_TABLES_URL]);
     expect(sql.connects.map((call) => call.target)).toEqual([
       { kind: "sql-database", server: DB_HOST, port: 1433, database: DB_NAME, readOnlyIntent: true },
       { kind: "warehouse", server: DW_HOST, port: 1433, database: WAREHOUSE, readOnlyIntent: false },
@@ -498,7 +509,7 @@ describe("SQL metadata trusted coordinates and mixed batches", () => {
       },
       [LAKEHOUSE]: {
         status: "complete",
-        source: "fabric-lakehouse-sql-endpoint-catalog",
+        source: "fabric-lakehouse-rest-and-sql-catalog",
         schemas: ["dbo"],
         tables: 1,
         views: 0,
@@ -506,6 +517,7 @@ describe("SQL metadata trusted coordinates and mixed batches", () => {
         primaryKeys: 0,
         foreignKeys: 0,
         structure: { status: "complete" },
+        lakehouseTables: { status: "complete" },
       },
     });
     expect(envelope.schema).toEqual({
@@ -574,6 +586,13 @@ describe("SQL metadata trusted coordinates and mixed batches", () => {
       { itemId: LAKEHOUSE, section: "SQL endpoint", label: "Item ID", value: SQL_ENDPOINT },
       { itemId: LAKEHOUSE, section: "SQL endpoint", label: "Provisioning status", value: "Success" },
       { itemId: LAKEHOUSE, section: "Metadata capability", label: "SQL schema", value: "complete" },
+      { itemId: LAKEHOUSE, section: "Inventory", label: "Lakehouse Tables REST", value: "complete" },
+      {
+        itemId: LAKEHOUSE,
+        section: "Inventory",
+        label: "Coverage",
+        value: "Lakehouse Tables REST inventory merged with SQL analytics endpoint columns when available.",
+      },
       { itemId: LAKEHOUSE, section: "Tables", label: "dbo.trips", value: "SQL endpoint table" },
     ]);
     expect(envelope.sections).toEqual({
@@ -660,16 +679,16 @@ describe("SQL metadata trusted coordinates and mixed batches", () => {
     expect(envelope.config).toContainEqual({ itemId: SQL_DB, section: "SQL database", label: "Server", value: `${DB_HOST},1433` });
   });
 
-  it("reports Lakehouse SQL endpoints that are missing or not provisioned as unsupported", async () => {
+  it("keeps Lakehouse REST inventory when the SQL endpoint is missing or not provisioned", async () => {
     const missing = await collect(routes({ [LAKEHOUSE_URL]: () => json(lakehouse(null)) }), [{ id: LAKEHOUSE, type: "Lakehouse" }]).result;
-    expect(catalogStatus(missing, LAKEHOUSE)).toEqual({ status: "unsupported", code: "sql-endpoint-unavailable" });
+    expect(catalogStatus(missing, LAKEHOUSE)).toEqual({ status: "complete", code: "partial-unsupported" });
 
     const { result, sql } = collect(
       routes({ [LAKEHOUSE_URL]: () => json(lakehouse({ provisioningStatus: "InProgress" })) }),
       [{ id: LAKEHOUSE, type: "Lakehouse" }],
     );
     const pending = await result;
-    expect(catalogStatus(pending, LAKEHOUSE)).toEqual({ status: "unsupported", code: "sql-endpoint-not-provisioned" });
+    expect(catalogStatus(pending, LAKEHOUSE)).toEqual({ status: "complete", code: "partial-unsupported" });
     expect(pending.items[0]).toEqual({
       id: LAKEHOUSE,
       type: "Lakehouse",
@@ -677,7 +696,7 @@ describe("SQL metadata trusted coordinates and mixed batches", () => {
       endpointKind: "lakehouse-sql-endpoint",
       sqlEndpointId: SQL_ENDPOINT,
     });
-    expect(pending.sections.sqlSchema).toEqual({ status: "unsupported", code: "sql-endpoint-not-provisioned" });
+    expect(pending.sections.sqlSchema).toEqual({ status: "complete", code: "partial-unsupported" });
     expect(sql.connects).toEqual([]);
     expect(pending.errors).toEqual([]);
   });
@@ -1019,9 +1038,10 @@ describe("SQL metadata permission, throttling, timeout and cancellation", () => 
       catalogs: catalogs({ [DB_NAME]: { ...SALES_CATALOG, connectErrors: [new SqlDriverError("tds-runtime-unavailable")] } }),
     });
     const envelope = await result;
-    for (const id of [SQL_DB, WAREHOUSE, LAKEHOUSE]) {
+    for (const id of [SQL_DB, WAREHOUSE]) {
       expect(catalogStatus(envelope, id)).toEqual({ status: "unsupported", code: "tds-runtime-unavailable" });
     }
+    expect(catalogStatus(envelope, LAKEHOUSE)).toEqual({ status: "complete", code: "partial-unsupported" });
     expect(sql.connects).toHaveLength(1);
     expect(envelope.items.every((item) => item.status === "complete")).toBe(true);
   });
