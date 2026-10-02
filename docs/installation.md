@@ -4,6 +4,12 @@ Fabric Atlas is a [Rayfin](https://github.com/microsoft/rayfin) Data App: a Vite
 served by Rayfin static hosting, backed by a Fabric SQL database (the Rayfin data model) and Fabric
 brokered authentication. It runs as an item inside a Microsoft Fabric workspace.
 
+For release sequencing, the Microsoft deployment-plan component support matrix,
+updates and recovery, see the [deployment runbook](deployment-plan-runbook.md).
+Fabric App/AppBackend deployment-plan compatibility is not established.
+The [Phase 10 bulk-definition benchmark](phase10-bulk-definitions.md) is
+offline-only; it does not replace the existing per-item collectors.
+
 > All identifiers below (tenant, workspace, client id, hosting URL, emails) are shown as
 > **placeholders** like `<tenant-id>`. Fill in your own — nothing in this repo is tied to a specific
 > tenant.
