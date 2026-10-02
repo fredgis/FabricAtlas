@@ -427,6 +427,34 @@ If a stale generated `types.ts` breaks the CLI's pre-generation build, restore t
 `types.ts` and `runtimemetadata.json` with `git checkout --` and rerun the CLI; do not edit them
 by hand.
 
+## Item Relations API (Beta) collector
+
+`workspaceCollectItemRelations` declares the Fabric audience, runs behind the same gate and is not
+called by the browser yet:
+
+```ts
+await client.functions.workspaceCollectItemRelations.invoke({
+  protocolVersion: 1,
+  workspaceId,
+  itemIds: [semanticModelId],
+  correlationId: null,
+});
+```
+
+The upstream and downstream relations APIs require read permission on each root item and, for
+delegated tokens, `Item.Read.All` or `Item.ReadWrite.All`; service principals are supported.
+This Function uses the AppBackend application identity, so that identity must be able to read the
+root items. Missing access is recorded per query as `unauthorized` or `insufficient-privileges`.
+The API is Beta and not recommended for production use. Its real-tenant response size,
+pagination and relation coverage are not yet verified; keep it behind the default-off
+`VITE_ATLAS_FEATURE_ITEM_RELATIONS` flag. Validate with:
+
+```powershell
+npx --no-install rayfin functions init
+npm test -- src\atlas\workspace-item-relations.spec.ts src\atlas\item-relations-evidence.spec.ts src\atlas\durable-sync.spec.ts src\lib\rayfin-client.spec.ts
+npm --prefix rayfin\functions run build
+```
+
 ## Scripts
 
 | Command | What it does |

@@ -220,7 +220,10 @@ export type ItemRelationsFailureCode =
   | "throttled"
   | "transient"
   | "malformed-response"
-  | "failed";
+  | "failed"
+  // A collector stopped (deadline, request budget, cancellation or throttling)
+  // before this query completed; prior evidence is preserved like any failure.
+  | "not-attempted";
 
 const FAILURE_CODES = new Set<ItemRelationsFailureCode>([
   "unauthorized",
@@ -230,6 +233,7 @@ const FAILURE_CODES = new Set<ItemRelationsFailureCode>([
   "transient",
   "malformed-response",
   "failed",
+  "not-attempted",
 ]);
 
 export interface ItemRelationsFailureSignal {
@@ -269,7 +273,7 @@ export function classifyItemRelationsFailure(
 export function isRetryableItemRelationsFailure(
   code: ItemRelationsFailureCode,
 ): boolean {
-  return code === "throttled" || code === "transient";
+  return code === "throttled" || code === "transient" || code === "not-attempted";
 }
 
 function failureCode(value: unknown): ItemRelationsFailureCode {
@@ -441,9 +445,10 @@ export function createItemRelationsEvidence(
 /**
  * Applies a new collection over prior evidence. Complete queries replace their
  * prior observation, including with an empty response. Failed queries
- * (authorization, throttling, transient or malformed responses) keep the prior
- * response and its `observedAt`. The new run defines scope: prior queries for
- * root items that were not requested again are not carried forward.
+ * (authorization, throttling, transient, malformed responses or queries the
+ * collector did not attempt) keep the prior response and its `observedAt`.
+ * The new run defines scope: prior queries for root items that were not
+ * requested again are not carried forward.
  */
 export function mergeItemRelationsEvidence(
   previous: ItemRelationsEvidence | null | undefined,

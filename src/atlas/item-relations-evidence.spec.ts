@@ -217,6 +217,7 @@ describe("Item Relations response contract", () => {
     expect(classifyItemRelationsFailure({ status: 400 })).toBe("failed");
     expect(isRetryableItemRelationsFailure("throttled")).toBe(true);
     expect(isRetryableItemRelationsFailure("transient")).toBe(true);
+    expect(isRetryableItemRelationsFailure("not-attempted")).toBe(true);
     expect(isRetryableItemRelationsFailure("unauthorized")).toBe(false);
     expect(isRetryableItemRelationsFailure("malformed-response")).toBe(false);
   });
@@ -553,6 +554,7 @@ describe("Item Relations prior-evidence preservation", () => {
   it.each([
     ["authorization", recordItemRelationsFailure(MODEL, "upstream", LATER, "unauthorized")],
     ["throttling", recordItemRelationsFailure(MODEL, "upstream", LATER, "throttled")],
+    ["not-attempted", recordItemRelationsFailure(MODEL, "upstream", LATER, "not-attempted")],
     ["a malformed response", recordItemRelationsResponse(MODEL, "upstream", LATER, { items: "x" })],
   ])("keeps prior evidence after %s failures", (_label, failure) => {
     const merged = mergeItemRelationsEvidence(

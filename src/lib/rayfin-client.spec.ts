@@ -121,6 +121,7 @@ describe("Rayfin Functions contract", () => {
       | "workspaceDiscover"
       | "workspaceCollectCore"
       | "workspaceCollectDefinitions"
+      | "workspaceCollectItemRelations"
       | "syncStart"
       | "syncContinue"
       | "syncStatus"

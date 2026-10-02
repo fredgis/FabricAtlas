@@ -144,6 +144,18 @@ export interface FabricLongRunningLimits {
   maxResponseBytes?: number;
 }
 
+/**
+ * Fixed, allowlisted Fabric query parameters. Callers can only opt into known
+ * flags; arbitrary query keys or values are not representable.
+ */
+export type FabricQuery = Readonly<{ beta?: true }>;
+
+export interface FabricPagedOptions {
+  query?: FabricQuery;
+  maxPages: number;
+  maxResponseBytes?: number;
+}
+
 interface FabricResponse {
   status: number;
   headers: Headers;
@@ -157,11 +169,83 @@ interface FabricSendOptions {
   accepted?: boolean;
 }
 
-export function fabricApiUrl(path: string): string {
+function allowlistedQuery(query: FabricQuery | undefined): URLSearchParams {
+  const params = new URLSearchParams();
+  if (!query) return params;
+  if (Object.keys(query).some((key) => key !== "beta")) {
+    throw new FabricRestError("invalid-response");
+  }
+  if (query.beta !== undefined) {
+    if (query.beta !== true) throw new FabricRestError("invalid-response");
+    params.set("beta", "true");
+  }
+  return params;
+}
+
+export function fabricApiUrl(path: string, query?: FabricQuery): string {
   if (!FABRIC_PATH.test(path)) {
     throw new FabricRestError("invalid-response");
   }
-  return `${FABRIC_API_ORIGIN}${path}`;
+  const params = allowlistedQuery(query).toString();
+  return `${FABRIC_API_ORIGIN}${path}${params ? `?${params}` : ""}`;
+}
+
+/**
+ * Validates a continuation that must keep the original fixed path and
+ * allowlisted query. Only `continuationToken` may be added, and the URL is
+ * rebuilt locally rather than sending the server-provided string.
+ */
+function allowlistedContinuationUrl(
+  uri: unknown,
+  token: unknown,
+  expectedPath: string,
+  query: FabricQuery | undefined,
+): string | undefined {
+  const expected = allowlistedQuery(query);
+  let continuationToken: string | undefined;
+  if (typeof uri === "string" && uri !== "") {
+    let url: URL;
+    try {
+      url = new URL(uri);
+    } catch {
+      throw new FabricRestError("pagination-invalid");
+    }
+    const keys = [...url.searchParams.keys()];
+    if (
+      uri.length > MAX_CONTINUATION_URL_LENGTH ||
+      url.protocol !== "https:" ||
+      url.hostname.toLowerCase() !== FABRIC_API_HOST ||
+      url.port !== "" ||
+      url.username ||
+      url.password ||
+      url.hash ||
+      url.pathname.toLowerCase() !== expectedPath.toLowerCase() ||
+      new Set(keys).size !== keys.length ||
+      [...expected.keys()].some((key) => !url.searchParams.has(key))
+    ) {
+      throw new FabricRestError("pagination-invalid");
+    }
+    for (const [key, value] of url.searchParams) {
+      if (key === "continuationToken") continuationToken = value;
+      else if (expected.get(key)?.toLowerCase() !== value.toLowerCase()) {
+        throw new FabricRestError("pagination-invalid");
+      }
+    }
+    if (!continuationToken) throw new FabricRestError("pagination-invalid");
+  } else if (uri != null && uri !== "") {
+    throw new FabricRestError("pagination-invalid");
+  } else if (typeof token === "string" && token !== "") {
+    continuationToken = token;
+  } else if (token != null && token !== "") {
+    throw new FabricRestError("pagination-invalid");
+  }
+  if (continuationToken === undefined) return undefined;
+  if (continuationToken.length > MAX_CONTINUATION_URL_LENGTH) {
+    throw new FabricRestError("pagination-invalid");
+  }
+  const url = new URL(fabricApiUrl(expectedPath, query));
+  url.searchParams.set("continuationToken", continuationToken);
+  return url.toString();
 }
 
 function continuationUrl(
@@ -337,6 +421,36 @@ export class FabricRestClient {
     budget?: RequestBudget,
   ): Promise<Record<string, unknown>> {
     return this.#request(fabricApiUrl(path), budget);
+  }
+
+  /**
+   * GET a fixed path with an allowlisted query and follow strictly validated
+   * continuations. Returns the raw page objects; callers own their schema.
+   */
+  async getPaged(
+    path: string,
+    options: FabricPagedOptions,
+    budget?: RequestBudget,
+  ): Promise<Record<string, unknown>[]> {
+    const pages: Record<string, unknown>[] = [];
+    const visited = new Set<string>();
+    let next: string | undefined = fabricApiUrl(path, options.query);
+    for (let page = 0; next; page += 1) {
+      if (page >= options.maxPages) {
+        throw new FabricRestError("page-limit-exceeded");
+      }
+      if (visited.has(next)) throw new FabricRestError("pagination-invalid");
+      visited.add(next);
+      const payload = await this.#request(next, budget, options.maxResponseBytes);
+      pages.push(payload);
+      next = allowlistedContinuationUrl(
+        payload.continuationUri,
+        payload.continuationToken,
+        path,
+        options.query,
+      );
+    }
+    return pages;
   }
 
   /**

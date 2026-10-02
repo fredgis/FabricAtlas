@@ -51,6 +51,7 @@ Behavior changed during the port:
 | `itemRelationsRequestPath(workspaceId, itemId, direction)` | Builds `/v1/workspaces/{workspaceId}/items/{itemId}/relations/{direction}?beta=true` after UUID validation; the host is not included |
 | `parseItemRelationsResponse(value)` | Validates `items`, `relations` and `workspaces`, keeps only allowlisted fields, lowercases UUIDs, collapses exact duplicates and preserves unknown item and relation types |
 | `classifyItemRelationsFailure({ status, errorCode, timedOut })` | Maps HTTP status and Fabric `errorCode` to `unauthorized`, `insufficient-privileges`, `item-not-found`, `throttled`, `transient` or `failed`; error messages and bodies are never read |
+| `isRetryableItemRelationsFailure(code)` | `throttled`, `transient` and `not-attempted` are retryable |
 | `recordItemRelationsResponse` / `recordItemRelationsFailure` | Build one query observation; a contract violation becomes `malformed-response` |
 | `createItemRelationsEvidence` / `parseItemRelationsEvidence` | Build and validate the schema-version 1 envelope (`source: fabric-item-relations-api-beta`, `apiVersion: v1-beta`); transport wrappers, duplicate queries and inconsistent query states are rejected |
 | `mergeItemRelationsEvidence(previous, next)` | Applies the prior-evidence rules |
@@ -83,9 +84,9 @@ response; this is prior evidence. `observedAt` dates the evidence and
 `attemptedAt` records the latest attempt.
 
 - A complete query replaces prior evidence, including with an empty response.
-- An authorization, throttling, transient, not-found or malformed-response
-  failure keeps the previous response and `observedAt` and records the new
-  failure code.
+- An authorization, throttling, transient, not-found, malformed-response or
+  not-attempted failure keeps the previous response and `observedAt` and
+  records the new failure code.
 - A failure with no prior observation carries no response. The graph counts it
   as `failed` coverage and never infers absence.
 - The new run defines scope. Root items that were not requested again are not
@@ -94,6 +95,58 @@ response; this is prior evidence. `observedAt` dates the evidence and
   callers keep the previous evidence unchanged.
 
 Edges whose observations are all preserved have `preserved: true`.
+
+### Contract extension: `not-attempted`
+
+Schema version 1 adds one failure code, `not-attempted`, for the Phase 4
+collector. It marks a query whose upstream request did not complete because the
+collector stopped on its execution deadline, request budget, cancellation or
+persistent throttling. Its `attemptedAt` is the time the collector skipped or
+abandoned the query. It is retryable and preserves prior evidence like any
+other failure. Omitting such a query would drop prior evidence, because the new
+run defines scope, and `transient` would misreport a collector stop as an
+upstream fault. Earlier envelopes remain valid; older readers that reject
+unknown codes must be updated before they consume collector output.
+
+## Phase 4 Functions collector
+
+`workspaceCollectItemRelations` in
+`rayfin/functions/src/workspace-item-relations.ts` collects this evidence
+server-side. It is read-only and non-authoritative: it writes no Rayfin rows,
+creates no `LineageEdge` values, interprets no direction and is not called by
+the browser yet.
+
+- Input: `protocolVersion: 1`, a strict workspace UUID, 1-16 unique root item
+  UUIDs and a strict correlation UUID or `null`. No token, URL, endpoint or
+  query value is accepted. Input validation and the `SynchronizerAuthority`
+  gate run before the Fabric application token is read.
+- Requests: for each root item, upstream then downstream,
+  `GET https://api.fabric.microsoft.com` plus `itemRelationsRequestPath`. The
+  shared REST client only accepts the typed `{ beta: true }` query flag. No
+  body is sent, redirects are rejected and error bodies are never read.
+- Continuations: the documented response has no continuation fields. If one is
+  returned anyway, `continuationUri` or `continuationToken` is followed only on
+  the same origin and path with `beta=true` plus `continuationToken`, rebuilt
+  locally, with loop detection and at most 5 pages per query.
+- Response: the same allowlist and bounds as `parseItemRelationsResponse`
+  (50,000 entries per collection, 100-character types, 300-character names),
+  merged across pages with first-wins duplicates. Unknown item and relation
+  types, cross-workspace endpoints, self relations and cycles are kept
+  verbatim. A violation fails only that query as `malformed-response`.
+- Failures by HTTP status, without reading `errorCode`: 401 `unauthorized`, 403
+  `insufficient-privileges`, 404 `item-not-found`, 429 `throttled`, 408/500/
+  502/503/504 or request timeout `transient`, redirects, oversized pages,
+  page-limit overruns and other statuses `failed`. `429` and `5xx` are retried
+  up to three attempts; `Retry-After` above 10 seconds is not slept.
+- Bounds: 150-second execution budget, 64 HTTP attempts per batch, 8 MiB per
+  page, 16 MiB of serialized evidence and a 24 MiB final envelope. Deadline,
+  request budget, cancellation and persistent throttling stop the batch; the
+  remaining queries are `not-attempted` and `stopReason` explains why. A query
+  that would exceed the evidence budget is `failed`.
+- Envelope: the schema-version 1 evidence plus `authoritative: false`, an
+  optional `correlationId` and an optional `stopReason`.
+  `parseItemRelationsEvidence` ignores these fields, so callers persist only
+  the parsed contract.
 
 ### Comparison statuses
 
@@ -116,7 +169,9 @@ Not ported from the experiment:
 
 - `sync_item_relations` in the Python UDF, the browser collection loop, UDF
   URL retargeting, Item Relations token scopes and batch splitting. Phase 4
-  owns collection as a Functions collector behind the same flag.
+  replaces collection with the `workspaceCollectItemRelations` Function; the
+  browser shadow call, batching across Function invocations and persistence
+  are not wired yet.
 - `ItemRelationsBetaSnapshot` and its chunked persistence. Phase 5 must add a
   separate, additive evidence entity that stores the schema-version 1 envelope;
   Preview rows stay separate from `LineageEdge`.

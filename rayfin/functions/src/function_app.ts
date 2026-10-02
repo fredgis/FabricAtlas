@@ -17,6 +17,11 @@ import {
   type DefinitionStageEnvelope,
 } from './workspace-definitions.js';
 import {
+  workspaceCollectItemRelations,
+  type ItemRelationsEvidenceEnvelope,
+  type ItemRelationsRootItemIdsInput,
+} from './workspace-item-relations.js';
+import {
   workspaceDiscover,
   type WorkspaceDiscoveryResult,
 } from './workspace-discovery.js';
@@ -59,6 +64,20 @@ udf.func(
     correlationId: SyncUuidInput | null = null,
   ): Promise<DefinitionStageEnvelope> =>
     workspaceCollectDefinitions(ctx, protocolVersion, workspaceId, items, correlationId),
+  [],
+);
+
+// Read-only Item Relations API (Beta) evidence for a bounded root-item batch; never authoritative.
+udf.func(
+  'workspaceCollectItemRelations',
+  async (
+    ctx: RayfinContext<AtlasSchema, AudienceType.Fabric>,
+    protocolVersion: 1,
+    workspaceId: SyncUuidInput,
+    itemIds: ItemRelationsRootItemIdsInput,
+    correlationId: SyncUuidInput | null = null,
+  ): Promise<ItemRelationsEvidenceEnvelope> =>
+    workspaceCollectItemRelations(ctx, protocolVersion, workspaceId, itemIds, correlationId),
   [],
 );
 
