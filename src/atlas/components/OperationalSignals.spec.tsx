@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AtlasData, Job } from "../model";
 import type { AtlasContextValue } from "../store";
 
@@ -75,6 +75,14 @@ const failedNotebook: Job = {
 };
 
 describe("OperationalSignals", () => {
+  beforeEach(() => {
+    vi.stubEnv("VITE_FABRIC_ITEM_ID", "");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("separates the observed failure from its inferred downstream impact", () => {
     const onOpenImpact = vi.fn();
     const onShowRuns = renderSignals([failedNotebook], { onOpenImpact });
