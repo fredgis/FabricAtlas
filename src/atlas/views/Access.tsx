@@ -33,6 +33,17 @@ import {
 } from "../access-review-evidence";
 import { accessRowsToCsv } from "../access-export";
 import {
+  ACCESS_EVIDENCE_LABEL,
+  ACCESS_LAYER_LABEL,
+  GRANT_ONLY_NOTICE,
+  WHAT_IF_UNAVAILABLE_REASON,
+  accessLayerSummary,
+  evaluatedAccessLayers,
+  matchesAccessCoverage,
+  parseAccessCoverageFilter,
+  type AccessCoverageFilter,
+} from "../access-coverage";
+import {
   buildAccessReviewRows,
   selectAccessByItem,
   selectAccessByPrincipal,
@@ -75,7 +86,7 @@ const ACCESS_STYLE: Record<
     className: "border-primary/25 bg-primary/10 text-brand-foreground",
   },
   none: {
-    label: "None",
+    label: "No recorded grant",
     className: "border-border bg-muted text-muted-foreground",
   },
 };
@@ -277,7 +288,7 @@ function ItemIdentity({ row }: { row: AccessReviewRow }) {
 function FlagBadges({ row }: { row: AccessReviewRow }) {
   const flags = rowFlags(row);
   if (flags.length === 0 && row.principalResolution === "resolved") {
-    return <span className="text-200 text-muted-foreground">None</span>;
+    return <span className="text-200 text-muted-foreground">No recorded flags</span>;
   }
 
   return (
@@ -300,6 +311,19 @@ function FlagBadges({ row }: { row: AccessReviewRow }) {
           {row.principalResolution === "ambiguous" ? "Ambiguous" : "Unresolved"}
         </span>
       )}
+    </div>
+  );
+}
+
+function CoverageEvidence({ row }: { row: AccessReviewRow }) {
+  return (
+    <div className="min-w-0 text-200">
+      <span className="inline-flex rounded-md border border-status-warning/30 bg-status-warning/10 px-s py-xxs font-semibold text-foreground">
+        {ACCESS_EVIDENCE_LABEL[row.coverage.state]}
+      </span>
+      <span className="mt-xs block break-words text-muted-foreground">
+        Evaluated: {evaluatedAccessLayers(row.coverage)}
+      </span>
     </div>
   );
 }
@@ -327,14 +351,13 @@ function MatrixTable({
     <div role="listbox" aria-label="Access review matrix">
       <div
         aria-hidden="true"
-        className="atlas-row hidden grid-cols-[minmax(190px,1.2fr)_minmax(190px,1.2fr)_auto_auto_minmax(150px,1fr)_70px] gap-m border-b border-border bg-secondary/70 px-l text-200 font-semibold text-muted-foreground md:grid"
+        className="atlas-row hidden grid-cols-5 gap-m border-b border-border bg-secondary/70 px-l text-200 font-semibold text-muted-foreground md:grid"
       >
         <span>Principal</span>
         <span>Item</span>
-        <span>Effective</span>
-        <span>Origin</span>
-        <span>Flags</span>
-        <span className="text-right">Grants</span>
+        <span>Granted level</span>
+        <span>Restrictions</span>
+        <span>Coverage</span>
       </div>
       <div className="divide-y divide-border">
         {rows.map((row, index) => {
@@ -352,10 +375,11 @@ function MatrixTable({
               role="option"
               tabIndex={index === activeIndex ? 0 : -1}
               aria-selected={selected}
-              aria-label={`Review ${row.principalRef} access to ${row.item.displayName}. Effective ${row.effectiveAccess}. Origin ${row.origin}. Flags ${flags || "none"}. ${row.applicableGrants.length} grants.`}
+              aria-label={`Review ${row.principalRef} access to ${row.item.displayName}. Highest recorded grant ${row.effectiveAccess}. Origin ${row.origin}. Flags ${flags || "not recorded"}. Restrictions not evaluated. Coverage ${ACCESS_EVIDENCE_LABEL[row.coverage.state]}. Evaluated layers: ${evaluatedAccessLayers(row.coverage)}. ${row.applicableGrants.length} grants.`}
               onFocus={() => setFocusIndex(index)}
               onClick={() => {
                 setFocusIndex(index);
+                rowRefs.current.get(row.id)?.focus();
                 onSelect(row);
               }}
               onKeyDown={(event) => {
@@ -377,7 +401,7 @@ function MatrixTable({
                 }
               }}
               className={cn(
-                "atlas-row atlas-windowed-block grid w-full cursor-pointer gap-m px-l text-left transition-colors hover:bg-accent/60 md:grid-cols-[minmax(190px,1.2fr)_minmax(190px,1.2fr)_auto_auto_minmax(150px,1fr)_70px] md:items-center",
+                "atlas-row atlas-windowed-block grid w-full cursor-pointer gap-m px-l text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring md:grid-cols-5 md:items-center",
                 selected && "bg-primary/10",
               )}
             >
@@ -386,6 +410,7 @@ function MatrixTable({
                   Principal
                 </span>
                 <PrincipalIdentity row={row} />
+                <div className="mt-xs"><FlagBadges row={row} /></div>
               </div>
               <div>
                 <span className="mb-xs block text-100 font-semibold uppercase tracking-wide text-muted-foreground md:hidden">
@@ -395,27 +420,25 @@ function MatrixTable({
               </div>
               <div>
                 <span className="mb-xs block text-100 font-semibold uppercase tracking-wide text-muted-foreground md:hidden">
-                  Effective
+                  Granted level
                 </span>
                 <AccessBadge level={row.effectiveAccess} />
+                <div className="mt-xs"><OriginBadge origin={row.origin} /></div>
+                <span className="mt-xs block text-200 text-muted-foreground">
+                  {row.applicableGrants.length} recorded grants
+                </span>
               </div>
               <div>
                 <span className="mb-xs block text-100 font-semibold uppercase tracking-wide text-muted-foreground md:hidden">
-                  Origin
+                  Restrictions
                 </span>
-                <OriginBadge origin={row.origin} />
+                <span className="text-200 text-muted-foreground">Not evaluated</span>
               </div>
               <div>
                 <span className="mb-xs block text-100 font-semibold uppercase tracking-wide text-muted-foreground md:hidden">
-                  Flags
+                  Coverage
                 </span>
-                <FlagBadges row={row} />
-              </div>
-              <div className="text-left font-numeric text-300 font-semibold tabular-nums md:text-right">
-                <span className="mr-s text-100 font-semibold uppercase tracking-wide text-muted-foreground md:hidden">
-                  Grants
-                </span>
-                {row.applicableGrants.length}
+                <CoverageEvidence row={row} />
               </div>
             </div>
           );
@@ -431,10 +454,10 @@ function EmptyResults() {
       <span className="flex icon-size-700 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
         <Search className="icon-size-400" aria-hidden="true" />
       </span>
-      <h3 className="text-300 font-semibold">No access pairs match</h3>
+      <h3 className="text-300 font-semibold">No recorded grant pairs match</h3>
       <p className="max-w-md text-200 leading-200 text-muted-foreground">
-        Adjust the review filters or clear them to restore the complete access
-        ledger.
+        Adjust the filters or clear them to restore the recorded grant ledger.
+        Missing evidence does not establish absence of access or restrictions.
       </p>
     </div>
   );
@@ -476,6 +499,10 @@ function PrincipalGroups({
       {groups.map(([principalKey, principalRows], index) => {
         const isExpanded = expanded.has(principalKey);
         const first = principalRows[0];
+        const groupLayers = evaluatedAccessLayers({
+          ...first.coverage,
+          layers: principalRows.flatMap((row) => row.coverage.layers),
+        });
         const strongest = principalRows.reduce<AccessLevel>(
           (level, row) =>
             ACCESS_RANK[row.effectiveAccess] > ACCESS_RANK[level]
@@ -508,13 +535,20 @@ function PrincipalGroups({
               )}
               <div className="min-w-0 flex-1">
                 <PrincipalIdentity row={first} />
+                <span className="mt-xs block text-200 leading-300 text-muted-foreground">
+                  Evaluated layers across recorded pairs: {groupLayers}.
+                  Restrictions not evaluated.
+                </span>
               </div>
               <div className="hidden items-center gap-s sm:flex">
                 <span className="text-200 text-muted-foreground">
                   {principalRows.length}{" "}
                   {principalRows.length === 1 ? "item" : "items"}
                 </span>
-                <AccessBadge level={strongest} />
+                <span>
+                  <span className="mb-xs block text-200 text-muted-foreground">Highest recorded grant</span>
+                  <AccessBadge level={strongest} />
+                </span>
               </div>
               </button>
               <button
@@ -542,10 +576,13 @@ function PrincipalGroups({
                         key={row.id}
                         type="button"
                         aria-pressed={selected}
-                        aria-label={`Review ${row.principalRef} access to ${row.item.displayName}`}
-                        onClick={() => onSelect(row)}
+                        aria-label={`Review ${row.principalRef} access to ${row.item.displayName}. Highest recorded grant ${row.effectiveAccess}. Restrictions not evaluated. Evaluated layers: ${evaluatedAccessLayers(row.coverage)}.`}
+                        onClick={(event) => {
+                          event.currentTarget.focus();
+                          onSelect(row);
+                        }}
                         className={cn(
-                          "atlas-row grid w-full gap-m rounded-lg px-m text-left transition-colors hover:bg-accent sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center",
+                          "atlas-row grid w-full gap-m rounded-lg px-m text-left transition-colors hover:bg-accent sm:grid-cols-5 sm:items-center",
                           selected && "bg-primary/10",
                         )}
                       >
@@ -553,11 +590,9 @@ function PrincipalGroups({
                         <AccessBadge level={row.effectiveAccess} />
                         <OriginBadge origin={row.origin} />
                         <span className="text-200 text-muted-foreground">
-                          {row.applicableGrants.length}{" "}
-                          {row.applicableGrants.length === 1
-                            ? "grant"
-                            : "grants"}
+                          Restrictions: not evaluated
                         </span>
+                        <CoverageEvidence row={row} />
                       </button>
                     );
                   })}
@@ -585,7 +620,7 @@ function reviewSummary(
   const grants = row.applicableGrants
     .map((grant) => {
       const effective = row.effectiveGrants.includes(grant)
-        ? ", determines effective access"
+        ? ", determines highest recorded grant"
         : "";
       return `- ${SOURCE_LABEL[grant.source]} (${grantScope(grant, row)}): ${
         ACCESS_STYLE[grant.accessLevel].label
@@ -594,10 +629,18 @@ function reviewSummary(
     .join("\n");
   return [
     `Access review: ${row.principalRef} → ${row.item.displayName}`,
-    `Effective permission: ${ACCESS_STYLE[row.effectiveAccess].label}`,
+    `Highest recorded grant: ${ACCESS_STYLE[row.effectiveAccess].label}`,
+    "Restrictions: Not evaluated",
+    `Coverage: ${ACCESS_EVIDENCE_LABEL[row.coverage.state]}`,
+    `Evaluated layers: ${evaluatedAccessLayers(row.coverage)}`,
+    `Layer evidence: ${accessLayerSummary(row.coverage)}`,
+    `Workspace ID: ${row.coverage.workspaceId ?? "Not recorded"}`,
+    `Snapshot ID: ${row.coverage.snapshotId ?? "Not recorded"}`,
+    `Snapshot observed at: ${row.coverage.observedAt ?? "Not recorded"}`,
+    GRANT_ONLY_NOTICE,
     `Origin: ${ORIGIN_STYLE[row.origin].label} (${ORIGIN_STYLE[row.origin].detail})`,
     `Principal resolution: ${row.principalResolution}`,
-    `Flags: ${flags.length ? flags.map((flag) => FLAG_LABEL[flag]).join(", ") : "None"}`,
+    `Flags: ${flags.length ? flags.map((flag) => FLAG_LABEL[flag]).join(", ") : "Not recorded"}`,
     `Contributing grants: ${row.applicableGrants.length}`,
     `Review decision: ${
       decision
@@ -611,7 +654,7 @@ function reviewSummary(
       : []),
     ...(decision?.note ? [`Review note: ${decision.note}`] : []),
     "",
-    "Applicable grants (additive; highest permission wins):",
+    "Applicable grants (additive; highest recorded grant wins):",
     grants,
   ].join("\n");
 }
@@ -661,17 +704,28 @@ export function AccessReviewDetailPanel({
   };
 
   return (
-    <Card className="overflow-hidden xl:sticky xl:top-l">
+    <section
+      aria-label="Access evidence"
+      className="xl:sticky xl:top-l"
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          onClose();
+        }
+      }}
+    >
+    <Card className="overflow-hidden">
       <div className="atlas-page-header flex items-start justify-between gap-m border-b border-border bg-secondary/60 p-l">
         <div className="min-w-0">
-          <SectionLabel>Selected pair</SectionLabel>
+          <SectionLabel>Access evidence</SectionLabel>
           <h2 className="mt-xs text-400 font-semibold">Review detail</h2>
         </div>
         <button
           type="button"
+          id="access-evidence-close"
           aria-label="Close review detail"
           onClick={onClose}
-          className="flex icon-size-600 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          className="flex min-h-[var(--atlas-touch-target)] min-w-[var(--atlas-touch-target)] shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
         >
           <X className="icon-size-200" aria-hidden="true" />
         </button>
@@ -682,15 +736,19 @@ export function AccessReviewDetailPanel({
           <PrincipalIdentity row={row} />
           <div className="flex items-center gap-s text-muted-foreground">
             <ChevronDown className="icon-size-200" aria-hidden="true" />
-            <span className="text-200">has additive effective access to</span>
+            <span className="text-200">has recorded grants for</span>
           </div>
           <ItemIdentity row={row} />
         </div>
 
-        <div className="grid grid-cols-2 gap-s">
+        <section aria-labelledby="granted-permissions-heading">
+          <h3 id="granted-permissions-heading" className="text-300 font-semibold">
+            1. Granted permissions
+          </h3>
+          <div className="mt-s grid grid-cols-2 gap-s">
           <div className="rounded-lg border border-border bg-secondary/40 p-m">
             <div className="text-200 text-muted-foreground">
-              Effective permission
+              Highest recorded grant
             </div>
             <div className="mt-s">
               <AccessBadge level={row.effectiveAccess} />
@@ -702,21 +760,82 @@ export function AccessReviewDetailPanel({
               <OriginBadge origin={row.origin} />
             </div>
           </div>
-        </div>
-
-        <div className="rounded-lg border border-primary/25 bg-primary/5 p-m">
-          <div className="flex gap-s">
-            <Layers3
-              className="mt-xxs icon-size-200 shrink-0 text-brand-foreground"
-              aria-hidden="true"
-            />
-            <p className="text-200 leading-300 text-muted-foreground">
-              Additive access only. The highest applicable grant determines the
-              effective permission. Fabric Atlas does not infer group expansion
-              or deny semantics.
-            </p>
           </div>
-        </div>
+          <ul className="mt-s grid gap-xs text-200 text-muted-foreground">
+            {row.coverage.layers.filter((layer) =>
+              layer.layer === "workspace-grants" || layer.layer === "item-grants",
+            ).map((layer) => (
+              <li key={layer.layer}>
+                <span className="font-semibold">{ACCESS_LAYER_LABEL[layer.layer]}: </span>
+                {ACCESS_EVIDENCE_LABEL[layer.state]}
+                {layer.source ? ` (${layer.source})` : ""}. {layer.reason}
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section aria-labelledby="restriction-evidence-heading">
+          <h3 id="restriction-evidence-heading" className="text-300 font-semibold">
+            2. Restriction evidence
+          </h3>
+          <p className="mt-xs text-200 text-muted-foreground">Not evaluated</p>
+          <ul className="mt-s grid gap-s">
+            {row.coverage.layers.filter((layer) =>
+              layer.layer !== "workspace-grants" && layer.layer !== "item-grants",
+            ).map((layer) => (
+              <li key={layer.layer} className="rounded-lg border border-border p-m text-200">
+                <div className="flex flex-wrap justify-between gap-s">
+                  <span className="font-semibold">{ACCESS_LAYER_LABEL[layer.layer]}</span>
+                  <span className="text-muted-foreground">{ACCESS_EVIDENCE_LABEL[layer.state]}</span>
+                </div>
+                <p className="mt-xs leading-300 text-muted-foreground">{layer.reason}</p>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-s flex flex-wrap gap-m text-200">
+            <a
+              href="https://learn.microsoft.com/en-us/fabric/onelake/security/data-access-control-model"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="atlas-control inline-flex items-center text-brand-foreground underline"
+            >
+              OneLake portal review guidance
+            </a>
+            <a
+              href="https://purview.microsoft.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="atlas-control inline-flex items-center text-brand-foreground underline"
+            >
+              Open Microsoft Purview
+            </a>
+          </div>
+        </section>
+
+        <section aria-labelledby="access-assessment-heading" className="rounded-lg border border-status-warning/30 bg-status-warning/10 p-m">
+          <h3 id="access-assessment-heading" className="text-300 font-semibold">
+            3. Assessment
+          </h3>
+          <div className="mt-s"><CoverageEvidence row={row} /></div>
+          <p className="mt-s text-200 leading-300">{GRANT_ONLY_NOTICE}</p>
+          <dl className="mt-s grid gap-xs text-200 text-muted-foreground">
+            <div>
+              <dt className="font-semibold">Workspace ID</dt>
+              <dd className="break-all">{row.coverage.workspaceId ?? "Not recorded"}</dd>
+            </div>
+            <div>
+              <dt className="font-semibold">Snapshot ID</dt>
+              <dd className="break-all">{row.coverage.snapshotId ?? "Not recorded"}</dd>
+            </div>
+            <div>
+              <dt className="font-semibold">Snapshot observed at</dt>
+              <dd>{row.coverage.observedAt ?? "Not recorded"}</dd>
+            </div>
+          </dl>
+          <p className="mt-s text-200 leading-300 text-muted-foreground">
+            Other data-plane and row/column restrictions are outside this grant-only assessment.
+          </p>
+        </section>
 
         <section
           aria-labelledby="review-decision-heading"
@@ -769,7 +888,7 @@ export function AccessReviewDetailPanel({
                 <p className="text-200 leading-300 text-muted-foreground">
                   {decision.source === "legacy"
                     ? "This legacy decision has no recorded permission evidence. Review the current grants before relying on it."
-                    : "The effective permission evidence changed after this decision. Review the current grants before relying on it."}
+                    : "The recorded grant evidence changed after this decision. Review the current grants before relying on it."}
                 </p>
               </div>
             </div>
@@ -850,7 +969,7 @@ export function AccessReviewDetailPanel({
                 type="button"
                 disabled={saving}
                 onClick={() => void onClearDecision()}
-                className="shrink-0 rounded-md px-s py-xs text-200 font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-60"
+                className="atlas-control shrink-0 rounded-md px-s py-xs text-200 font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-60"
               >
                 Clear decision
               </button>
@@ -980,7 +1099,7 @@ export function AccessReviewDetailPanel({
               <p className="text-200 text-muted-foreground">
                 {row.applicableGrants.length} contributing{" "}
                 {row.applicableGrants.length === 1 ? "grant" : "grants"} ·{" "}
-                {row.effectiveGrants.length} determine effective access
+                {row.effectiveGrants.length} determine the highest recorded grant
               </p>
             </div>
             <FlagBadges row={row} />
@@ -1011,7 +1130,7 @@ export function AccessReviewDetailPanel({
                               className="icon-size-100"
                               aria-hidden="true"
                             />
-                            Determines effective
+                            Determines highest grant
                           </span>
                         )}
                       </div>
@@ -1042,6 +1161,7 @@ export function AccessReviewDetailPanel({
         </button>
       </div>
     </Card>
+    </section>
   );
 }
 
@@ -1111,6 +1231,10 @@ export function AccessView({
       ? (initialFilters.risk as RiskFilter)
       : "all",
   );
+  const [coverageFilter, setCoverageFilter] = useState<AccessCoverageFilter>(
+    () => parseAccessCoverageFilter(initialFilters?.coverage),
+  );
+  const reviewTriggerRef = useRef<HTMLElement | null>(null);
   const [selectedId, setSelectedId] = useState<string | null | undefined>(
     undefined,
   );
@@ -1198,9 +1322,10 @@ export function AccessView({
             searchableText(row).includes(normalizedSearch)) &&
           (accessLevel === "all" || row.effectiveAccess === accessLevel) &&
           (origin === "all" || row.origin === origin) &&
-          matchesRisk(row, risk),
+          matchesRisk(row, risk) &&
+          matchesAccessCoverage(row.coverage, coverageFilter),
       ),
-    [accessLevel, normalizedSearch, origin, risk, rows],
+    [accessLevel, coverageFilter, normalizedSearch, origin, risk, rows],
   );
   const effectiveExpandedPrincipals = useMemo(
     () =>
@@ -1224,6 +1349,20 @@ export function AccessView({
       ? requestedSelectedId
       : null;
   const selectedRow = rows.find((row) => row.id === visibleSelectedId);
+  const selectRow = (row: AccessReviewRow) => {
+    reviewTriggerRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    setSelectedId(row.id);
+  };
+  const closeEvidence = () => {
+    setSelectedId(null);
+    reviewTriggerRef.current?.focus();
+  };
+  useEffect(() => {
+    if (visibleSelectedId) document.getElementById("access-evidence-close")?.focus();
+  }, [visibleSelectedId]);
   useEffect(() => {
     onStateChange?.({
       tab: "access",
@@ -1241,11 +1380,13 @@ export function AccessView({
           accessLevel,
           origin,
           risk,
+          coverage: coverageFilter,
         },
       },
     });
   }, [
     accessLevel,
+    coverageFilter,
     mode,
     onStateChange,
     origin,
@@ -1258,8 +1399,8 @@ export function AccessView({
     search !== "" ||
     accessLevel !== "all" ||
     origin !== "all" ||
-    risk !== "all";
-  const directOrMixed = summary.byOrigin.item + summary.byOrigin.mixed;
+    risk !== "all" ||
+    coverageFilter !== "all";
   const flaggedCount = rows.filter(hasRisk).length;
   const reviewsByRowKey = useMemo(
     () => {
@@ -1357,6 +1498,7 @@ export function AccessView({
     setAccessLevel("all");
     setOrigin("all");
     setRisk("all");
+    setCoverageFilter("all");
   };
 
   const togglePrincipal = (principalKey: string) => {
@@ -1377,18 +1519,18 @@ export function AccessView({
       className: "bg-primary/10 text-brand-foreground",
     },
     {
-      label: "Reachable pairs",
+      label: "Grant pairs",
       value: summary.rows,
       detail: `${summary.items} workspace items`,
       icon: ShieldCheck,
       className: "bg-status-healthy/10 text-status-healthy",
     },
     {
-      label: "Direct or mixed",
-      value: directOrMixed,
-      detail: "Pairs with item-level grants",
+      label: "Not fully evaluated",
+      value: rows.length,
+      detail: "Restriction evidence not evaluated",
       icon: Layers3,
-      className: "bg-lineage-upstream/10 text-lineage-upstream",
+      className: "bg-status-warning/10 text-foreground",
     },
     {
       label: "External / flagged",
@@ -1407,18 +1549,19 @@ export function AccessView({
       <Card className="overflow-hidden border-primary/25">
         <div className="atlas-page-header atlas-fabric-hero flex flex-col gap-l border-b border-border p-l lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-3xl">
-            <SectionLabel>Governance / additive permissions</SectionLabel>
+            <SectionLabel>Governance / recorded grants</SectionLabel>
             <h1 className="mt-xs text-600 font-bold leading-600">
               Access Review
             </h1>
             <p className="mt-xs text-300 leading-300 text-muted-foreground">
-              Review every reachable principal and item pair, trace the grants
-              that contribute access, and export the current evidence set.
+              Review recorded principal and item grants, trace their sources,
+              and check evidence coverage.
             </p>
+            <p className="mt-s text-200 leading-300 text-foreground">{GRANT_ONLY_NOTICE}</p>
           </div>
 
           <div
-            className="inline-flex self-start rounded-lg border border-border bg-card p-xs shadow-sm"
+            className="inline-flex max-w-full flex-wrap self-start rounded-lg border border-border bg-card p-xs shadow-sm"
             role="group"
             aria-label="Access review mode"
           >
@@ -1448,8 +1591,19 @@ export function AccessView({
             >
               Principals
             </button>
+            <button
+              type="button"
+              disabled
+              aria-describedby="access-what-if-reason"
+              className="atlas-control rounded-md px-l text-300 font-semibold text-muted-foreground"
+            >
+              What-if
+            </button>
           </div>
         </div>
+        <p id="access-what-if-reason" className="border-b border-border px-l py-s text-200 text-muted-foreground">
+          {WHAT_IF_UNAVAILABLE_REASON}
+        </p>
 
         <div className="grid grid-cols-2 divide-x divide-y divide-border lg:grid-cols-4 lg:divide-y-0">
           {metrics.map((metric) => {
@@ -1481,8 +1635,8 @@ export function AccessView({
 
       <Card className="overflow-hidden">
         <div className="atlas-toolbar border-b border-border bg-secondary/40 px-l py-m">
-          <div className="flex flex-col gap-m xl:flex-row xl:items-end">
-            <label className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-end gap-m">
+            <label className="min-w-0 flex-1 basis-full lg:basis-auto">
               <span className="mb-xs block text-200 font-semibold text-muted-foreground">
                 Search
               </span>
@@ -1504,7 +1658,7 @@ export function AccessView({
 
             <label className="min-w-0">
               <span className="mb-xs block text-200 font-semibold text-muted-foreground">
-                Effective level
+                Granted level
               </span>
               <select
                 value={accessLevel}
@@ -1559,6 +1713,38 @@ export function AccessView({
               </select>
             </label>
 
+            <label className="min-w-0">
+              <span className="mb-xs block text-200 font-semibold text-muted-foreground">
+                Workspace
+              </span>
+              <select
+                disabled
+                aria-describedby="access-workspace-scope"
+                className="atlas-control w-full max-w-full rounded-lg border border-input bg-card px-m text-300 text-foreground"
+              >
+                <option>{data.workspace.displayName}</option>
+              </select>
+            </label>
+
+            <label className="min-w-0">
+              <span className="mb-xs block text-200 font-semibold text-muted-foreground">
+                Evidence coverage
+              </span>
+              <select
+                value={coverageFilter}
+                onChange={(event) => setCoverageFilter(parseAccessCoverageFilter(event.target.value))}
+                aria-describedby="access-coverage-help"
+                className="atlas-control w-full rounded-lg border border-input bg-card px-m text-300 text-foreground xl:w-auto"
+              >
+                <option value="all">All evidence states</option>
+                <option value="observed">Includes observed grants</option>
+                <option value="partial">Partial assessment</option>
+                <option value="unavailable">Includes unavailable evidence</option>
+                <option value="unsupported">Includes unsupported layers</option>
+                <option value="denied">Includes denied evidence reads</option>
+              </select>
+            </label>
+
             <div className="flex flex-wrap gap-s">
               <SavedViewsMenu
                 views={savedViews.filter((view) => view.section === "access")}
@@ -1571,6 +1757,7 @@ export function AccessView({
                   accessLevel,
                   origin,
                   risk,
+                  coverage: coverageFilter,
                 }}
                 onCreate={addSavedView}
                 onApply={(view) => {
@@ -1599,6 +1786,7 @@ export function AccessView({
                       ? (view.filters.risk as RiskFilter)
                       : "all",
                   );
+                  setCoverageFilter(parseAccessCoverageFilter(view.filters.coverage));
                 }}
                 onDelete={removeSavedView}
               />
@@ -1621,6 +1809,13 @@ export function AccessView({
                 Export CSV
               </button>
             </div>
+            <p id="access-workspace-scope" className="mt-s text-200 text-muted-foreground">
+              This review is scoped to the active workspace snapshot.
+            </p>
+            <p id="access-coverage-help" className="mt-xs text-200 text-muted-foreground">
+              Coverage filters include pairs with any matching evidence layer.
+              A denied evidence read does not mean access is denied.
+            </p>
           </div>
         </div>
 
@@ -1630,11 +1825,11 @@ export function AccessView({
               {mode === "matrix" ? "Review matrix" : "Principals"}
             </h2>
             <p className="text-200 text-muted-foreground" aria-live="polite">
-              {filteredRows.length} of {rows.length} reachable pairs
+              {filteredRows.length} of {rows.length} recorded grant pairs
             </p>
           </div>
           <span className="text-200 text-muted-foreground">
-            Highest applicable permission wins
+            Granted access only; restrictions not evaluated
           </span>
         </div>
       </Card>
@@ -1664,7 +1859,7 @@ export function AccessView({
             <MatrixTable
               rows={filteredRows}
               selectedId={visibleSelectedId}
-              onSelect={(row) => setSelectedId(row.id)}
+              onSelect={selectRow}
             />
           ) : (
             <PrincipalGroups
@@ -1678,7 +1873,7 @@ export function AccessView({
                   row.principalId ?? row.principalKey ?? row.principalRef,
                 )
               }
-              onSelect={(row) => setSelectedId(row.id)}
+              onSelect={selectRow}
             />
           )}
         </Card>
@@ -1695,7 +1890,7 @@ export function AccessView({
               saveDecision(selectedRow, status, note)
             }
             onClearDecision={() => clearDecision(selectedRow)}
-            onClose={() => setSelectedId(null)}
+            onClose={closeEvidence}
           />
         )}
       </div>

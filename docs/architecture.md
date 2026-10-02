@@ -67,7 +67,7 @@ See [data-model.md](data-model.md) for fields.
 | `FabricItem` | Every item (Lakehouse, Notebook, Pipeline, Semantic model, Report, …) |
 | `LineageEdge` | Directed dependency between two items |
 | `Principal` | Users, groups, service principals, guests |
-| `AccessGrant` | Effective access (workspace or item level) + where it comes from |
+| `AccessGrant` | Recorded workspace/item grants and their sources, not fully evaluated data access |
 | `JobRun` | Refresh / pipeline / notebook run history |
 | `ConfigEntry` | Flat key/value config facts per item (drives the expandable tree) |
 | `Comment` | Team notes on the workspace or an item |
@@ -483,6 +483,60 @@ Comments are append-only in v1.x: authenticated app users can read them and
 their authenticated author can create them, but the entity exposes no update
 or delete action.
 
+## Phase 6 access evidence foundation
+
+Access Review presents **recorded grant pairs**, not reachable or unrestricted
+principal/item pairs. The existing additive calculation still picks the highest
+recorded grant; the compatibility properties `effectiveAccess` and
+`effectiveGrants` do not evaluate data-plane restrictions.
+
+`src/atlas/access-coverage.ts` separates observed grants, unavailable evidence,
+unsupported layers, denied evidence reads and partial assessments. Each row
+lists its evaluated grant layers, while the inspector and CSV separately report
+workspace grants, item grants, group membership, OneLake security, Purview DLP
+and Fabric Policies. Missing layer records stay unavailable, not absent. A
+complete `access` collection section does not establish complete permissions or
+restriction coverage. Failed sections retain recorded grants as partial; an
+explicit authorization failure means an **evidence read** was denied, not that
+the principal's access is denied.
+
+OneLake role membership/data scope and DLP restriction state remain unsupported
+because no verified public read contract is available. Fabric Policies evaluation
+and group expansion remain unavailable because Atlas has not collected them.
+Portal guidance links are manual review aids, not evidence collectors. Other
+data-plane and row/column restrictions remain outside this grant-only assessment.
+No restriction-free state is emitted by this foundation.
+
+The five-column matrix follows the issue #42 hierarchy: principal, item, granted
+level, restrictions and coverage. The existing evidence inspector has numbered
+grant, restriction-evidence and assessment sections. Existing semantic tokens,
+typography and density are preserved so the hierarchy works in both themes.
+The coverage filter matches any evidence layer, with `Partial` also matching the
+overall assessment. It is retained in navigation and personal saved views.
+Workspace display is scoped to the active snapshot, not an all-workspace query.
+CSV and copied summaries carry sources, workspace/snapshot identity, snapshot
+observation time and the grant-only limitation. Missing provenance says
+`Not recorded`; snapshot time is not a fabricated per-API observation time.
+
+What-if is visibly disabled pending the reviewed read-only grant-removal contract
+and verified evidence coverage. No permission changes, Fabric Policies reads,
+OneLake role reads, DLP reads, restriction entities or new collectors are added.
+Personal decisions remain bound to the existing grant evidence and do not certify
+restriction coverage.
+
+Source grants must not be confused with access to Atlas. All selected workspace
+metadata remains shared with the authenticated app audience; delegated connector
+visibility does not retroactively filter materialized snapshots for each viewer.
+Personal review decisions and saved views remain subject-scoped.
+
+Remaining Phase 6 work: verify the Fabric Policies Preview tenant/region/identity
+contract, add persisted restriction evidence and bounded read-only adapters,
+integrate per-source provenance/observation times, complete the responsive managed
+inspector, and implement #37 read-only simulations with explicitly evaluated
+layers. OneLake and DLP remain manual/unsupported until verified public contracts
+exist; the fictional restriction counts and principals in the concept image are
+never production fixtures.
+
 ## Sync
 
 The Sync button calls `runFabricSync` (`src/atlas/backend.ts`). When deployed,
@@ -615,8 +669,8 @@ snapshots. Rayfin policies bind their `user_id` field to the authenticated
 subject claim, so each user reads and changes only their own records.
 
 Governance Center groups findings, snapshot changes, trends and metadata
-coverage. Access Review uses the same additive effective-access engine as the
-Asset Catalog and lineage inspector.
+coverage. Access Review uses the same additive grant calculation as the
+Asset Catalog and lineage inspector, with explicit restriction-evidence limits.
 
 ## Navigation state
 

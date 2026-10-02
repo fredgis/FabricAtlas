@@ -9,6 +9,7 @@ import type {
 import { isItemMetadataSchemaEntry } from "./item-metadata";
 import { lineageEdgeKey } from "./lineage";
 import { searchJobId } from "./search";
+import { buildAccessEvidenceCoverage, type AccessEvidenceCoverage } from "./access-coverage";
 
 export type AccessOrigin = "workspace" | "item" | "mixed";
 export type PrincipalResolution = "resolved" | "unresolved" | "ambiguous";
@@ -28,6 +29,7 @@ export interface AccessReviewRow {
   applicableGrants: Grant[];
   effectiveGrants: Grant[];
   flags: NonNullable<Grant["flag"]>[];
+  coverage: AccessEvidenceCoverage;
 }
 
 export interface AccessReviewSummary {
@@ -278,7 +280,8 @@ function highestAccess(grants: Grant[]): AccessLevel {
 }
 
 export function buildAccessReviewRows(
-  data: Pick<AtlasData, "items" | "principals" | "grants">,
+  data: Pick<AtlasData, "items" | "principals" | "grants"> &
+    Partial<Pick<AtlasData, "workspace">>,
 ): AccessReviewRow[] {
   const indexes = principalIndexes(data.principals);
   const resolvedGrants = data.grants.map((grant) =>
@@ -337,6 +340,7 @@ export function buildAccessReviewRows(
         applicableGrants,
         effectiveGrants,
         flags,
+        coverage: buildAccessEvidenceCoverage(applicableGrants, data.workspace),
       });
     }
   }
@@ -491,7 +495,7 @@ export function buildGovernanceFindings(
         "external-access",
         "high",
         `External access to ${row.item.displayName}`,
-        `${row.principalRef} has ${row.effectiveAccess} effective access.`,
+        `${row.principalRef} has recorded ${row.effectiveAccess} grants. Restriction evidence is not evaluated.`,
         "Confirm the external access is required and remove grants that are no longer justified.",
         row.applicableGrants,
       );
@@ -538,7 +542,7 @@ export function buildGovernanceFindings(
         "service-principal-access",
         "medium",
         `Service principal access to ${row.item.displayName}`,
-        `${row.principalRef} has ${row.effectiveAccess} effective access.`,
+        `${row.principalRef} has recorded ${row.effectiveAccess} grants. Restriction evidence is not evaluated.`,
         "Verify the application owner, credential lifecycle, and minimum required permission.",
         row.applicableGrants,
       );
