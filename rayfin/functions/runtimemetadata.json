@@ -7,6 +7,22 @@
       "contextAudiences": []
     },
     {
+      "functionName": "workspaceDiscover",
+      "delegateParameters": [
+        {
+          "name": "ctx",
+          "type": "RayfinContext<AtlasSchema, AudienceType.Fabric>",
+          "optional": false,
+          "hasDefault": false,
+          "position": 0,
+          "isFabricParameter": false
+        }
+      ],
+      "contextAudiences": [
+        "Fabric"
+      ]
+    },
+    {
       "functionName": "syncStart",
       "delegateParameters": [
         {

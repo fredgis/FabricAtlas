@@ -16,6 +16,7 @@ import { GovernanceException } from './GovernanceException.js';
 import { SyncJob } from './SyncJob.js';
 import { SyncTask } from './SyncTask.js';
 import { SyncCommand } from './SyncCommand.js';
+import { WorkspaceScope } from './WorkspaceScope.js';
 
 /**
  * Schema type map — enables full type-safety through RayfinClient
@@ -40,6 +41,7 @@ export type AtlasSchema = {
   SyncJob: SyncJob;
   SyncTask: SyncTask;
   SyncCommand: SyncCommand;
+  WorkspaceScope: WorkspaceScope;
 };
 
 export const schema = [
@@ -61,4 +63,5 @@ export const schema = [
   SyncJob,
   SyncTask,
   SyncCommand,
+  WorkspaceScope,
 ];

@@ -315,6 +315,29 @@ for follow-up integration, but leave Python collection and browser snapshot publ
 authoritative. Distributed claims, transactional publication, unattended triggers and embedded
 recovery remain blockers. There is no browser cutover in this spike.
 
+## Phase 3 workspace discovery foundation
+
+The `workspaceDiscover` Function declares the Fabric audience and therefore runs Fabric REST
+workspace discovery with the AppBackend application identity. In current Fabric Apps deployments,
+that identity follows the AppBackend owner. The owner must retain access to every workspace that
+the Atlas administrator needs to evaluate.
+
+The Function is not a general app-audience workspace browser. It first exercises the
+synchronizer-only `SyncCommand` read policy using the caller's Rayfin token. Other authenticated
+users fail closed before the Fabric request. Successful responses contain only workspace ID,
+display name, type and capacity ID, with bounded pagination, retries and response size.
+
+`WorkspaceScope` persists only the rows the administrator selects. Its rows are shared with the
+authenticated app audience; all mutations require the configured synchronizer subject. Deploy the
+additive entity and Function contract with the normal command:
+
+```powershell
+npx rayfin up --tenant <tenant-id> --workspace <workspace-name>
+```
+
+The current release does not yet switch the UI between scopes or synchronize several workspaces.
+The configured deployment workspace remains the fallback until an explicit scope is persisted.
+
 ## Scripts
 
 | Command | What it does |

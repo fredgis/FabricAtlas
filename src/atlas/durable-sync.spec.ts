@@ -581,9 +581,11 @@ describe('generated durable Functions contracts', () => {
       }[] }[];
     };
     expect(metadata.schemaVersion).toBe('2.0');
+    const durableNames = ['syncStart', 'syncContinue', 'syncStatus', 'syncCancel'];
     expect(metadata.functions.map((fn) => fn.functionName))
-      .toEqual(['ping', 'syncStart', 'syncContinue', 'syncStatus', 'syncCancel']);
-    for (const fn of metadata.functions.slice(1)) {
+      .toEqual(['ping', 'workspaceDiscover', ...durableNames]);
+    for (const name of durableNames) {
+      const fn = metadata.functions.find((candidate) => candidate.functionName === name)!;
       expect(fn.contextAudiences).toEqual([]);
       expect(fn.delegateParameters[0]).toMatchObject({ name: 'ctx', type: 'RayfinContext<AtlasSchema>' });
       expect(fn.delegateParameters[1]).toMatchObject({ name: 'protocolVersion', type: '1' });

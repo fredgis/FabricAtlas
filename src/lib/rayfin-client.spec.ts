@@ -5,6 +5,7 @@ import {
   type PingResult,
 } from "../../rayfin/functions/src/ping";
 import type { AppFunctionsSchema } from "../../rayfin/functions/src/types";
+import type { WorkspaceDiscoveryResult } from "../../rayfin/functions/src/workspace-discovery";
 import type { AtlasRayfinClient } from "./rayfin-client";
 
 const mocks = vi.hoisted(() => ({
@@ -116,12 +117,22 @@ describe("Rayfin Functions contract", () => {
     type Functions = AtlasRayfinClient["functions"];
 
     expectTypeOf<keyof AppFunctionsSchema>().toEqualTypeOf<
-      "ping" | "syncStart" | "syncContinue" | "syncStatus" | "syncCancel"
+      | "ping"
+      | "workspaceDiscover"
+      | "syncStart"
+      | "syncContinue"
+      | "syncStatus"
+      | "syncCancel"
     >();
     expectTypeOf<AppFunctionsSchema["ping"]["input"]>().toEqualTypeOf<Record<string, never>>();
     expectTypeOf<AppFunctionsSchema["ping"]["output"]>().toEqualTypeOf<PingResult>();
+    expectTypeOf<AppFunctionsSchema["workspaceDiscover"]["input"]>()
+      .toEqualTypeOf<Record<string, never>>();
+    expectTypeOf<AppFunctionsSchema["workspaceDiscover"]["output"]>()
+      .toEqualTypeOf<WorkspaceDiscoveryResult>();
     expectTypeOf<keyof Functions>().toEqualTypeOf<keyof AppFunctionsSchema>();
     expectTypeOf<Functions["ping"]["invoke"]>().toBeCallableWith();
     expectTypeOf<Functions["ping"]["invoke"]>().returns.toEqualTypeOf<Promise<PingResult>>();
+    expectTypeOf<Functions["workspaceDiscover"]["invoke"]>().toBeCallableWith();
   });
 });

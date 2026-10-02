@@ -1,13 +1,28 @@
-import { UserDataFunctions, type RayfinContext } from '@microsoft/fabric-user-data-functions';
+import {
+  AudienceType,
+  UserDataFunctions,
+  type RayfinContext,
+} from '@microsoft/fabric-user-data-functions';
 import type { AtlasSchema } from '../../data/schema.js';
 import { createPingResult, type PingResult } from './ping.js';
 import { SyncOrchestrator } from './sync/orchestrator.js';
 import { safeSyncCall, type SyncResponse, type SyncUuidInput } from './sync/protocol.js';
+import {
+  workspaceDiscover,
+  type WorkspaceDiscoveryResult,
+} from './workspace-discovery.js';
 
 const udf = new UserDataFunctions();
 
 /** Bounded health probe with no secrets, external calls or data writes. */
 udf.func('ping', (): PingResult => createPingResult(), []);
+udf.func(
+  'workspaceDiscover',
+  async (
+    ctx: RayfinContext<AtlasSchema, AudienceType.Fabric>,
+  ): Promise<WorkspaceDiscoveryResult> => workspaceDiscover(ctx),
+  [],
+);
 
 udf.func(
   'syncStart',

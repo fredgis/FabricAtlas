@@ -30,7 +30,8 @@ same governance signal independently.
 `AccessReviewEvent` allows only personal create and read operations under the
 same subject policy. `GovernancePolicy` and `GovernanceException` allow shared
 authenticated reads; only the configured synchronization administrator can
-write them.
+write them. `WorkspaceScope` follows the same shared-read, administrator-write
+boundary and stores selected workspaces only.
 
 ## Workspace
 
@@ -50,6 +51,23 @@ data.
 Summary version 1 reproduces the Governance history metrics without loading
 child rows. Older manifests remain compatible and fall back to full validated
 catalog loading.
+
+## WorkspaceScope
+
+One row per administrator-selected Fabric workspace.
+
+`id`, `displayName`, `workspaceType?`, `capacityId?`, `writerEmail?`, `selectedAt`
+
+The row ID is the Fabric workspace UUID. Authenticated app users can read the
+selected scope. Create requires the configured synchronizer subject and
+`writerEmail == claims.email`; update and delete require the same subject.
+Discovery results that are not selected are not stored, so the entity does not
+expose every workspace available to the AppBackend owner.
+
+Before the first explicit scope change, the configured deployment workspace is
+used as an in-memory fallback. Selecting another workspace persists that
+fallback first, which makes later add and remove operations explicit. The scope
+manager refuses to remove the final selected row.
 
 ## FabricItem
 
