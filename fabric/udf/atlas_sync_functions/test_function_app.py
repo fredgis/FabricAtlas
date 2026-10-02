@@ -4314,6 +4314,76 @@ class StorageSchemaCompatibilityTests(unittest.TestCase):
         }, result["config"])
         self.assertEqual(result["sections"]["storageSchema"], {"status": "complete", "code": "partial-unsupported"})
 
+    def item_plan(self):
+        return json.dumps({
+            "version": 1,
+            "stage": "items",
+            "items": [{
+                "id": self.lakehouse_id,
+                "type": "Lakehouse",
+                "collectors": ["lakehouseTables"],
+            }],
+            "schemaItemIds": [],
+        })
+
+    def test_item_compatibility_reports_observed_empty_or_collected_schema_per_item(self):
+        item = {
+            "id": self.lakehouse_id,
+            "type": "Lakehouse",
+            "displayName": "Lake",
+        }
+        with (
+            mock.patch.object(function_app, "_get", return_value=item),
+            mock.patch.object(function_app, "_get_all_data", return_value=[{
+                "name": "Orders",
+                "columns": [{"name": "Id", "dataType": "Int64"}],
+            }]),
+        ):
+            result = function_app.sync_compatibility(
+                "fixture-token",
+                self.workspace_id,
+                self.item_plan(),
+            )
+
+        self.assertEqual(
+            result["compatibilityStatus"][self.lakehouse_id]["lakehouseTables"],
+            {"status": "complete"},
+        )
+        self.assertEqual(result["schema"][self.lakehouse_id][0]["name"], "Orders")
+        self.assertEqual(
+            result["schema"][self.lakehouse_id][0]["columns"][0]["name"],
+            "Id",
+        )
+
+    def test_item_compatibility_reports_lakehouse_failure_without_poisoning_other_items(self):
+        item = {
+            "id": self.lakehouse_id,
+            "type": "Lakehouse",
+            "displayName": "Lake",
+        }
+        error = urllib.error.HTTPError(
+            "https://api.fabric.microsoft.com",
+            403,
+            "Forbidden",
+            {},
+            None,
+        )
+        with (
+            mock.patch.object(function_app, "_get", return_value=item),
+            mock.patch.object(function_app, "_get_all_data", side_effect=error),
+        ):
+            result = function_app.sync_compatibility(
+                "fixture-token",
+                self.workspace_id,
+                self.item_plan(),
+            )
+
+        status = result["compatibilityStatus"][self.lakehouse_id][
+            "lakehouseTables"
+        ]
+        self.assertIn(status["status"], ("failed", "unsupported"))
+        self.assertTrue(status["code"])
+
 
 class CollectorCompatibilityCleanupTests(unittest.TestCase):
     workspace_id = "11111111-1111-4111-8111-111111111111"

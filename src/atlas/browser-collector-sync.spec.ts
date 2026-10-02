@@ -108,6 +108,7 @@ function harness() {
       requestedItemIds: plan.items.map((item) => item.id),
       completedItemIds: plan.items.map((item) => item.id), remainingItemIds: [], itemFailures: {},
       compatibilityCollectors: Object.fromEntries(plan.items.map((item) => [item.id, item.collectors])),
+      compatibilityStatus: Object.fromEntries(plan.items.map((item) => [item.id, {}])),
       schema: {}, config: [], jobs: [], access: [], lineage: [], objectEdges: [], artifactMetadata: {}, itemMetadata: {},
       sections: {}, capabilities: {}, errors: [], syncedAt: NOW,
     };
@@ -152,6 +153,8 @@ function storageHarness(type: "Lakehouse" | "Warehouse", available = true) {
     } else if (type === "Lakehouse") {
       result.schema = { [SQL]: [] };
       result.sections!.lakehouseTables = unsupported("endpoint-unsupported");
+      result.compatibilityStatus![SQL].lakehouseTables =
+        unsupported("endpoint-unsupported");
     }
     return result;
   });
@@ -313,6 +316,127 @@ describe("active browser collector composition", () => {
     expect(raw.schema?.[SQL]).toBeUndefined();
     expect(raw.sections?.storageSchema).toEqual(unsupported("storage-schema-unavailable"));
   });
+  it("falls back when a complete SQL stage returns an unverified empty Lakehouse catalog", async () => {
+    const h = harness();
+    const storageCore = core();
+    storageCore.items = storageCore.items.map((item) =>
+      item.id === SQL ? { ...item, type: "Lakehouse" } : item,
+    );
+    h.functions.workspaceCollectCore.invoke.mockResolvedValueOnce(storageCore);
+    h.functions.workspaceCollectSqlMetadata.invoke.mockResolvedValueOnce({
+      ...common("sql-metadata", [{ id: SQL, type: "Lakehouse", ...complete() }]),
+      catalogs: { [SQL]: complete() },
+      schema: { [SQL]: [] },
+      artifactMetadata: {},
+      config: [],
+      sections: { sqlProperties: complete(), sqlSchema: complete() },
+      capabilities: { sqlSchema: complete() },
+    });
+    const original = h.compatibility.getMockImplementation()!;
+    h.compatibility.mockImplementation(async (plan) => {
+      const result = await original(plan);
+      if (plan.stage === "scanner") {
+        result.schema = {};
+        result.sections!.storageSchema = unsupported("scanner-schema-unavailable");
+      } else {
+        result.schema = {
+          [SQL]: [table("silver.Orders", "Fabric Lakehouse Tables REST")],
+        };
+        result.sections!.lakehouseTables = complete();
+        result.compatibilityStatus![SQL].lakehouseTables = complete();
+      }
+      return result;
+    });
+
+    const { raw } = await collectBrowserWorkspace(
+      WS,
+      identity,
+      RUN,
+      undefined,
+      undefined,
+      h.deps,
+    );
+
+    expect(h.compatibility.mock.calls[0][0].schemaItemIds).toContain(SQL);
+    expect(raw.schema?.[SQL]).toEqual([
+      table("silver.Orders", "Fabric Lakehouse Tables REST"),
+    ]);
+    expect(raw.collectorSources?.[`sqlSchema:${SQL}`]).toEqual({
+      source: "unsupported",
+      code: "empty-inventory-unverified",
+    });
+    expect(raw.sections?.storageSchema).toEqual(complete());
+  });
+  it("keeps successful Lakehouse schemas when another item fails in the same compatibility batch", async () => {
+    const h = harness();
+    const storageCore = core();
+    storageCore.items = storageCore.items.map((item) => ({
+      ...item,
+      type:
+        item.id === SQL || item.id === ONTOLOGY ? "Lakehouse" : item.type,
+    }));
+    h.functions.workspaceCollectCore.invoke.mockResolvedValueOnce(storageCore);
+    h.functions.workspaceCollectSqlMetadata.invoke.mockResolvedValueOnce({
+      ...common("sql-metadata", [
+        { id: ONTOLOGY, type: "Lakehouse", ...complete() },
+        { id: SQL, type: "Lakehouse", ...complete() },
+      ]),
+      catalogs: {
+        [ONTOLOGY]: unsupported("token-unavailable"),
+        [SQL]: unsupported("token-unavailable"),
+      },
+      schema: {},
+      artifactMetadata: {},
+      config: [],
+      sections: {
+        sqlProperties: complete(),
+        sqlSchema: unsupported("token-unavailable"),
+      },
+      capabilities: { sqlSchema: unsupported("token-unavailable") },
+    });
+    const original = h.compatibility.getMockImplementation()!;
+    h.compatibility.mockImplementation(async (plan) => {
+      const result = await original(plan);
+      if (plan.stage === "scanner") {
+        result.schema = {};
+        result.sections!.storageSchema =
+          unsupported("scanner-schema-unavailable");
+      } else {
+        result.schema = {
+          [SQL]: [table("silver.Valid", "Fabric Lakehouse Tables REST")],
+          [ONTOLOGY]: [],
+        };
+        result.sections!.lakehouseTables = {
+          status: "failed",
+          code: "upstream-failure",
+        };
+        result.compatibilityStatus![SQL].lakehouseTables = complete();
+        result.compatibilityStatus![ONTOLOGY].lakehouseTables = {
+          status: "failed",
+          code: "upstream-failure",
+        };
+      }
+      return result;
+    });
+
+    const { raw } = await collectBrowserWorkspace(
+      WS,
+      identity,
+      RUN,
+      undefined,
+      undefined,
+      h.deps,
+    );
+
+    expect(raw.schema?.[SQL]).toEqual([
+      table("silver.Valid", "Fabric Lakehouse Tables REST"),
+    ]);
+    expect(raw.schema?.[ONTOLOGY]).toBeUndefined();
+    expect(raw.sections?.storageSchema).toEqual({
+      status: "complete",
+      code: "partial-unsupported",
+    });
+  });
   it("merges usable partial Lakehouse REST inventory with the scanner fallback", async () => {
     const h = storageHarness("Lakehouse");
     const original = h.compatibility.getMockImplementation()!;
@@ -321,6 +445,10 @@ describe("active browser collector composition", () => {
       if (plan.stage === "items") {
         result.schema = { [SQL]: [table("silver.Orders", "Fabric Lakehouse Tables REST")] };
         result.sections!.lakehouseTables = { status: "complete", code: "partial-unsupported" };
+        result.compatibilityStatus![SQL].lakehouseTables = {
+          status: "complete",
+          code: "partial-unsupported",
+        };
       }
       return result;
     });

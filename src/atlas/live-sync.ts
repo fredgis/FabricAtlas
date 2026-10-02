@@ -474,6 +474,10 @@ export interface RawSync {
   compatibilityVersion?: number;
   compatibilityStage?: "scanner" | "items";
   compatibilityCollectors?: Record<string, string[]>;
+  compatibilityStatus?: Record<
+    string,
+    Record<string, { status?: "complete" | "unsupported" | "failed"; code?: string }>
+  >;
   collectorSources?: Record<string, { source: "rayfin" | "python-compatibility" | "python-rollback" | "unsupported"; code?: string }>;
   schemaVersion?: number;
   syncMode?: string;

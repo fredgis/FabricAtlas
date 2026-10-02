@@ -219,16 +219,33 @@ export async function collectBrowserWorkspace(
       for (const item of result.items) {
         const catalog = result.catalogs[item.id];
         if (catalog && successful(catalog)) {
-          if (!Array.isArray(result.schema[item.id])) fail();
+          const tables = result.schema[item.id];
+          if (!Array.isArray(tables)) fail();
           accepted.add(item.id);
-          knownStorageSchemas.add(item.id);
-          active(item, "sqlSchema");
+          if (
+            (item.type === "Lakehouse" || item.type === "Warehouse") &&
+            tables.length === 0
+          ) {
+            if (!schemaFallbackIds.includes(item.id)) {
+              schemaFallbackIds.push(item.id);
+            }
+            storageFallbackIds.add(item.id);
+            sources[`sqlSchema:${item.id}`] = {
+              source: "unsupported",
+              code: "empty-inventory-unverified",
+            };
+          } else {
+            knownStorageSchemas.add(item.id);
+            active(item, "sqlSchema");
+          }
         }
         else if (item.type === "SQLDatabase") fallback(item, "sqlDataPlane", catalog?.code ?? item.code ?? "sql-not-live-validated");
         else {
           sources[`sqlSchema:${item.id}`] = { source: "unsupported", code: catalog?.code ?? item.code ?? "parent-item-required" };
           if (item.type === "Lakehouse" || item.type === "Warehouse") {
-            schemaFallbackIds.push(item.id);
+            if (!schemaFallbackIds.includes(item.id)) {
+              schemaFallbackIds.push(item.id);
+            }
             storageFallbackIds.add(item.id);
           }
         }
@@ -338,7 +355,9 @@ export async function collectBrowserWorkspace(
       };
       for (const item of remaining) {
         for (const collector of item.collectors) {
-          const section = result.sections?.[sectionFor[collector]!];
+          const section =
+            result.compatibilityStatus?.[item.id]?.[collector] ??
+            result.sections?.[sectionFor[collector]!];
           if (section) {
             status(section);
             if (section.code && STOP.has(section.code)) fail();
@@ -351,9 +370,11 @@ export async function collectBrowserWorkspace(
       const schema = { ...result.schema };
       for (const item of remaining) {
         if (item.type !== "Lakehouse" || !item.collectors.includes("lakehouseTables")) continue;
-        const collected = result.sections?.lakehouseTables;
+        const collected =
+          result.compatibilityStatus?.[item.id]?.lakehouseTables ??
+          result.sections?.lakehouseTables;
         if (!collected || collected.status !== "complete") delete schema[item.id];
-        else if (Array.isArray(schema[item.id]) && (!collected.code || schema[item.id].length > 0)) {
+        else if (Array.isArray(schema[item.id])) {
           knownStorageSchemas.add(item.id);
           if (storageFallbackIds.has(item.id) && /partial|truncated/.test(collected.code ?? "")) {
             partialStorageSchemas.add(item.id);

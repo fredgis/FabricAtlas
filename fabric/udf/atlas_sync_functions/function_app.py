@@ -4099,6 +4099,7 @@ def _enrich_artifact(
                 token,
                 f"/workspaces/{ws}/lakehouses/{artifact_id}/tables?maxResults=100",
             )
+            artifact["_lakehouseTablesStatus"] = {"status": "complete"}
             _track_optional(trackers["lakehouseTables"], "success")
         except SLICE_RETRY_ERRORS:
             raise
@@ -4106,6 +4107,10 @@ def _enrich_artifact(
             artifact["_lakehouseTables"] = []
             code = _safe_error_code(error, optional=True)
             if code == "endpoint-unsupported":
+                artifact["_lakehouseTablesStatus"] = {
+                    "status": "unsupported",
+                    "code": code,
+                }
                 artifact["_lakehouseTablesError"] = (
                     "Lakehouse table enumeration is unsupported"
                 )
@@ -4115,6 +4120,10 @@ def _enrich_artifact(
                     code,
                 )
             else:
+                artifact["_lakehouseTablesStatus"] = {
+                    "status": "failed",
+                    "code": code,
+                }
                 artifact["_lakehouseTablesError"] = (
                     "Lakehouse table enumeration unavailable"
                 )
@@ -4127,6 +4136,10 @@ def _enrich_artifact(
         except Exception as error:
             code = _safe_error_code(error, optional=True)
             artifact["_lakehouseTables"] = []
+            artifact["_lakehouseTablesStatus"] = {
+                "status": "failed",
+                "code": code,
+            }
             artifact["_lakehouseTablesError"] = (
                 "Lakehouse Tables REST enumeration failed"
             )
@@ -5546,6 +5559,7 @@ def sync_compatibility(
         "requestedItemIds": [item["id"] for item in plan["items"]],
         "completedItemIds": [], "remainingItemIds": [], "itemFailures": {},
         "compatibilityCollectors": {item["id"]: item["collectors"] for item in plan["items"]},
+        "compatibilityStatus": {item["id"]: {} for item in plan["items"]},
     }
     trackers = _new_sync_trackers()
     deadline = _ExecutionDeadline()
@@ -5688,6 +5702,16 @@ def sync_compatibility(
                         definition_token=definitionToken, kusto_token=kustoToken, sql_token=sqlToken,
                         collectors=requested["collectors"],
                     )
+                    if "lakehouseTables" in requested["collectors"]:
+                        collector_status = artifact.get("_lakehouseTablesStatus")
+                        if not isinstance(collector_status, dict):
+                            collector_status = {
+                                "status": "unsupported",
+                                "code": "not-applicable",
+                            }
+                        out["compatibilityStatus"][item_id]["lakehouseTables"] = (
+                            collector_status
+                        )
                     deadline.checkpoint()
                     tables = _finalize_schema_object_ids(item_id, item_type, _item_schema(fabricToken, ws, artifact, item_type))
                     internal_schema[item_id] = tables
