@@ -388,6 +388,42 @@ bounded parity report after both complete; it never logs either raw payload.
 Leave the flag unset in stable deployments until the real comparison gate
 passes.
 
+## Fabric definition stage
+
+`workspaceCollectDefinitions` declares the Fabric audience and runs behind the same gate. It is a
+read-only dual-run stage that never publishes snapshots. Callers send an allowlisted batch of up
+to eight items:
+
+```ts
+await client.functions.workspaceCollectDefinitions.invoke({
+  protocolVersion: 1,
+  workspaceId,
+  items: [{ id: ontologyId, type: "Ontology" }],
+  correlationId: null,
+});
+```
+
+The Fabric getDefinition APIs require read **and write** permission on each item and, for
+delegated tokens, the `Item.ReadWrite.All` scope. The Python UDF uses a separate delegated
+definition token for that reason. This Function uses the AppBackend application identity, so the
+AppBackend owner or service principal must hold at least Contributor on every workspace whose
+definitions are compared. Whether the platform-minted Fabric token satisfies the write
+requirement is not yet verified in a deployed run; missing permission is reported per item as
+`unsupported/read-write-permission-required` and never invalidates other items. Items protected by
+an encrypted sensitivity label return `encrypted-label-blocked`.
+
+Validate this stage with:
+
+```powershell
+npx --no-install rayfin functions init
+npm test -- src\atlas\workspace-definitions.spec.ts src\atlas\durable-sync.spec.ts src\lib\rayfin-client.spec.ts
+npm --prefix rayfin\functions run build
+```
+
+If a stale generated `types.ts` breaks the CLI's pre-generation build, restore the last committed
+`types.ts` and `runtimemetadata.json` with `git checkout --` and rerun the CLI; do not edit them
+by hand.
+
 ## Scripts
 
 | Command | What it does |

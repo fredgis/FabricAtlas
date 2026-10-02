@@ -31,7 +31,10 @@ export type FabricRestErrorCode =
   | "redirect-rejected"
   | "upstream-unreachable"
   | "upstream-http-error"
-  | "invalid-response";
+  | "invalid-response"
+  | "cancelled"
+  | "operation-failed"
+  | "operation-incomplete";
 
 export type FabricSafeErrorCode =
   | Exclude<FabricRestErrorCode, "upstream-http-error">
@@ -119,6 +122,8 @@ export interface FabricRestOptions {
   deadline: ExecutionDeadline;
   fetch?: typeof fetch;
   sleep?: (milliseconds: number) => Promise<void>;
+  /** Caller cancellation; aborts in-flight requests without retrying. */
+  signal?: AbortSignal;
   requestTimeoutMs?: number;
   maxAttempts?: number;
   maxRetryAfterMs?: number;
@@ -130,6 +135,26 @@ export interface FabricListLimits {
   maxRecords: number;
   /** Stop paging once this many records are collected. */
   stopAfter?: number;
+}
+
+export interface FabricLongRunningLimits {
+  maxPolls: number;
+  minPollDelayMs: number;
+  maxPollDelayMs: number;
+  maxResponseBytes?: number;
+}
+
+interface FabricResponse {
+  status: number;
+  headers: Headers;
+  body?: Record<string, unknown>;
+}
+
+interface FabricSendOptions {
+  method: "GET" | "POST";
+  maxResponseBytes?: number;
+  /** Return 202 Accepted headers without reading the body. */
+  accepted?: boolean;
 }
 
 export function fabricApiUrl(path: string): string {
@@ -184,6 +209,31 @@ function parseRetryAfterMs(value: string | null): number | undefined {
   if (/^\d+(?:\.\d+)?$/.test(text)) return Number(text) * 1_000;
   const retryAt = Date.parse(text);
   return Number.isFinite(retryAt) ? Math.max(0, retryAt - Date.now()) : undefined;
+}
+
+const OPERATION_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Reads the LRO identifier from `x-ms-operation-id` or the last `Location`
+ * path segment. The Location URL itself is never requested.
+ */
+function operationIdFrom(headers: Headers): string {
+  let candidate = headers.get("x-ms-operation-id")?.trim();
+  if (!candidate) {
+    const location = headers.get("location")?.trim();
+    if (location && location.length <= MAX_CONTINUATION_URL_LENGTH) {
+      try {
+        candidate = new URL(location).pathname.replace(/\/+$/, "").split("/").pop();
+      } catch {
+        candidate = undefined;
+      }
+    }
+  }
+  if (!candidate || !OPERATION_ID.test(candidate)) {
+    throw new FabricRestError("invalid-response");
+  }
+  return candidate.toLowerCase();
 }
 
 function isAbortError(error: unknown): boolean {
@@ -261,10 +311,12 @@ export class FabricRestClient {
   readonly #maxAttempts: number;
   readonly #maxRetryAfterMs: number;
   readonly #maxResponseBytes: number;
+  readonly #signal?: AbortSignal;
 
   constructor(token: string, options: FabricRestOptions) {
     this.#token = token;
     this.#deadline = options.deadline;
+    this.#signal = options.signal;
     this.#fetch = options.fetch ?? fetch;
     this.#sleep =
       options.sleep ??
@@ -285,6 +337,48 @@ export class FabricRestClient {
     budget?: RequestBudget,
   ): Promise<Record<string, unknown>> {
     return this.#request(fabricApiUrl(path), budget);
+  }
+
+  /**
+   * POST one fixed Fabric action without a body and resolve a 200 response or
+   * a 202 long-running operation. Polls only the canonical
+   * `/v1/operations/{id}` endpoint and never follows the returned Location.
+   */
+  async postLongRunning(
+    path: string,
+    limits: FabricLongRunningLimits,
+    budget?: RequestBudget,
+  ): Promise<Record<string, unknown>> {
+    const first = await this.#send(fabricApiUrl(path), budget, {
+      method: "POST",
+      maxResponseBytes: limits.maxResponseBytes,
+      accepted: true,
+    });
+    if (first.status !== 202) return first.body as Record<string, unknown>;
+    const operationId = operationIdFrom(first.headers);
+    let headers = first.headers;
+    for (let poll = 0; poll < limits.maxPolls; poll += 1) {
+      await this.#wait(this.#pollDelay(headers, limits));
+      const state = await this.#send(
+        fabricApiUrl(`/v1/operations/${operationId}`),
+        budget,
+        { method: "GET" },
+      );
+      const status = state.status === 200 ? state.body?.status : undefined;
+      if (status === "Succeeded") {
+        return this.#request(
+          fabricApiUrl(`/v1/operations/${operationId}/result`),
+          budget,
+          limits.maxResponseBytes,
+        );
+      }
+      if (status === "Failed") throw new FabricRestError("operation-failed");
+      if (status !== "NotStarted" && status !== "Running") {
+        throw new FabricRestError("invalid-response");
+      }
+      headers = state.headers;
+    }
+    throw new FabricRestError("operation-incomplete");
   }
 
   /** GET a paginated Fabric `value` list from one fixed path. */
@@ -346,19 +440,54 @@ export class FabricRestClient {
     return delay;
   }
 
+  #pollDelay(headers: Headers, limits: FabricLongRunningLimits): number {
+    const hinted = parseRetryAfterMs(headers.get("retry-after")) ?? 0;
+    // LRO Retry-After is a polling hint; cap it so one item cannot consume the batch.
+    return Math.min(limits.maxPollDelayMs, Math.max(limits.minPollDelayMs, hinted));
+  }
+
+  #throwIfCancelled(): void {
+    if (this.#signal?.aborted) throw new FabricRestError("cancelled");
+  }
+
+  async #wait(milliseconds: number): Promise<void> {
+    this.#throwIfCancelled();
+    if (milliseconds >= this.#deadline.remaining()) {
+      throw new FabricRestError("deadline-exhausted");
+    }
+    await this.#sleep(milliseconds);
+    this.#throwIfCancelled();
+  }
+
   async #request(
     url: string,
     budget?: RequestBudget,
+    maxResponseBytes?: number,
   ): Promise<Record<string, unknown>> {
+    const response = await this.#send(url, budget, {
+      method: "GET",
+      maxResponseBytes,
+    });
+    return response.body as Record<string, unknown>;
+  }
+
+  async #send(
+    url: string,
+    budget: RequestBudget | undefined,
+    options: FabricSendOptions,
+  ): Promise<FabricResponse> {
     for (let attempt = 0; attempt < this.#maxAttempts; attempt += 1) {
+      this.#throwIfCancelled();
       budget?.take();
       const timeoutMs = this.#deadline.requestTimeout(this.#requestTimeoutMs);
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const cancel = () => controller.abort();
+      this.#signal?.addEventListener("abort", cancel, { once: true });
       let delay: number;
       try {
         const response = await this.#fetch(url, {
-          method: "GET",
+          method: options.method,
           redirect: "manual",
           signal: controller.signal,
           headers: {
@@ -385,13 +514,26 @@ export class FabricRestClient {
         } else if (!response.ok) {
           await discardBody(response);
           throw new FabricRestError("upstream-http-error", response.status);
+        } else if (response.status === 202 && options.accepted) {
+          await discardBody(response);
+          return { status: 202, headers: response.headers };
         } else {
-          return parseObject(
-            await readBoundedText(response, this.#maxResponseBytes),
-          );
+          return {
+            status: response.status,
+            headers: response.headers,
+            body: parseObject(
+              await readBoundedText(
+                response,
+                options.maxResponseBytes ?? this.#maxResponseBytes,
+              ),
+            ),
+          };
         }
       } catch (error) {
         if (error instanceof FabricRestError) throw error;
+        if (isAbortError(error) && this.#signal?.aborted) {
+          throw new FabricRestError("cancelled");
+        }
         if (isAbortError(error)) {
           delay = this.#transportRetryDelay(attempt, "request-timeout");
         } else if (error instanceof TypeError) {
@@ -401,8 +543,9 @@ export class FabricRestClient {
         }
       } finally {
         clearTimeout(timer);
+        this.#signal?.removeEventListener("abort", cancel);
       }
-      await this.#sleep(delay);
+      await this.#wait(delay);
     }
     throw new FabricRestError("upstream-unreachable");
   }

@@ -12,6 +12,11 @@ import {
   type WorkspaceCoreEnvelope,
 } from './workspace-collector.js';
 import {
+  workspaceCollectDefinitions,
+  type DefinitionItemsInput,
+  type DefinitionStageEnvelope,
+} from './workspace-definitions.js';
+import {
   workspaceDiscover,
   type WorkspaceDiscoveryResult,
 } from './workspace-discovery.js';
@@ -40,6 +45,20 @@ udf.func(
     correlationId: SyncUuidInput | null = null,
   ): Promise<WorkspaceCoreEnvelope> =>
     workspaceCollectCore(ctx, protocolVersion, workspaceId, correlationId),
+  [],
+);
+
+// Read-only dual-run definition stage for an allowlisted item batch; never authoritative.
+udf.func(
+  'workspaceCollectDefinitions',
+  async (
+    ctx: RayfinContext<AtlasSchema, AudienceType.Fabric>,
+    protocolVersion: 1,
+    workspaceId: SyncUuidInput,
+    items: DefinitionItemsInput,
+    correlationId: SyncUuidInput | null = null,
+  ): Promise<DefinitionStageEnvelope> =>
+    workspaceCollectDefinitions(ctx, protocolVersion, workspaceId, items, correlationId),
   [],
 );
 
