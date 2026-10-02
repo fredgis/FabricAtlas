@@ -30,6 +30,7 @@ import {
   startCoreCollectorShadow,
 } from "./core-collector-shadow";
 import { runDefinitionCollectorShadow } from "./definition-collector-shadow";
+import { runItemRelationsCollectorShadow } from "./item-relations-collector-shadow";
 import { normalizeLineageEdges } from "./lineage";
 import { DEPLOYMENT_ID } from "./release";
 import {
@@ -530,6 +531,7 @@ interface SyncAttempt {
   user: SyncIdentity;
   coreParitySummary?: string;
   definitionShadowSummary?: string;
+  itemRelationsShadowSummary?: string;
 }
 
 function textOrFallback(value: unknown, fallback: string): string {
@@ -702,6 +704,13 @@ export async function runFabricSync(
         coreEnvelope,
       ),
     );
+    const itemRelationsShadow = coreShadow.then((coreEnvelope) =>
+      runItemRelationsCollectorShadow(
+        attempt.workspaceId,
+        attempt.id,
+        coreEnvelope,
+      ),
+    );
     const raw = await invokeSyncAll(
       attempt.workspaceId,
       user,
@@ -719,6 +728,7 @@ export async function runFabricSync(
       attempt.coreParitySummary = "Core parity unavailable";
     }
     attempt.definitionShadowSummary = await definitionShadow;
+    attempt.itemRelationsShadowSummary = await itemRelationsShadow;
     reportProgress?.(62, "Workspace metadata complete");
     const atlas = mapSyncToAtlas(raw, WS_FALLBACK);
     reportProgress?.(66, "Building the governance catalog");
@@ -1177,6 +1187,7 @@ async function persistSync(
     `${atlas.items.length} items · ${atlas.edges.length} lineage edges · ${atlas.principals.length} principals · ${atlas.jobs.length} jobs`,
     attempt.coreParitySummary,
     attempt.definitionShadowSummary,
+    attempt.itemRelationsShadowSummary,
   ]
     .filter((value): value is string => !!value)
     .join(" · ");
