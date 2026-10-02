@@ -490,13 +490,13 @@ def ping(name: str) -> str:
 
 # ---- admin scanner: the one source that returns per-item access + lineage ----
 
-def _scan_workspace(token, ws):
+def _scan_workspace(token, ws, include_schema=True):
     start = _req(
         token,
         ADMIN
         + "/workspaces/getInfo"
         + "?lineage=True&getArtifactUsers=True"
-        + "&datasetSchema=True&datasetExpressions=True",
+        + ("&datasetSchema=True&datasetExpressions=True" if include_schema else ""),
         method="POST",
         body={"workspaces": [ws]},
     )
@@ -4049,19 +4049,29 @@ def _enrich_artifact(
     definition_token="",
     kusto_token="",
     sql_token="",
+    collectors=None,
 ):
+    selected = set(collectors) if collectors is not None else {
+        "itemDetails", "lakehouseTables", "reportPages",
+        "definitions", "kqlDataPlane", "sqlDataPlane",
+    }
     artifact_type = artifact.get("_type")
     artifact_id = artifact.get("id")
     detail_path = DETAIL_PATHS.get(artifact_type)
-    if detail_path and artifact_id:
+    if detail_path and artifact_id and (
+        "itemDetails" in selected
+        or (artifact_type == "KQLDatabase" and "kqlDataPlane" in selected)
+        or (artifact_type == "SQLDatabase" and "sqlDataPlane" in selected)
+    ):
         artifact["_detailAttempted"] = True
         try:
             artifact["_detail"] = _get(
                 token,
                 f"{FABRIC}/workspaces/{ws}/{detail_path}/{artifact_id}",
             )
-            _merge_detail_metadata(artifact, artifact["_detail"])
-            _track_optional(trackers["itemDetails"], "success")
+            if "itemDetails" in selected:
+                _merge_detail_metadata(artifact, artifact["_detail"])
+                _track_optional(trackers["itemDetails"], "success")
         except SLICE_RETRY_ERRORS:
             raise
         except urllib.error.HTTPError as error:
@@ -4083,7 +4093,7 @@ def _enrich_artifact(
             _track_optional(trackers["itemDetails"], "failed", code)
             errors.append(f"itemDetails: {code}")
 
-    if artifact_type == "Lakehouse" and artifact_id:
+    if artifact_type == "Lakehouse" and artifact_id and "lakehouseTables" in selected:
         try:
             artifact["_lakehouseTables"] = _get_all_data(
                 token,
@@ -4123,7 +4133,7 @@ def _enrich_artifact(
             _track_optional(trackers["lakehouseTables"], "failed", code)
             errors.append(f"lakehouseTables: {code}")
 
-    if artifact_type == "Report" and artifact_id:
+    if artifact_type == "Report" and artifact_id and "reportPages" in selected:
         if artifact.get("reportType") == "PaginatedReport":
             artifact["_reportPagesError"] = (
                 "Page inventory is not supported for paginated reports"
@@ -4175,7 +4185,7 @@ def _enrich_artifact(
                 _track_optional(trackers["reportPages"], "failed", code)
                 errors.append(f"reportPages: {code}")
 
-    if artifact_type in DEFINITION_PATHS and artifact_id:
+    if artifact_type in DEFINITION_PATHS and artifact_id and "definitions" in selected:
         if not _strict_text(definition_token):
             artifact["_definitionStatus"] = "token-unavailable"
             _track_optional(
@@ -4226,7 +4236,7 @@ def _enrich_artifact(
                     _track_optional(trackers["definitions"], "failed", code)
                     errors.append(f"definitions:{artifact_id}: {code}")
 
-    if artifact_type == "KQLDatabase" and artifact_id:
+    if artifact_type == "KQLDatabase" and artifact_id and "kqlDataPlane" in selected:
         if not _strict_text(kusto_token):
             artifact["_kqlSchemaStatus"] = "token-unavailable"
             _track_optional(
@@ -4257,7 +4267,7 @@ def _enrich_artifact(
                     _track_optional(trackers["kqlSchema"], "failed", code)
                     errors.append(f"kqlSchema:{artifact_id}: {code}")
 
-    if artifact_type == "SQLDatabase" and artifact_id:
+    if artifact_type == "SQLDatabase" and artifact_id and "sqlDataPlane" in selected:
         try:
             if _strict_text(sql_token):
                 _collect_sql_schema(sql_token, artifact)
@@ -5460,6 +5470,204 @@ def sync_items(
         .isoformat(timespec="milliseconds")
         .replace("+00:00", "Z")
     )
+    return _guard_response_size(out)
+
+
+COMPATIBILITY_COLLECTORS = {
+    "itemDetails", "lakehouseTables", "reportPages", "definitions",
+    "kqlDataPlane", "sqlDataPlane", "jobs",
+}
+
+
+def _compatibility_plan(value):
+    if not isinstance(value, str) or len(value) > 512 * 1024:
+        raise ValueError("Invalid compatibility collector plan")
+    try:
+        plan = json.loads(value)
+        if not isinstance(plan, dict) or set(plan) != {"version", "stage", "items", "schemaItemIds"}:
+            raise ValueError()
+        if plan["version"] != 1 or plan["stage"] not in ("scanner", "items"):
+            raise ValueError()
+        items = plan["items"]
+        if not isinstance(items, list) or len(items) > (5000 if plan["stage"] == "scanner" else 8):
+            raise ValueError()
+        seen = set()
+        for item in items:
+            if not isinstance(item, dict) or set(item) != {"id", "type", "collectors"}:
+                raise ValueError()
+            item["id"] = _item_id(item["id"])
+            if item["id"] in seen or not isinstance(item["type"], str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{0,63}", item["type"]):
+                raise ValueError()
+            seen.add(item["id"])
+            collectors = item["collectors"]
+            if not isinstance(collectors, list) or len(collectors) != len(set(collectors)):
+                raise ValueError()
+            if any(name not in COMPATIBILITY_COLLECTORS for name in collectors):
+                raise ValueError()
+            if plan["stage"] == "scanner" and collectors:
+                raise ValueError()
+        schema_ids = plan["schemaItemIds"]
+        if not isinstance(schema_ids, list) or len(schema_ids) > 5000:
+            raise ValueError()
+        schema_ids = [_item_id(item_id) for item_id in schema_ids]
+        if len(set(schema_ids)) != len(schema_ids) or not set(schema_ids).issubset(seen):
+            raise ValueError()
+        if plan["stage"] == "items" and schema_ids:
+            raise ValueError()
+        plan["schemaItemIds"] = schema_ids
+        return plan
+    except Exception:
+        raise ValueError("Invalid compatibility collector plan") from None
+
+
+@udf.function()
+def sync_compatibility(
+    fabricToken: str,
+    workspaceId: str,
+    collectorPlan: str,
+    correlationId: str = "",
+    definitionToken: str = "",
+    kustoToken: str = "",
+    sqlToken: str = "",
+) -> dict:
+    """Bounded exact-gap adapter; never rediscover Core or run unrequested collectors."""
+    ws = _workspace_id(workspaceId)
+    plan = _compatibility_plan(collectorPlan)
+    out = {
+        "schemaVersion": 2,
+        "syncMode": "compatibility",
+        "compatibilityVersion": 1,
+        "compatibilityStage": plan["stage"],
+        "workspace": {"id": ws},
+        "correlationId": _item_id(correlationId) if correlationId else None,
+        "schema": {}, "config": [], "jobs": [], "lineage": [], "access": [],
+        "objectEdges": [], "artifactMetadata": {}, "itemMetadata": {},
+        "sections": {}, "capabilities": {}, "errors": [],
+        "requestedItemIds": [item["id"] for item in plan["items"]],
+        "completedItemIds": [], "remainingItemIds": [], "itemFailures": {},
+        "compatibilityCollectors": {item["id"]: item["collectors"] for item in plan["items"]},
+    }
+    trackers = _new_sync_trackers()
+    deadline = _ExecutionDeadline()
+    with _deadline_scope(deadline):
+        if plan["stage"] == "scanner":
+            try:
+                scan = _scan_workspace(fabricToken, ws, include_schema=bool(plan["schemaItemIds"]))
+                if _normalized_id(scan.get("id")) != ws:
+                    raise ScannerError("scanner workspace identity did not match")
+                artifacts = {}
+                for key, artifact_type in ART_KEYS.items():
+                    values = scan.get(key, [])
+                    if values is None:
+                        values = []
+                    if not isinstance(values, list):
+                        raise ScannerError("scanner artifact collection was invalid")
+                    for value in values:
+                        if not isinstance(value, dict):
+                            raise ScannerError("scanner artifact record was invalid")
+                        artifact_id = _artifact_id(value)
+                        if artifact_id:
+                            artifacts[artifact_id] = {**value, "id": artifact_id, "_type": artifact_type}
+                workspace_ids = set(out["requestedItemIds"])
+                selected = []
+                for item in plan["items"]:
+                    artifact = artifacts.get(item["id"])
+                    if item["type"] in ("SemanticModel", "Report") and not artifact:
+                        raise ScannerError("scanner omitted an expected artifact")
+                    if artifact and artifact["_type"] != item["type"]:
+                        raise ScannerError("scanner artifact type did not match")
+                    artifact = artifact or {"id": item["id"], "_type": item["type"]}
+                    selected.append(artifact)
+                    out["itemMetadata"][item["id"]] = _metadata_for_item(artifact, item["id"] in artifacts)
+                    if item["id"] in artifacts:
+                        if "users" not in artifact or not isinstance(artifact["users"], list):
+                            raise ScannerError("scanner user information was unavailable")
+                        for user in artifact["users"]:
+                            if not isinstance(user, dict):
+                                raise ScannerError("scanner user information was invalid")
+                            principal_type = _safe_text(user.get("principalType"))
+                            tenant_wide = str(principal_type or "").casefold() in ("none", "entiretenant")
+                            principal_id = "entire-tenant" if tenant_wide else (
+                                _normalized_id(user.get("graphId")) or _safe_text(user.get("identifier")) or _safe_text(user.get("emailAddress"))
+                            )
+                            if not principal_id:
+                                raise ScannerError("scanner user identity was unavailable")
+                            out["access"].append({
+                                "itemId": item["id"], "principalId": principal_id,
+                                "principalName": _safe_text(user.get("displayName")) or _safe_text(user.get("emailAddress")) or principal_id,
+                                "principalType": principal_type, "tenantWide": tenant_wide,
+                                "principalEmail": _safe_text(user.get("emailAddress")),
+                                "userType": _safe_text(user.get("userType")),
+                                "accessRight": _safe_text(_access_right(user)),
+                            })
+                    if item["id"] in plan["schemaItemIds"]:
+                        if not isinstance(artifact.get("tables"), list):
+                            raise ScannerError("scanner schema was unavailable")
+                        out["schema"][item["id"]] = _public_schema(_item_schema(fabricToken, ws, artifact, item["type"], defer_enrichment=True))
+                    out["config"].extend(_item_config(fabricToken, ws, artifact, item["type"], out["schema"].get(item["id"], [])))
+                out["lineage"] = _official_lineage(selected, workspace_ids, ws)
+                for name in ("scanner", "access", "lineage", "schema", "config"):
+                    _set_section(out, name, "complete")
+                _set_metadata_capabilities(out)
+                out["completedItemIds"] = out["requestedItemIds"]
+            except Exception as error:
+                # A failed scanner must not expose partial access/lineage evidence.
+                for name in ("schema", "itemMetadata", "artifactMetadata"):
+                    out[name] = {}
+                for name in ("config", "access", "lineage", "objectEdges"):
+                    out[name] = []
+                for name in ("scanner", "access", "lineage", "schema", "config"):
+                    _record_failure(out, name, error)
+                _set_metadata_capabilities(out)
+        else:
+            internal_schema = {}
+            extra_edges = []
+            for index, requested in enumerate(plan["items"]):
+                if index and deadline.remaining() <= MIN_ENRICHMENT_ITEM_BUDGET_SECONDS:
+                    out["remainingItemIds"] = out["requestedItemIds"][index:]
+                    break
+                item_id, item_type = requested["id"], requested["type"]
+                try:
+                    # Membership verification, not a second workspace/Core enumeration.
+                    raw_item = _get(fabricToken, f"{FABRIC}/workspaces/{ws}/items/{item_id}")
+                    item = _sanitize_item(raw_item)
+                    if not item or item["id"] != item_id or item["type"] != item_type:
+                        raise ValueError("compatibility item identity did not match")
+                    artifact = {**item, "_type": item_type}
+                    _enrich_artifact(
+                        fabricToken, ws, artifact, trackers, out["errors"],
+                        definition_token=definitionToken, kusto_token=kustoToken, sql_token=sqlToken,
+                        collectors=requested["collectors"],
+                    )
+                    deadline.checkpoint()
+                    tables = _finalize_schema_object_ids(item_id, item_type, _item_schema(fabricToken, ws, artifact, item_type))
+                    internal_schema[item_id] = tables
+                    out["schema"][item_id] = _public_schema(tables)
+                    out["config"].extend(_item_config(fabricToken, ws, artifact, item_type, tables))
+                    if isinstance(artifact.get("_artifactMetadata"), dict):
+                        out["artifactMetadata"][item_id] = artifact["_artifactMetadata"]
+                    metadata = _metadata_for_item(artifact, False)
+                    metadata.pop("scannerMatched", None)
+                    metadata.pop("ownerAvailable", None)
+                    out["itemMetadata"][item_id] = metadata
+                    extra_edges.extend(artifact.get("_objectEdges") or [])
+                    if "jobs" in requested["collectors"]:
+                        jobs = _get_all(fabricToken, f"/workspaces/{ws}/items/{item_id}/jobs/instances")
+                        out["jobs"].extend(_sanitize_job(job, item) for job in jobs[:3])
+                    deadline.checkpoint()
+                    out["completedItemIds"].append(item_id)
+                except SLICE_RETRY_ERRORS:
+                    out["remainingItemIds"] = out["requestedItemIds"][index:]
+                    break
+                except Exception as error:
+                    out["itemFailures"][item_id] = _safe_error_code(error, optional=True)
+                    out["errors"].append(f"compatibility:{item_id}: {out['itemFailures'][item_id]}")
+                    out["completedItemIds"].append(item_id)
+            out["objectEdges"] = _collect_atlas_object_edges(internal_schema, extra_edges=extra_edges)
+            for name, tracker in trackers.items():
+                _finish_optional_section(out, name, tracker)
+            _set_optional_capabilities(out)
+    out["syncedAt"] = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
     return _guard_response_size(out)
 
 

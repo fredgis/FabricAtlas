@@ -46,6 +46,7 @@ import {
   runPowerBiCollectorShadow,
   runSqlCollectorShadow,
 } from "./remaining-collectors-shadow";
+import { collectBrowserWorkspace, pythonCollectorRollbackEnabled } from "./browser-collector-sync";
 import { normalizeLineageEdges } from "./lineage";
 import { DEPLOYMENT_ID } from "./release";
 import {
@@ -732,6 +733,20 @@ export async function runFabricSync(
   assertSyncActive(signal);
   const attempt = await startSyncAttempt(user, targetWorkspaceId);
   try {
+    let raw: Awaited<ReturnType<typeof invokeSyncAll>>;
+    if (!pythonCollectorRollbackEnabled()) {
+      const collected = await collectBrowserWorkspace(
+        attempt.workspaceId, user, attempt.id, reportProgress, signal,
+      );
+      raw = collected.raw;
+      attempt.coreParitySummary = collected.summary;
+      attempt.definitionShadowSummary = "Definitions: active Rayfin collector";
+      attempt.kqlShadowSummary = "KQL: active Rayfin collector plus explicit data-plane gaps";
+      attempt.sqlShadowSummary = "SQL: active Rayfin collector plus explicit unavailable-identity gaps";
+      attempt.powerBiShadowSummary = "Power BI definitions: active Rayfin; scanner compatibility retained";
+      attempt.itemRelationsShadowSummary = "Item Relations: active Rayfin Preview evidence (non-authoritative)";
+      attempt.itemRelationsCollection = collected.itemRelationsCollection;
+    } else {
     const coreShadow = startCoreCollectorShadow(
       attempt.workspaceId,
       attempt.id,
@@ -792,7 +807,7 @@ export async function runFabricSync(
       ),
       "Power BI shadow timed-out",
     );
-    const raw = await invokeSyncAll(
+    raw = await invokeSyncAll(
       attempt.workspaceId,
       user,
       reportProgress,
@@ -827,6 +842,7 @@ export async function runFabricSync(
       attempt.itemRelationsShadowSummary === ITEM_RELATIONS_SHADOW_TIMEOUT
         ? undefined
         : itemRelationsCollection;
+    }
     reportProgress?.(62, "Workspace metadata complete");
     const atlas = mapSyncToAtlas(raw, WS_FALLBACK);
     reportProgress?.(66, "Building the governance catalog");

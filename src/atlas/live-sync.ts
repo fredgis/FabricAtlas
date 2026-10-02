@@ -340,6 +340,7 @@ const FABRIC_DISCOVERY_SCOPES = [
 ];
 
 export interface SyncRequestTokens {
+  collectorPlan?: string;
   fabricToken: string;
   definitionToken?: string;
   kustoToken?: string;
@@ -366,6 +367,7 @@ async function acquireOptionalMetadataTokens(
   identity: SyncIdentity,
   allowPopup = true,
   signal?: AbortSignal,
+  selected?: ReadonlySet<keyof typeof OPTIONAL_METADATA_TOKEN_SCOPES>,
 ): Promise<Omit<SyncRequestTokens, "fabricToken">> {
   assertSyncActive(signal);
   const tokens: Omit<SyncRequestTokens, "fabricToken"> = {};
@@ -377,6 +379,7 @@ async function acquireOptionalMetadataTokens(
       (typeof OPTIONAL_METADATA_TOKEN_SCOPES)[keyof typeof OPTIONAL_METADATA_TOKEN_SCOPES],
     ]
   >) {
+    if (selected && !selected.has(name)) continue;
     try {
       assertSyncActive(signal);
       tokens[name] = await acquireToken(
@@ -468,6 +471,10 @@ async function renewSyncTokens(
 /* ----------------------------- UDF invoke ------------------------------ */
 
 export interface RawSync {
+  compatibilityVersion?: number;
+  compatibilityStage?: "scanner" | "items";
+  compatibilityCollectors?: Record<string, string[]>;
+  collectorSources?: Record<string, { source: "rayfin" | "python-compatibility" | "python-rollback" | "unsupported"; code?: string }>;
   schemaVersion?: number;
   syncMode?: string;
   correlationId?: string;
@@ -1411,7 +1418,7 @@ export function isUdfTimeoutFailure(status: number, body: string): boolean {
 
 function retargetSyncFunction(url: string, functionName: string): string {
   return url.replace(
-    /\/(ping|sync_all|sync_items)(\/|:|\?|$)/i,
+    /\/(ping|sync_all|sync_items|sync_compatibility)(\/|:|\?|$)/i,
     `/${functionName}$2`,
   );
 }
@@ -1434,7 +1441,7 @@ const MAX_SINGLE_ITEM_SLICE_ATTEMPTS = 6;
 const SYNC_SLICE_TIMEOUT_MS = 195_000;
 const TOKEN_REFRESH_WINDOW_MS = 5 * 60_000;
 
-function assertSyncActive(signal?: AbortSignal): void {
+export function assertSyncActive(signal?: AbortSignal): void {
   if (signal?.aborted) {
     throw new SyncCancelledError("Synchronization cancelled.");
   }
@@ -1499,7 +1506,7 @@ function syncItemTypeLabel(itemType: string): string {
 
 async function invokeSyncFunctionSlice(
   baseUrl: string,
-  functionName: "sync_all" | "sync_items",
+  functionName: "sync_all" | "sync_items" | "sync_compatibility",
   workspaceId: string,
   tokens: SyncRequestTokens,
   parameters: Partial<SyncRequestTokens>,
@@ -1625,6 +1632,60 @@ async function invokeSyncItemSlice(
     { itemIds: JSON.stringify(batch.itemIds) },
     signal,
   );
+}
+
+export type CompatibilityCollector =
+  | "itemDetails" | "lakehouseTables" | "reportPages" | "definitions"
+  | "kqlDataPlane" | "sqlDataPlane" | "jobs";
+
+export interface CompatibilityPlan {
+  version: 1;
+  stage: "scanner" | "items";
+  items: { id: string; type: string; collectors: CompatibilityCollector[] }[];
+  schemaItemIds: string[];
+}
+
+/** Per-run browser credential cache used only by explicitly planned Python gaps. */
+export function createCompatibilityInvoker(
+  workspaceId: string,
+  identity: SyncIdentity,
+  correlationId: string,
+  signal?: AbortSignal,
+): (plan: CompatibilityPlan) => Promise<RawSync> {
+  let tokens: SyncRequestTokens | undefined;
+  return async (plan) => {
+    assertSyncActive(signal);
+    const rawUrl = getUdfUrl();
+    if (!rawUrl) throw new Error("The required Python compatibility endpoint is not configured. The previous snapshot was preserved.");
+    const url = validateUdfUrl(rawUrl, workspaceId);
+    if (!tokens) {
+      tokens = {
+        fabricToken: await acquireFabricSyncToken(identity, true, signal),
+        correlationId,
+      };
+    }
+    const needed = new Set<keyof typeof OPTIONAL_METADATA_TOKEN_SCOPES>();
+    for (const item of plan.items) {
+      if (item.collectors.includes("definitions") && !tokens.definitionToken) needed.add("definitionToken");
+      if (item.collectors.includes("kqlDataPlane") && !tokens.kustoToken) needed.add("kustoToken");
+      if (item.collectors.includes("sqlDataPlane") && !tokens.sqlToken) needed.add("sqlToken");
+    }
+    Object.assign(tokens, await acquireOptionalMetadataTokens(identity, true, signal, needed));
+    for (let attempt = 0; attempt < MAX_BASE_SLICE_ATTEMPTS; attempt++) {
+      assertSyncActive(signal);
+      tokens = await renewSyncTokens(identity, tokens, signal);
+      try {
+        return await invokeSyncFunctionSlice(
+          url, "sync_compatibility", workspaceId, tokens,
+          { collectorPlan: JSON.stringify(plan) }, signal,
+        );
+      } catch (error) {
+        if (!(error instanceof RetryableSyncSliceError) || attempt + 1 >= MAX_BASE_SLICE_ATTEMPTS || error.reason === "response-size") throw error;
+        await abortableDelay(Math.min(8_000, 1_000 * 2 ** attempt), signal);
+      }
+    }
+    throw new Error("The Python compatibility slice could not complete. The previous snapshot was preserved.");
+  };
 }
 
 export async function invokeSyncAll(

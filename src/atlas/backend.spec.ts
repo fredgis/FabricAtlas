@@ -73,6 +73,7 @@ const remainingShadows = vi.hoisted(() => ({
   runSqlCollectorShadow: vi.fn(),
   runPowerBiCollectorShadow: vi.fn(),
 }));
+const browserCollectors = vi.hoisted(() => ({ collectBrowserWorkspace: vi.fn() }));
 
 vi.mock("@/lib/rayfin-client", () => ({
   getRayfinClient: () => ({ data: mocks.data }),
@@ -91,6 +92,10 @@ vi.mock("./definition-collector-shadow", () => definitionShadow);
 vi.mock("./item-relations-collector-shadow", () => itemRelationsShadow);
 vi.mock("./kql-collector-shadow", () => kqlShadow);
 vi.mock("./remaining-collectors-shadow", () => remainingShadows);
+vi.mock("./browser-collector-sync", async (importOriginal) => ({
+  ...await importOriginal<typeof import("./browser-collector-sync")>(),
+  collectBrowserWorkspace: browserCollectors.collectBrowserWorkspace,
+}));
 
 const workspaceId = "11111111-1111-4111-8111-111111111111";
 const identity = {
@@ -166,6 +171,8 @@ function summaryMarker(
 
 describe("Rayfin snapshot persistence", () => {
   beforeEach(() => {
+    vi.stubEnv("VITE_ATLAS_COLLECTOR_ROLLBACK", "true");
+    browserCollectors.collectBrowserWorkspace.mockReset();
     ATLAS_CONFIG.syncAdminEmail = identity.email;
     ATLAS_CONFIG.syncAdminSubject = identity.id;
     ATLAS_CONFIG.snapshotRetentionCount = 12;
@@ -793,6 +800,33 @@ describe("Rayfin snapshot persistence", () => {
       }),
     );
     expect(mocks.data.SyncRun.delete).not.toHaveBeenCalled();
+  });
+
+  it("publishes browser-driven Rayfin collection with the unchanged manifest-last writer", async () => {
+    vi.stubEnv("VITE_ATLAS_COLLECTOR_ROLLBACK", "false");
+    browserCollectors.collectBrowserWorkspace.mockResolvedValue({
+      raw: {}, summary: "Collectors: Rayfin active; scanner compatibility",
+    });
+    const persisted = await runFabricSync(false, identity);
+    expect(persisted?.items).toHaveLength(SAMPLE_DATA.items.length);
+    expect(persisted?.items).toEqual(
+      expect.arrayContaining(SAMPLE_DATA.items.map((item) => expect.objectContaining(item))),
+    );
+    expect(browserCollectors.collectBrowserWorkspace).toHaveBeenCalledTimes(1);
+    expect(mocks.invokeSyncAll).not.toHaveBeenCalled();
+    expect(coreShadow.startCoreCollectorShadow).not.toHaveBeenCalled();
+    const marker = mocks.data.Workspace.create.mock.invocationCallOrder[0];
+    const content = ["FabricItem", "LineageEdge", "Principal", "AccessGrant", "JobRun", "ConfigEntry", "SyncRun"]
+      .flatMap((name) => mocks.data[name].create.mock.invocationCallOrder as number[]);
+    expect(Math.max(...content)).toBeLessThan(marker);
+  });
+
+  it("preserves the prior snapshot when active Rayfin composition rejects", async () => {
+    vi.stubEnv("VITE_ATLAS_COLLECTOR_ROLLBACK", "false");
+    browserCollectors.collectBrowserWorkspace.mockRejectedValue(new Error("incomplete collector envelope"));
+    await expect(runFabricSync(false, identity)).rejects.toThrow("incomplete collector");
+    expect(mocks.data.Workspace.create).not.toHaveBeenCalled();
+    expect(mocks.invokeSyncAll).not.toHaveBeenCalled();
   });
 
   it("retries the completed SyncRun update before publishing the manifest", async () => {
