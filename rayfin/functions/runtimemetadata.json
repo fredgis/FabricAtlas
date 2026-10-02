@@ -400,6 +400,70 @@
       ]
     },
     {
+      "functionName": "searchCatalogPreview",
+      "delegateParameters": [
+        {
+          "name": "ctx",
+          "type": "RayfinContext<AtlasSchema, AudienceType.Fabric>",
+          "optional": false,
+          "hasDefault": false,
+          "position": 0,
+          "isFabricParameter": false
+        },
+        {
+          "name": "protocolVersion",
+          "type": "1",
+          "optional": false,
+          "hasDefault": false,
+          "position": 1,
+          "isFabricParameter": false
+        },
+        {
+          "name": "search",
+          "type": "CatalogSearchTextInput | null",
+          "optional": false,
+          "hasDefault": false,
+          "position": 2,
+          "isFabricParameter": false
+        },
+        {
+          "name": "itemTypes",
+          "type": "CatalogSearchItemTypesInput",
+          "optional": false,
+          "hasDefault": false,
+          "position": 3,
+          "isFabricParameter": false
+        },
+        {
+          "name": "workspaceIds",
+          "type": "CatalogSearchWorkspaceIdsInput",
+          "optional": false,
+          "hasDefault": false,
+          "position": 4,
+          "isFabricParameter": false
+        },
+        {
+          "name": "pageSize",
+          "type": "CatalogSearchPageSizeInput | null",
+          "optional": false,
+          "hasDefault": false,
+          "position": 5,
+          "isFabricParameter": false
+        },
+        {
+          "name": "continuationToken",
+          "type": "CatalogSearchContinuationInput | null",
+          "optional": false,
+          "hasDefault": false,
+          "position": 6,
+          "isFabricParameter": false
+        }
+      ],
+      "contextAudiences": [
+        "Fabric"
+      ]
+    },
+    {
       "functionName": "syncStart",
       "delegateParameters": [
         {

@@ -36,6 +36,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   places endpoints outside the snapshot in a separate lane and keeps every
   snapshot node in place. With no persisted evidence it says so and draws
   nothing.
+- Optional OneLake Catalog Search (Preview) discovery in the `Ctrl+K` palette
+  behind the default-off `VITE_ATLAS_FEATURE_CATALOG_SEARCH` flag. The
+  synchronizer-only `searchCatalogPreview` Function calls the fixed Catalog
+  Search endpoint with bounded pages, results, time and retries, and returns
+  allowlisted, source-labelled metadata with coverage. Results follow the
+  unchanged snapshot results and never delete or hide snapshot evidence.
 
 ### Changed
 

@@ -718,6 +718,35 @@ npm test -- src\atlas\sql-catalog.spec.ts src\atlas\workspace-sql-metadata.spec.
 npm --prefix rayfin\functions run build
 ```
 
+## OneLake Catalog Search (Preview)
+
+`searchCatalogPreview` declares only the Fabric audience and powers optional discovery results in
+the `Ctrl+K` palette. It is off by default. To enable it for a build, add this public value to
+the git-ignored `rayfin/.env` (`rayfin env` maps it to `VITE_ATLAS_FEATURE_CATALOG_SEARCH`) and
+redeploy with `npx rayfin up`:
+
+```dotenv
+RAYFIN_PUBLIC_ATLAS_FEATURE_CATALOG_SEARCH=true
+```
+
+Only the configured synchronizer sees the **Search catalog** action, and the Function enforces
+the same `SynchronizerAuthority` gate. Results are permission-filtered for the AppBackend
+application identity, not for the signed-in user, and are metadata only: they are never
+persisted and never remove snapshot evidence. The Catalog Search API is Preview; it supports
+users, service principals and managed identities. If that identity is denied, the palette reports
+`Catalog Search permission denied` and snapshot search keeps working.
+
+As of 2026-10-02 the contract is verified with a delegated user token against FGI-MAIN, but not
+yet under the deployed Functions application identity. After deploying, sign in as the
+synchronizer, search a known item name and confirm results appear before enabling the flag for
+a shared build. See [catalog-search.md](catalog-search.md). Validate with:
+
+```powershell
+npx --no-install rayfin functions init
+npm test -- src\atlas\catalog-search-function.spec.ts src\atlas\catalog-search.spec.ts src\atlas\components\CommandPalette.spec.tsx src\atlas\durable-sync.spec.ts src\lib\rayfin-client.spec.ts
+npm --prefix rayfin\functions run build
+```
+
 ## Scripts
 
 | Command | What it does |

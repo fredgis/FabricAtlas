@@ -45,6 +45,15 @@ import {
   type PowerBiItemsInput,
   type PowerBiStageEnvelope,
 } from './workspace-powerbi.js';
+import {
+  searchCatalogPreview,
+  type CatalogSearchContinuationInput,
+  type CatalogSearchEnvelope,
+  type CatalogSearchItemTypesInput,
+  type CatalogSearchPageSizeInput,
+  type CatalogSearchTextInput,
+  type CatalogSearchWorkspaceIdsInput,
+} from './catalog-search.js';
 
 const udf = new UserDataFunctions();
 
@@ -151,6 +160,23 @@ udf.func(
     correlationId: SyncUuidInput | null = null,
   ): Promise<PowerBiStageEnvelope> =>
     workspaceCollectPowerBi(ctx, protocolVersion, workspaceId, items, includeAdminEvidence, correlationId),
+  [],
+);
+
+// Optional OneLake Catalog Search (Preview) discovery: fixed endpoint, metadata only, never authoritative.
+// Typed callers pass null or [] explicitly; a continuation token must be sent alone.
+udf.func(
+  'searchCatalogPreview',
+  async (
+    ctx: RayfinContext<AtlasSchema, AudienceType.Fabric>,
+    protocolVersion: 1,
+    search: CatalogSearchTextInput | null,
+    itemTypes: CatalogSearchItemTypesInput,
+    workspaceIds: CatalogSearchWorkspaceIdsInput,
+    pageSize: CatalogSearchPageSizeInput | null,
+    continuationToken: CatalogSearchContinuationInput | null,
+  ): Promise<CatalogSearchEnvelope> =>
+    searchCatalogPreview(ctx, protocolVersion, search, itemTypes, workspaceIds, pageSize, continuationToken),
   [],
 );
 

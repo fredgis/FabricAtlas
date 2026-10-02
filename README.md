@@ -207,6 +207,7 @@ Fabric Atlas collects that metadata without copying business data.
 |---|---|
 | Global `Ctrl+K` search | Searches items, relational/KQL objects, ontology and graph types, Data Agent selections, principals, jobs, configuration and notes |
 | Debounced workspace index | Reuses one index per snapshot and never activates results from an earlier query |
+| Optional OneLake catalog discovery | Default-off Preview source for the synchronizer that appends labelled Catalog Search results after, never instead of, snapshot results |
 | Targeted navigation | Opens the matching drawer, asset, review, job or Workspace Hub section |
 | Shareable view state | Keeps active sections, filters, searches, selected assets and focused runs in namespaced URL parameters |
 | Personal saved views | Stores user-scoped filter presets in the Fabric-backed Rayfin database |

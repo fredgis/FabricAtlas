@@ -171,6 +171,8 @@ interface FabricSendOptions {
   maxResponseBytes?: number;
   /** Return 202 Accepted headers without reading the body. */
   accepted?: boolean;
+  /** Serialized JSON request body; retries resend the same body. */
+  body?: string;
 }
 
 function allowlistedQuery(query: FabricQuery | undefined): URLSearchParams {
@@ -511,6 +513,25 @@ export class FabricRestClient {
     throw new FabricRestError("operation-incomplete");
   }
 
+  /**
+   * POST a JSON body to one fixed Fabric path and return its JSON object.
+   * Reserved for read-only query actions such as Catalog Search, because
+   * throttling and transport retries resend the same body.
+   */
+  async postJson(
+    path: string,
+    body: Readonly<Record<string, unknown>>,
+    budget?: RequestBudget,
+    maxResponseBytes?: number,
+  ): Promise<Record<string, unknown>> {
+    const response = await this.#send(fabricApiUrl(path), budget, {
+      method: "POST",
+      body: JSON.stringify(body),
+      maxResponseBytes,
+    });
+    return response.body as Record<string, unknown>;
+  }
+
   /** GET a paginated Fabric `value` list from one fixed path. */
   async list(
     path: string,
@@ -623,7 +644,11 @@ export class FabricRestClient {
           headers: {
             Authorization: `Bearer ${this.#token}`,
             Accept: "application/json",
+            ...(options.body === undefined
+              ? {}
+              : { "Content-Type": "application/json" }),
           },
+          ...(options.body === undefined ? {} : { body: options.body }),
         });
         if (
           response.type === "opaqueredirect" ||

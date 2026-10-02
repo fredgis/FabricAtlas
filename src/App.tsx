@@ -56,6 +56,12 @@ import {
   type AtlasData,
 } from "./atlas/model";
 import { buildSearchIndex } from "./atlas/search";
+import {
+  CATALOG_SEARCH_FEATURE_ID,
+  catalogSearchAvailability,
+  searchOneLakeCatalog,
+} from "./atlas/catalog-search";
+import { isFeatureEnabled } from "./atlas/feature-flags";
 import { workspaceDetailLabel } from "./atlas/workspace-display";
 import {
   captureWorkspaceFocus,
@@ -279,6 +285,11 @@ function App() {
     };
   }, [density.value]);
   const workspaceSearchIndex = useMemo(() => buildSearchIndex(data), [data]);
+  const catalogAvailability = catalogSearchAvailability({
+    enabled: isFeatureEnabled(CATALOG_SEARCH_FEATURE_ID),
+    isPreview,
+    canSync,
+  });
 
   useEffect(() => {
     const openSearch = (event: KeyboardEvent) => {
@@ -700,6 +711,11 @@ function App() {
         open={commandOpen}
         onClose={() => setCommandOpen(false)}
         onSelect={(result) => navigate(navigationForSearch(result))}
+        catalogSearch={
+          catalogAvailability === "disabled"
+            ? undefined
+            : { availability: catalogAvailability, search: searchOneLakeCatalog }
+        }
       />
     </div>
       {navOpen && (

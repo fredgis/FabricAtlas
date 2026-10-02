@@ -87,6 +87,7 @@ export const PREVIEW_API_REGISTRY: Record<
       "Search is a permission-filtered discovery source, not authoritative snapshot enumeration.",
     limitations: [
       "An empty or missing result does not prove that an asset is absent.",
+      "Results are filtered for the Atlas application identity, not the signed-in user, and grant no access to item content.",
       "A continuation token cannot be combined with search or filter values.",
     ],
     lastVerifiedAt: "2026-10-02",
