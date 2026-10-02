@@ -172,7 +172,7 @@ A team note on the workspace or an item.
 `body`, `createdAt`
 
 Comments are not tied to a catalog snapshot, so they survive every refresh.
-They are append-only in v1.x because `Comment` exposes create and read but no
+They are append-only because `Comment` exposes create and read but no
 update or delete action. `authorName` and `authorEmail` store the authenticated
 email supplied by the Rayfin session. `authorId` is bound to the authenticated
 subject. Client-selected catalog labels cannot impersonate another note author.
@@ -415,7 +415,7 @@ decision. Clearing appends an event and retains all earlier records.
 
 ## GovernancePolicy
 
-Shared targets for one configured workspace.
+Shared targets scoped to one selected workspace.
 
 `workspace_id`, `recordKey`, `writerEmail`, `documentationTarget`,
 `ownershipTarget`, `sensitivityTarget`, `accessTarget`, `lineageTarget`,

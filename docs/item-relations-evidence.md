@@ -114,8 +114,8 @@ unknown codes must be updated before they consume collector output.
 `workspaceCollectItemRelations` in
 `rayfin/functions/src/workspace-item-relations.ts` collects this evidence
 server-side. It is read-only and non-authoritative: it writes no Rayfin rows,
-creates no `LineageEdge` values and interprets no direction. Only the bounded
-browser shadow calls it.
+creates no `LineageEdge` values and interprets no direction. The active
+browser-serialized collector composition calls it in bounded batches.
 
 - Input: `protocolVersion: 1`, a strict workspace UUID, 1-16 unique root item
   UUIDs and a strict correlation UUID or `null`. No token, URL, endpoint or
@@ -147,7 +147,7 @@ browser shadow calls it.
 - Envelope: the schema-version 1 evidence plus `authoritative: false`, an
   optional `correlationId` and an optional `stopReason`.
   `parseItemRelationsEvidence` ignores these fields, so callers persist only
-  the parsed contract. The browser shadow records `stopReason` separately as
+  the parsed contract. The browser collector records `stopReason` separately as
   manifest coverage metadata.
 
 ### Comparison statuses
@@ -169,11 +169,9 @@ missing Beta response does not prove that a dependency is absent.
 
 Not ported from the experiment:
 
-- `sync_item_relations` in the Python UDF, the browser collection loop, UDF
-  URL retargeting, Item Relations token scopes and batch splitting. Phase 4
-  replaces collection with the `workspaceCollectItemRelations` Function,
-  called by the bounded browser shadow; batching beyond the 16-item sample is
-  not wired yet.
+- `sync_item_relations` in the Python UDF. Phase 4 replaces collection with
+  `workspaceCollectItemRelations`, called by the active browser composition in
+  batches of at most 16 root items.
 - `ItemRelationsBetaSnapshot` and its chunked persistence. Replaced by the
   additive `ItemRelationsEvidenceSnapshot` entity described under
   [Persisted evidence](#persisted-evidence); Preview rows stay separate from
@@ -253,8 +251,8 @@ writes and reads it; nothing in either path touches `LineageEdge`.
 - **Policies.** Shared authenticated reads, like the synchronized catalog.
   Creates require `claims.email == writerEmail` and the configured synchronizer
   subject; deletes require the synchronizer subject. There is no update.
-- **Write path.** `runFabricSync` passes an `onCollected` callback to the
-  bounded Item Relations shadow. It fires only when every Function batch
+- **Write path.** `runFabricSync` receives the collection from the active
+  bounded Item Relations stage. It is retained only when every Function batch
   returned a valid envelope; failures, timeouts, disabled flags and empty
   targets produce nothing. After the Atlas `Workspace` marker is published,
   `persistItemRelationsEvidence` reads the newest stored envelope, applies
@@ -268,11 +266,10 @@ writes and reads it; nothing in either path touches `LineageEdge`.
   SHA-256, then `parseItemRelationsEvidence`. It falls back to the next newest
   of three candidates, returns `null` when nothing is stored and throws a
   contract error when every stored envelope is invalid.
-- **Gates.** Evidence is stored only on deployments where
-  `VITE_ATLAS_ITEM_RELATIONS_COLLECTOR_SHADOW` is on, and shown only where
-  `VITE_ATLAS_FEATURE_ITEM_RELATIONS` is on. Both default to off. The
-  shadow samples at most 16 root items, so stored evidence is partial and the
-  UI says so.
+- **Gates.** Evidence is shown only where
+  `VITE_ATLAS_FEATURE_ITEM_RELATIONS` is on. The feature defaults off because
+  the API is Beta. Collection uses batches of at most 16 root items; coverage
+  and any stop reason are stored and shown explicitly.
 
 ## Phase 5 integration checklist
 

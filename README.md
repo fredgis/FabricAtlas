@@ -2,7 +2,7 @@
 
 <img src="docs/assets/fabric-atlas-hero-v5.svg" alt="Fabric Atlas, open-source workspace intelligence for Microsoft Fabric" width="100%">
 
-Fabric Atlas gives a team one readable map of its Fabric workspace. It brings
+Fabric Atlas gives a team one readable map of its selected Fabric workspaces. It brings
 together lineage, item metadata, access, sensitivity and run history, then keeps
 the last validated snapshot in Fabric so everyone sees the same state.
 
@@ -106,6 +106,9 @@ Fabric Atlas collects that metadata without copying business data.
 - Review effective access, direct shares and external principals.
 - Check sensitivity coverage and confidential assets.
 - Compare validated snapshots and review governance findings.
+- Expand cross-workspace lineage evidence, inspect semantic-model dependencies,
+  and compare historical lineage snapshots.
+- Review Policies & AI evidence without inferring exposure or compliance.
 - Focus on newly introduced risks with Governance Radar and personal acknowledgements.
 - Track six posture pillars against explicit governance targets.
 - Generate departure packs with ownership, blast radius and reassignment evidence.
@@ -537,12 +540,14 @@ startup cost grows materially.
 
 ## Access and collaboration scope
 
-Fabric Atlas v1.x is scoped to one configured workspace and uses a shared
-governance catalog. Every authenticated user who can open the deployed app can
-read the complete synchronized metadata graph, including items, object
-inventory, lineage, principals, access grants, jobs, configuration, snapshot
-history and team notes. Catalog reads are not filtered per user. Control this
-audience through the Fabric app and workspace access settings.
+Fabric Atlas stores an administrator-selected workspace scope with an
+independent validated manifest for each synchronized workspace. One workspace
+is active in the UI at a time. Every authenticated user who can open the
+deployed app can read the complete synchronized metadata graph for every
+selected workspace, including items, object inventory, lineage, principals,
+access grants, jobs, configuration, snapshot history and team notes. Catalog
+reads are not filtered per user. Control this audience through the Fabric app
+and workspace access settings.
 
 Saved views, access-review decisions and Governance Radar acknowledgements are
 different: Rayfin policies bind those records to the authenticated subject, so
@@ -560,7 +565,7 @@ An exception needs a reason and a future expiry. It annotates the finding
 without hiding it or improving the underlying score, and it remains separate
 from a user's personal mute.
 
-Team notes are append-only in v1.x. Creation is bound to the authenticated
+Team notes are append-only. Creation is bound to the authenticated
 email and subject. Atlas stores the authenticated session email as the author
 label, and that label remains stable after reload. Client-selected catalog
 labels cannot impersonate another note author. Notes cannot currently be edited
@@ -619,7 +624,7 @@ metadata capability was not collected; it is not treated as a missing value.</su
 
 | <sub>Fabric element</sub> | <sub>Catalog and configuration</sub> | <sub>Internal inventory</sub> | <sub>Lineage</sub> | <sub>Access</sub> | <sub>Recent jobs</sub> | <sub>Known boundary</sub> |
 |---|---|---|---|---|---|---|
-| <sub>Workspace</sub> | <sub>Name, ID, capacity and region</sub> | <sub>Not applicable</sub> | <sub>Not applicable</sub> | <sub>Workspace role assignments</sub> | <sub>Not applicable</sub> | <sub>One workspace per `v1.x` deployment</sub> |
+| <sub>Workspace</sub> | <sub>Name, ID, capacity and region</sub> | <sub>Not applicable</sub> | <sub>Not applicable</sub> | <sub>Workspace role assignments</sub> | <sub>Not applicable</sub> | <sub>Administrator-selected shared scope; one active workspace view at a time</sub> |
 | <sub>Lakehouse</sub> | <sub>Description, OneLake paths, default schema and SQL endpoint status</sub> | <sub>Tables and columns from Lakehouse REST, scanner metadata or a downstream-model subset</sub> | <sub>Scanner relations and SQL endpoint path</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Schema-enabled variants may require the downstream Semantic Model path</sub> |
 | <sub>Warehouse</sub> | <sub>Description, collation, created and updated dates</sub> | <sub>Tables, views and columns from the scanner; downstream-model subset fallback</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Complete inventory can require SQL catalog connectivity</sub> |
 | <sub>SQL Database</sub> | <sub>Database identity, endpoint, collation and backup metadata</sub> | <sub>Schemas, tables, views and columns from a constant read-only system-catalog query; scanner subset fallback</sub> | <sub>Scanner relations and verified downstream bindings</sub> | <sub>Workspace roles, item users and SQL metadata visibility</sub> | <sub>When supported</sub> | <sub>Requires an Azure SQL delegated token; no rows or module definitions are read</sub> |

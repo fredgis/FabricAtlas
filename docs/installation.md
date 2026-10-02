@@ -514,18 +514,22 @@ npx rayfin up --tenant <tenant-id> --workspace <workspace-name>
 ```
 
 The store can switch and rehydrate an active selected workspace, and every backend read/write takes
-that workspace ID explicitly. The visible selector and multi-workspace synchronization action are
-not added yet. The configured deployment workspace remains the fallback until an explicit scope
-is persisted.
+that workspace ID explicitly. The header selector, Workspace Hub `Sync all` and per-workspace Sync
+actions use the shared selected scope. Runs are serialized in the browser and publish independent
+workspace manifests. The configured deployment workspace remains the fallback until an explicit
+scope is persisted.
 
-## Fabric Core collector stage
+## Browser-serialized Rayfin collector path
 
-`workspaceCollectCore` also declares the Fabric audience and runs behind the same
-synchronizer-only gate. It is a read-only dual-run stage for comparison with the Python UDF: it is
-not wired to the Sync button, writes no Rayfin rows and must not be published as a snapshot. Its
-excluded sections and capabilities are `unsupported` with `collector-not-migrated`, so
-`validateRawSync` rejects it by design; validate it with `validateCoreCollectorEnvelope` instead.
-Typed callers pass the correlation explicitly:
+The Sync button now calls `workspaceCollectCore`, Definitions, Item Relations,
+KQL, SQL and Power BI definition collectors through Rayfin Functions. Each
+stage is read-only and non-authoritative by itself. The browser validates and
+merges the bounded envelopes, invokes Python `sync_compatibility` only for the
+exact unsupported or unverified gaps, then publishes through the existing
+manifest-last writer.
+
+`workspaceCollectCore` declares the Fabric audience and runs behind the
+synchronizer-only gate. Typed callers pass the correlation explicitly:
 
 ```ts
 await client.functions.workspaceCollectCore.invoke({
@@ -550,40 +554,22 @@ npm --prefix rayfin\functions run build
 `rayfin functions init` also refreshes Rayfin agent-skill files and `rayfin/.lockfile.json`;
 revert those unrelated changes before committing generated Functions contracts.
 
-For an isolated parity deployment only, enable the browser shadow adapter:
+The previous Python-first path remains an explicit emergency rollback:
 
 ```dotenv
-VITE_ATLAS_CORE_COLLECTOR_SHADOW=true
-VITE_ATLAS_DEFINITION_COLLECTOR_SHADOW=true
-VITE_ATLAS_ITEM_RELATIONS_COLLECTOR_SHADOW=true
-VITE_ATLAS_KQL_COLLECTOR_SHADOW=true
-VITE_ATLAS_SQL_COLLECTOR_SHADOW=true
-VITE_ATLAS_POWERBI_COLLECTOR_SHADOW=true
+VITE_ATLAS_COLLECTOR_ROLLBACK=true
 ```
 
-The existing Python sync and the Rayfin Core Function then start under the same
-correlation ID. Supported definition items from the Core inventory are passed
-to `workspaceCollectDefinitions` in bounded batches. The browser parity probe
-passes a deterministic sample of at most 16 Core item IDs to
-`workspaceCollectItemRelations`. Only the Python result can publish the snapshot. Atlas
-stores bounded Core, definition and Item Relations status summaries in
-`SyncRun`. After the snapshot is published, a successful Item Relations shadow
-collection is also stored as non-authoritative evidence in
-`ItemRelationsEvidenceSnapshot`. The KQL shadow adds only structural table/function/view counts and
-the dated data-plane blocker. Atlas never logs the raw shadow payloads.
-Leave the flag unset in stable deployments until the real comparison gate
-passes.
-
-Definition and Item Relations shadows share a three-minute browser deadline.
-They may report a timeout, but cannot delay authoritative Python snapshot
-publication indefinitely. Full-workspace Item Relations collection belongs to
-the durable server orchestration, not the browser parity probe.
+Rollback changes collection only; authorization, snapshot validation and
+manifest-last publication remain unchanged. The compatibility plan is echoed
+and checked so Python cannot silently run broader collectors than requested.
+Scheduling remains disabled because the browser still drives every stage.
 
 ## Fabric definition stage
 
 `workspaceCollectDefinitions` declares the Fabric audience and runs behind the same gate. It is a
-read-only dual-run stage that never publishes snapshots. Callers send an allowlisted batch of up
-to eight items:
+read-only stage consumed by the browser composition. Callers send an allowlisted batch of up to
+eight items:
 
 ```ts
 await client.functions.workspaceCollectDefinitions.invoke({
@@ -618,7 +604,7 @@ by hand.
 ## Item Relations API (Beta) collector
 
 `workspaceCollectItemRelations` declares the Fabric audience, runs behind the same gate and is
-called only by the bounded browser shadow:
+called by the active bounded browser composition:
 
 ```ts
 await client.functions.workspaceCollectItemRelations.invoke({
@@ -638,8 +624,7 @@ pagination and relation coverage are not yet verified; keep it behind the defaul
 `VITE_ATLAS_FEATURE_ITEM_RELATIONS` flag. With the flag on, **Map & lineage** shows the
 `Include Item Relations API evidence (Preview)` checkbox, which reads the newest validated
 `ItemRelationsEvidenceSnapshot` envelope for the active workspace. Evidence is written only
-when `VITE_ATLAS_ITEM_RELATIONS_COLLECTOR_SHADOW` is also on, the shadow collection succeeds
-and the Atlas snapshot is published. Deploy the additive entity with a normal `npx rayfin up`
+when the active collection succeeds and the Atlas snapshot is published. Deploy the additive entity with a normal `npx rayfin up`
 (no `--force`) before enabling either flag. Validate with:
 
 ```powershell
@@ -652,7 +637,7 @@ npm --prefix rayfin\functions run build
 
 `workspaceCollectKqlMetadata` declares only the Fabric audience and returns Eventhouse and KQL
 database properties plus KQL structural schema from the documented KQL Database definition. It is
-read-only, non-authoritative and not called by the browser yet:
+read-only, non-authoritative by itself and called by the active browser composition:
 
 ```ts
 await client.functions.workspaceCollectKqlMetadata.invoke({
@@ -681,7 +666,8 @@ npm --prefix rayfin\functions run build
 
 `workspaceCollectSqlMetadata` declares exactly `AudienceType.Fabric` and `AudienceType.Sql`. It
 returns SQL Database, Warehouse and Lakehouse SQL analytics endpoint item properties plus
-structural catalog metadata. It is read-only, non-authoritative and not called by the browser yet:
+structural catalog metadata. It is read-only, non-authoritative by itself and called by the active
+browser composition:
 
 ```ts
 await client.functions.workspaceCollectSqlMetadata.invoke({
@@ -825,7 +811,7 @@ npm run build:mcp
 | `npm run test` | Vitest |
 | `npx rayfin up` | Deploy app + apply schema to Fabric |
 
-Team notes are shared and append-only in v1.x. Atlas stores the authenticated
+Team notes are shared and append-only. Atlas stores the authenticated
 session email as the author label and binds the note to the authenticated
 subject. That label survives reload, but notes cannot currently be edited or
 deleted.

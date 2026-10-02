@@ -10,7 +10,8 @@ Fabric portal (iframe)
         │  brokered auth (Entra ID)
         ▼
 React + Vite SPA  ── Rayfin static hosting (dist/)
-        ├──────────► Published User Data Function ──► Fabric + Power BI APIs
+        ├──────────► Rayfin Functions ──────────────► Fabric + SQL metadata APIs
+        ├──────────► Python UDF compatibility ─────► Power BI scanner + exact gaps
         │
         │  RayfinClient
         ▼
@@ -28,9 +29,13 @@ Rayfin Data API (Data API Builder)  ──  Fabric SQL database (mssql)
 - `RayfinClient` (`src/lib/rayfin-client.ts`) talks to the Rayfin Data API, which serves the Fabric
   SQL database. Auth is Fabric brokered (`src/services/rayfin-auth.service.ts`).
 - Rayfin Functions live in `rayfin/functions/`, a separate npm package that `rayfin up` builds and
-  deploys with application authentication. Alongside `ping`, the Phase 2 spike registers
-  `syncStart`, `syncContinue`, `syncStatus` and `syncCancel`. These functions only checkpoint a
-  persistence probe; the deployed browser Sync flow has not been cut over. Phase 3 also registers
+  deploys with application authentication. The active browser Sync calls the bounded Core,
+  definition, Item Relations, KQL, SQL and Power BI definition collectors serially, then uses the
+  existing validated manifest-last writer. Exact unsupported or unverified gaps are delegated to
+  the Python `sync_compatibility` function; the explicit rollback flag restores the previous
+  Python collector path. This cutover does not provide background execution or scheduling.
+  The Phase 2 `syncStart`, `syncContinue`, `syncStatus` and `syncCancel` functions remain a
+  fail-closed durable-execution probe. Phase 3 also registers
   `workspaceDiscover`, which uses an application-identity Fabric token and returns only bounded
   workspace identity fields after a synchronizer-only Rayfin policy check. The first collector
   tranche adds `workspaceCollectCore`, a read-only dual-run Fabric Core collector stage behind the
@@ -70,7 +75,7 @@ Rayfin Data API (Data API Builder)  ──  Fabric SQL database (mssql)
   lineage time machine and breaking change guard; X-Ray holds the semantic model DAX dependency
   explorer. See [lineage-depth.md](lineage-depth.md) for rules, limits and deferred capabilities.
 - `ItemRelationsEvidenceSnapshot` stores non-authoritative Item Relations evidence written after a
-  published snapshot by the bounded collector shadow. It is never read into `LineageEdge`.
+  published snapshot by the active bounded collector. It is never read into `LineageEdge`.
 
 ## Phase 12 compatibility decisions (2026-10-02)
 
@@ -130,12 +135,13 @@ See [data-model.md](data-model.md) for fields.
 | `ItemRelationsEvidenceSnapshot` | Chunked, non-authoritative Item Relations API (Beta) evidence per workspace and snapshot |
 | `OperationalIncident` | Allowlisted observed job-failure incidents per workspace and snapshot, from sanitized job history |
 
-## Phase 2 persistence probe (no cutover)
+## Phase 2 durable-execution probe (not the browser collector path)
 
-The browser Sync button still invokes the existing published Python UDF and writes the existing
-snapshot entities. The new request-driven Functions are not called by that flow. The probe writes
-only `SyncJob`, `SyncTask` and `SyncCommand`: it never writes a `Workspace` manifest, snapshot
-children or `SyncRun`. A completed probe is not a completed Fabric metadata synchronization.
+Browser Sync now composes Rayfin collectors with exact Python compatibility
+gaps and writes the existing snapshot entities. The separate request-driven
+durable probe writes `SyncJob`, `SyncTask` and `SyncCommand`; it does not drive
+the browser collector composition or publish a `Workspace` manifest. A
+completed probe is not a completed Fabric metadata synchronization.
 
 Each function obtains the fluent client through `ctx.getDataClient()`. Functions use application
 authentication, but Rayfin DB requests retain the invocation's caller identity and obey data
@@ -432,10 +438,9 @@ run actions. Long run errors stay in a fixed-layout table and expand into their 
 
 `SYNC_BACKEND_CAPABILITIES` in `src/atlas/workspace-sync.ts` keeps background runs and scheduled
 runs closed. The UI therefore states that a run executes in the synchronizer's browser tab through
-the Python User Data Function, shows the schedule as disabled with the verified reason and does not
-render resume or schedule-editing controls. The multi-workspace task graph is not added yet. The
-configured deployment workspace remains the fallback until the administrator persists an explicit
-shared scope.
+Rayfin collectors plus exact Python compatibility gaps, shows the schedule as disabled with the
+verified reason and does not render resume or schedule-editing controls. The configured deployment
+workspace remains the fallback until the administrator persists an explicit shared scope.
 
 The v2 multi-workspace graph remains an internal fail-closed framework until collector payload
 adapters and an externally serialized claim path are integrated.
@@ -444,14 +449,14 @@ Scheduled refresh remains disabled while any fallback step is driven through
 the browser or Python UDF. Persisted checkpoints support safe resume, not
 unattended continuation.
 
-### Fabric Core collector stage (dual-run, no cutover)
+### Active browser-serialized collector composition
 
-`workspaceCollectCore` is the first Python-to-Functions collector port. It is a read-only
-dual-run stage: it writes no Rayfin rows, never publishes a snapshot and does not replace the
-Python UDF. It takes `protocolVersion: 1`, a strict RFC workspace UUID and a strict correlation
-UUID or `null`; it accepts no token, URL, endpoint or request body. Input validation and the
-policy-protected `SynchronizerAuthority` sentinel gate run before the application-identity Fabric
-token is read.
+`workspaceCollectCore` starts the active Rayfin-first collection path. It writes no Rayfin rows
+itself; the browser validates and merges every bounded stage, invokes Python only for the planned
+compatibility gaps, and then publishes through the unchanged manifest-last writer. It takes
+`protocolVersion: 1`, a strict RFC workspace UUID and a strict correlation UUID or `null`; it
+accepts no token, URL, endpoint or request body. Input validation and the policy-protected
+`SynchronizerAuthority` sentinel gate run before the application-identity Fabric token is read.
 
 The Function calls fixed `api.fabric.microsoft.com/v1` paths for the workspace, its items, its
 role assignments and each item's `jobs/instances`. `rayfin/functions/src/fabric-rest.ts` rejects
@@ -739,9 +744,9 @@ the live-validation/cutover boundary.
 ## Authorization and collaboration scope
 
 The synchronized catalog entities use `@authenticated('read')` without a
-row-level reader policy. In the single-workspace v1.x architecture, every
-authenticated user who can open the deployed app can therefore read the whole
-governance graph: items, object inventory, lineage, principals, grants, jobs,
+row-level reader policy. Every authenticated user who can open the deployed app
+can therefore read the whole governance graph for every administrator-selected
+workspace: items, object inventory, lineage, principals, grants, jobs,
 configuration, history and shared comments. Deployment owners must treat the
 Fabric app audience as the catalog read boundary.
 
@@ -758,7 +763,7 @@ catalog labels cannot impersonate another note author.
 create and read. Shared `GovernancePolicy` and `GovernanceException` records are
 readable by the app audience and writable only by the configured synchronizer.
 
-Comments are append-only in v1.x: authenticated app users can read them and
+Comments are append-only: authenticated app users can read them and
 their authenticated author can create them, but the entity exposes no update
 or delete action.
 
@@ -1171,7 +1176,7 @@ row through `client.data.Comment.create`. Because comments are stored in the Fab
 they persist and are shared across the whole team. Configuration and comments are presented together
 in Workspace Hub so technical facts and human context stay adjacent. The
 display name resolved for a new note is preserved on reload; notes remain
-append-only in v1.x.
+append-only.
 
 ## Theming
 
