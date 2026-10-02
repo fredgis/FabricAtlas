@@ -28,7 +28,7 @@ Rayfin Data API (Data API Builder)  ──  Fabric SQL database (mssql)
 - `RayfinClient` (`src/lib/rayfin-client.ts`) talks to the Rayfin Data API, which serves the Fabric
   SQL database. Auth is Fabric brokered (`src/services/rayfin-auth.service.ts`).
 - Rayfin Functions live in `rayfin/functions/`, a separate npm package that `rayfin up` builds and
-  deploys with application authentication. Alongside `ping`, the local Phase 2 spike registers
+  deploys with application authentication. Alongside `ping`, the Phase 2 spike registers
   `syncStart`, `syncContinue`, `syncStatus` and `syncCancel`. These functions only checkpoint a
   persistence probe; the deployed browser Sync flow has not been cut over. They use no secrets or
   Fabric APIs. `rayfin/functions/src/types.ts`
@@ -119,10 +119,34 @@ continues or cancels. No token or endpoint is persisted. Initiator fields stay u
 SDK exposes no trusted subject/email accessor; the Functions do not decode its raw token.
 
 Root unit tests exercise orchestration with a test-only fluent-client transport and inspect policy
-declarations. Functions build checks the entity decorators and typed data calls. These local checks
-do not prove deployed SQL uniqueness or host permission enforcement; that requires a later explicit
-integration/deployment phase. See [installation.md](installation.md#phase-2-local-validation-only)
-for generation, validation and the optional-parameter typegen limitation.
+declarations. Functions build checks the entity decorators and typed data calls. The additive
+schema and Functions package have also been deployed to the isolated FabCon candidate, where the
+three tables were confirmed in the candidate SQL Database. This proves deployment compatibility,
+not caller-scoped execution, SQL uniqueness under contention or browser recovery.
+
+### Phase 2 decision: hybrid
+
+The persistence primitives are retained for bounded experiments, but the durable synchronization
+architecture is not adopted as the active product path. The browser still uses the Python UDF and
+the existing manifest-last snapshot writer.
+
+The blockers are explicit:
+
+- deployed `ctx.getDataClient()` calls require an authenticated Rayfin caller token
+- unattended execution has no verified trigger or delegated user identity
+- the fluent data API has no compare-and-swap or cross-row transaction for distributed claims
+- the probe does not collect Fabric metadata or publish snapshots
+- closing the browser preserves rows but does not continue work
+
+Automated direct-token validation also requires a delegated `Item.Execute.All` token. A cached
+`user_impersonation` token is not sufficient, and external Entra exchange remains disabled in the
+candidate configuration. No access or refresh token is persisted as a workaround.
+
+Do not connect the product Sync button to these functions or claim browser-resumable
+synchronization until an embedded authorized run proves start, continuation, cancellation,
+recovery and duplicate-publication safety. See
+[installation.md](installation.md#phase-2-integration-status) for the validation boundary and the
+optional-parameter typegen limitation.
 
 ## Authorization and collaboration scope
 

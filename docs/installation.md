@@ -255,12 +255,11 @@ keeps `rayfin/functions/src/types.ts` generated and writes the host URL to
 only development builds use. After changing a `udf.func()` signature without the dev host running,
 rerun `npx rayfin functions init` without `--force` to rebuild and regenerate the types.
 
-## Phase 2 local validation only
+## Phase 2 integration status
 
-The local durable synchronization spike registers `syncStart`, `syncContinue`, `syncStatus` and
+The durable synchronization spike registers `syncStart`, `syncContinue`, `syncStatus` and
 `syncCancel` alongside `ping`. It only writes its three additive checkpoint entities. Browser
-Sync still uses the published Python UDF and existing snapshot writer. Do not apply schema,
-publish Functions, or connect the UI as part of this phase.
+Sync still uses the published Python UDF and existing snapshot writer.
 
 Generate Functions contracts and runtime metadata through the supported CLI, never by editing
 `src/types.ts` or `runtimemetadata.json`. The re-run preserves existing source and performs the
@@ -273,6 +272,8 @@ npm test
 npm run lint
 npm run build
 npm --prefix rayfin\functions run build
+npx rayfin up --tenant <tenant-id> --workspace <workspace-name>
+npx rayfin up status
 ```
 
 All inputs require `protocolVersion: 1` and strict RFC UUIDs. Start with a fresh request UUID,
@@ -295,11 +296,24 @@ await client.functions.syncStatus.invoke({ protocolVersion: 1, workspaceId, jobI
 The generated files remain unmodified by hand. Resolve this optional-input typing limitation
 before exposing a consumer that requires the exact omission-friendly typed signature.
 
-Local tests verify pure logic, a test-only fluent-client transport and authored permission
-declarations; they do not call Fabric or a deployed Data API. Deployed uniqueness, caller-scoped
-permissions and interruption recovery still need an explicitly authorized integration phase.
-Distributed claims and scheduling remain blockers for any later architecture that requires them.
-There is no deployment or browser cutover in this spike.
+The additive schema and Functions package have been deployed to the isolated FabCon candidate.
+The candidate SQL Database contains `SyncJobs`, `SyncTasks` and `SyncCommands`. Deployment and
+schema generation therefore pass, while the following runtime checks remain open:
+
+- invoke the four sync functions through an embedded authenticated Rayfin session
+- close and reopen the app, then read the same persisted job
+- exercise cancellation and duplicate requests against the deployed Data API
+- verify uniqueness and policy enforcement under concurrent hosts
+
+Direct automated sign-in requires a delegated Power BI token with `Item.Execute.All`. The cached
+builder token exposes only `user_impersonation`, so it must not be used as proof of caller-scoped
+execution. External Entra exchange remains disabled after validation. Do not persist browser
+tokens, weaken entity policies or enable a broader auth path to bypass this requirement.
+
+The Phase 2 decision is **hybrid**. Keep the checkpoint entities and bounded Functions available
+for follow-up integration, but leave Python collection and browser snapshot publication
+authoritative. Distributed claims, transactional publication, unattended triggers and embedded
+recovery remain blockers. There is no browser cutover in this spike.
 
 ## Scripts
 
