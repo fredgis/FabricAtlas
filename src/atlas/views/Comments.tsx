@@ -31,7 +31,7 @@ export function CommentsView({
   const { comments, items } = data;
 
   const [text, setText] = useState("");
-  const [target, setTarget] = useState<string>(focus?.itemId ?? "");
+  const [requestedTarget, setTarget] = useState<string>(focus?.itemId ?? "");
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState("");
 
@@ -39,6 +39,7 @@ export function CommentsView({
     () => new Map<string, Item>(items.map((item) => [item.fabricId, item])),
     [items],
   );
+  const target = itemById.has(requestedTarget) ? requestedTarget : "";
 
   const feed = useMemo(
     () =>

@@ -168,6 +168,30 @@ describe("GovernanceCenterView", () => {
       tab: "catalog", focus: expect.objectContaining({ filters: { posturePillar: "ownership" } }),
     }));
   });
+  it("does not carry an Ownership posture deep-link into the Findings filter", async () => {
+    render(
+      <AtlasProvider isPreview>
+        <GovernanceCenterView onNavigate={vi.fn()} focus={{
+          requestId: "ownership-posture", governanceSection: "posture", filters: { pillar: "ownership" },
+        }} />
+      </AtlasProvider>,
+    );
+    expect(screen.getByRole("combobox", { name: "Posture trend pillar" })).toHaveValue("ownership");
+    fireEvent.click(screen.getByRole("tab", { name: /Findings/ }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: /Findings/ })).toHaveAttribute("aria-selected", "true"));
+    expect(screen.getAllByRole("button", { name: "Open evidence" }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Clear pillar" })).not.toBeInTheDocument();
+  });
+  it("ignores metadata posture pillars supplied as Findings categories", () => {
+    render(
+      <AtlasProvider isPreview>
+        <GovernanceCenterView onNavigate={vi.fn()} focus={{
+          requestId: "invalid-finding-pillar", governanceSection: "findings", filters: { pillar: "ownership" },
+        }} />
+      </AtlasProvider>,
+    );
+    expect(screen.getAllByRole("button", { name: "Open evidence" }).length).toBeGreaterThan(0);
+  });
 
   it("adds a shared exception without hiding the raw finding", async () => {
     renderView();

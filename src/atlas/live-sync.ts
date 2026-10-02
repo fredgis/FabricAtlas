@@ -773,6 +773,18 @@ export function mergeSyncEnrichment(
       [...(current.lineage ?? []), ...(enrichment.lineage ?? [])],
       (edge) => [edge.source, edge.target, edge.relation].join("\u0000"),
     ),
+    access: uniqueBy(
+      [...(current.access ?? []), ...(enrichment.access ?? [])],
+      (grant) =>
+        [
+          grant.itemId,
+          grant.principalId ?? grant.principalEmail ?? grant.principalName,
+          grant.principalType,
+          grant.userType,
+          grant.tenantWide ?? false,
+          grant.accessRight,
+        ].join("\u0000"),
+    ),
     config: uniqueBy(
       [...(current.config ?? []), ...(enrichment.config ?? [])],
       (entry) =>

@@ -4247,6 +4247,74 @@ class OptionalEndpointStatusTests(unittest.TestCase):
         self.assertEqual(errors, ["reportPages: transient-upstream"])
 
 
+class StorageSchemaCompatibilityTests(unittest.TestCase):
+    workspace_id = "11111111-1111-4111-8111-111111111111"
+    lakehouse_id = "22222222-2222-4222-8222-222222222222"
+    warehouse_id = "33333333-3333-4333-8333-333333333333"
+    model_id = "44444444-4444-4444-8444-444444444444"
+
+    def plan(self):
+        return json.dumps({
+            "version": 1, "stage": "scanner",
+            "items": [
+                {"id": self.lakehouse_id, "type": "Lakehouse", "collectors": []},
+                {"id": self.warehouse_id, "type": "Warehouse", "collectors": []},
+                {"id": self.model_id, "type": "SemanticModel", "collectors": []},
+            ],
+            "schemaItemIds": [self.lakehouse_id, self.warehouse_id],
+        })
+
+    def test_storage_fallback_retains_scanned_tables_and_a_downstream_model_subset(self):
+        scan = {
+            "id": self.workspace_id,
+            "lakehouses": [{"id": self.lakehouse_id, "users": []}],
+            "warehouses": [{
+                "id": self.warehouse_id, "users": [],
+                "tables": [{"name": "Orders", "schema": "dbo", "columns": [{"name": "Id", "dataType": "Int64"}]}],
+            }],
+            "datasets": [{
+                "id": self.model_id, "users": [],
+                "relations": [{"dependentOnArtifactId": self.lakehouse_id}],
+                "tables": [{
+                    "name": "Sales", "columns": [{"name": "Amount", "dataType": "Decimal"}],
+                    "measures": [{"name": "Total", "expression": "SUM(Sales[Amount])"}],
+                }],
+            }],
+        }
+        with (
+            mock.patch.object(function_app, "_scan_workspace", return_value=scan) as collect,
+            mock.patch.object(function_app, "_get", side_effect=AssertionError("unplanned storage request")),
+        ):
+            result = function_app.sync_compatibility("fixture-token", self.workspace_id, self.plan())
+
+        collect.assert_called_once_with("fixture-token", self.workspace_id, include_schema=True)
+        self.assertEqual(result["sections"]["scanner"]["status"], "complete")
+        self.assertEqual(result["schema"][self.lakehouse_id][0]["name"], "Sales")
+        self.assertEqual(result["schema"][self.lakehouse_id][0]["source"], "Downstream semantic model")
+        self.assertEqual(result["schema"][self.lakehouse_id][0]["measures"], [])
+        self.assertEqual(result["schema"][self.warehouse_id][0]["name"], "dbo.Orders")
+        self.assertEqual(result["schema"][self.warehouse_id][0]["columns"][0]["name"], "Id")
+        self.assertEqual(result["sections"]["storageSchema"], {"status": "complete", "code": "partial-unsupported"})
+
+    def test_unavailable_storage_schema_is_not_an_observed_empty_inventory(self):
+        scan = {
+            "id": self.workspace_id,
+            "lakehouses": [{"id": self.lakehouse_id, "users": []}],
+            "warehouses": [{"id": self.warehouse_id, "users": [], "tables": []}],
+            "datasets": [{"id": self.model_id, "users": [], "tables": []}],
+        }
+        with mock.patch.object(function_app, "_scan_workspace", return_value=scan):
+            result = function_app.sync_compatibility("fixture-token", self.workspace_id, self.plan())
+
+        self.assertNotIn(self.lakehouse_id, result["schema"])
+        self.assertEqual(result["schema"][self.warehouse_id], [])
+        self.assertIn({
+            "itemId": self.lakehouse_id, "section": "Metadata capability",
+            "label": "Storage schema", "value": "unsupported",
+        }, result["config"])
+        self.assertEqual(result["sections"]["storageSchema"], {"status": "complete", "code": "partial-unsupported"})
+
+
 class CollectorCompatibilityCleanupTests(unittest.TestCase):
     workspace_id = "11111111-1111-4111-8111-111111111111"
     lakehouse_id = "22222222-2222-4222-8222-222222222222"

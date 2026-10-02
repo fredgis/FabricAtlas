@@ -99,6 +99,20 @@ describe("App global workspace selector", () => {
         await waitFor(() => expect(selector).toBeEnabled(), { timeout: 3_000 });
         expect(selector).toHaveValue(SAMPLE_DATA.workspace.fabricId);
     });
+    it("clears workspace-bound note targets while preserving the Hub section and portal context", async () => {
+        const item = SAMPLE_DATA.items.find((entry) => entry.itemType === "Lakehouse")!;
+        window.history.replaceState(null, "", `/?ctid=tenant&workspace.section=notes&workspace.item=${item.fabricId}&workspace.comment=previous-note#workspace`);
+        renderApp();
+        const selector = await headerSelector();
+        expect(screen.getByLabelText("Target")).toHaveValue(item.fabricId);
+        fireEvent.change(selector, { target: { value: SECOND_WORKSPACE } });
+        await waitFor(() => expect(screen.getByLabelText("Target")).toHaveValue(""));
+        const params = new URL(window.location.href).searchParams;
+        expect(params.has("workspace.item")).toBe(false);
+        expect(params.has("workspace.comment")).toBe(false);
+        expect(params.get("workspace.section")).toBe("notes");
+        expect(params.get("ctid")).toBe("tenant");
+    });
 
     it("restores focus to the Workspace Hub selector after its view remounts", async () => {
         window.history.replaceState(null, "", "/?workspace.section=workspace#workspace");

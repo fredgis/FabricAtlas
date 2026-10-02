@@ -685,6 +685,30 @@ describe("MapView selection", () => {
       selectedTable,
     ).toHaveAttribute("aria-pressed", "true");
   });
+  it("uses local table controls when a relational schema also has metadata edges", () => {
+    const previous = SAMPLE_DATA.objectEdges;
+    const model = SAMPLE_DATA.items.find((item) => item.itemType === "SemanticModel")!;
+    const lakehouse = SAMPLE_DATA.items.find((item) => item.itemType === "Lakehouse")!;
+    SAMPLE_DATA.objectEdges = [{
+      source: { itemId: lakehouse.fabricId, kind: "sourceObject", id: "ExternalOnly", name: "ExternalOnly", tableName: "ExternalOnly" },
+      target: { itemId: model.fabricId, kind: "sourceObject", id: "ExternalOnly", name: "ExternalOnly", tableName: "ExternalOnly" },
+      relation: "binds source", confidence: "verified",
+    }];
+    try {
+      window.history.replaceState(null, "", "/#map");
+      render(<AtlasProvider isPreview><MapView /></AtlasProvider>);
+      fireEvent.click(screen.getByRole("button", { name: "objects" }));
+      const filter = screen.getByLabelText("Select object lineage table");
+      expect([...filter.querySelectorAll("option")].map((option) => option.value))
+        .toContain("rentals_daily_summary");
+      expect(screen.queryByLabelText("Filter object lineage by source item")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Filter object lineage by object kind")).not.toBeInTheDocument();
+      fireEvent.change(filter, { target: { value: "station_utilization" } });
+      expect(screen.getByLabelText(/^station_utilization, \d+ columns/)).toHaveAttribute("aria-pressed", "true");
+    } finally {
+      SAMPLE_DATA.objectEdges = previous;
+    }
+  });
 
   it("expands and collapses every deep-lineage table", async () => {
     window.history.replaceState(null, "", "/#map");

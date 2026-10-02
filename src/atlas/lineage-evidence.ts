@@ -14,8 +14,8 @@ import { lineageEdgeKey, normalizeLineageEdges } from "./lineage";
 import type { Edge, Item } from "./model";
 
 // Unified, read-only view of lineage evidence by source. Atlas snapshot edges
-// stay authoritative; Item Relations API (Beta) edges are only compared with
-// them and are never converted into `Edge` values.
+// stay authoritative; Item Relations API (Beta) edges stay out of persisted
+// snapshot lineage. The Map uses a transient projection for Preview layout.
 
 export type RelationshipAgreement =
   | "conflict"
@@ -275,10 +275,9 @@ export function relationshipMatches(
   ].some((value) => value.toLowerCase().includes(normalized));
 }
 
-/** Preview edges drawn on the graph; agreeing and visibility edges are not. */
+/** Preview graph edges include agreement with Atlas, but not visibility or self relations. */
 export function isDrawnPreviewEdge(entry: PreviewRelationshipEvidence): boolean {
   return (
-    entry.status !== "matching" &&
     entry.status !== "not-lineage" &&
     !entry.edge.selfRelation
   );

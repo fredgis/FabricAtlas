@@ -40,9 +40,11 @@ export function ConfigView({
   }, [config]);
 
   const firstWithConfig = items.find((item) => configByItem.has(item.fabricId)) ?? items[0];
-  const [selectedId, setSelectedId] = useState<string>(
+  const [requestedId, setSelectedId] = useState<string>(
     focus?.itemId ?? firstWithConfig?.fabricId ?? "",
   );
+  const selectedId = items.some((item) => item.fabricId === requestedId)
+    ? requestedId : firstWithConfig?.fabricId ?? "";
 
   useEffect(() => {
     if (selectedId) onSelectedItemChange?.(selectedId);

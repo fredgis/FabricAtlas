@@ -151,25 +151,29 @@ export async function collectBrowserWorkspace(
   if (core.correlationId !== correlationId) fail();
   const items: Item[] = core.items.map((item) => ({ id: item.id, type: item.type }));
   const known = new Set(items.map((item) => item.id));
+  const withoutPlaceholders = (values: RawSync["sections"]) =>
+    Object.fromEntries(Object.entries(values ?? {}).filter(([, value]) => value.code !== "collector-not-migrated"));
   let raw: RawSync = {
     ...core, syncMode: "complete",
     workspace: { ...core.workspace },
     items: core.items.map((item) => ({ ...item })),
     roleAssignments: core.roleAssignments.map((entry) => ({ ...entry })),
     jobs: core.jobs.map((entry) => ({ ...entry })),
-    sections: { ...core.sections, scanner: { status: "failed", code: "not-collected" },
-      access: { status: "failed", code: "not-collected" }, lineage: { status: "failed", code: "not-collected" },
+    sections: { ...withoutPlaceholders(core.sections),
       schema: { status: "complete" }, config: { status: "complete" } },
-    capabilities: { ...core.capabilities, objectLineage: { status: "complete" } },
+    capabilities: { ...withoutPlaceholders(core.capabilities),
+      objectLineage: { status: "complete", code: "static-resolved-subset" } },
     errors: core.errors.filter((error) => error.startsWith("jobs:")),
   };
   const merge = (incoming: RawSync) => {
     for (const id of Object.keys(incoming.schema ?? {})) if (!known.has(id)) fail();
     for (const id of Object.keys(incoming.artifactMetadata ?? {})) if (!known.has(id)) fail();
-    raw = mergeSyncEnrichment(raw, { ...incoming, sections: undefined, capabilities: undefined });
+    raw = mergeSyncEnrichment(raw, incoming);
     if (new TextEncoder().encode(JSON.stringify(raw)).byteLength > 26 * 1024 * 1024) fail();
   };
   const schemaFallbackIds: string[] = [];
+  const storageFallbackIds = new Set<string>();
+  const knownStorageSchemas = new Set<string>();
   for (let offset = 0; offset < items.length; offset += 8) {
     assertSyncActive(signal);
     const batch = items.slice(offset, offset + 8);
@@ -184,7 +188,8 @@ export async function collectBrowserWorkspace(
         else fallback(item, "definitions", item.code ?? "definition-unavailable");
       }
       merge({ artifactMetadata: Object.fromEntries(Object.entries(result.artifactMetadata).filter(([id]) => accepted.has(id))),
-        config: result.config.filter((entry) => accepted.has(entry.itemId)) });
+        config: result.config.filter((entry) => accepted.has(entry.itemId)),
+        sections: result.sections, capabilities: result.capabilities });
     }
     const sql = batch.filter((item) => SQL.has(item.type));
     if (sql.length) {
@@ -193,15 +198,26 @@ export async function collectBrowserWorkspace(
       const accepted = new Set<string>();
       for (const item of result.items) {
         const catalog = result.catalogs[item.id];
-        if (catalog && successful(catalog)) { accepted.add(item.id); active(item, "sqlSchema"); }
+        if (catalog && successful(catalog)) {
+          if (!Array.isArray(result.schema[item.id])) fail();
+          accepted.add(item.id);
+          knownStorageSchemas.add(item.id);
+          active(item, "sqlSchema");
+        }
         else if (item.type === "SQLDatabase") fallback(item, "sqlDataPlane", catalog?.code ?? item.code ?? "sql-not-live-validated");
-        else sources[`sqlSchema:${item.id}`] = { source: "unsupported", code: catalog?.code ?? item.code ?? "parent-item-required" };
+        else {
+          sources[`sqlSchema:${item.id}`] = { source: "unsupported", code: catalog?.code ?? item.code ?? "parent-item-required" };
+          if (item.type === "Lakehouse" || item.type === "Warehouse") {
+            schemaFallbackIds.push(item.id);
+            storageFallbackIds.add(item.id);
+          }
+        }
         if (successful(item)) active(item, "sqlProperties");
         else if (item.type !== "SQLEndpoint") fallback(item, "itemDetails", item.code ?? "properties-unavailable");
         if (item.type === "Lakehouse") fallback(item, "lakehouseTables", "rest-object-kinds-not-covered-by-sql");
       }
       merge({ schema: Object.fromEntries(Object.entries(result.schema).filter(([id]) => accepted.has(id))),
-        config: result.config });
+        config: result.config, sections: result.sections, capabilities: result.capabilities });
     }
     const kql = batch.filter((item) => KQL.has(item.type));
     if (kql.length) {
@@ -219,7 +235,8 @@ export async function collectBrowserWorkspace(
         }
         if (item.type === "KQLDatabase") fallback(item, "kqlDataPlane", "kusto-live-schema-unsupported");
       }
-      merge({ schema, config: result.config, artifactMetadata: result.artifactMetadata });
+      merge({ schema, config: result.config, artifactMetadata: result.artifactMetadata,
+        sections: result.sections, capabilities: result.capabilities });
     }
     const powerBi = batch.filter((item): item is Item & { type: "Report" | "SemanticModel" } => ["Report", "SemanticModel"].includes(item.type));
     if (powerBi.length) {
@@ -241,7 +258,8 @@ export async function collectBrowserWorkspace(
           } else fallback(item, "reportPages", item.pages.code ?? "pbir-legacy-pages-unsupported");
         }
       }
-      merge({ schema, config });
+      merge({ schema, config, sections: result.sections ? { schema: result.sections.schema } : undefined,
+        capabilities: result.capabilities });
     }
   }
   progress?.(48, "Collecting required scanner compatibility evidence");
@@ -258,6 +276,9 @@ export async function collectBrowserWorkspace(
   }
   sources.scanner = { source: "python-compatibility", code: "service-principal-scanner-not-live-validated" };
   merge({ ...scanner, jobs: [], schema: scanner.schema });
+  for (const itemId of storageFallbackIds) {
+    if (Array.isArray(scanner.schema?.[itemId])) knownStorageSchemas.add(itemId);
+  }
   raw.itemMetadata = { ...core.itemMetadata, ...scanner.itemMetadata };
   raw.sections = { ...raw.sections, scanner: scanner.sections!.scanner, access: scanner.sections!.access,
     lineage: scanner.sections!.lineage, schema: { status: "complete" }, config: { status: "complete" } };
@@ -295,10 +316,28 @@ export async function collectBrowserWorkspace(
           }
         }
       }
-      merge(result);
+      const schema = { ...result.schema };
+      for (const item of remaining) {
+        if (item.type !== "Lakehouse" || !item.collectors.includes("lakehouseTables")) continue;
+        const collected = result.sections?.lakehouseTables;
+        if (!collected || !successful(collected)) delete schema[item.id];
+        else if (Array.isArray(schema[item.id])) knownStorageSchemas.add(item.id);
+      }
+      merge({ ...result, schema });
       remaining = result.remainingItemIds.map((id) => expected.get(id)!);
     }
     if (remaining.length) fail();
+  }
+  for (const itemId of storageFallbackIds) {
+    if (!knownStorageSchemas.has(itemId)) {
+      throw new Error("Storage schema inventory was unavailable. The previous snapshot was preserved.");
+    }
+    sources[`storageSchema:${itemId}`] = { source: "python-compatibility", code: "bounded-storage-fallback" };
+  }
+  if (storageFallbackIds.size) {
+    const partial = [...storageFallbackIds].some((id) =>
+      raw.schema?.[id]?.some((table) => table.source === "Downstream semantic model"));
+    raw.sections!.storageSchema = { status: "complete", ...(partial ? { code: "partial-unsupported" } : {}) };
   }
   let itemRelationsCollection: ItemRelationsShadowCollection | undefined;
   const evidence = [];
@@ -331,6 +370,12 @@ export async function collectBrowserWorkspace(
       value: `${value.source}${value.code ? `: ${value.code}` : ""}` });
   }
   raw.collectorSources = sources;
+  for (const [section, capability] of [
+    ["definitions", "definitionEnrichment"], ["kqlSchema", "kqlSchema"], ["sqlSchema", "sqlSchema"],
+  ]) {
+    raw.sections![section] ??= { status: "unsupported", code: "not-applicable" };
+    raw.capabilities![capability] ??= { ...raw.sections![section] };
+  }
   raw.syncedAt = new Date().toISOString();
   assertSyncActive(signal);
   validateRawSync(raw, workspaceId);

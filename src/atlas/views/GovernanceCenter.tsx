@@ -218,6 +218,10 @@ function focusRequest(
   return { requestId: crypto.randomUUID(), ...values };
 }
 
+function findingPillarFilter(value: unknown): string {
+  return typeof value === "string" && ["access", "lineage", "operations"].includes(value) ? value : "";
+}
+
 function navigationForFinding(finding: GovernanceFinding): AtlasNavigation {
   const target = finding.target;
   if (target?.kind === "principal") {
@@ -314,7 +318,7 @@ export function GovernanceCenterView({
       : "all",
   );
   const [findingPillar, setFindingPillar] = useState(
-    typeof focus?.filters?.pillar === "string" ? focus.filters.pillar : "",
+    initialSection === "findings" ? findingPillarFilter(focus?.filters?.pillar) : "",
   );
   const [changeSearch, setChangeSearch] = useState(
     typeof focus?.filters?.changeSearch === "string"
@@ -332,7 +336,7 @@ export function GovernanceCenterView({
       : "items",
   );
   const [postureMetric, setPostureMetric] = useState<PosturePillar>(
-    typeof focus?.filters?.pillar === "string"
+    initialSection === "posture" && typeof focus?.filters?.pillar === "string"
       ? (focus.filters.pillar as PosturePillar)
       : "documentation",
   );
@@ -725,7 +729,7 @@ export function GovernanceCenterView({
         : "all",
     );
     setFindingPillar(
-      typeof filters.pillar === "string" ? filters.pillar : "",
+      (filters.section ?? section) === "findings" ? findingPillarFilter(filters.pillar) : "",
     );
     setChangeSearch(
       typeof filters.changeSearch === "string" ? filters.changeSearch : "",
@@ -748,7 +752,7 @@ export function GovernanceCenterView({
     if (typeof filters.metric === "string") {
       setHistoryMetric(filters.metric as HistoryMetric);
     }
-    if (typeof filters.pillar === "string") {
+    if ((filters.section ?? section) === "posture" && typeof filters.pillar === "string") {
       setPostureMetric(filters.pillar as PosturePillar);
     }
   };

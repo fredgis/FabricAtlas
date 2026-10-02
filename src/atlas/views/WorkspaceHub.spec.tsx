@@ -8,6 +8,8 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import { AtlasProvider } from "../store";
 import { WorkspaceHubView } from "./WorkspaceHub";
+import { ConfigView } from "./Config";
+import { SAMPLE_DATA } from "../model";
 
 function renderHub(props: Parameters<typeof WorkspaceHubView>[0] = {}) {
   return render(
@@ -97,5 +99,16 @@ describe("WorkspaceHubView", () => {
     expect(
       screen.getByRole("tab", { name: "Configuration" }),
     ).toHaveAttribute("aria-selected", "true");
+  });
+  it("replaces a carried configuration item target with an item in the current workspace", () => {
+    const onSelectedItemChange = vi.fn();
+    const foreign = "20000000-0000-4000-8000-000000000001";
+    render(
+      <AtlasProvider isPreview>
+        <ConfigView embedded focus={{ requestId: "carried-config", itemId: foreign }} onSelectedItemChange={onSelectedItemChange} />
+      </AtlasProvider>,
+    );
+    expect(onSelectedItemChange).not.toHaveBeenCalledWith(foreign);
+    expect(SAMPLE_DATA.items.some((item) => item.fabricId === onSelectedItemChange.mock.lastCall?.[0])).toBe(true);
   });
 });

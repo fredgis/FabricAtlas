@@ -1,0 +1,221 @@
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ATLAS_CONFIG } from "./config";
+import { loadFromDb, runFabricSync } from "./backend";
+import { createItemRelationsEvidence } from "./item-relations-evidence";
+import type { CompatibilityPlan, RawSync } from "./live-sync";
+import { AtlasProvider, useAtlas } from "./store";
+
+const fixture = vi.hoisted(() => ({
+  client: {} as { data: Record<string, unknown>; functions: Record<string, unknown> },
+  compatibility: vi.fn(),
+  unavailable: false,
+}));
+vi.mock("@/lib/rayfin-client", () => ({ getRayfinClient: () => fixture.client }));
+vi.mock("./live-sync", async (original) => ({
+  ...await original<typeof import("./live-sync")>(),
+  createCompatibilityInvoker: (workspaceId: string, _identity: unknown, correlationId: string) =>
+    (plan: CompatibilityPlan) => fixture.compatibility(workspaceId, correlationId, plan),
+}));
+
+const FIRST = "11111111-1111-4111-8111-111111111111";
+const SECOND = "22222222-2222-4222-8222-222222222222";
+const ADMIN = "33333333-3333-4333-8333-333333333333";
+const GUEST = "44444444-4444-4444-8444-444444444444";
+const NOW = "2026-10-02T12:00:00.000Z";
+const user = { id: ADMIN, name: "Collector", email: "collector@example.test" };
+const complete = () => ({ status: "complete" as const });
+const unsupported = (code: string) => ({ status: "unsupported" as const, code });
+const estate = (workspaceId: string) => workspaceId === FIRST
+  ? { lake: "10000000-0000-4000-8000-000000000001", model: "10000000-0000-4000-8000-000000000002", ontology: "10000000-0000-4000-8000-000000000003", name: "First", table: "gold.FirstSales" }
+  : { lake: "20000000-0000-4000-8000-000000000001", model: "20000000-0000-4000-8000-000000000002", ontology: "20000000-0000-4000-8000-000000000003", name: "Second", table: "gold.SecondSales" };
+const table = (workspaceId: string) => ({
+  name: estate(workspaceId).table, source: "Downstream semantic model", objectType: "Table",
+  columns: [{ name: "Id", dataType: "Int64" }], measures: [],
+});
+
+function memoryEntity() {
+  const rows: Record<string, unknown>[] = [];
+  return {
+    rows,
+    async create(row: Record<string, unknown>) {
+      const stored = { id: crypto.randomUUID(), ...row };
+      rows.push(stored);
+      return stored;
+    },
+    async update(where: { id: string }, values: Record<string, unknown>) {
+      Object.assign(rows.find((row) => row.id === where.id)!, values);
+    },
+    async delete(where: { id: string }) {
+      const index = rows.findIndex((row) => row.id === where.id);
+      if (index >= 0) rows.splice(index, 1);
+    },
+    async findById(id: string) { return rows.find((row) => row.id === id) ?? null; },
+    select() {
+      let filter: Record<string, unknown> = {};
+      let limit = Number.POSITIVE_INFINITY;
+      const read = () => rows.filter((row) => Object.entries(filter).every(([key, condition]) => {
+        const expected = condition && typeof condition === "object" && "eq" in condition
+          ? (condition as { eq: unknown }).eq : condition;
+        return String(row[key] ?? "").toLowerCase() === String(expected ?? "").toLowerCase();
+      })).slice(0, limit);
+      const query = {
+        where(value: Record<string, unknown>) { filter = value; return query; },
+        orderBy() { return query; },
+        first(value: number) { limit = value; return query; },
+        after() { return query; },
+        async execute() { return read(); },
+        async executePaginated() { return { items: read(), hasNextPage: false }; },
+      };
+      return query;
+    },
+  };
+}
+
+function installBoundaries() {
+  const names = [
+    "Workspace", "FabricItem", "LineageEdge", "Principal", "AccessGrant", "JobRun", "ConfigEntry",
+    "Comment", "SyncRun", "WorkspaceScope", "SavedView", "FindingAck", "GovernancePolicy",
+    "GovernanceException", "OperationalIncident", "ItemRelationsEvidenceSnapshot",
+  ];
+  const data = Object.fromEntries(names.map((name) => [name, memoryEntity()]));
+  for (const id of [FIRST, SECOND]) data.WorkspaceScope.rows.push({
+    id, displayName: estate(id).name, workspaceType: "Workspace", selectedAt: NOW,
+  });
+  const invoke = (output: (input: Record<string, unknown>) => unknown) => ({ invoke: vi.fn(async (input: Record<string, unknown>) => output(input)) });
+  const context = (input: Record<string, unknown>, stage: string) => ({
+    contractVersion: 1, stage, authoritative: false, workspaceId: input.workspaceId,
+    correlationId: input.correlationId, errors: [], syncedAt: NOW,
+  });
+  fixture.client = { data, functions: {
+    workspaceCollectCore: invoke((input) => {
+      const e = estate(String(input.workspaceId));
+      const missing = unsupported("collector-not-migrated");
+      return {
+        schemaVersion: 2, syncMode: "base", correlationId: input.correlationId,
+        workspace: { id: input.workspaceId, displayName: e.name },
+        items: [{ id: e.lake, type: "Lakehouse", displayName: `${e.name} lake` }, { id: e.model, type: "SemanticModel", displayName: `${e.name} model` }, { id: e.ontology, type: "Ontology", displayName: `${e.name} ontology` }],
+        roleAssignments: [{ role: "Admin", principal: { id: ADMIN, displayName: "Collector", type: "User" } }],
+        jobs: [], lineage: [], access: [], config: [], objectEdges: [], schema: {}, artifactMetadata: {},
+        itemMetadata: Object.fromEntries([e.lake, e.model, e.ontology].map((id) => [id, { scannerMatched: false, ownerAvailable: false }])),
+        sections: Object.fromEntries(["workspace", "items", "roleAssignments", "jobs", "scanner", "schema", "lineage", "access", "config", "definitions", "kqlSchema", "sqlSchema"].map((name) => [name, ["workspace", "items", "roleAssignments", "jobs"].includes(name) ? complete() : missing])),
+        capabilities: Object.fromEntries(["endorsement", "sensitivity", "tags", "ownership", "definitionEnrichment", "kqlSchema", "sqlSchema", "objectLineage"].map((name) => [name, missing])),
+        errors: [], syncedAt: NOW,
+      };
+    }),
+    workspaceCollectSqlMetadata: invoke((input) => ({
+      ...context(input, "sql-metadata"),
+      items: (input.items as { id: string; type: string }[]).map((item) => ({ ...item, ...complete() })),
+      catalogs: { [estate(String(input.workspaceId)).lake]: unsupported("token-unavailable") },
+      schema: {}, artifactMetadata: {}, config: [],
+      sections: { sqlProperties: complete(), sqlSchema: unsupported("token-unavailable") },
+      capabilities: { sqlSchema: unsupported("token-unavailable") },
+    })),
+    workspaceCollectDefinitions: invoke((input) => ({
+      ...context(input, "definitions"),
+      items: (input.items as { id: string; type: string }[]).map((item) => ({ ...item, ...complete() })),
+      artifactMetadata: { [estate(String(input.workspaceId)).ontology]: { kind: "ontology", entities: [], relationships: [], bindings: [], contextualizations: [] } },
+      config: [], sections: { definitions: complete() }, capabilities: { definitionEnrichment: complete() },
+    })),
+    workspaceCollectPowerBi: invoke((input) => ({
+      ...context(input, "powerbi-metadata"),
+      items: [{ id: estate(String(input.workspaceId)).model, type: "SemanticModel", schema: complete() }],
+      schema: { [estate(String(input.workspaceId)).model]: [table(String(input.workspaceId))] },
+      config: [], models: {}, reports: {}, sections: { schema: complete() }, capabilities: { modelSchema: complete() },
+    })),
+    workspaceCollectItemRelations: invoke((input) => ({
+      ...createItemRelationsEvidence(String(input.workspaceId), NOW, (input.itemIds as string[]).flatMap((itemId) =>
+        (["upstream", "downstream"] as const).map((direction) => ({ itemId, direction, status: "failed" as const, failureCode: "failed" as const, attemptedAt: NOW })))),
+      authoritative: false, correlationId: input.correlationId,
+    })),
+  } };
+  fixture.compatibility.mockImplementation(async (workspaceId: string, correlationId: string, plan: CompatibilityPlan): Promise<RawSync> => {
+    const e = estate(workspaceId);
+    const grant = { itemId: e.model, principalId: GUEST, principalType: "User", userType: "Guest", principalName: "Reviewer", accessRight: "Read" };
+    return {
+      schemaVersion: 2, syncMode: "compatibility", compatibilityVersion: 1, compatibilityStage: plan.stage,
+      workspace: { id: workspaceId }, correlationId, requestedItemIds: plan.items.map((item) => item.id),
+      completedItemIds: plan.items.map((item) => item.id), remainingItemIds: [], itemFailures: {},
+      compatibilityCollectors: Object.fromEntries(plan.items.map((item) => [item.id, item.collectors])),
+      schema: plan.stage === "scanner" && !fixture.unavailable && plan.schemaItemIds.includes(e.lake)
+        ? { [e.lake]: [table(workspaceId)] } : {},
+      config: [], jobs: [], access: plan.stage === "scanner" ? [grant, { ...grant }] : [],
+      lineage: plan.stage === "scanner" ? [{ source: e.lake, target: e.model, relation: "Direct Lake" }] : [],
+      objectEdges: [], artifactMetadata: {}, itemMetadata: {},
+      sections: plan.stage === "scanner"
+        ? { ...Object.fromEntries(["scanner", "access", "lineage", "schema", "config"].map((name) => [name, complete()])), storageSchema: fixture.unavailable ? unsupported("scanner-schema-unavailable") : { status: "complete", code: "partial-unsupported" } }
+        : { lakehouseTables: unsupported("endpoint-unsupported") },
+      capabilities: plan.stage === "scanner" ? Object.fromEntries(["endorsement", "sensitivity", "tags", "ownership"].map((name) => [name, complete()])) : {},
+      errors: [], syncedAt: NOW,
+    };
+  });
+  return data;
+}
+
+function Harness() {
+  const atlas = useAtlas();
+  const [noteError, setNoteError] = useState("");
+  return <>
+    <button onClick={() => atlas.selectWorkspace(SECOND)}>Second workspace</button>
+    <button onClick={() => void atlas.addComment("Foreign target", estate(FIRST).lake).catch((error: Error) => setNoteError(error.message))}>Post foreign target</button>
+    <output data-testid="hydrating">{String(atlas.hydrating)}</output>
+    <output data-testid="workspace">{atlas.data.workspace.fabricId}</output>
+    <output data-testid="schema">{JSON.stringify(atlas.data.schema)}</output>
+    <output data-testid="grants">{JSON.stringify(atlas.data.grants)}</output>
+    <output data-testid="note-error">{noteError}</output>
+  </>;
+}
+
+describe("two-workspace collection, publication and hydration", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.unstubAllEnvs();
+    fixture.unavailable = false;
+    fixture.compatibility.mockReset();
+    ATLAS_CONFIG.workspaceId = FIRST;
+    ATLAS_CONFIG.workspaceName = "First";
+    ATLAS_CONFIG.syncAdminSubject = ADMIN;
+    ATLAS_CONFIG.syncAdminEmail = user.email;
+    ATLAS_CONFIG.previousSyncWriters = [];
+  });
+
+  it("retains each workspace's fallback schemas, unique scanner grants and real coverage after switching", async () => {
+    const data = installBoundaries();
+    await runFabricSync(false, user, undefined, undefined, FIRST);
+    await runFabricSync(false, user, undefined, undefined, SECOND);
+    const reloaded = await loadFromDb(false, SECOND);
+    expect(reloaded?.schema?.[estate(SECOND).lake]).toEqual([table(SECOND)]);
+    expect(reloaded?.schema?.[estate(FIRST).lake]).toBeUndefined();
+    expect(reloaded?.grants.filter((grant) => grant.source === "directShare")).toHaveLength(1);
+    expect(reloaded?.workspace.syncSections?.definitions).toEqual(complete());
+    expect(reloaded?.workspace.syncSections?.sqlSchema).toEqual(unsupported("token-unavailable"));
+    expect(reloaded?.workspace.syncSections?.storageSchema).toEqual({ status: "complete", code: "partial-unsupported" });
+
+    render(<AtlasProvider isPreview={false} currentUser={user}><Harness /></AtlasProvider>);
+    await waitFor(() => expect(screen.getByTestId("hydrating")).toHaveTextContent("false"));
+    expect(screen.getByTestId("schema")).toHaveTextContent("gold.FirstSales");
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Second workspace" })); });
+    await waitFor(() => expect(screen.getByTestId("workspace")).toHaveTextContent(SECOND));
+    await waitFor(() => expect(screen.getByTestId("hydrating")).toHaveTextContent("false"));
+    expect(screen.getByTestId("schema")).toHaveTextContent("gold.SecondSales");
+    expect(screen.getByTestId("schema")).not.toHaveTextContent("gold.FirstSales");
+    expect(screen.getByTestId("grants")).toHaveTextContent(estate(SECOND).model);
+    expect(screen.getByTestId("grants")).not.toHaveTextContent(estate(FIRST).model);
+    fireEvent.click(screen.getByRole("button", { name: "Post foreign target" }));
+    await waitFor(() => expect(screen.getByTestId("note-error")).toHaveTextContent("The selected note target is not in the active workspace."));
+    expect(data.Comment.rows).toHaveLength(0);
+  });
+
+  it("does not replace a published snapshot when all storage schema sources become unavailable", async () => {
+    const data = installBoundaries();
+    const previous = await runFabricSync(false, user, undefined, undefined, SECOND);
+    fixture.unavailable = true;
+    await expect(runFabricSync(false, user, undefined, undefined, SECOND))
+      .rejects.toThrow("Storage schema inventory was unavailable");
+    const reloaded = await loadFromDb(false, SECOND);
+    expect(reloaded?.workspace.snapshotId).toBe(previous?.workspace.snapshotId);
+    expect(reloaded?.schema?.[estate(SECOND).lake]).toEqual([table(SECOND)]);
+    expect(data.Workspace.rows).toHaveLength(1);
+  });
+});

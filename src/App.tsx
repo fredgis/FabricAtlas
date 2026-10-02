@@ -403,8 +403,16 @@ function App() {
         selectWorkspace(workspaceId);
         return;
       }
-      // Views remount for the new snapshot; rebuild their focus from the
-      // current URL so filters written with replaceState are not lost.
+      // Retain screen filters, but never replay entities from another workspace.
+      const url = new URL(window.location.href);
+      for (const key of [
+        "item", "table", "source", "objectKind", "expand",
+        "catalog.item", "assets.item", "assets.table", "assets.object", "assets.objectId", "assets.objectKind",
+        "access.item", "access.principal", "jobs.item", "jobs.job",
+        "workspace.item", "workspace.comment", "governance.current", "governance.baseline",
+        "xray.model", "xray.object", "tm.from", "tm.to", "tm.item", "tm.candidate",
+      ]) url.searchParams.delete(key);
+      window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
       const navigation = parseAtlasLocation(window.location);
       suppressRouteFocus.current = true;
       window.requestAnimationFrame(() => {

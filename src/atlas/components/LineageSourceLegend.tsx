@@ -54,10 +54,12 @@ export function LineageSourceLegend({
       <ul className="flex flex-wrap items-center gap-x-l gap-y-s">
         {mode === "items" && (
           <>
-            <LegendLine
-              label="Atlas snapshot (verified)"
-              color="var(--color-lineage-downstream)"
-            />
+            {!previewIncluded && (
+              <LegendLine
+                label="Atlas snapshot (verified)"
+                color="var(--color-lineage-downstream)"
+              />
+            )}
             {previewIncluded && (
               <>
                 <LegendLine
@@ -97,7 +99,7 @@ export function LineageSourceLegend({
       </ul>
       {mode === "items" && (
         <p className="mt-s border-t border-border pt-s text-muted-foreground">
-          {previewIncluded ? "Dashed Beta evidence is observed, not authoritative." : "Only Atlas snapshot lineage is drawn."}
+          {previewIncluded ? "Only Item Relations API (Beta) lineage is drawn; it is not authoritative." : "Only Atlas snapshot lineage is drawn."}
         </p>
       )}
     </div>

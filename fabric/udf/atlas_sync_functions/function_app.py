@@ -5570,6 +5570,9 @@ def sync_compatibility(
                             artifacts[artifact_id] = {**value, "id": artifact_id, "_type": artifact_type}
                 workspace_ids = set(out["requestedItemIds"])
                 selected = []
+                internal_schema = {}
+                storage_ids = set()
+                observed_storage_ids = set()
                 for item in plan["items"]:
                     artifact = artifacts.get(item["id"])
                     if item["type"] in ("SemanticModel", "Report") and not artifact:
@@ -5601,10 +5604,56 @@ def sync_compatibility(
                                 "accessRight": _safe_text(_access_right(user)),
                             })
                     if item["id"] in plan["schemaItemIds"]:
-                        if not isinstance(artifact.get("tables"), list):
+                        if item["type"] == "SemanticModel" and not isinstance(artifact.get("tables"), list):
                             raise ScannerError("scanner schema was unavailable")
-                        out["schema"][item["id"]] = _public_schema(_item_schema(fabricToken, ws, artifact, item["type"], defer_enrichment=True))
-                    out["config"].extend(_item_config(fabricToken, ws, artifact, item["type"], out["schema"].get(item["id"], [])))
+                        internal_schema[item["id"]] = _item_schema(fabricToken, ws, artifact, item["type"], defer_enrichment=True)
+                        if item["type"] in ("Lakehouse", "Warehouse"):
+                            storage_ids.add(item["id"])
+                            if any(isinstance(artifact.get(key), list) for key in ("tables", "views")):
+                                observed_storage_ids.add(item["id"])
+                        else:
+                            out["schema"][item["id"]] = _public_schema(internal_schema[item["id"]])
+                if storage_ids:
+                    for artifact in selected:
+                        deadline.checkpoint()
+                        artifact_id = _artifact_id(artifact)
+                        if artifact["_type"] == "SemanticModel" and isinstance(artifact.get("tables"), list):
+                            internal_schema.setdefault(artifact_id, _item_schema(
+                                fabricToken, ws, artifact, "SemanticModel", defer_enrichment=True,
+                            ))
+                    _derive_storage_schemas(
+                        fabricToken, ws,
+                        [artifact for artifact in selected if artifact["_type"] not in ("Lakehouse", "Warehouse", "SQLDatabase")
+                         or _artifact_id(artifact) in storage_ids],
+                        internal_schema, resolve_details=False,
+                    )
+                    partial_storage = False
+                    known_storage = 0
+                    for artifact in selected:
+                        artifact_id = _artifact_id(artifact)
+                        if artifact_id not in storage_ids:
+                            continue
+                        tables = internal_schema.get(artifact_id, [])
+                        if tables or artifact_id in observed_storage_ids:
+                            out["schema"][artifact_id] = _public_schema(tables)
+                            known_storage += 1
+                            coverage = "partial" if artifact.get("_derivedModelCount") else "complete"
+                        else:
+                            coverage = "unsupported"
+                        partial_storage |= coverage != "complete"
+                        out["config"].append({
+                            "itemId": artifact_id, "section": "Metadata capability",
+                            "label": "Storage schema", "value": coverage,
+                        })
+                    _set_section(out, "storageSchema",
+                                 "complete" if known_storage else "unsupported",
+                                 "partial-unsupported" if known_storage and partial_storage
+                                 else "scanner-schema-unavailable" if not known_storage else None)
+                    deadline.checkpoint()
+                for artifact in selected:
+                    out["config"].extend(_item_config(
+                        fabricToken, ws, artifact, artifact["_type"], out["schema"].get(_artifact_id(artifact), []),
+                    ))
                 out["lineage"] = _official_lineage(selected, workspace_ids, ws)
                 for name in ("scanner", "access", "lineage", "schema", "config"):
                     _set_section(out, name, "complete")

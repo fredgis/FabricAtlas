@@ -965,6 +965,13 @@ export function AtlasProvider({
     async (body: string, itemFabricId?: string) => {
       const text = body.trim();
       if (!text) return;
+      const catalog = dataRef.current;
+      if (!isPreview && catalog.workspace.fabricId !== activeWorkspaceId) {
+        throw new Error("The active workspace is still loading.");
+      }
+      if (itemFabricId && !catalog.items.some((item) => item.fabricId === itemFabricId)) {
+        throw new Error("The selected note target is not in the active workspace.");
+      }
       const comment: Comment = {
         id: `c-${Date.now()}`,
         itemFabricId,
@@ -979,7 +986,8 @@ export function AtlasProvider({
         createdAt: new Date().toISOString(),
       };
       await persistComment(isPreview, comment, activeWorkspaceId);
-      setData((prev) => ({ ...prev, comments: [...prev.comments, comment] }));
+      setData((prev) => prev.workspace.fabricId === catalog.workspace.fabricId
+        ? { ...prev, comments: [...prev.comments, comment] } : prev);
     },
     [activeWorkspaceId, currentUser, isPreview],
   );

@@ -61,6 +61,7 @@ import {
 import {
   buildLineageEvidence,
   buildPreviewOverlay,
+  isDrawnPreviewEdge,
   type RelationshipAgreement,
   type RelationshipEvidence,
 } from "../lineage-evidence";
@@ -110,6 +111,7 @@ import {
   schemaFor,
   relativeTime,
   type AtlasData,
+  type Edge,
   type Health,
   type Item,
   type ModelTableSchema,
@@ -541,7 +543,7 @@ export function MapView({
     () => initialSelected(items, lineageIndex),
     [items, lineageIndex],
   );
-  const [mode, setMode] = useState<Mode>(initialMode);
+  const [requestedMode, setMode] = useState<Mode>(initialMode);
   const [selId, setSelId] = useState(startingId);
   const [focusId, setFocusId] = useState(startingId);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(
@@ -586,6 +588,7 @@ export function MapView({
   const [relationshipId, setRelationshipId] = useState("");
   const [expandedKeys, setExpandedKeys] = useState<string[]>(initialExpandedKeys);
   const previewActive = itemRelationsEnabled && includePreview;
+  const mode: Mode = previewActive ? "items" : requestedMode;
   const previewState = useItemRelationsEvidence(
     data.workspace.fabricId,
     previewActive,
@@ -622,12 +625,31 @@ export function MapView({
     return names;
   }, [evidenceModel.previewGraph, items]);
   const selectedRelationship = evidenceModel.byId.get(relationshipId);
+  const previewGraphEdges = useMemo<Edge[]>(
+    () => evidenceModel.relationships.flatMap((relationship) =>
+      relationship.preview.filter(isDrawnPreviewEdge).map(({ edge }) => {
+        const source = edge.sourceKey === relationship.source.key ? relationship.source : relationship.target;
+        const target = edge.targetKey === relationship.target.key ? relationship.target : relationship.source;
+        return {
+          source: source.inSnapshot ? source.id : source.key,
+          target: target.inSnapshot ? target.id : target.key,
+          relation: edge.relation.relationType,
+        };
+      })),
+    [evidenceModel],
+  );
+  const graphEdges = previewActive ? previewGraphEdges : edges;
+  const graphLineageIndex = useMemo(() => createLineageIndex(graphEdges), [graphEdges]);
   const relationshipCount = useMemo(
     () =>
       evidenceModel.relationships.filter(
-        (relationship) => relationship.agreement !== "not-lineage",
+        (relationship) => lineageView !== "graph"
+          ? relationship.agreement !== "not-lineage"
+          : previewActive
+            ? relationship.preview.some(isDrawnPreviewEdge)
+            : relationship.authoritative.length > 0,
       ).length,
-    [evidenceModel],
+    [evidenceModel, lineageView, previewActive],
   );
   const [showDataFlow, setShowDataFlow] = useState(true);
   const [showControl, setShowControl] = useState(true);
@@ -685,11 +707,11 @@ export function MapView({
   const impact = useMemo(
     () =>
       getLineageImpact(
-        lineageIndex,
+        graphLineageIndex,
         activeId,
         impactMode ? Number.POSITIVE_INFINITY : 1,
       ),
-    [activeId, impactMode, lineageIndex],
+    [activeId, graphLineageIndex, impactMode],
   );
   const upstream = useMemo(
     () =>
@@ -729,27 +751,32 @@ export function MapView({
     [items],
   );
   const visibleItems = useMemo(() => {
+    const candidates = previewActive
+      ? items.filter((item) =>
+          graphLineageIndex.incidentIds.has(item.fabricId) ||
+          evidenceModel.previewGraph?.nodes.some((node) => node.id === item.fabricId.toLowerCase() && node.queried))
+      : items;
     if (
       typeFilter === "all" &&
       healthFilter === "all" &&
       !query.trim()
     ) {
-      return items;
+      return candidates;
     }
-    return items.filter((item) =>
+    return candidates.filter((item) =>
       matchesItemFilters(item, typeFilter, healthFilter, query),
     );
-  }, [healthFilter, items, query, typeFilter]);
+  }, [evidenceModel.previewGraph, graphLineageIndex, healthFilter, items, previewActive, query, typeFilter]);
   const visibleIds = useMemo(
     () => new Set(visibleItems.map((item) => item.fabricId)),
     [visibleItems],
   );
   const visibleEdges = useMemo(
     () =>
-      edges.filter(
+      graphEdges.filter(
         (edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target),
       ),
-    [edges, visibleIds],
+    [graphEdges, visibleIds],
   );
   const layout = useMemo(
     () =>
@@ -1174,7 +1201,7 @@ export function MapView({
 
   const changeObjectTable = (nextTable: string) => {
     setTableName(nextTable);
-    if (selectedMetadataEdges.length > 0) {
+    if (objects.verifiedMetadata) {
       setSelectedObjectId("");
       setSelectedObjectIds(new Set());
       setObjectDrag({});
@@ -1557,7 +1584,7 @@ export function MapView({
         </div>
         <dl aria-label="Map summary" className="flex flex-wrap gap-s">
           {[
-            ["Items", items.length, false],
+            ["Items", previewActive && lineageView === "graph" ? visibleItems.length + laneByKey.size : items.length, false],
             ["Relationships", relationshipCount, false],
             ...(previewEvidence
               ? [[
@@ -1623,6 +1650,7 @@ export function MapView({
             checked={includePreview}
             onChange={(checked) => {
               setIncludePreview(checked);
+              if (checked) setMode("items");
               setRelationshipId("");
             }}
             label="Item Relations API evidence (Preview)"
@@ -1631,7 +1659,7 @@ export function MapView({
           />
           <span aria-hidden="true" className="rounded-md bg-card px-s py-xxs text-200 font-semibold text-lineage-upstream">{includePreview ? "On" : "Off"}</span>
           <p id="map-preview-boundary" className="w-full px-s pb-s text-200 text-muted-foreground">
-            Beta overlay only. Atlas snapshot lineage stays authoritative.
+            Preview draws only Item Relations API lineage. Atlas snapshot lineage remains available when Preview is off and in Evidence.
           </p>
           </div>
         )}
@@ -1726,6 +1754,8 @@ export function MapView({
             <button
               key={value}
               type="button"
+              disabled={previewActive && value === "objects"}
+              title={previewActive && value === "objects" ? "Item Relations does not provide object lineage." : undefined}
               onClick={() => {
                 setMode(value);
                 if (value === "objects") {
@@ -1793,7 +1823,7 @@ export function MapView({
             </select>
           </>
         ) : (
-          selectedMetadataEdges.length > 0 ? (
+          objects.verifiedMetadata ? (
             <>
               {metadataSourceOptions.length > 0 && (
                 <select
@@ -2101,7 +2131,7 @@ export function MapView({
                         </marker>
                       ))}
                     </defs>
-                    {visibleEdges.map((edge) => {
+                    {!previewActive && visibleEdges.map((edge) => {
                       if (!familyVisible(snapshotRelationFamily(edge.relation))) {
                         return null;
                       }
@@ -2668,9 +2698,9 @@ export function MapView({
             </div>
           </div>
 
-          <LineageSourceLegend
+          {(!previewActive || previewEvidence) && <LineageSourceLegend
             mode={mode}
-            previewIncluded={Boolean(previewOverlay)}
+            previewIncluded={previewActive}
             previewControl={
               showControl &&
               (previewOverlay?.edges.some(
@@ -2679,7 +2709,7 @@ export function MapView({
               ) ??
                 false)
             }
-          />
+          />}
 
           <div className="sticky bottom-[14px] float-right z-20 mr-[14px] flex w-fit flex-col items-end gap-s">
           {mode === "items" && visibleItems.length > 0 && (
@@ -3018,6 +3048,7 @@ export function MapView({
                           </button>
                           <button
                             type="button"
+                            disabled={previewActive}
                             onClick={() => {
                               setMode("objects");
                               changeObjectTable(schema[0].name);

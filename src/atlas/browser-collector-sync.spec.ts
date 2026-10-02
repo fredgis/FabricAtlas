@@ -113,13 +113,43 @@ function harness() {
       sections: Object.fromEntries(["scanner", "schema", "config", "lineage", "access"].map((name) => [name, complete()])),
       capabilities: Object.fromEntries(["endorsement", "sensitivity", "tags", "ownership"].map((name) => [name, complete()])),
     };
-    return { ...common, sections: { kqlSchema: unsupported("token-unavailable") } };
+    return {
+      ...common, sections: { kqlSchema: unsupported("token-unavailable") },
+      capabilities: { kqlSchema: unsupported("token-unavailable") },
+    };
   });
   const legacy = vi.fn(async () => ({} as RawSync));
   return {
     functions, compatibility, legacy, sequence, maxActive: () => maxActive,
     deps: { client: { functions } as unknown as BrowserCollectorClient, compatibility, legacy },
   };
+}
+function storageHarness(type: "Lakehouse" | "Warehouse", available = true) {
+  const h = harness();
+  const storageCore = core();
+  storageCore.items = storageCore.items.map((item) => item.id === SQL ? { ...item, type } : item);
+  h.functions.workspaceCollectCore.invoke.mockResolvedValueOnce(storageCore);
+  h.functions.workspaceCollectSqlMetadata.invoke.mockResolvedValueOnce({
+    ...common("sql-metadata", [{ id: SQL, type, ...complete() }]),
+    catalogs: { [SQL]: unsupported("token-unavailable") }, schema: {}, artifactMetadata: {}, config: [],
+    sections: { sqlProperties: complete(), sqlSchema: unsupported("token-unavailable") },
+    capabilities: { sqlSchema: unsupported("token-unavailable") },
+  });
+  const original = h.compatibility.getMockImplementation()!;
+  h.compatibility.mockImplementation(async (plan) => {
+    const result = await original(plan);
+    if (plan.stage === "scanner") {
+      result.schema = available && plan.schemaItemIds.includes(SQL)
+        ? { [SQL]: [table("dbo.Orders", "Power BI admin scanner")] }
+        : {};
+      result.sections!.storageSchema = available ? complete() : unsupported("scanner-schema-unavailable");
+    } else if (type === "Lakehouse") {
+      result.schema = { [SQL]: [] };
+      result.sections!.lakehouseTables = unsupported("endpoint-unsupported");
+    }
+    return result;
+  });
+  return h;
 }
 afterEach(() => vi.unstubAllEnvs());
 
@@ -144,6 +174,60 @@ describe("active browser collector composition", () => {
     const result = await collectBrowserWorkspace(WS, identity, RUN, undefined, undefined, h.deps);
     expect(result.raw.lineage).toEqual([{ source: MODEL, target: REPORT, relation: "report" }]);
     expect(result.itemRelationsCollection?.evidence.queries).toHaveLength(items.length * 2);
+  });
+  it("retains distinct scanner item grants and deduplicates repeated grants", async () => {
+    const h = harness();
+    const original = h.compatibility.getMockImplementation()!;
+    const grant = {
+      itemId: REPORT, principalId: FOREIGN, principalName: "External reviewer",
+      principalEmail: "reviewer@example.test", principalType: "User",
+      userType: "Guest", accessRight: "Read",
+    };
+    h.compatibility.mockImplementation(async (plan) => {
+      const result = await original(plan);
+      return plan.stage === "scanner"
+        ? { ...result, access: [grant, { ...grant }, { ...grant, accessRight: "ReadWrite" }] }
+        : result;
+    });
+
+    const result = await collectBrowserWorkspace(WS, identity, RUN, undefined, undefined, h.deps);
+    const atlas = mapSyncToAtlas(result.raw, { fabricId: WS, displayName: "Fixture", capacity: "", region: "" });
+
+    expect(result.raw.access).toEqual([grant, { ...grant, accessRight: "ReadWrite" }]);
+    expect(atlas.grants.filter((entry) => entry.source === "directShare")).toEqual([
+      expect.objectContaining({ itemFabricId: REPORT, principalRef: FOREIGN, accessLevel: "view", flag: "external" }),
+      expect.objectContaining({ itemFabricId: REPORT, principalRef: FOREIGN, accessLevel: "edit", flag: "external" }),
+    ]);
+    expect(atlas.principals).toContainEqual(expect.objectContaining({ principalId: FOREIGN, external: true }));
+  });
+  it("publishes active stage coverage instead of Core migration placeholders", async () => {
+    const h = harness();
+    const result = await collectBrowserWorkspace(WS, identity, RUN, undefined, undefined, h.deps);
+
+    expect(result.raw.sections?.definitions).toEqual(complete());
+    expect(result.raw.capabilities?.definitionEnrichment).toEqual(complete());
+    expect(result.raw.sections?.sqlSchema).toEqual(complete());
+    expect(result.raw.capabilities?.sqlSchema).toEqual(complete());
+    expect(result.raw.sections?.kqlSchema).toEqual({ status: "complete", code: "partial-unsupported" });
+    expect(result.raw.capabilities?.kqlSchema).toEqual({ status: "complete", code: "partial-unsupported" });
+    expect(JSON.stringify(result.raw.sections)).not.toContain("collector-not-migrated");
+    expect(JSON.stringify(result.raw.capabilities)).not.toContain("collector-not-migrated");
+  });
+  it.each(["Lakehouse", "Warehouse"] as const)("restores bounded scanner schema when %s SQL structure is unavailable", async (type) => {
+    const h = storageHarness(type);
+    const result = await collectBrowserWorkspace(WS, identity, RUN, undefined, undefined, h.deps);
+
+    expect(result.raw.schema?.[SQL]).toEqual([table("dbo.Orders", "Power BI admin scanner")]);
+    expect(result.raw.sections?.sqlSchema).toEqual(unsupported("token-unavailable"));
+    expect(result.raw.capabilities?.sqlSchema).toEqual(unsupported("token-unavailable"));
+    expect(h.compatibility.mock.calls[0][0].schemaItemIds).toEqual([SQL]);
+    expect(h.functions.workspaceCollectSqlMetadata.invoke).toHaveBeenCalledTimes(1);
+    expect(h.legacy).not.toHaveBeenCalled();
+  });
+  it.each(["Lakehouse", "Warehouse"] as const)("preserves the previous snapshot when every %s schema source is unavailable", async (type) => {
+    const h = storageHarness(type, false);
+    await expect(collectBrowserWorkspace(WS, identity, RUN, undefined, undefined, h.deps))
+      .rejects.toThrow("Storage schema inventory was unavailable. The previous snapshot was preserved.");
   });
   it("differentially preserves catalog identities, roles and source-to-consumer scanner bindings", async () => {
     const h = harness();

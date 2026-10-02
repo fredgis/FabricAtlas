@@ -212,7 +212,7 @@ describe("unified lineage evidence", () => {
   });
 });
 
-describe("Preview graph overlay", () => {
+describe("Preview graph layout", () => {
   const model = buildLineageEvidence({
     items,
     edges,
@@ -226,7 +226,7 @@ describe("Preview graph overlay", () => {
     top: 46,
   };
 
-  it("draws only disagreements and places outside endpoints in a separate lane", () => {
+  it("includes agreeing Preview edges and places outside endpoints in a separate lane", () => {
     const overlay = buildPreviewOverlay(model, WORKSPACE, {
       ...options,
       visibleItemIds: new Set(items.map((entry) => entry.fabricId)),
@@ -234,7 +234,7 @@ describe("Preview graph overlay", () => {
 
     expect(
       overlay.edges.map((edge) => edge.entry.edge.relation.relationType).sort(),
-    ).toEqual(["Datasource", "FutureRelation", "Shortcut", "Shortcut"]);
+    ).toEqual(["Datasource", "FutureRelation", "Orchestration", "Shortcut", "Shortcut"]);
     expect(overlay.laneNodes).toEqual([
       expect.objectContaining({
         key: itemRelationsNodeKey(EXTERNAL_WORKSPACE, EXTERNAL),

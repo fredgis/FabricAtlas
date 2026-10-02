@@ -156,12 +156,47 @@ describe("Map & lineage unified evidence", () => {
     localStorage.clear();
     vi.restoreAllMocks();
   });
+  it("draws one graph source at a time and never falls back to Atlas during Preview loading", async () => {
+    let resolve: ((value: Awaited<ReturnType<ItemRelationsEvidenceLoader>>) => void) | undefined;
+    const loader: ItemRelationsEvidenceLoader = () => new Promise((finish) => { resolve = finish; });
+    const { container } = renderMap({ itemRelationsEnabled: true, loadItemRelationsEvidence: loader });
+    const snapshotEdges = () => container.querySelectorAll("svg g:not([data-evidence-source]) > path");
+    expect(snapshotEdges().length).toBeGreaterThan(0);
+    const dataFlow = screen.getByRole("switch", { name: "Data flow relations" });
+    const control = screen.getByRole("switch", { name: "Control relations" });
+    const treatment = { data: dataFlow.className, control: control.className };
+
+    fireEvent.click(previewCheckbox());
+    expect(screen.getByText("Loading persisted Item Relations evidence…")).toBeVisible();
+    expect(snapshotEdges()).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "objects" })).toBeDisabled();
+    await act(async () => { resolve?.(await loadEvidence(WORKSPACE, new AbortController().signal)); });
+    await waitFor(() => expect(container.querySelectorAll(BETA_EDGES)).toHaveLength(4));
+    expect(snapshotEdges()).toHaveLength(0);
+    expect({ data: dataFlow.className, control: control.className }).toEqual(treatment);
+    expect(dataFlow).toHaveAttribute("aria-checked", "true");
+    expect(control).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(previewCheckbox());
+    expect(container.querySelectorAll(BETA_EDGES)).toHaveLength(0);
+    expect(snapshotEdges().length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "objects" })).toBeEnabled();
+  });
+  it("honors the Preview object-lineage boundary even in an object-mode deep link", async () => {
+    const { container } = renderMap({
+      itemRelationsEnabled: true, loadItemRelationsEvidence: loadNothing,
+    }, "/?lineage=objects&preview=item-relations#map");
+    await screen.findByText("No persisted Item Relations evidence for this workspace.");
+    expect(screen.getByRole("button", { name: "objects" })).toBeDisabled();
+    expect(container.querySelectorAll("svg g:not([data-evidence-source]) > path")).toHaveLength(0);
+    expect(new URL(window.location.href).searchParams.get("lineage")).toBe("items");
+  });
 
   it("makes the real Preview switch and its authority boundary visible even while off", async () => {
     renderMap({ itemRelationsEnabled: true, loadItemRelationsEvidence: loadNothing });
     const toggle = previewCheckbox();
     expect(toggle).toHaveAttribute("aria-checked", "false");
-    expect(toggle).toHaveAccessibleDescription("Beta overlay only. Atlas snapshot lineage stays authoritative.");
+    expect(toggle).toHaveAccessibleDescription("Preview draws only Item Relations API lineage. Atlas snapshot lineage remains available when Preview is off and in Evidence.");
     expect(toggle).toHaveClass("min-h-[var(--atlas-touch-target)]");
     expect(screen.getByRole("tablist", { name: "Map and lineage views" })).toHaveClass("atlas-line-tabs");
     expect(screen.getByText("80%")).toBeVisible();
@@ -243,22 +278,19 @@ describe("Map & lineage unified evidence", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("overlays Beta evidence without moving snapshot nodes", async () => {
+  it("shows all Beta graph edges, including agreement, without drawing Atlas edges", async () => {
     const { container } = renderMap({
       itemRelationsEnabled: true,
       loadItemRelationsEvidence: loadEvidence,
     });
     const lakehouse = () =>
       screen.getByLabelText(/^alpinerent_lakehouse, Lakehouse, healthy/);
-    const before = { left: lakehouse().style.left, top: lakehouse().style.top };
-
     fireEvent.click(previewCheckbox());
 
     await waitFor(() =>
-      expect(container.querySelectorAll(BETA_EDGES)).toHaveLength(3),
+      expect(container.querySelectorAll(BETA_EDGES)).toHaveLength(4),
     );
-    expect(lakehouse().style.left).toBe(before.left);
-    expect(lakehouse().style.top).toBe(before.top);
+    expect(container.querySelectorAll("svg g:not([data-evidence-source]) > path")).toHaveLength(0);
     expect(lakehouse()).toHaveAccessibleName(
       "alpinerent_lakehouse, Lakehouse, healthy, direction conflict to review",
     );
@@ -273,10 +305,10 @@ describe("Map & lineage unified evidence", () => {
     const summary = screen.getByLabelText("Map summary");
     expect(within(summary).getByText("Conflict to review").nextSibling).toHaveTextContent("1");
     expect(within(summary).getByText("Relationships").nextSibling).toHaveTextContent(
-      String(SAMPLE_DATA.edges.length + 2),
+      "4",
     );
     expect(container.querySelectorAll("button[aria-pressed]")).toHaveLength(
-      SAMPLE_DATA.items.length,
+      5,
     );
   });
 
@@ -346,13 +378,13 @@ describe("Map & lineage unified evidence", () => {
       loadItemRelationsEvidence: loadEvidence,
     }, "/?preview=item-relations#map");
     await waitFor(() =>
-      expect(container.querySelectorAll(BETA_EDGES)).toHaveLength(3),
+      expect(container.querySelectorAll(BETA_EDGES)).toHaveLength(4),
     );
     const pipeline = screen.getByLabelText(/^AlpineRent Daily Load,/);
     const position = { left: pipeline.style.left, top: pipeline.style.top };
     const drawnTitles = () =>
       [...container.querySelectorAll("svg g > title")].map((node) => node.textContent);
-    expect(drawnTitles()).toContain("orchestrates");
+    expect(drawnTitles()).toContain("Item Relations API (Beta): Orchestration");
 
     fireEvent.click(screen.getByRole("switch", { name: "Control relations" }));
 
@@ -360,13 +392,13 @@ describe("Map & lineage unified evidence", () => {
       "aria-checked",
       "false",
     );
-    expect(drawnTitles()).not.toContain("orchestrates");
-    expect(drawnTitles()).toContain("Direct Lake");
+    expect(drawnTitles()).not.toContain("Item Relations API (Beta): Orchestration");
+    expect(drawnTitles()).toContain("Item Relations API (Beta): Datasource");
     expect({ left: pipeline.style.left, top: pipeline.style.top }).toEqual(position);
 
     fireEvent.click(screen.getByRole("switch", { name: "Data flow relations" }));
 
-    expect(drawnTitles()).not.toContain("Direct Lake");
+    expect(drawnTitles()).not.toContain("Item Relations API (Beta): Datasource");
     expect(container.querySelectorAll(BETA_EDGES)).toHaveLength(0);
   });
 
@@ -460,6 +492,7 @@ describe("Map & lineage unified evidence", () => {
     expect(
       screen.getByText("Loading persisted Item Relations evidence…"),
     ).toBeInTheDocument();
+    expect(container.querySelectorAll("svg g:not([data-evidence-source]) > path")).toHaveLength(0);
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(
       "Persisted Item Relations evidence could not be loaded.",
@@ -475,6 +508,7 @@ describe("Map & lineage unified evidence", () => {
     );
     expect(loader).toHaveBeenCalledTimes(2);
     expect(container.querySelectorAll(BETA_EDGES)).toHaveLength(0);
+    expect(container.querySelectorAll("svg g:not([data-evidence-source]) > path")).toHaveLength(0);
   });
 
   it("labels partial persisted coverage and early collector stops", async () => {

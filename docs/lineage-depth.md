@@ -110,6 +110,13 @@ evidence of one semantic model from the active snapshot.
 `src/atlas/lineage-evidence.ts` places endpoints outside the snapshot in lanes
 right of the staged layout.
 
+- Graph uses one source at a time: Preview on draws only Item Relations API
+  edges, including those agreeing with Atlas. Preview off draws only Atlas
+  snapshot lineage. Loading, missing or failed Preview evidence never falls
+  back to Atlas. Evidence can still compare both sources.
+- Preview disables object mode because Item Relations provides item-level
+  lineage only. Data flow relations and Control relations retain their
+  independent filtering behavior and existing visual treatment in both sources.
 - Column 0 shows only outside endpoints next to visible snapshot items. A lane
   node with hidden stored neighbours shows an **Expand** button with the hidden
   count.

@@ -34,6 +34,11 @@ Rayfin Data API (Data API Builder)  ──  Fabric SQL database (mssql)
   existing validated manifest-last writer. Exact unsupported or unverified gaps are delegated to
   the Python `sync_compatibility` function; the explicit rollback flag restores the previous
   Python collector path. This cutover does not provide background execution or scheduling.
+  Composition preserves distinct scanner item grants and removes repeated grants. Active
+  stage statuses replace Core migration placeholders. Unavailable Lakehouse/Warehouse SQL
+  structure requests bounded scanner schema fallback, including an explicitly labelled
+  downstream-model subset without additional storage requests. If no storage inventory source
+  is available, the previous published snapshot is retained instead of publishing empty schema.
   The Phase 2 `syncStart`, `syncContinue`, `syncStatus` and `syncCancel` functions remain a
   fail-closed durable-execution probe. Phase 3 also registers
   `workspaceDiscover`, which uses an application-identity Fabric token and returns only bounded
@@ -68,10 +73,13 @@ Rayfin Data API (Data API Builder)  ──  Fabric SQL database (mssql)
   [item-relations-evidence.md](item-relations-evidence.md).
 - **Map & lineage** is the single lineage screen, with local Graph, Evidence, Changes and X-Ray tabs.
   `src/atlas/lineage-evidence.ts` groups normalized Atlas snapshot edges and optional Item
-  Relations evidence by endpoint pair and source; the Graph overlays Beta edges without changing
-  the staged layout. The `Include Item Relations API evidence (Preview)` checkbox appears only
-  when the `item-relations` flag is on, and it shows Beta evidence only from a persisted,
-  validated `ItemRelationsEvidenceSnapshot` envelope for the active workspace. Changes holds the
+  Relations evidence by endpoint pair and source. Graph draws either Atlas snapshot lineage
+  or Item Relations API (Beta) lineage, never both; Evidence can compare both. The
+  `Item Relations API evidence (Preview)` switch appears only when the `item-relations` flag
+  is on, and reads a persisted, validated `ItemRelationsEvidenceSnapshot` envelope for the
+  active workspace. Missing or failed Preview reads do not draw Atlas fallback, and Preview
+  disables object mode. The Data flow relations and Control relations switches are unchanged.
+  Changes holds the
   lineage time machine and breaking change guard; X-Ray holds the semantic model DAX dependency
   explorer. See [lineage-depth.md](lineage-depth.md) for rules, limits and deferred capabilities.
 - `ItemRelationsEvidenceSnapshot` stores non-authoritative Item Relations evidence written after a
