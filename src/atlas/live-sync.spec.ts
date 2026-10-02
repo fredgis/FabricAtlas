@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  acquireMsalToken,
   accountMatchesIdentity,
   buildSyncItemBatches,
   buildSyncRequestBody,
@@ -15,10 +16,25 @@ import {
   validateRawSync,
   validateSyncEnrichment,
   type MsalAccount,
+  type AtlasMsalClient,
   type RawSync,
 } from "./live-sync";
 
 const workspaceId = "11111111-1111-4111-8111-111111111111";
+const syncIdentity = {
+  id: "22222222-2222-4222-8222-222222222222",
+  name: "Admin",
+  email: "admin@example.com",
+};
+const msalAccount: MsalAccount = {
+  localAccountId: syncIdentity.id,
+  tenantId: "33333333-3333-4333-8333-333333333333",
+  username: syncIdentity.email,
+};
+const msalResult = {
+  accessToken: "cached-token",
+  account: msalAccount,
+};
 
 function completeSync(): RawSync {
   return {
@@ -33,6 +49,72 @@ function completeSync(): RawSync {
     errors: [],
   };
 }
+
+describe("MSAL interaction recovery", () => {
+  it("waits for an existing interaction and retries silently without another popup", async () => {
+    const acquireTokenSilent = vi
+      .fn()
+      .mockRejectedValueOnce({ errorCode: "interaction_in_progress" })
+      .mockResolvedValueOnce(msalResult);
+    const acquireTokenPopup = vi.fn();
+    const wait = vi.fn(async () => undefined);
+    const app: AtlasMsalClient = {
+      getAllAccounts: () => [msalAccount],
+      acquireTokenSilent,
+      ssoSilent: vi.fn(),
+      acquireTokenPopup,
+    };
+
+    await expect(
+      acquireMsalToken(
+        app,
+        syncIdentity,
+        ["scope"],
+        "Fabric metadata",
+        true,
+        msalAccount.tenantId,
+        undefined,
+        wait,
+      ),
+    ).resolves.toBe("cached-token");
+    expect(wait).toHaveBeenCalledOnce();
+    expect(acquireTokenPopup).not.toHaveBeenCalled();
+    expect(acquireTokenSilent).toHaveBeenCalledTimes(2);
+  });
+
+  it("recovers when a single popup collides with the Fabric portal interaction", async () => {
+    const getAllAccounts = vi
+      .fn()
+      .mockReturnValueOnce([])
+      .mockReturnValue([msalAccount]);
+    const acquireTokenSilent = vi.fn().mockResolvedValue(msalResult);
+    const ssoSilent = vi.fn().mockRejectedValue({ errorCode: "login_required" });
+    const acquireTokenPopup = vi
+      .fn()
+      .mockRejectedValue({ errorCode: "interaction_in_progress" });
+    const app: AtlasMsalClient = {
+      getAllAccounts,
+      acquireTokenSilent,
+      ssoSilent,
+      acquireTokenPopup,
+    };
+
+    await expect(
+      acquireMsalToken(
+        app,
+        syncIdentity,
+        ["scope"],
+        "Fabric metadata",
+        true,
+        msalAccount.tenantId,
+        undefined,
+        async () => undefined,
+      ),
+    ).resolves.toBe("cached-token");
+    expect(acquireTokenPopup).toHaveBeenCalledOnce();
+    expect(acquireTokenSilent).toHaveBeenCalledOnce();
+  });
+});
 
 describe("validateRawSync", () => {
   it("accepts a complete authoritative result", () => {
