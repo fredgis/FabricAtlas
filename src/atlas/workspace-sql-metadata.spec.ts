@@ -216,7 +216,7 @@ function catalogs(overrides: Record<string, FakeCatalog> = {}): Record<string, F
     [DB_NAME]: SALES_CATALOG,
     [SECOND_DB_NAME]: SALES_CATALOG,
     [WAREHOUSE]: WAREHOUSE_CATALOG,
-    [LAKEHOUSE]: LAKEHOUSE_CATALOG,
+    [SQL_ENDPOINT]: LAKEHOUSE_CATALOG,
     ...overrides,
   };
 }
@@ -472,9 +472,9 @@ describe("SQL metadata trusted coordinates and mixed batches", () => {
     expect(sql.connects.map((call) => call.target)).toEqual([
       { kind: "sql-database", server: DB_HOST, port: 1433, database: DB_NAME, readOnlyIntent: true },
       { kind: "warehouse", server: DW_HOST, port: 1433, database: WAREHOUSE, readOnlyIntent: false },
-      { kind: "lakehouse-sql-endpoint", server: LH_HOST, port: 1433, database: LAKEHOUSE, readOnlyIntent: false },
+      { kind: "lakehouse-sql-endpoint", server: LH_HOST, port: 1433, database: SQL_ENDPOINT, readOnlyIntent: false },
     ]);
-    expect(sql.closed).toEqual([DB_NAME, WAREHOUSE, LAKEHOUSE]);
+    expect(sql.closed).toEqual([DB_NAME, WAREHOUSE, SQL_ENDPOINT]);
     expect(envelope).toMatchObject({ contractVersion: 1, stage: "sql-metadata", authoritative: false, workspaceId: WS, errors: [] });
     expect(envelope).not.toHaveProperty("correlationId");
     expect(envelope.items).toEqual([
@@ -645,7 +645,7 @@ describe("SQL metadata trusted coordinates and mixed batches", () => {
     const envelope = await result;
     expect(itemStatus(envelope, SQL_DB)).toEqual({ status: "complete", code: undefined });
     expect(catalogStatus(envelope, SQL_DB)).toEqual({ status: "failed", code: "invalid-connection-coordinates" });
-    expect(sql.connects.map((call) => call.target.database)).toEqual([WAREHOUSE, LAKEHOUSE]);
+    expect(sql.connects.map((call) => call.target.database)).toEqual([WAREHOUSE, SQL_ENDPOINT]);
     expect(envelope.schema).not.toHaveProperty(SQL_DB);
     expect(envelope.errors).toEqual([`sqlSchema:${SQL_DB}: invalid-connection-coordinates`]);
     const serialized = JSON.stringify(envelope);
@@ -701,6 +701,34 @@ describe("SQL metadata trusted coordinates and mixed batches", () => {
     expect(pending.errors).toEqual([]);
   });
 
+  it("uses the SQL endpoint ID when schema-enabled Lakehouse REST enumeration is unsupported", async () => {
+    const { result, sql } = collect(
+      routes({
+        [LAKEHOUSE_TABLES_URL]: () => json(
+          { errorCode: "InvalidInput", message: "Schema-enabled Lakehouse." },
+          { status: 400 },
+        ),
+      }),
+      [{ id: LAKEHOUSE, type: "Lakehouse" }],
+    );
+
+    const envelope = await result;
+
+    expect(sql.connects[0].target.database).toBe(SQL_ENDPOINT);
+    expect(envelope.schema[LAKEHOUSE]).toEqual([{
+      name: "dbo.trips",
+      objectType: "SQL endpoint table",
+      source: "Fabric SQL analytics endpoint system catalog",
+      columns: [{ name: "trip_id", dataType: "varchar" }],
+      measures: [],
+    }]);
+    expect(envelope.catalogs[LAKEHOUSE]).toMatchObject({
+      status: "complete",
+      code: "partial-unsupported",
+      lakehouseTables: { status: "unsupported", code: "endpoint-unsupported" },
+    });
+  });
+
   it.each([
     ["another item ID", sqlDatabase({}, { id: SECOND_DB })],
     ["another item type", sqlDatabase({}, { type: "Warehouse" })],
@@ -716,7 +744,7 @@ describe("SQL metadata trusted coordinates and mixed batches", () => {
     expect(catalogStatus(envelope, SQL_DB)).toEqual({ status: "failed", code: "not-attempted" });
     expect(itemStatus(envelope, WAREHOUSE).status).toBe("complete");
     expect(catalogStatus(envelope, LAKEHOUSE).status).toBe("complete");
-    expect(sql.connects.map((call) => call.target.database)).toEqual([WAREHOUSE, LAKEHOUSE]);
+    expect(sql.connects.map((call) => call.target.database)).toEqual([WAREHOUSE, SQL_ENDPOINT]);
     expect(envelope.config.some((entry) => entry.itemId === SQL_DB)).toBe(false);
     expect(envelope.errors).toEqual([`sqlProperties:${SQL_DB}: invalid-response`]);
   });
@@ -747,10 +775,10 @@ describe("SQL metadata injection resistance and parameterization", () => {
       `${WAREHOUSE}:schemas`,
       `${WAREHOUSE}:primaryKeys`,
       `${WAREHOUSE}:foreignKeys`,
-      `${LAKEHOUSE}:objects`,
-      `${LAKEHOUSE}:schemas`,
-      `${LAKEHOUSE}:primaryKeys`,
-      `${LAKEHOUSE}:foreignKeys`,
+      `${SQL_ENDPOINT}:objects`,
+      `${SQL_ENDPOINT}:schemas`,
+      `${SQL_ENDPOINT}:primaryKeys`,
+      `${SQL_ENDPOINT}:foreignKeys`,
     ]);
     for (const call of sql.queries) {
       expect(call.text).toBe(SQL_CATALOG_QUERIES[call.name]);

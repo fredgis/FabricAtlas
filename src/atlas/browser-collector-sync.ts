@@ -231,6 +231,7 @@ export async function collectBrowserWorkspace(
           if (item.type === "Warehouse") {
             knownStorageSchemas.add(item.id);
           } else if (item.type === "Lakehouse") {
+            if (tables.length > 0) knownStorageSchemas.add(item.id);
             const direct = catalog.lakehouseTables;
             if (direct) {
               status(direct);

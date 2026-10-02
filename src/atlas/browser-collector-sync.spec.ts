@@ -397,7 +397,7 @@ describe("active browser collector composition", () => {
         [SQL]: {
           status: "complete",
           code: "partial-unsupported",
-          lakehouseTables: { status: "complete", code: "partial-unsupported" },
+          lakehouseTables: unsupported("endpoint-unsupported"),
         },
       },
       schema: {
@@ -414,6 +414,7 @@ describe("active browser collector composition", () => {
     const result = await collectBrowserWorkspace(WS, identity, RUN, undefined, undefined, h.deps);
     expect(result.raw.schema?.[SQL]?.map((entry) => entry.name)).toEqual(["dbo.Orders", "silver.Orders"]);
     expect(result.raw.sections?.storageSchema).toEqual({ status: "complete", code: "partial-unsupported" });
+    expect(result.raw.collectorSources?.[`storageSchema:${SQL}`]).toEqual({ source: "rayfin" });
   });
   it("rejects foreign or truncated provenance instead of publishing misleading coverage", async () => {
     for (const invalid of [{ workspaceId: FOREIGN }, { stopCode: "deadline-exhausted" }]) {

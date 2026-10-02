@@ -477,8 +477,8 @@ export function projectSqlItemProperties(
     kind,
     server: trustedSqlHost(endpoint.connectionString, kind),
     port: 1433,
-    // The documented Lakehouse SQL analytics endpoint route uses the Lakehouse GUID.
-    database: item.id,
+    // Fabric routes Lakehouse TDS sessions by the SQL analytics endpoint GUID.
+    database: trustedSqlDatabaseName(sqlEndpointId),
     readOnlyIntent: false,
   }));
   return { config: rows, sqlEndpointId, ...resolved };
