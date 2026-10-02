@@ -29,6 +29,8 @@ bounded retries and `Retry-After` sleeps. The remaining 20 seconds are reserved
 for final projection, serialization and platform response handling. Upstream
 and final payloads are capped at 25 MiB. Verified object-lineage relations are
 deduplicated but never truncated by count.
+Fabric list pagination additionally fails closed at 100 pages or 50,000 records
+per list operation. A limit is an error, not a truncated successful inventory.
 
 The browser calls `sync_all` with deferred enrichment to obtain the
 authoritative workspace, scanner, access and base-lineage envelope. It then
@@ -85,6 +87,47 @@ and [Get Pages In Group](https://learn.microsoft.com/rest/api/power-bi/reports/g
 
 ## Phase 4 replacement boundary
 
+Cleanup assessment at `d335f7487955b1cfe7ad0bfa0ac02fe725a6b694`:
+the product still publishes only the Python envelope. Rayfin implementations
+and bounded shadows do not establish deployed identity/coverage parity or an
+authoritative consumer. No active collector was deleted on the assumption that
+fixture parity, a successful build or a shadow summary proves a cutover.
+
+Removed in this cleanup:
+
+- `_lh_tables` and the hidden HTTP branch in `_item_schema`. Deep Lakehouse
+  inventory is collected once by `_enrich_artifact`; projection reads the
+  collected cache/scanner metadata and cannot refetch after an optional failure.
+- `_sql_metadata_projection`, which was used only by a fixture test. The test now
+  exercises the production `_sql_catalog_projection`; actual SQL/TDS collection
+  remains intact.
+
+`sync_item_relations` was already absent from this branch and stays absent.
+Preview Item Relations collection belongs to Rayfin, not a second Python entry
+point. Its Preview evidence never replaces authoritative scanner lineage.
+
+### Exact retained-function matrix
+
+| Retained function/call path | Purpose | Removal blocker |
+| --- | --- | --- |
+| `ping` | Existing health/publication compatibility | Retained public endpoint; no collector |
+| `sync_all` with `_get_all`, `_scan_workspace`, `_metadata_for_item`, `_official_lineage` | Required v2 base workspace/items/roles/scanner/access/lineage/schema/config and enrichment plan | Product still consumes this Python result; no validated authoritative Rayfin composition |
+| `sync_items` with `_enrich_artifact`, `_item_schema`, `_item_config`, `_collect_atlas_object_edges` | Bounded deep slices, selected definitions/schema/config/object edges and completed/remaining IDs | Existing staged Sync and snapshot gates still require these slices |
+| `_get_all` and `_sanitize_job` | Existing per-item job samples | Preserve product sampling/status behavior until deployed Core parity and integration are approved |
+| `_enrich_artifact` item-property and Lakehouse-table branches | Public item properties and a single cached REST inventory | Structural shadows do not cover all existing fields, object kinds and downstream merges |
+| `_get_definition` and Ontology/GraphModel/DataAgent projectors | Selected definition metadata and bindings | Deployed write-scope identity and full projection/edge/config parity unverified |
+| `_collect_kql_schema` and Kusto projection helpers | Read-only live KQL metadata | No supported Kusto Functions application audience; definition-only structure is not complete coverage |
+| `_collect_sql_schema`, `_sql_fetch_rows`, `_sql_catalog_projection` and SQL connection helpers | Constant bounded SQLDatabase `sys.*` catalog queries | Deployed Functions TDS/token principal and catalog visibility/parity unverified |
+| `_enrich_artifact` Report branch | Public report pages, explicit unsupported paginated reports | PBIR-Legacy pages and deployed definition permissions are not validated replacements |
+| `_derive_storage_schemas` and metadata endpoint/model join helpers | Verified, labeled storage schema subsets | No approved replacement for existing source-boundary/merge behavior |
+| Transport, deadline, input/status and serialization helpers | Bounds and fail-closed compatibility DTOs | Required safeguards for every retained path |
+
+The complete helper matrix, bounds and source-level audit evidence are in
+[docs/rayfin-platform-gaps.md](../../../docs/rayfin-platform-gaps.md).
+Neither this UDF nor product Sync runs INFO/DMV/XMLA queries: engine-complete
+dependencies remain unsupported, while existing frontend dependency analysis
+is static. Python is not a durable/unattended execution fallback.
+
 The Rayfin `workspaceCollectPowerBi` stage now provides supported Fabric
 definition-based semantic schema, selected sanitized DAX, PBIR pages/bindings,
 and opt-in Preview Fabric admin owner/access evidence. It is non-authoritative;
@@ -99,6 +142,10 @@ It requires explicit tenant/workspace approval, an existing operator-provisioned
 credential and complete scanner metadata before merging. It does not cut over
 the active publisher or claim live tenant validation. See
 [the exact setup](../../../docs/powerbi-scanner-secret-store.md).
+
+In particular `_scan_workspace` is retained until those real credentials,
+tenant settings, parity and authoritative integration are approved. This cleanup
+neither provisions them nor deploys anything.
 
 ## Functions
 

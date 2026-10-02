@@ -1,4 +1,5 @@
 import base64
+import ast
 import copy
 import datetime
 import importlib.util
@@ -2890,46 +2891,16 @@ class KqlAndSqlMetadataTests(unittest.TestCase):
         )
         self.assertEqual(trackers["kqlSchema"]["unsupported"], 1)
 
-    def test_sql_metadata_fixture_projection_is_allowlisted(self):
-        value = {
-            "tables": [
-                {
-                    "schema": "dbo",
-                    "name": "Customers",
-                    "rowCount": [{"name": "secret-business-row"}],
-                    "rows": [{"name": "secret-business-row"}],
-                    "primaryKey": ["CustomerId"],
-                    "columns": [
-                        {
-                            "name": "CustomerId",
-                            "dataType": "uniqueidentifier",
-                            "values": ["secret-value"],
-                        },
-                        {"name": "Name", "dataType": "nvarchar"},
-                    ],
-                    "moduleDefinition": "secret-sql-module",
-                }
+    def test_active_sql_catalog_projection_is_allowlisted(self):
+        schema, facts = function_app._sql_catalog_projection(
+            [
+                ("dbo", "Customers", "U", "CustomerId", "uniqueidentifier", 1, "secret-business-row"),
+                ("dbo", "Customers", "U", "Name", "nvarchar", 2, "secret-value"),
+                ("reporting", "CustomerSummary", "V", "CustomerId", "uuid", 1, "secret-view-definition"),
             ],
-            "views": [
-                {
-                    "schema": "reporting",
-                    "name": "CustomerSummary",
-                    "columns": [{"name": "CustomerId", "dataType": "uuid"}],
-                    "definition": "secret-view-definition",
-                }
-            ],
-            "foreignKeys": [
-                {
-                    "name": "FK_Customers_Accounts",
-                    "sourceTable": "dbo.Customers",
-                    "targetTable": "dbo.Accounts",
-                    "query": "secret-query",
-                }
-            ],
-            "credentials": "secret-credential",
-        }
-
-        schema, facts = function_app._sql_metadata_projection(value)
+            [("dbo", "Customers", "PK_Customers", "CustomerId", 1)],
+            [("FK_Customers_Accounts", "dbo", "Customers", "CustomerId", "dbo", "Accounts", "AccountId", 1)],
+        )
         artifact = {
             "id": self.sql_id,
             "_type": "SQLDatabase",
@@ -4274,6 +4245,167 @@ class OptionalEndpointStatusTests(unittest.TestCase):
             {"status": "failed", "code": "transient-upstream"},
         )
         self.assertEqual(errors, ["reportPages: transient-upstream"])
+
+
+class CollectorCompatibilityCleanupTests(unittest.TestCase):
+    workspace_id = "11111111-1111-4111-8111-111111111111"
+    lakehouse_id = "22222222-2222-4222-8222-222222222222"
+
+    def test_removed_collectors_have_no_production_definition_or_call_site(self):
+        tree = ast.parse(module_path.read_text(encoding="utf-8"))
+        definitions = {
+            node.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef)
+        }
+        calls = {
+            node.func.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
+        for name in (
+            "_lh_tables",
+            "_sql_metadata_projection",
+            "sync_item_relations",
+        ):
+            with self.subTest(name=name):
+                self.assertNotIn(name, definitions)
+                self.assertNotIn(name, calls)
+                self.assertFalse(hasattr(function_app, name))
+
+    def test_schema_projection_never_starts_a_hidden_collector(self):
+        artifact = {
+            "id": self.lakehouse_id,
+            "tables": [{"name": "Scanned", "columns": [{"name": "Id"}]}],
+        }
+        with (
+            mock.patch.object(function_app, "_get", side_effect=AssertionError("hidden HTTP collector")),
+            mock.patch.object(function_app, "_get_all", side_effect=AssertionError("hidden HTTP collector")),
+            mock.patch.object(function_app, "_get_all_data", side_effect=AssertionError("hidden HTTP collector")),
+        ):
+            for deferred in (False, True):
+                schema = function_app._item_schema(
+                    "fixture-token", self.workspace_id, artifact, "Lakehouse",
+                    defer_enrichment=deferred,
+                )
+                self.assertEqual([table["name"] for table in schema], ["Scanned"])
+
+    def test_retained_lakehouse_inventory_is_collected_once_then_projected(self):
+        artifact = {"id": self.lakehouse_id, "_type": "Lakehouse"}
+        trackers = function_app._new_sync_trackers()
+        with (
+            mock.patch.object(function_app, "_get", return_value={"properties": {}}),
+            mock.patch.object(function_app, "_get_all_data", return_value=[
+                {"name": "Collected", "type": "Managed", "columns": [{"name": "Id"}]},
+            ]) as collect,
+        ):
+            function_app._enrich_artifact("fixture-token", self.workspace_id, artifact, trackers, [])
+            for _ in range(2):
+                schema = function_app._item_schema("fixture-token", self.workspace_id, artifact, "Lakehouse")
+                self.assertEqual([table["name"] for table in schema], ["Collected"])
+            collect.assert_called_once()
+
+    def test_cached_schema_wrappers_still_flatten_without_a_retired_fetch(self):
+        artifact = {
+            "id": self.lakehouse_id,
+            "_lakehouseTables": [{
+                "name": "dbo",
+                "type": "Schema",
+                "tables": [{"name": "Orders", "type": "Managed", "columns": [{"name": "Id"}]}],
+            }],
+        }
+        with mock.patch.object(function_app, "_get_all_data", side_effect=AssertionError("hidden collector")):
+            schema = function_app._item_schema("fixture-token", self.workspace_id, artifact, "Lakehouse")
+        self.assertEqual([table["name"] for table in schema], ["Orders"])
+        self.assertEqual([column["name"] for column in schema[0]["columns"]], ["Id"])
+
+    def test_failed_inventory_does_not_reenter_a_removed_direct_path(self):
+        artifact = {"id": self.lakehouse_id, "_type": "Lakehouse"}
+        trackers = function_app._new_sync_trackers()
+        with (
+            mock.patch.object(function_app, "_get", return_value={"properties": {}}),
+            mock.patch.object(function_app, "_get_all_data", side_effect=_http_error(404)) as collect,
+        ):
+            function_app._enrich_artifact("fixture-token", self.workspace_id, artifact, trackers, [])
+            self.assertEqual(function_app._item_schema(
+                "fixture-token", self.workspace_id, artifact, "Lakehouse",
+            ), [])
+            collect.assert_called_once()
+        self.assertEqual(trackers["lakehouseTables"]["unsupported"], 1)
+
+    def test_retained_list_collectors_stop_before_an_excess_page(self):
+        path = f"/workspaces/{self.workspace_id}/items"
+        for name, key in (("_get_all", "value"), ("_get_all_data", "data")):
+            with self.subTest(name=name):
+                counter = 0
+
+                def page(_token, _url):
+                    nonlocal counter
+                    counter += 1
+                    return {
+                        key: [{"id": self.lakehouse_id}],
+                        "continuationUri": function_app.FABRIC + path + f"?continuationToken={counter}",
+                    }
+
+                with (
+                    mock.patch.object(function_app, "MAX_METADATA_LIST_PAGES", 2),
+                    mock.patch.object(function_app, "_get", side_effect=page) as get,
+                ):
+                    with self.assertRaises(function_app.PaginationError):
+                        getattr(function_app, name)("fixture-token", path)
+                    self.assertEqual(get.call_count, 2)
+
+    def test_retained_list_collectors_fail_without_returning_a_partial_record_set(self):
+        path = f"/workspaces/{self.workspace_id}/items"
+        for name, key in (("_get_all", "value"), ("_get_all_data", "data")):
+            with self.subTest(name=name):
+                with (
+                    mock.patch.object(function_app, "MAX_METADATA_LIST_RECORDS", 2),
+                    mock.patch.object(function_app, "_get", side_effect=[
+                        {key: [{"id": "first"}, {"id": "second"}], "continuationUri": function_app.FABRIC + path + "?continuationToken=next"},
+                        {key: [{"id": "private-record"}]},
+                    ]),
+                ):
+                    with self.assertRaises(function_app.PaginationError) as caught:
+                        getattr(function_app, name)("fixture-token", path)
+                self.assertNotIn("private-record", str(caught.exception))
+                self.assertEqual(function_app._safe_error_code(caught.exception), "pagination-invalid")
+
+    def test_value_list_does_not_treat_a_malformed_collection_as_records(self):
+        with mock.patch.object(function_app, "_get", return_value={"value": "private-response"}):
+            with self.assertRaises(function_app.PaginationError):
+                function_app._get_all("fixture-token", "/workspaces")
+
+    def test_scanner_compatibility_is_still_bounded_and_does_not_request_business_data(self):
+        clock = _Clock()
+        deadline = function_app._ExecutionDeadline(180, clock.monotonic)
+        with (
+            function_app._deadline_scope(deadline),
+            mock.patch.object(function_app, "_req", return_value={"id": self.lakehouse_id}) as start,
+            mock.patch.object(function_app, "_get", return_value={"status": "Running"}) as get,
+            mock.patch.object(function_app.time, "sleep", side_effect=clock.sleep),
+        ):
+            with self.assertRaises(function_app.ScannerError):
+                function_app._scan_workspace("fixture-token", self.workspace_id)
+        self.assertEqual(get.call_count, 30)
+        self.assertEqual(sum(clock.sleeps), 60)
+        self.assertIn("datasetSchema=True&datasetExpressions=True", start.call_args.args[1])
+        self.assertNotIn("datasourceDetails", start.call_args.args[1])
+        self.assertEqual(start.call_args.kwargs["body"], {"workspaces": [self.workspace_id]})
+
+    def test_authoritative_deferred_empty_workspace_contract_is_preserved(self):
+        with (
+            mock.patch.object(function_app, "_get", return_value={"id": self.workspace_id, "displayName": "Fixture"}),
+            mock.patch.object(function_app, "_get_all", return_value=[]),
+            mock.patch.object(function_app, "_scan_workspace", return_value={"id": self.workspace_id}),
+            mock.patch.object(function_app, "_enrich_artifact", side_effect=AssertionError("base invoked deep collection")),
+        ):
+            result = function_app.sync_all("fixture-token", self.workspace_id, deferEnrichment="true")
+        self.assertEqual(result["schemaVersion"], 2)
+        self.assertEqual(result["syncMode"], "base")
+        self.assertEqual(result["enrichmentItemIds"], [])
+        for name in ("workspace", "items", "roleAssignments", "scanner", "schema", "lineage", "access", "config"):
+            self.assertEqual(result["sections"][name]["status"], "complete")
 
 
 class PaginationAndScannerOptionTests(unittest.TestCase):

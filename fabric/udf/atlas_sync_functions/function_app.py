@@ -35,6 +35,8 @@ MAX_REQUEST_ATTEMPTS = 4
 MAX_BACKOFF_SECONDS = 8
 MAX_RESPONSE_BYTES = 25 * 1024 * 1024
 MAX_UPSTREAM_RESPONSE_BYTES = 25 * 1024 * 1024
+MAX_METADATA_LIST_PAGES = 100
+MAX_METADATA_LIST_RECORDS = 50000
 RESPONSE_READ_CHUNK_BYTES = 64 * 1024
 MAX_DEFINITION_PARTS = 500
 MAX_DEFINITION_DECODED_BYTES = 8 * 1024 * 1024
@@ -440,10 +442,17 @@ def _get_all(token, path):
         url = _fabric_url(url)
         if url in visited:
             raise PaginationError("Fabric pagination repeated a URL")
+        if len(visited) >= MAX_METADATA_LIST_PAGES:
+            raise PaginationError("Fabric metadata exceeded the page limit")
         visited.add(url)
         data = _get(token, url)
         if isinstance(data, dict):
-            items.extend(data.get("value", []))
+            values = data.get("value", [])
+            if not isinstance(values, list):
+                raise PaginationError("Fabric metadata list was invalid")
+            if len(items) + len(values) > MAX_METADATA_LIST_RECORDS:
+                raise PaginationError("Fabric metadata exceeded the record limit")
+            items.extend(values)
             url = data.get("continuationUri")
         else:
             raise ValueError("Fabric list response was not an object")
@@ -458,6 +467,8 @@ def _get_all_data(token, path):
         url = _fabric_url(url)
         if url in visited:
             raise PaginationError("Fabric data pagination repeated a URL")
+        if len(visited) >= MAX_METADATA_LIST_PAGES:
+            raise PaginationError("Fabric metadata exceeded the page limit")
         visited.add(url)
         data = _get(token, url)
         if not isinstance(data, dict):
@@ -465,6 +476,8 @@ def _get_all_data(token, path):
         values = data.get("data", [])
         if not isinstance(values, list):
             raise ValueError("Fabric data-list response did not contain a list")
+        if len(items) + len(values) > MAX_METADATA_LIST_RECORDS:
+            raise PaginationError("Fabric metadata exceeded the record limit")
         items.extend(values)
         url = data.get("continuationUri")
     return items
@@ -1527,14 +1540,6 @@ def _access_right(user):
         if k.endswith("UserAccessRight") or k.endswith("AccessRight"):
             return v
     return None
-
-
-def _lh_tables(token, ws, lid):
-    rows = _get_all_data(
-        token,
-        f"/workspaces/{ws}/lakehouses/{lid}/tables?maxResults=100",
-    )
-    return _table_records(rows)
 
 
 def _table_records(value):
@@ -4035,53 +4040,6 @@ def _collect_sql_schema(token, artifact):
     artifact["_sqlMetadataFacts"] = facts
 
 
-def _sql_metadata_projection(value):
-    """Sanitize SQL catalog fixtures used by tests and offline diagnostics."""
-    if not isinstance(value, dict):
-        raise ValueError("SQL metadata item was not an object")
-    tables = _schema_objects(
-        value.get("tables") if isinstance(value.get("tables"), list) else [],
-        "SQL table",
-        "Sanitized SQL system catalog metadata",
-    )
-    views = _schema_objects(
-        value.get("views") if isinstance(value.get("views"), list) else [],
-        "SQL view",
-        "Sanitized SQL system catalog metadata",
-    )
-    facts = []
-    for collection, label in (
-        (value.get("tables"), "Primary key"),
-        (value.get("foreignKeys"), "Foreign key"),
-    ):
-        if not isinstance(collection, list):
-            continue
-        for entry in collection[:MAX_DEFINITION_FACTS_PER_ITEM]:
-            if not isinstance(entry, dict):
-                continue
-            name = _qualified_object_name(entry)
-            if label == "Primary key":
-                columns = entry.get("primaryKey")
-                if not isinstance(columns, list):
-                    continue
-                safe_columns = [
-                    column for column in columns if _strict_text(column)
-                ]
-                if name and safe_columns:
-                    facts.append((label, name, ", ".join(safe_columns)))
-            else:
-                source = _strict_text(entry.get("sourceTable"))
-                target = _strict_text(entry.get("targetTable"))
-                if source and target:
-                    facts.append((
-                        label,
-                        _strict_text(entry.get("name"))
-                        or f"{source}->{target}",
-                        f"{source} -> {target}",
-                    ))
-    return _merge_schema_tables(tables, views), facts
-
-
 def _enrich_artifact(
     token,
     ws,
@@ -5066,7 +5024,7 @@ def _item_config(token, ws, a, typ, item_schema=None):
 
 
 def _item_schema(token, ws, a, typ, defer_enrichment=False):
-    """Return only object metadata supplied by supported Fabric/Power BI APIs."""
+    """Project collected metadata; only _enrich_artifact may request deep inventory."""
     if typ == "SemanticModel":
         return _schema_objects(
             a.get("tables"),
@@ -5077,10 +5035,16 @@ def _item_schema(token, ws, a, typ, defer_enrichment=False):
     elif typ == "Lakehouse":
         if defer_enrichment:
             direct_values = []
-        elif "_lakehouseTables" in a:
-            direct_values = a["_lakehouseTables"]
         else:
-            direct_values = _lh_tables(token, ws, a.get("id"))
+            direct_values = []
+            for value in a.get("_lakehouseTables") or []:
+                if isinstance(value, dict) and any(
+                    isinstance(value.get(key), list)
+                    for key in ("data", "value", "tables")
+                ):
+                    direct_values.extend(_table_records(value))
+                else:
+                    direct_values.append(value)
         direct = _schema_objects(
             direct_values,
             "Table",
