@@ -18,6 +18,7 @@ import {
   FlaskConical,
   GitBranch,
   Maximize2,
+  Database,
   Plus,
   RotateCcw,
   Search,
@@ -44,6 +45,7 @@ import {
 } from "../components/RelationshipEvidencePane";
 import { ResizableInspector } from "../components/ResizableInspector";
 import { SemanticXRayPanel } from "../components/SemanticXRayPanel";
+import { ToggleSwitch } from "../components/ToggleSwitch";
 import { isFeatureEnabled } from "../feature-flags";
 import {
   ITEM_RELATIONS_FEATURE_ID,
@@ -58,8 +60,14 @@ import {
 import {
   buildLineageEvidence,
   buildPreviewOverlay,
+  type RelationshipAgreement,
   type RelationshipEvidence,
 } from "../lineage-evidence";
+import {
+  previewRelationFamily,
+  snapshotRelationFamily,
+  type RelationFamily,
+} from "../lineage-relation-family";
 import {
   metadataObjectKindLabel,
   verifiedMetadataEdgesForItem,
@@ -613,6 +621,34 @@ export function MapView({
     return names;
   }, [evidenceModel.previewGraph, items]);
   const selectedRelationship = evidenceModel.byId.get(relationshipId);
+  const relationshipCount = useMemo(
+    () =>
+      evidenceModel.relationships.filter(
+        (relationship) => relationship.agreement !== "not-lineage",
+      ).length,
+    [evidenceModel],
+  );
+  const [showDataFlow, setShowDataFlow] = useState(true);
+  const [showControl, setShowControl] = useState(true);
+  const [evidenceAgreement, setEvidenceAgreement] = useState<
+    RelationshipAgreement | "all"
+  >("all");
+  const familyVisible = (family: RelationFamily) =>
+    family === "data" ? showDataFlow : showControl;
+  const conflictKeys = useMemo(
+    () =>
+      new Set(
+        evidenceModel.relationships
+          .filter((relationship) => relationship.agreement === "conflict")
+          .flatMap((relationship) => [relationship.source.key, relationship.target.key]),
+      ),
+    [evidenceModel],
+  );
+  const reviewConflict = (id: string) => {
+    setEvidenceAgreement("conflict");
+    setRelationshipId(id);
+    setLineageView("evidence");
+  };
   const dragging = useRef<{
     id: string;
     ids: string[];
@@ -1394,6 +1430,58 @@ export function MapView({
   const laneByKey = new Map(
     (previewOverlay?.laneNodes ?? []).map((node) => [node.key, node]),
   );
+  const externalWorkspaceCount = new Set(
+    (previewOverlay?.laneNodes ?? [])
+      .filter((node) => !node.endpoint.isLocal)
+      .map((node) => node.endpoint.workspaceId),
+  ).size;
+  const laneGroups = (() => {
+    const groups: Array<{
+      key: string;
+      label?: string;
+      count: number;
+      x: number;
+      top: number;
+      bottom: number;
+    }> = [];
+    const labelled = new Set<string>();
+    const ordered = [...(previewOverlay?.laneNodes ?? [])].sort(
+      (left, right) => left.column - right.column || left.y - right.y,
+    );
+    for (const node of ordered) {
+      const last = groups[groups.length - 1];
+      const workspace = node.endpoint.workspaceId;
+      if (
+        last &&
+        last.key.startsWith(`${workspace}|${node.column}|`) &&
+        node.y - last.bottom <= NODE_ROW_GAP
+      ) {
+        last.bottom = node.y + NODE_H;
+        last.count += 1;
+        continue;
+      }
+      const first = !labelled.has(workspace);
+      labelled.add(workspace);
+      groups.push({
+        key: `${workspace}|${node.column}|${node.y}`,
+        label: first
+          ? node.endpoint.isLocal
+            ? "Not in this snapshot"
+            : node.endpoint.workspaceName ?? "Workspace name not reported"
+          : undefined,
+        count: 1,
+        x: node.x,
+        top: node.y,
+        bottom: node.y + NODE_H,
+      });
+    }
+    return groups.map((group) => ({
+      ...group,
+      total: (previewOverlay?.laneNodes ?? []).filter(
+        (node) => `${node.endpoint.workspaceId}` === group.key.split("|")[0],
+      ).length,
+    }));
+  })();
   const overlayPoint = (
     relationship: RelationshipEvidence,
     key: string,
@@ -1417,6 +1505,9 @@ export function MapView({
       }
     >();
     for (const overlayEdge of previewOverlay?.edges ?? []) {
+      if (!familyVisible(previewRelationFamily(overlayEdge.entry.edge.semantics.flow))) {
+        continue;
+      }
       const relationship = evidenceModel.byId.get(overlayEdge.relationshipId);
       if (!relationship) continue;
       const existing = handles.get(relationship.id);
@@ -1446,58 +1537,63 @@ export function MapView({
 
   return (
     <div className="flex h-full min-h-[720px] flex-col xl:min-h-0">
-      <div className="atlas-page-header flex flex-wrap items-end justify-between border-b border-border">
-        <div>
-          <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-lineage-downstream">
+      <div className="atlas-page-header flex flex-wrap items-start justify-between border-b border-border">
+        <div className="min-w-0">
+          <div className="text-200 font-semibold uppercase tracking-[0.12em] text-brand-foreground">
             Workspace topology
           </div>
-          <div className="mt-[3px] flex flex-wrap items-center gap-s">
-            <h1 className="text-[22px] font-bold">Map &amp; lineage</h1>
+          <div className="mt-xs flex flex-wrap items-center gap-m">
+            <h1 className="text-600 font-bold leading-600">Map &amp; lineage</h1>
             {previewActive && (
-              <span className="inline-flex items-center gap-xs rounded-md border border-lineage-upstream/40 bg-lineage-upstream/10 px-s py-xxs text-200 font-semibold text-lineage-upstream">
-                <FlaskConical className="icon-size-100" aria-hidden="true" />
+              <span className="inline-flex items-center rounded-md border border-lineage-upstream/50 bg-lineage-upstream/5 px-s py-xxs text-200 font-semibold text-lineage-upstream">
                 Beta evidence · evaluation
               </span>
             )}
           </div>
-          <div className="mt-[3px] text-[12px] text-muted-foreground">
-            Trace dependencies, inspect objects and estimate downstream change impact.
-          </div>
+          <p className="mt-xs text-300 text-muted-foreground">
+            Trace dependencies and inspect the evidence behind each relationship.
+          </p>
         </div>
-        <div className="flex flex-wrap gap-[7px]">
+        <dl aria-label="Map summary" className="flex flex-wrap gap-s">
           {[
-            ["Items", items.length],
-            ["Links", edges.length],
-            ["Upstream", upstream.length],
-            ["Downstream", downstream.length],
+            ["Items", items.length, false],
+            ["Relationships", relationshipCount, false],
             ...(previewEvidence
-              ? [
-                  [
-                    "Beta relations",
-                    evidenceModel.previewGraph?.edges.length ?? 0,
-                  ],
-                  ["Conflicts to review", evidenceModel.counts.conflict],
-                ]
+              ? [[
+                  evidenceModel.counts.conflict === 1
+                    ? "Conflict to review"
+                    : "Conflicts to review",
+                  evidenceModel.counts.conflict,
+                  evidenceModel.counts.conflict > 0,
+                ] as const]
               : []),
-          ].map(([label, value]) => (
+          ].map(([label, value, warning]) => (
             <div
-              key={label}
-              className="min-w-[78px] rounded-lg border border-border bg-card px-[10px] py-[7px] shadow-fabric-2"
+              key={String(label)}
+              className={cn(
+                "flex min-w-[120px] flex-col-reverse rounded-lg border bg-card px-l py-m shadow-fabric-2",
+                warning ? "border-status-warning/40" : "border-border",
+              )}
             >
-              <div
+              <dt
                 className={cn(
-                  "font-numeric text-[15px] font-bold",
-                  label === "Conflicts to review" &&
-                    Number(value) > 0 &&
-                    "text-status-warning",
+                  "text-200",
+                  warning ? "text-status-warning" : "text-muted-foreground",
+                )}
+              >
+                {label}
+              </dt>
+              <dd
+                className={cn(
+                  "font-numeric text-500 font-bold leading-500",
+                  warning && "text-status-warning",
                 )}
               >
                 {value}
-              </div>
-              <div className="text-[10px] text-muted-foreground">{label}</div>
+              </dd>
             </div>
           ))}
-        </div>
+        </dl>
       </div>
 
       <Tabs.Root
@@ -1595,6 +1691,8 @@ export function MapView({
           itemNames={itemNames}
           selectedId={relationshipId}
           onSelect={setRelationshipId}
+          agreement={evidenceAgreement}
+          onAgreementChange={setEvidenceAgreement}
         />
       </Tabs.Content>
       <Tabs.Content
@@ -1608,6 +1706,21 @@ export function MapView({
         className="flex min-h-0 flex-1 flex-col focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
       >
       <div className="atlas-toolbar flex flex-wrap items-center border-b border-border bg-card px-l py-s shadow-fabric-2">
+        <span
+          className="flex min-h-[var(--atlas-control-height)] max-w-[260px] items-center gap-s rounded-lg border border-input bg-card px-m text-300 text-foreground"
+          title="Map & lineage shows the active workspace. Other workspaces appear only through Item Relations (Beta) evidence."
+        >
+          <Database className="icon-size-200 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span className="truncate">
+            <span className="sr-only">Workspace scope: </span>
+            {data.workspace.displayName || "Active workspace"}
+          </span>
+          {externalWorkspaceCount > 0 && (
+            <span className="shrink-0 whitespace-nowrap text-200 text-lineage-upstream">
+              +{externalWorkspaceCount} via Beta
+            </span>
+          )}
+        </span>
         <div className="flex rounded-md border border-border bg-secondary p-[2px]">
           {(["items", "objects"] as const).map((value) => (
             <button
@@ -1749,13 +1862,29 @@ export function MapView({
             )
           )
         )}
+        {mode === "items" && (
+          <>
+            <ToggleSwitch
+              checked={showDataFlow}
+              onChange={setShowDataFlow}
+              label="Data flow relations"
+              className="ml-auto"
+            />
+            <ToggleSwitch
+              checked={showControl}
+              onChange={setShowControl}
+              label="Control relations"
+              tone="preview"
+            />
+          </>
+        )}
         {mode === "items" && <button
           type="button"
           role="switch"
           aria-checked={impactMode}
           onClick={() => setImpactMode((current) => !current)}
           className={cn(
-            "ml-auto flex items-center gap-s rounded-lg border px-m font-semibold",
+            "flex items-center gap-s rounded-lg border px-m font-semibold",
             impactMode
               ? "border-lineage-upstream/50 bg-lineage-upstream/10 text-lineage-upstream"
               : "border-border text-muted-foreground",
@@ -1973,6 +2102,9 @@ export function MapView({
                       ))}
                     </defs>
                     {visibleEdges.map((edge) => {
+                      if (!familyVisible(snapshotRelationFamily(edge.relation))) {
+                        return null;
+                      }
                       const source = posOf(edge.source);
                       const target = posOf(edge.target);
                       const key = lineageEdgeKey(edge);
@@ -1984,9 +2116,7 @@ export function MapView({
                         ? "var(--color-destructive)"
                         : isUp
                           ? UP
-                          : isDown
-                            ? DOWN
-                            : "var(--color-lineage-neutral)";
+                          : DOWN;
                       return (
                         <g key={key}>
                           <title>{edge.relation}</title>
@@ -2015,13 +2145,7 @@ export function MapView({
                                   : undefined
                             }
                             markerEnd={`url(#atlas-${
-                              edge.broken
-                                ? "broken"
-                                : isUp
-                                  ? "up"
-                                  : isDown
-                                    ? "down"
-                                    : "default"
+                              edge.broken ? "broken" : isUp ? "up" : "down"
                             })`}
                           />
                         </g>
@@ -2033,6 +2157,9 @@ export function MapView({
                       );
                       if (!relationship) return null;
                       const { edge, status } = overlayEdge.entry;
+                      if (!familyVisible(previewRelationFamily(edge.semantics.flow))) {
+                        return null;
+                      }
                       const conflict = status === "direction-conflict";
                       const selectedEdge =
                         relationship.id === relationshipId;
@@ -2129,13 +2256,16 @@ export function MapView({
                         : isDown
                           ? DOWN
                           : undefined;
+                    const inConflict = conflictKeys.has(
+                      itemRelationsNodeKey(data.workspace.fabricId, item.fabricId),
+                    );
                     return (
                       <button
                         key={item.fabricId}
                         type="button"
                         aria-pressed={selectedNode}
                         onClick={(event) => nodeClick(event, item.fabricId)}
-                        aria-label={`${item.displayName}, ${typeMeta(item.itemType).label}, ${item.health}`}
+                        aria-label={`${item.displayName}, ${typeMeta(item.itemType).label}, ${item.health}${inConflict ? ", direction conflict to review" : ""}`}
                         title={item.displayName}
                         onPointerDown={(event) => nodeDown(event, item.fabricId)}
                         onPointerMove={nodeMove}
@@ -2170,35 +2300,57 @@ export function MapView({
                         )}
                         <TypeGlyph type={item.itemType} size={34} />
                         <span className="min-w-0 flex-1">
-                          <span className="line-clamp-2 break-words text-200 font-semibold leading-200">
+                          <span className="line-clamp-1 break-all text-200 font-semibold leading-200">
                             {item.displayName}
                           </span>
-                          <span className="mt-xs line-clamp-1 text-200 leading-200 text-muted-foreground">
-                            {typeMeta(item.itemType).label} · {item.health}
+                          <span className="line-clamp-1 text-200 leading-200 text-muted-foreground">
+                            {typeMeta(item.itemType).label}
+                          </span>
+                          <span className="line-clamp-1 text-200 leading-200 text-muted-foreground">
+                            {data.workspace.displayName}
                           </span>
                         </span>
-                        <HealthDot health={item.health} />
+                        <span className="flex flex-col items-center gap-xs self-start pt-s">
+                          {inConflict && (
+                            <AlertTriangle
+                              className="icon-size-200 text-status-warning"
+                              aria-hidden="true"
+                            />
+                          )}
+                          {!inConflict && <HealthDot health={item.health} />}
+                        </span>
                       </button>
                     );
                   })}
-                  {previewOverlay && previewOverlay.laneNodes.length > 0 && (
+                  {laneGroups.map((group) => (
                     <div
-                      className="pointer-events-none absolute top-[9px] flex items-center gap-[7px] text-[10px] font-bold uppercase tracking-[0.12em] text-lineage-upstream"
+                      key={group.key}
+                      aria-hidden="true"
+                      className="pointer-events-none absolute z-[1] rounded-xl border border-dashed border-lineage-upstream/50 bg-lineage-upstream/5"
                       style={{
-                        left: layout.width + PREVIEW_LANE_GAP,
-                        width: NODE_W,
+                        left: group.x - 12,
+                        top: group.top - (group.label ? 34 : 12),
+                        width: NODE_W + 24,
+                        height: group.bottom - group.top + (group.label ? 46 : 24),
                       }}
                     >
-                      <span>Beta · outside snapshot</span>
-                      <span className="h-px flex-1 bg-lineage-upstream/40" />
+                      {group.label && (
+                        <span className="absolute left-m top-xs flex max-w-[calc(100%-24px)] items-center gap-xs text-200 font-semibold text-foreground">
+                          <Database className="icon-size-200 shrink-0 text-lineage-upstream" aria-hidden="true" />
+                          <span className="truncate">{group.label}</span>
+                          <span className="shrink-0 font-normal text-muted-foreground">
+                            · {group.total} item{group.total === 1 ? "" : "s"} · Beta
+                          </span>
+                        </span>
+                      )}
                     </div>
-                  )}
+                  ))}
                   {previewOverlay?.laneNodes.map((node) => (
                     <div
                       key={node.key}
                       data-preview-node
                       title={`${node.endpoint.displayName} (${node.endpoint.workspaceName ?? "workspace name not reported"})`}
-                      className="absolute z-[3] flex items-center gap-[10px] rounded-lg border border-dashed border-lineage-upstream/70 bg-card px-[12px] text-left shadow-fabric-2"
+                      className="absolute z-[3] flex items-center gap-[10px] rounded-lg border border-lineage-upstream/40 bg-card px-[12px] text-left shadow-fabric-2"
                       style={{
                         left: node.x,
                         top: node.y,
@@ -2211,14 +2363,16 @@ export function MapView({
                         size={34}
                       />
                       <span className="min-w-0 flex-1">
-                        <span className="line-clamp-2 break-words text-200 font-semibold leading-200">
+                        <span className="line-clamp-1 break-all text-200 font-semibold leading-200">
                           {node.endpoint.displayName}
                         </span>
-                        <span className="mt-xs line-clamp-1 text-200 leading-200 text-muted-foreground">
-                          {typeMeta(node.endpoint.itemType).label} ·{" "}
+                        <span className="line-clamp-1 text-200 leading-200 text-muted-foreground">
+                          {typeMeta(node.endpoint.itemType).label}
+                        </span>
+                        <span className="line-clamp-1 text-200 leading-200 text-muted-foreground">
                           {node.endpoint.isLocal
-                            ? "not in snapshot"
-                            : node.endpoint.workspaceName ?? "other workspace"}
+                            ? "Not in this snapshot"
+                            : node.endpoint.workspaceName ?? "Workspace name not reported"}
                         </span>
                       </span>
                       {node.hiddenNeighbors > 0 && !node.expanded && (
@@ -2514,8 +2668,25 @@ export function MapView({
             </div>
           </div>
 
+          <LineageSourceLegend
+            mode={mode}
+            previewIncluded={Boolean(previewOverlay)}
+            previewControl={
+              showControl &&
+              (previewOverlay?.edges.some(
+                (edge) =>
+                  previewRelationFamily(edge.entry.edge.semantics.flow) === "control",
+              ) ??
+                false)
+            }
+          />
+
+          <div className="sticky bottom-[14px] float-right z-20 mr-[14px] flex w-fit flex-col items-end gap-s">
           {mode === "items" && visibleItems.length > 0 && (
-            <div className="pointer-events-none absolute right-[16px] top-[16px] z-20 h-[90px] w-[146px] overflow-hidden rounded-lg border border-border bg-card shadow-fabric-4">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none relative h-[90px] w-[160px] overflow-hidden rounded-lg border border-border bg-card shadow-fabric-4"
+            >
               {visibleItems.map((item) => {
                 const point = posOf(item.fabricId);
                 return (
@@ -2528,22 +2699,26 @@ export function MapView({
                       impact.downstream.ids.has(item.fabricId) && "bg-lineage-downstream",
                     )}
                     style={{
-                      left: 7 + (point.x / Math.max(bounds.width, 1)) * 132,
+                      left: 7 + (point.x / Math.max(bounds.width, 1)) * 140,
                       top: 7 + (point.y / Math.max(bounds.height, 1)) * 76,
                     }}
                   />
                 );
               })}
+              {previewOverlay?.laneNodes.map((node) => (
+                <span
+                  key={node.key}
+                  className="absolute h-[5px] w-[13px] rounded-sm border border-dashed border-lineage-upstream"
+                  style={{
+                    left: 7 + (node.x / Math.max(bounds.width, 1)) * 140,
+                    top: 7 + (node.y / Math.max(bounds.height, 1)) * 76,
+                  }}
+                />
+              ))}
               <span className="absolute inset-[7px] rounded border border-primary/60 bg-primary/5" />
             </div>
           )}
-
-          <LineageSourceLegend
-            mode={mode}
-            previewIncluded={Boolean(previewOverlay)}
-          />
-
-          <div className="sticky bottom-[14px] float-right z-20 mr-[14px] flex w-fit items-center gap-[3px] rounded-lg border border-border bg-card p-[3px] shadow-fabric-4">
+          <div className="flex w-fit items-center gap-[3px] rounded-lg border border-border bg-card p-[3px] shadow-fabric-4">
             <button
               type="button"
               aria-label="Zoom out"
@@ -2573,6 +2748,7 @@ export function MapView({
               <Maximize2 size={14} />
             </button>
           </div>
+          </div>
         </div>
 
         <ResizableInspector
@@ -2587,6 +2763,7 @@ export function MapView({
               snapshotSyncedAt={data.workspace.syncedAt}
               itemNames={itemNames}
               onClose={() => setRelationshipId("")}
+              onReviewConflict={reviewConflict}
             />
           ) : (
           <Tabs.Root

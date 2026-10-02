@@ -1,5 +1,4 @@
 import { AlertTriangle } from "lucide-react";
-import { HealthDot } from "../ui";
 
 export const PREVIEW_DATA_DASH = "8 5";
 export const PREVIEW_CONTROL_DASH = "10 4 2 4";
@@ -8,20 +7,18 @@ function LegendLine({
   label,
   color,
   dash,
-  className,
 }: {
   label: string;
   color: string;
   dash?: string;
-  className?: string;
 }) {
   return (
-    <span className={className ?? "flex items-center gap-xs"}>
-      <svg width="24" height="6" aria-hidden="true" className="shrink-0">
+    <li className="flex items-center gap-s">
+      <svg width="28" height="6" aria-hidden="true" className="shrink-0">
         <line
           x1="0"
           y1="3"
-          x2="24"
+          x2="28"
           y2="3"
           stroke={color}
           strokeWidth="2"
@@ -29,72 +26,74 @@ function LegendLine({
         />
       </svg>
       {label}
-    </span>
+    </li>
   );
 }
 
 /**
- * Graph legend. Source entries say where an edge comes from; selection
- * entries keep the existing upstream/downstream highlighting.
+ * Graph legend. Source entries say where an edge comes from; the path
+ * entries explain the selection highlight.
  */
 export function LineageSourceLegend({
   mode,
   previewIncluded,
+  previewControl = false,
 }: {
   mode: "items" | "objects";
   previewIncluded: boolean;
+  /** True when Beta control or lifecycle edges are drawn. */
+  previewControl?: boolean;
 }) {
   return (
     <div
       role="group"
       aria-label="Lineage legend"
-      className="sticky bottom-[14px] left-[14px] z-20 ml-[14px] flex w-fit max-w-[calc(100%-28px)] flex-wrap items-center gap-x-m gap-y-xs rounded-lg border border-border bg-card px-m py-s text-200 text-muted-foreground shadow-fabric-4"
+      className="sticky bottom-[14px] left-[14px] z-20 ml-[14px] w-fit max-w-[calc(100%-28px)] rounded-lg border border-border bg-card px-l py-s text-200 text-foreground shadow-fabric-4"
     >
-      {mode === "items" && (
-        <>
-          <span className="font-semibold text-foreground">Sources</span>
+      <ul className="flex flex-wrap items-center gap-x-l gap-y-xs">
+        {mode === "items" && (
+          <>
+            <LegendLine
+              label="Atlas snapshot (verified)"
+              color="var(--color-lineage-downstream)"
+            />
+            {previewIncluded && (
+              <>
+                <LegendLine
+                  label="Item Relations API (Beta, observed)"
+                  color="var(--color-lineage-upstream)"
+                  dash={PREVIEW_DATA_DASH}
+                />
+                {previewControl && (
+                  <LegendLine
+                    label="Beta control relation"
+                    color="var(--color-lineage-upstream)"
+                    dash={PREVIEW_CONTROL_DASH}
+                  />
+                )}
+                <li className="flex items-center gap-s">
+                  <AlertTriangle
+                    className="icon-size-200 text-status-warning"
+                    aria-hidden="true"
+                  />
+                  Conflict (review needed)
+                </li>
+              </>
+            )}
+          </>
+        )}
+        <LegendLine
+          label="Upstream path"
+          color="var(--color-lineage-upstream)"
+          dash="2 5"
+        />
+        {mode === "objects" && (
           <LegendLine
-            label="Atlas snapshot (verified)"
-            color="var(--color-lineage-neutral)"
+            label="Downstream path"
+            color="var(--color-lineage-downstream)"
           />
-          {previewIncluded && (
-            <>
-              <LegendLine
-                label="Item Relations API (Beta, observed)"
-                color="var(--color-lineage-upstream)"
-                dash={PREVIEW_DATA_DASH}
-                className="flex items-center gap-xs text-lineage-upstream"
-              />
-              <LegendLine
-                label="Beta control or lifecycle"
-                color="var(--color-lineage-upstream)"
-                dash={PREVIEW_CONTROL_DASH}
-                className="flex items-center gap-xs text-lineage-upstream"
-              />
-              <span className="flex items-center gap-xs text-status-warning">
-                <AlertTriangle className="icon-size-100" aria-hidden="true" />
-                Conflict (review needed)
-              </span>
-            </>
-          )}
-          <span aria-hidden="true" className="h-l w-px bg-border" />
-        </>
-      )}
-      <span className="flex items-center gap-xs text-lineage-upstream">
-        <span className="w-[18px] border-t-2 border-dashed border-lineage-upstream" />{" "}
-        upstream
-      </span>
-      <span className="flex items-center gap-xs text-lineage-downstream">
-        <span className="h-[2px] w-[18px] bg-lineage-downstream" /> downstream
-      </span>
-      <span className="flex items-center gap-xs">
-        <HealthDot health="healthy" size={7} /> healthy
-      </span>
-      <span>
-        {mode === "items"
-          ? "Ctrl/Cmd+click to multi-select · drag selection"
-          : "Ctrl/Cmd+click to multi-select · drag objects"}
-      </span>
+        )}
+      </ul>
     </div>
   );
 }

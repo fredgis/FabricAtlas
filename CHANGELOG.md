@@ -72,6 +72,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   bounded hop at a time, without moving shown nodes. Live expansion of
   external items, Ontology metrics and Ontology inheritance are recorded as
   dated deferred capabilities.
+- Map & lineage follows the #42 lineage mockup: Items, Relationships and
+  Conflicts to review summary cards; a workspace scope chip and Data flow /
+  Control relations switches; teal verified edges, dashed purple Beta edges
+  and amber conflict markers on nodes; three-line node cards and dashed
+  workspace frames for external Beta endpoints; a source legend bottom left
+  with minimap and zoom bottom right; a restructured relationship evidence
+  pane with per-source status, statement, source and confidence, a
+  **Review conflict** action and the separation note; and table cards with
+  right evidence panes on the Evidence and Breaking changes views.
 - Optional OneLake Catalog Search (Preview) discovery in the `Ctrl+K` palette
   behind the default-off `VITE_ATLAS_FEATURE_CATALOG_SEARCH` flag. The
   synchronizer-only `searchCatalogPreview` Function calls the fixed Catalog

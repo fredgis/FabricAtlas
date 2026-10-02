@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowRight, FileDown } from "lucide-react";
+import { AlertTriangle, ArrowRight, ChevronRight, FileDown } from "lucide-react";
 import { useMemo, useState, type MouseEvent } from "react";
 import {
   BREAKING_CHANGE_LABEL,
@@ -96,9 +96,16 @@ export function BreakingChangesView({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-m xl:flex-row">
-      <div className="flex min-w-0 flex-1 flex-col gap-m">
-        <div className="atlas-toolbar flex flex-wrap items-center">
+    <div className="flex min-h-0 flex-1 flex-col gap-m xl:flex-row xl:items-start">
+      <section
+        aria-labelledby="breaking-changes-title"
+        className="min-w-0 flex-1 overflow-hidden rounded-lg border border-border bg-card shadow-fabric-2"
+      >
+        <div className="atlas-toolbar flex flex-wrap items-center justify-between border-b border-border px-l py-m">
+          <h3 id="breaking-changes-title" className="text-400 font-semibold">
+            Breaking-change candidates
+          </h3>
+          <div className="flex flex-wrap items-center gap-s">
           <select
             aria-label="Filter breaking changes by domain"
             value={domain}
@@ -152,49 +159,87 @@ export function BreakingChangesView({
           <span className="text-200 text-muted-foreground" aria-live="polite">
             {filtered.length} of {analysis.candidates.length} candidates
           </span>
+          </div>
         </div>
         {filtered.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border p-xl text-center text-300 text-muted-foreground">
+          <p className="p-xl text-center text-300 text-muted-foreground">
             No candidates match these filters.
           </p>
         ) : (
-          <ul aria-label="Breaking-change candidates" className="flex flex-col gap-xs">
-            {filtered.map((candidate) => (
-              <li key={candidate.id}>
-                <button
-                  type="button"
-                  aria-current={candidate.id === selectedId ? "true" : undefined}
-                  onClick={() => onSelect(candidate.id)}
-                  className={cn(
-                    "flex min-h-[var(--atlas-touch-target)] w-full flex-wrap items-center gap-s rounded-lg border bg-card px-m py-s text-left shadow-fabric-2 hover:bg-accent",
-                    candidate.id === selectedId ? "border-primary" : "border-border",
-                  )}
-                >
-                  <span
+          <table aria-labelledby="breaking-changes-title" className="w-full border-collapse text-300">
+            <thead>
+              <tr className="border-b border-border text-left text-200 text-muted-foreground">
+                <th scope="col" className="px-l py-s font-semibold">Severity</th>
+                <th scope="col" className="px-m py-s font-semibold">Change</th>
+                <th scope="col" className="hidden px-m py-s font-semibold md:table-cell">Owner</th>
+                <th scope="col" className="hidden px-m py-s font-semibold lg:table-cell">Downstream</th>
+                <th scope="col" className="w-[40px] px-s py-s">
+                  <span className="sr-only">Open</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((candidate) => {
+                const active = candidate.id === selectedId;
+                const downstreamCount = candidate.downstream.filter(
+                  (entry) => entry.distance > 0,
+                ).length;
+                return (
+                  <tr
+                    key={candidate.id}
+                    onClick={() => onSelect(candidate.id)}
                     className={cn(
-                      "rounded-md border px-s py-xxs text-200 font-semibold capitalize",
-                      SEVERITY_TONE[candidate.severity],
+                      "cursor-pointer border-b border-border last:border-b-0 hover:bg-accent",
+                      active && "bg-primary/5",
                     )}
                   >
-                    {candidate.severity}
-                  </span>
-                  <span className="min-w-0 flex-1 break-words text-300 font-semibold">
-                    {candidate.title}
-                  </span>
-                  <span className="text-200 text-muted-foreground">
-                    {candidate.item.name} · {candidate.downstream.filter((entry) => entry.distance > 0).length}{" "}
-                    downstream
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+                    <td className="atlas-row px-l">
+                      <span
+                        className={cn(
+                          "rounded-md border px-s py-xxs text-200 font-semibold capitalize",
+                          SEVERITY_TONE[candidate.severity],
+                        )}
+                      >
+                        {candidate.severity}
+                      </span>
+                    </td>
+                    <td className="px-m">
+                      <button
+                        type="button"
+                        aria-current={active ? "true" : undefined}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onSelect(candidate.id);
+                        }}
+                        className="flex min-h-[var(--atlas-touch-target)] w-full min-w-0 flex-col justify-center text-left"
+                      >
+                        <span className="break-words font-semibold">{candidate.title}</span>
+                        <span className="break-words text-200 text-muted-foreground">
+                          {candidate.item.name}
+                          {candidate.item.type ? ` · ${typeMeta(candidate.item.type).label}` : ""}
+                        </span>
+                      </button>
+                    </td>
+                    <td className="hidden px-m text-muted-foreground md:table-cell">
+                      {ownerOf(candidate) || "Not documented"}
+                    </td>
+                    <td className="hidden px-m font-numeric lg:table-cell">
+                      {downstreamCount}
+                    </td>
+                    <td className="px-s text-muted-foreground">
+                      <ChevronRight className="icon-size-200" aria-hidden="true" />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         )}
-      </div>
+      </section>
 
       <aside
         aria-label="Breaking change evidence"
-        className="flex min-h-[260px] flex-col gap-m rounded-lg border border-border bg-card p-l xl:w-[380px] xl:shrink-0"
+        className="flex min-h-[260px] flex-col gap-m rounded-lg border border-border bg-card p-l shadow-fabric-2 xl:w-[400px] xl:shrink-0"
       >
         {selected ? (
           <CandidateDetail

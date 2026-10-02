@@ -52,7 +52,7 @@ export const RELATIONSHIP_AGREEMENT_LABEL: Record<
   "not-lineage": "Visibility only",
   "snapshot-only": "Atlas snapshot only",
   "not-covered": "No Preview coverage",
-  snapshot: "Atlas snapshot",
+  snapshot: "Not compared",
 };
 
 export interface RelationshipEndpoint {

@@ -105,10 +105,13 @@ describe("LineageChangesPanel", () => {
     );
     render(<LineageChangesPanel previewIncluded={false} />);
 
-    const list = screen.getByRole("list", { name: "Breaking-change candidates" });
-    expect(within(list).getByText("Column removed: Sales.Amount")).toBeInTheDocument();
+    const table = screen.getByRole("table", { name: "Breaking-change candidates" });
+    expect(
+      within(table).getAllByRole("columnheader").map((header) => header.textContent),
+    ).toEqual(["Severity", "Change", "Owner", "Downstream", "Open"]);
+    expect(within(table).getByText("Column removed: Sales.Amount")).toBeInTheDocument();
     await act(async () => {
-      fireEvent.click(within(list).getByText("Column removed: Sales.Amount"));
+      fireEvent.click(within(table).getByText("Column removed: Sales.Amount"));
     });
     expect(
       screen.getByRole("complementary", { name: "Breaking change evidence" }),

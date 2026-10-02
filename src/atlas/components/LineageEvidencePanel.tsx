@@ -1,5 +1,12 @@
-import { CircleCheck, FlaskConical, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  ChevronRight,
+  CircleCheck,
+  FlaskConical,
+  Search,
+  Waypoints,
+} from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { ItemRelationsEvidenceState } from "../item-relations-evidence-source";
 import {
   RELATIONSHIP_AGREEMENT_LABEL,
@@ -14,21 +21,34 @@ import { AgreementChip, RelationshipEvidencePane } from "./RelationshipEvidenceP
 
 const PAGE_SIZE = 100;
 
-function Metric({
-  label,
-  value,
+function MetricTile({
+  icon,
   tone,
+  value,
+  label,
+  detail,
 }: {
-  label: string;
+  icon: ReactNode;
+  tone: string;
   value: number | string;
-  tone?: string;
+  label: string;
+  detail: string;
 }) {
   return (
-    <div className="min-w-[112px] rounded-lg border border-border bg-card px-m py-s shadow-fabric-2">
-      <div className={cn("font-numeric text-400 font-semibold", tone)}>
-        {value}
+    <div className="flex items-center gap-m rounded-lg border border-border bg-card px-l py-m shadow-fabric-2">
+      <span
+        className={cn(
+          "flex icon-size-700 shrink-0 items-center justify-center rounded-lg",
+          tone,
+        )}
+      >
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <div className="font-numeric text-500 font-bold leading-500">{value}</div>
+        <div className="text-300 font-semibold">{label}</div>
+        <div className="text-200 text-muted-foreground">{detail}</div>
       </div>
-      <div className="text-200 text-muted-foreground">{label}</div>
     </div>
   );
 }
@@ -122,6 +142,8 @@ export function LineageEvidencePanel({
   itemNames,
   selectedId,
   onSelect,
+  agreement: controlledAgreement,
+  onAgreementChange,
 }: {
   model: LineageEvidenceModel;
   previewState: ItemRelationsEvidenceState;
@@ -129,11 +151,15 @@ export function LineageEvidencePanel({
   itemNames: ReadonlyMap<string, string>;
   selectedId: string;
   onSelect: (id: string) => void;
+  agreement?: RelationshipAgreement | "all";
+  onAgreementChange?: (agreement: RelationshipAgreement | "all") => void;
 }) {
   const [query, setQuery] = useState("");
-  const [agreement, setAgreement] = useState<RelationshipAgreement | "all">(
+  const [localAgreement, setLocalAgreement] = useState<RelationshipAgreement | "all">(
     "all",
   );
+  const agreement = controlledAgreement ?? localAgreement;
+  const setAgreement = onAgreementChange ?? setLocalAgreement;
   const [limit, setLimit] = useState(PAGE_SIZE);
   const previewReady = previewState.status === "ready";
   const filtered = useMemo(
@@ -154,165 +180,216 @@ export function LineageEvidencePanel({
   ).length;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col xl:flex-row">
-      <div className="flex min-w-0 flex-1 flex-col gap-m overflow-auto p-l">
-        <div className="flex flex-wrap gap-s">
-          <Metric label="Relationships" value={model.relationships.length} />
-          <Metric label="Atlas snapshot" value={withSnapshot} />
-          {previewReady && (
+    <div className="flex min-h-0 flex-1 flex-col gap-m overflow-auto p-l xl:flex-row xl:items-start">
+      <div className="flex min-w-0 flex-1 flex-col gap-m">
+        <div className="grid gap-s sm:grid-cols-2 2xl:grid-cols-4">
+          <MetricTile
+            icon={<Waypoints className="icon-size-300" aria-hidden="true" />}
+            tone="bg-primary/10 text-brand-foreground"
+            value={model.relationships.length}
+            label="Relationships"
+            detail={`${withSnapshot} in Atlas snapshot lineage`}
+          />
+          {previewReady ? (
             <>
-              <Metric
-                label="Item Relations (Beta)"
-                value={withPreview}
-                tone="text-lineage-upstream"
-              />
-              <Metric
-                label="Sources agree"
+              <MetricTile
+                icon={<CircleCheck className="icon-size-300" aria-hidden="true" />}
+                tone="bg-status-healthy/10 text-status-healthy"
                 value={model.counts.agree}
-                tone="text-status-healthy"
+                label="Sources agree"
+                detail="Same direction in both sources"
               />
-              <Metric
-                label="Conflicts to review"
+              <MetricTile
+                icon={<AlertTriangle className="icon-size-300" aria-hidden="true" />}
+                tone="bg-status-warning/10 text-status-warning"
                 value={model.counts.conflict}
-                tone={model.counts.conflict > 0 ? "text-status-warning" : undefined}
+                label={model.counts.conflict === 1 ? "Conflict to review" : "Conflicts to review"}
+                detail="Direction differs between sources"
+              />
+              <MetricTile
+                icon={<FlaskConical className="icon-size-300" aria-hidden="true" />}
+                tone="bg-lineage-upstream/10 text-lineage-upstream"
+                value={withPreview}
+                label="Item Relations (Beta)"
+                detail="Relationships with Beta evidence"
               />
             </>
+          ) : (
+            <MetricTile
+              icon={<FlaskConical className="icon-size-300" aria-hidden="true" />}
+              tone="bg-muted text-muted-foreground"
+              value="—"
+              label="Item Relations (Beta)"
+              detail="Not included in this view"
+            />
           )}
         </div>
 
         <PreviewCoverage model={model} state={previewState} />
 
-        <div className="atlas-toolbar flex flex-wrap items-center">
-          <label className="relative min-w-[200px] flex-1 sm:max-w-[320px]">
-            <Search
-              className="pointer-events-none absolute left-s top-1/2 icon-size-200 -translate-y-1/2 text-muted-foreground"
-              aria-hidden="true"
-            />
-            <span className="sr-only">Search relationships</span>
-            <input
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setLimit(PAGE_SIZE);
-              }}
-              placeholder="Search relationships…"
-              className="w-full rounded-lg border border-input bg-card pl-xxxl pr-m outline-none"
-            />
-          </label>
-          <select
-            aria-label="Filter relationships by agreement"
-            value={agreement}
-            onChange={(event) => {
-              setAgreement(event.target.value as RelationshipAgreement | "all");
-              setLimit(PAGE_SIZE);
-            }}
-            className="rounded-lg border border-input bg-card px-m text-muted-foreground outline-none"
-          >
-            <option value="all">All relationships</option>
-            {RELATIONSHIP_AGREEMENT_ORDER.filter(
-              (value) => model.counts[value] > 0,
-            ).map((value) => (
-              <option key={value} value={value}>
-                {RELATIONSHIP_AGREEMENT_LABEL[value]} ({model.counts[value]})
-              </option>
-            ))}
-          </select>
-          <span className="text-200 text-muted-foreground" aria-live="polite">
-            {filtered.length} of {model.relationships.length}
-          </span>
-        </div>
+        <section
+          aria-labelledby="lineage-relationships-title"
+          className="overflow-hidden rounded-lg border border-border bg-card shadow-fabric-2"
+        >
+          <div className="atlas-toolbar flex flex-wrap items-center justify-between border-b border-border px-l py-m">
+            <h3 id="lineage-relationships-title" className="text-400 font-semibold">
+              Lineage relationships
+            </h3>
+            <div className="flex flex-wrap items-center gap-s">
+              <select
+                aria-label="Filter relationships by agreement"
+                value={agreement}
+                onChange={(event) => {
+                  setAgreement(event.target.value as RelationshipAgreement | "all");
+                  setLimit(PAGE_SIZE);
+                }}
+                className="rounded-lg border border-input bg-card px-m text-muted-foreground outline-none"
+              >
+                <option value="all">All relationships</option>
+                {RELATIONSHIP_AGREEMENT_ORDER.filter(
+                  (value) => model.counts[value] > 0 || value === agreement,
+                ).map((value) => (
+                  <option key={value} value={value}>
+                    {RELATIONSHIP_AGREEMENT_LABEL[value]} ({model.counts[value]})
+                  </option>
+                ))}
+              </select>
+              <label className="relative min-w-[200px] sm:w-[280px]">
+                <Search
+                  className="pointer-events-none absolute left-s top-1/2 icon-size-200 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <span className="sr-only">Search relationships</span>
+                <input
+                  value={query}
+                  onChange={(event) => {
+                    setQuery(event.target.value);
+                    setLimit(PAGE_SIZE);
+                  }}
+                  placeholder="Search items, workspaces or types…"
+                  className="w-full rounded-lg border border-input bg-card pl-xxxl pr-m outline-none"
+                />
+              </label>
+              <span className="text-200 text-muted-foreground" aria-live="polite">
+                {filtered.length} of {model.relationships.length}
+              </span>
+            </div>
+          </div>
 
-        {model.relationships.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border p-xl text-center text-300 text-muted-foreground">
-            This snapshot has no lineage relationships.
-          </p>
-        ) : filtered.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border p-xl text-center text-300 text-muted-foreground">
-            No relationships match these filters.
-          </p>
-        ) : (
-          <ul aria-label="Lineage relationships" className="flex flex-col gap-xs">
-            {filtered.slice(0, limit).map((relationship) => {
-              const active = relationship.id === selectedId;
-              return (
-                <li key={relationship.id}>
-                  <button
-                    type="button"
-                    aria-current={active ? "true" : undefined}
-                    onClick={() => onSelect(relationship.id)}
-                    className={cn(
-                      "grid min-h-[var(--atlas-touch-target)] w-full grid-cols-1 items-center gap-s rounded-lg border bg-card px-m py-s text-left shadow-fabric-2 hover:bg-accent md:grid-cols-[minmax(0,1fr)_auto_auto]",
-                      active ? "border-primary" : "border-border",
-                    )}
-                  >
-                    <span className="flex min-w-0 items-center gap-s">
-                      <TypeGlyph
-                        type={(relationship.source.itemType ?? "Unknown") as ItemType}
-                        size={24}
-                      />
-                      <span className="min-w-0">
-                        <span className="block break-words text-300 font-semibold">
-                          {relationship.source.displayName}{" "}
-                          <span aria-hidden="true">→</span>
-                          <span className="sr-only"> to </span>{" "}
-                          {relationship.target.displayName}
-                        </span>
-                        <span className="block break-words text-200 text-muted-foreground">
-                          {[
-                            ...new Set([
-                              ...relationship.authoritative.map(
-                                (edge) => edge.relation,
-                              ),
-                              ...relationship.preview.map(
-                                (entry) => entry.edge.relation.relationType,
-                              ),
-                            ]),
-                          ].join(" · ")}
-                          {relationship.crossWorkspace
-                            ? ` · ${relationship.source.workspaceName ?? "Unknown workspace"} → ${relationship.target.workspaceName ?? "Unknown workspace"}`
-                            : ""}
-                        </span>
-                      </span>
-                    </span>
-                    <span className="flex items-center gap-xs text-200 text-muted-foreground">
-                      {relationship.authoritative.length > 0 && (
-                        <span className="inline-flex items-center gap-xxs">
-                          <CircleCheck
-                            className="icon-size-100 text-status-healthy"
-                            aria-hidden="true"
-                          />
-                          Atlas
-                        </span>
+          {model.relationships.length === 0 ? (
+            <p className="p-xl text-center text-300 text-muted-foreground">
+              This snapshot has no lineage relationships.
+            </p>
+          ) : filtered.length === 0 ? (
+            <p className="p-xl text-center text-300 text-muted-foreground">
+              No relationships match these filters.
+            </p>
+          ) : (
+            <table aria-labelledby="lineage-relationships-title" className="w-full border-collapse text-300">
+              <thead>
+                <tr className="border-b border-border text-left text-200 text-muted-foreground">
+                  <th scope="col" className="px-l py-s font-semibold">Relationship</th>
+                  <th scope="col" className="hidden px-m py-s font-semibold md:table-cell">Type</th>
+                  <th scope="col" className="hidden px-m py-s font-semibold lg:table-cell">Sources</th>
+                  <th scope="col" className="px-m py-s font-semibold">Agreement</th>
+                  <th scope="col" className="w-[40px] px-s py-s">
+                    <span className="sr-only">Open</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.slice(0, limit).map((relationship) => {
+                  const active = relationship.id === selectedId;
+                  const types = [
+                    ...new Set([
+                      ...relationship.authoritative.map((edge) => edge.relation),
+                      ...relationship.preview.map((entry) => entry.edge.relation.relationType),
+                    ]),
+                  ];
+                  return (
+                    <tr
+                      key={relationship.id}
+                      onClick={() => onSelect(relationship.id)}
+                      className={cn(
+                        "cursor-pointer border-b border-border last:border-b-0 hover:bg-accent",
+                        active && "bg-primary/5",
                       )}
-                      {relationship.preview.length > 0 && (
-                        <span className="inline-flex items-center gap-xxs text-lineage-upstream">
-                          <FlaskConical
-                            className="icon-size-100"
-                            aria-hidden="true"
+                    >
+                      <td className="atlas-row px-l">
+                        <button
+                          type="button"
+                          aria-current={active ? "true" : undefined}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onSelect(relationship.id);
+                          }}
+                          className="flex min-h-[var(--atlas-touch-target)] w-full min-w-0 items-center gap-m text-left"
+                        >
+                          <TypeGlyph
+                            type={(relationship.source.itemType ?? "Unknown") as ItemType}
+                            size={28}
                           />
-                          Beta
+                          <span className="min-w-0">
+                            <span className="block break-words font-semibold">
+                              {relationship.source.displayName}{" "}
+                              <span aria-hidden="true">→</span>
+                              <span className="sr-only"> to </span>{" "}
+                              {relationship.target.displayName}
+                            </span>
+                            <span className="block break-words text-200 text-muted-foreground">
+                              {relationship.crossWorkspace
+                                ? `${relationship.source.workspaceName ?? "Workspace name not reported"} → ${relationship.target.workspaceName ?? "Workspace name not reported"}`
+                                : relationship.source.workspaceName ?? "Same workspace"}
+                            </span>
+                          </span>
+                        </button>
+                      </td>
+                      <td className="hidden px-m text-muted-foreground md:table-cell">
+                        {types.join(" · ")}
+                      </td>
+                      <td className="hidden px-m lg:table-cell">
+                        <span className="flex flex-wrap items-center gap-xs text-200">
+                          {relationship.authoritative.length > 0 && (
+                            <span className="inline-flex items-center gap-xxs rounded-md border border-status-healthy/30 bg-status-healthy/10 px-s py-xxs font-semibold text-status-healthy">
+                              <CircleCheck className="icon-size-100" aria-hidden="true" />
+                              Atlas snapshot
+                            </span>
+                          )}
+                          {relationship.preview.length > 0 && (
+                            <span className="inline-flex items-center gap-xxs rounded-md border border-lineage-upstream/35 bg-lineage-upstream/10 px-s py-xxs font-semibold text-lineage-upstream">
+                              <FlaskConical className="icon-size-100" aria-hidden="true" />
+                              Beta
+                            </span>
+                          )}
                         </span>
-                      )}
-                    </span>
-                    <AgreementChip agreement={relationship.agreement} />
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        {filtered.length > limit && (
-          <button
-            type="button"
-            onClick={() => setLimit((current) => current + PAGE_SIZE)}
-            className="self-start rounded-lg border border-border bg-card px-l py-s text-300 font-semibold hover:bg-accent"
-          >
-            Show {Math.min(PAGE_SIZE, filtered.length - limit)} more
-          </button>
-        )}
+                      </td>
+                      <td className="px-m">
+                        <AgreementChip agreement={relationship.agreement} />
+                      </td>
+                      <td className="px-s text-muted-foreground">
+                        <ChevronRight className="icon-size-200" aria-hidden="true" />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+          {filtered.length > limit && (
+            <div className="border-t border-border px-l py-s">
+              <button
+                type="button"
+                onClick={() => setLimit((current) => current + PAGE_SIZE)}
+                className="rounded-lg border border-border bg-card px-l py-s text-300 font-semibold hover:bg-accent"
+              >
+                Show {Math.min(PAGE_SIZE, filtered.length - limit)} more
+              </button>
+            </div>
+          )}
+        </section>
       </div>
 
-      <div className="flex min-h-[320px] flex-col border-t border-border bg-card xl:w-[380px] xl:shrink-0 xl:border-l xl:border-t-0">
+      <div className="flex min-h-[320px] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-fabric-2 xl:sticky xl:top-0 xl:max-h-full xl:w-[400px] xl:shrink-0">
         {selected ? (
           <RelationshipEvidencePane
             relationship={selected}

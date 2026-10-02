@@ -222,15 +222,59 @@ links resolve to `#map` with Preview evidence included.
   anything already shown (see [lineage-depth.md](lineage-depth.md#33-cross-workspace-expansion)).
   Snapshot node positions never move. Midpoint buttons
   open the relationship evidence pane. The legend lists sources: Atlas
-  snapshot (verified), Item Relations API (Beta, observed), Beta control or
-  lifecycle, and Conflict (review needed).
+  snapshot (verified), Item Relations API (Beta, observed), Beta control
+  relation when drawn, and Conflict (review needed).
 - **Evidence.** Coverage counts, failure codes, unresolved relations and
-  cycles; a searchable, filterable relationship list; and the provenance
-  pane, which shows each source's own statement, drawn direction, relation
-  family, observation time, preserved state and the conflict callout.
+  cycles; a searchable, filterable relationship table; and the provenance
+  pane, which shows each source's own statement, observation time, relation
+  family, preserved state and the conflict callout.
 - **Changes.** Atlas snapshot lineage added, removed or changed broken state
   between the last two snapshots. Beta evidence has no history and is never
   mixed into these changes.
+
+### Alignment with the #42 lineage mockup
+
+The Graph tab follows the binding #42 Map & lineage screenshot:
+
+- **Header.** Teal "Workspace topology" eyebrow, title with the purple
+  "Beta evidence · evaluation" pill while Preview is included, and three
+  summary cards: Items, Relationships and, when Beta evidence is loaded,
+  Conflicts to review in amber.
+- **Tabs and toolbar.** Graph, Evidence, Changes (plus X-Ray) as local tabs. The
+  toolbar has a workspace scope chip, search, type filter, and the **Data flow
+  relations** (teal) and **Control relations** (purple) switches. The switches
+  hide edges only; the layout never changes. Snapshot labels `orchestrates`,
+  `endpoint`, `SQL endpoint`, `database`, `default db` and `KQL database` count
+  as control relations, as do Beta Orchestration and CascadeDelete; every other
+  relation counts as data flow.
+- **Canvas.** Verified snapshot edges are teal, Beta edges dashed purple,
+  conflicts amber, with an amber triangle on nodes involved in a conflict.
+  Node cards show name, type and workspace. External Beta endpoints sit in
+  dashed purple workspace frames. The legend (Atlas snapshot verified, Item
+  Relations API Beta observed, Conflict review needed) is bottom left; the
+  minimap and zoom controls are bottom right.
+- **Relationship evidence pane.** Title and workspace path, Type and Workspace
+  boundary facts, one card per source with status, observation time, a
+  plain-language statement, Source and Confidence, an amber "Direction differs
+  between sources" callout with **Review conflict** (opens the Evidence tab
+  filtered to conflicts) and the separation note.
+- **Evidence and Changes tabs.** Icon metric tiles, a table card with a header
+  toolbar (Relationship, Type, Sources, Agreement; Severity, Change, Owner,
+  Downstream) and a right evidence pane, matching the #42 table and panel
+  treatment.
+
+Elements that cannot be reproduced honestly:
+
+| Mockup element | Atlas behaviour | Reason |
+| --- | --- | --- |
+| "2 selected workspaces" selector and side-by-side workspace frames | Read-only scope chip for the active workspace, "+N via Beta" when Beta evidence reaches other workspaces; external frames only | Map & lineage holds one validated snapshot; other workspaces appear only through Item Relations evidence |
+| "Scanner (verified)" | "Atlas snapshot (verified)" | Snapshot lineage combines scanner relations, item definitions and item properties |
+| Confidence "High" / "Medium" | "Verified" / "Observed" | Atlas has no confidence score |
+| ⋮ menus on source cards | Omitted; Beta details sit in an **Evidence details** disclosure | No per-source actions exist |
+| "Evidence remains separate until reviewed" | "Evidence remains separate … never changes Atlas snapshot lineage" | No review workflow promotes Beta evidence |
+| Two-pane workspace minimap | One overview of snapshot nodes plus Beta lane marks | Single-workspace snapshot |
+| Clickable edges | Midpoint buttons on Beta edges | Keyboard-accessible relationship selection |
+| Demo names and times | Real persisted evidence only; nothing is drawn without it | No mock production data |
 
 ## Persisted evidence
 
