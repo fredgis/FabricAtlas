@@ -159,6 +159,54 @@
       ]
     },
     {
+      "functionName": "workspaceCollectKqlMetadata",
+      "delegateParameters": [
+        {
+          "name": "ctx",
+          "type": "RayfinContext<AtlasSchema, AudienceType.Fabric>",
+          "optional": false,
+          "hasDefault": false,
+          "position": 0,
+          "isFabricParameter": false
+        },
+        {
+          "name": "protocolVersion",
+          "type": "1",
+          "optional": false,
+          "hasDefault": false,
+          "position": 1,
+          "isFabricParameter": false
+        },
+        {
+          "name": "workspaceId",
+          "type": "SyncUuidInput",
+          "optional": false,
+          "hasDefault": false,
+          "position": 2,
+          "isFabricParameter": false
+        },
+        {
+          "name": "items",
+          "type": "KqlMetadataItemsInput",
+          "optional": false,
+          "hasDefault": false,
+          "position": 3,
+          "isFabricParameter": false
+        },
+        {
+          "name": "correlationId",
+          "type": "SyncUuidInput | null",
+          "optional": false,
+          "hasDefault": true,
+          "position": 4,
+          "isFabricParameter": false
+        }
+      ],
+      "contextAudiences": [
+        "Fabric"
+      ]
+    },
+    {
       "functionName": "syncStart",
       "delegateParameters": [
         {

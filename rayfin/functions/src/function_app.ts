@@ -22,6 +22,11 @@ import {
   type ItemRelationsRootItemIdsInput,
 } from './workspace-item-relations.js';
 import {
+  workspaceCollectKqlMetadata,
+  type KqlMetadataItemsInput,
+  type KqlMetadataStageEnvelope,
+} from './workspace-kql-metadata.js';
+import {
   workspaceDiscover,
   type WorkspaceDiscoveryResult,
 } from './workspace-discovery.js';
@@ -78,6 +83,21 @@ udf.func(
     correlationId: SyncUuidInput | null = null,
   ): Promise<ItemRelationsEvidenceEnvelope> =>
     workspaceCollectItemRelations(ctx, protocolVersion, workspaceId, itemIds, correlationId),
+  [],
+);
+
+// Read-only KQL structural metadata through Fabric REST only. The KQL schema query is blocked
+// because Rayfin 1.36.2 Functions expose no Kusto audience; it is reported, never collected.
+udf.func(
+  'workspaceCollectKqlMetadata',
+  async (
+    ctx: RayfinContext<AtlasSchema, AudienceType.Fabric>,
+    protocolVersion: 1,
+    workspaceId: SyncUuidInput,
+    items: KqlMetadataItemsInput,
+    correlationId: SyncUuidInput | null = null,
+  ): Promise<KqlMetadataStageEnvelope> =>
+    workspaceCollectKqlMetadata(ctx, protocolVersion, workspaceId, items, correlationId),
   [],
 );
 

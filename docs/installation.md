@@ -458,6 +458,34 @@ npm test -- src\atlas\workspace-item-relations.spec.ts src\atlas\item-relations-
 npm --prefix rayfin\functions run build
 ```
 
+## KQL metadata stage
+
+`workspaceCollectKqlMetadata` declares only the Fabric audience and returns Eventhouse and KQL
+database properties from Fabric REST. It is read-only, non-authoritative and not called by the
+browser yet:
+
+```ts
+await client.functions.workspaceCollectKqlMetadata.invoke({
+  protocolVersion: 1,
+  workspaceId,
+  items: [{ id: kqlDatabaseId, type: "KQLDatabase" }],
+  correlationId: null,
+});
+```
+
+The AppBackend application identity needs read permission on each Eventhouse and KQL database.
+KQL schema (tables, functions and materialized views) is **blocked as of 2026-10-02 on Rayfin
+1.36.2**: Functions expose no Kusto audience, and the experimental `kusto` connector is
+delegated-only and cannot be authored in this release. Keep using the Python UDF's delegated
+Kusto token for KQL schema. Re-evaluate when a Rayfin release adds a documented Kusto audience;
+do not forward browser tokens to the Function. Validate with:
+
+```powershell
+npx --no-install rayfin functions init
+npm test -- src\atlas\workspace-kql-metadata.spec.ts src\atlas\durable-sync.spec.ts src\lib\rayfin-client.spec.ts
+npm --prefix rayfin\functions run build
+```
+
 ## Scripts
 
 | Command | What it does |
