@@ -60,6 +60,9 @@ const definitionShadow = vi.hoisted(() => ({
 const itemRelationsShadow = vi.hoisted(() => ({
   runItemRelationsCollectorShadow: vi.fn(),
 }));
+const kqlShadow = vi.hoisted(() => ({
+  runKqlCollectorShadow: vi.fn(),
+}));
 
 vi.mock("@/lib/rayfin-client", () => ({
   getRayfinClient: () => ({ data: mocks.data }),
@@ -76,6 +79,7 @@ vi.mock("./live-sync", async (importOriginal) => {
 vi.mock("./core-collector-shadow", () => coreShadow);
 vi.mock("./definition-collector-shadow", () => definitionShadow);
 vi.mock("./item-relations-collector-shadow", () => itemRelationsShadow);
+vi.mock("./kql-collector-shadow", () => kqlShadow);
 
 const workspaceId = "11111111-1111-4111-8111-111111111111";
 const identity = {
@@ -251,6 +255,9 @@ describe("Rayfin snapshot persistence", () => {
       .mockReset()
       .mockResolvedValue(undefined);
     itemRelationsShadow.runItemRelationsCollectorShadow
+      .mockReset()
+      .mockResolvedValue(undefined);
+    kqlShadow.runKqlCollectorShadow
       .mockReset()
       .mockResolvedValue(undefined);
   });
@@ -479,6 +486,9 @@ describe("Rayfin snapshot persistence", () => {
     itemRelationsShadow.runItemRelationsCollectorShadow.mockResolvedValue(
       "Item Relations shadow complete=4; failed=0; relations=3",
     );
+    kqlShadow.runKqlCollectorShadow.mockResolvedValue(
+      "KQL shadow complete=2; unsupported=0; failed=0; schemas=1",
+    );
 
     await runFabricSync(false, identity);
 
@@ -505,6 +515,11 @@ describe("Rayfin snapshot persistence", () => {
       correlationId,
       shadowEnvelope,
     );
+    expect(kqlShadow.runKqlCollectorShadow).toHaveBeenCalledWith(
+      workspaceId,
+      correlationId,
+      shadowEnvelope,
+    );
     expect(mocks.data.SyncRun.update).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -521,6 +536,12 @@ describe("Rayfin snapshot persistence", () => {
       expect.anything(),
       expect.objectContaining({
         summary: expect.stringContaining("Item Relations shadow complete=4"),
+      }),
+    );
+    expect(mocks.data.SyncRun.update).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        summary: expect.stringContaining("KQL shadow complete=2"),
       }),
     );
   });

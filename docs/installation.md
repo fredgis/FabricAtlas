@@ -382,6 +382,7 @@ For an isolated parity deployment only, enable the browser shadow adapter:
 VITE_ATLAS_CORE_COLLECTOR_SHADOW=true
 VITE_ATLAS_DEFINITION_COLLECTOR_SHADOW=true
 VITE_ATLAS_ITEM_RELATIONS_COLLECTOR_SHADOW=true
+VITE_ATLAS_KQL_COLLECTOR_SHADOW=true
 ```
 
 The existing Python sync and the Rayfin Core Function then start under the same
@@ -390,7 +391,9 @@ to `workspaceCollectDefinitions` in bounded batches. The browser parity probe
 passes a deterministic sample of at most 16 Core item IDs to
 `workspaceCollectItemRelations`. Only the Python result can publish the snapshot. Atlas
 stores bounded Core, definition and Item Relations status summaries in
-`SyncRun`; it never stores or logs the raw shadow payloads.
+`SyncRun`. The KQL shadow adds only structural table/function/view counts and
+the dated data-plane blocker. Atlas never stores or logs the raw shadow
+payloads.
 Leave the flag unset in stable deployments until the real comparison gate
 passes.
 

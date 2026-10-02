@@ -31,6 +31,7 @@ import {
 } from "./core-collector-shadow";
 import { runDefinitionCollectorShadow } from "./definition-collector-shadow";
 import { runItemRelationsCollectorShadow } from "./item-relations-collector-shadow";
+import { runKqlCollectorShadow } from "./kql-collector-shadow";
 import { normalizeLineageEdges } from "./lineage";
 import { DEPLOYMENT_ID } from "./release";
 import {
@@ -114,7 +115,7 @@ const PERSISTED_TEXT_LIMITS = {
   },
   syncRun: {
     triggeredBy: 160,
-    summary: 500,
+    summary: 1000,
   },
 } as const;
 const PERSISTED_TRUNCATION_MARKER = " [truncated]";
@@ -550,6 +551,7 @@ interface SyncAttempt {
   coreParitySummary?: string;
   definitionShadowSummary?: string;
   itemRelationsShadowSummary?: string;
+  kqlShadowSummary?: string;
 }
 
 function textOrFallback(value: unknown, fallback: string): string {
@@ -735,6 +737,16 @@ export async function runFabricSync(
       ),
       "Item Relations shadow timed-out",
     );
+    const kqlShadow = boundedShadowSummary(
+      coreShadow.then((coreEnvelope) =>
+        runKqlCollectorShadow(
+          attempt.workspaceId,
+          attempt.id,
+          coreEnvelope,
+        ),
+      ),
+      "KQL shadow timed-out",
+    );
     const raw = await invokeSyncAll(
       attempt.workspaceId,
       user,
@@ -754,7 +766,12 @@ export async function runFabricSync(
     [
       attempt.definitionShadowSummary,
       attempt.itemRelationsShadowSummary,
-    ] = await Promise.all([definitionShadow, itemRelationsShadow]);
+      attempt.kqlShadowSummary,
+    ] = await Promise.all([
+      definitionShadow,
+      itemRelationsShadow,
+      kqlShadow,
+    ]);
     reportProgress?.(62, "Workspace metadata complete");
     const atlas = mapSyncToAtlas(raw, WS_FALLBACK);
     reportProgress?.(66, "Building the governance catalog");
@@ -1214,6 +1231,7 @@ async function persistSync(
     attempt.coreParitySummary,
     attempt.definitionShadowSummary,
     attempt.itemRelationsShadowSummary,
+    attempt.kqlShadowSummary,
   ]
     .filter((value): value is string => !!value)
     .join(" · ");
