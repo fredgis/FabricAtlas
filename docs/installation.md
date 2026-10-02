@@ -377,8 +377,9 @@ Before wiring `GraphRuntime`, prove all of the following:
 
 1. An externally serialized executor covers start/continue/cancel/publication and
    retention across every host. It must not release authority while an uncertain
-   earlier write can still commit. No supported atomic claim/CAS or same-managed-
-   database stored-procedure deployment path has been verified in Rayfin 1.36.2.
+   earlier write can still commit. No enforced fence for the graph's separate
+   GraphQL writes has been verified in Rayfin 1.36.2. Built-in SQL locks protect
+   their own transaction, not those separate writes.
    Expired leases, HTTP timeouts and closed browsers are not takeover evidence.
 2. The legacy browser writer/cleanup is disabled or participates in that same
    boundary. An active v1 probe is not evidence of a v2 distributed claim.
@@ -400,6 +401,85 @@ invocation, including after browser closure. There is no automatic worker,
 timer, scheduler or persisted user token. A cancellation acknowledged before
 publication prevents a later marker under the executor contract; a marker
 already committed before cancellation remains visible.
+
+### SQL payload prerequisites and remaining activation fence
+
+The Functions package includes `mssql ^12.7.2`, `@types/mssql ^12.3.0` and a
+`tedious ^19.2.2` override, matching the SQL collector's supported driver line.
+The minimum server-owned configuration is a `SqlControlTarget` containing
+`workspaceId` and `databaseItemId`, both strict UUIDs. It contains no endpoint,
+connection string or token. Resolve the endpoint at invocation time from
+`GET /v1/workspaces/{workspaceId}/sqlDatabases/{databaseItemId}`; never use
+caller-supplied URLs or choose a database by display name at runtime.
+
+The candidate SQLDatabase UUID was found through the documented Fabric item API
+using the trusted candidate deployment workspace. Its existence and authoring
+access are proven, but no target is installed in the public v2 handlers.
+
+To use the payload library after reviewing deployment and permissions:
+
+1. Deploy the additive `SyncPayloadManifest` and `SyncPayloadChunk` entities through
+   the normal `npx rayfin up --tenant <tenant-id> --workspace <workspace-name>`
+   workflow. No custom procedure, trigger or direct managed-schema change is
+   installed by this commit.
+2. A server Function must declare
+   `RayfinContext<AtlasSchema, AudienceType.Fabric | AudienceType.Sql>`.
+   Call `createSqlPayloadBoundary(ctx, reviewedTarget)` to enforce the
+   synchronizer authority gate before reading application tokens. Supply the
+   resulting boundary and a reviewed `ProjectionCodec` to
+   `SqlMetadataPayloadStore`. No browser-facing function accepts a payload or
+   a SQL target.
+3. Verify the Function application identity has Fabric SQLDatabase read/connect
+   access and SELECT/INSERT on the two payload tables. `sp_getapplock` requires
+   membership in the database principal (`public` here). Rayfin's entity policies
+   do not constrain direct SQL; keep SQL access restricted and review any inherited
+   owner privileges. Authoring-user permissions do not prove application access.
+4. Prove the schema-generated table names, application-identity transaction,
+   payload read-back, lost commit recovery and codec parity in the deployment.
+
+The read-only authoring diagnostic is reproducible after the Functions build:
+
+```powershell
+npm --prefix rayfin\functions run build
+node scripts\probe-sync-sql.mjs <reviewed-workspace-uuid> <reviewed-sql-database-uuid>
+```
+
+It obtains short-lived Fabric/SQL tokens from the existing Azure CLI session,
+keeps them only in process memory, resolves trusted API coordinates and uses two
+TDS transactions. It performs no table/schema writes. It reports lock contention,
+rollback release, Unicode checksum compatibility and whether payload tables
+exist, but never prints tokens or driver details.
+
+For the candidate on 2026-10-02, the first lock returned `0`, contention returned
+`-1`, and acquisition after rollback returned `0`. Unicode checksums matched.
+The database was `READ_WRITE`; the authoring identity had CREATE TABLE/PROCEDURE
+permissions. The payload tables were absent. These facts do not establish a
+supported custom-procedure lifecycle in the Rayfin-managed database.
+
+**Graph activation remains blocked by cross-connection fencing.** The implemented
+SQL boundary protects only SQL statements on its pinned transaction. It cannot
+be substituted for `ExternalSerializer` while graph writes use
+`ctx.getDataClient()`. A SQL lock can be lost before a delayed GraphQL write
+commits. The minimum additional executor must put graph state, cancellation and
+the final manifest mutation in the same locked SQL transaction, or use a
+documented database-enforced fence on every existing mutation. Preserve the
+writer authorization rules and disable/fence legacy publication and retention.
+An external host holding a sidecar lock while invoking the current Functions
+does not satisfy this requirement.
+
+No production `GraphRuntime`, payload codec registry, timer or unattended worker
+is activated. Continue to treat `SERIALIZATION_REQUIRED` and
+`SQL_GRAPH_FENCING_REQUIRED` as blockers, not transient permission to retry under
+another lock owner.
+
+Validation commands:
+
+```powershell
+npm test -- src\atlas\sql-durability.spec.ts src\atlas\durable-graph.spec.ts src\atlas\durable-sync-policy.spec.ts
+npm run typecheck
+npx --no-install eslint rayfin\data\SyncPayloadManifest.ts rayfin\data\SyncPayloadChunk.ts rayfin\data\schema.ts rayfin\functions\src\sync\sql-control.ts rayfin\functions\src\sync\sql-payload-store.ts src\atlas\sql-durability.spec.ts src\atlas\durable-sync-policy.spec.ts
+npm --prefix rayfin\functions run build
+```
 
 ## Phase 3 workspace discovery foundation
 

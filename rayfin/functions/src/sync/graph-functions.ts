@@ -13,7 +13,8 @@ async function authorized(ctx: Context): Promise<GraphOrchestrator> {
   try {
     await requireAtlasSynchronizer(ctx.getDataClient(), 'graph sync', 'Synchronization authorization failed.');
   } catch { throw new GraphError('NOT_AUTHORIZED'); }
-  // Deliberately no production runtime: a caller flag cannot prove serialization.
+  // SQL applocks protect only their transaction, not this GraphQL client's writes.
+  // Do not adapt SqlTransactionBoundary into an ExternalSerializer.
   return new GraphOrchestrator(ctx.getDataClient());
 }
 export const graphStart = (ctx: Context, input: GraphStartInput): Promise<GraphResponse> =>

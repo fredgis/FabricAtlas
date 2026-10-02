@@ -19,6 +19,8 @@ import { SyncCommand } from './SyncCommand.js';
 import { WorkspaceScope } from './WorkspaceScope.js';
 import { SynchronizerAuthority } from './SynchronizerAuthority.js';
 import { SyncRootRun } from './SyncRootRun.js';
+import { SyncPayloadManifest } from './SyncPayloadManifest.js';
+import { SyncPayloadChunk } from './SyncPayloadChunk.js';
 
 /**
  * Schema type map — enables full type-safety through RayfinClient
@@ -46,6 +48,8 @@ export type AtlasSchema = {
   WorkspaceScope: WorkspaceScope;
   SynchronizerAuthority: SynchronizerAuthority;
   SyncRootRun: SyncRootRun;
+  SyncPayloadManifest: SyncPayloadManifest;
+  SyncPayloadChunk: SyncPayloadChunk;
 };
 
 export const schema = [
@@ -70,4 +74,6 @@ export const schema = [
   WorkspaceScope,
   SynchronizerAuthority,
   SyncRootRun,
+  SyncPayloadManifest,
+  SyncPayloadChunk,
 ];

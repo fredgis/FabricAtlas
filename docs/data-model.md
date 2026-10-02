@@ -272,6 +272,43 @@ until the serialization, immutable store and adapter deployment seams described
 in [architecture.md](architecture.md#phase-2-v2-server-cutover-framework-disabled)
 are resolved.
 
+### Immutable SQL payload storage
+
+Two additional entities back `SqlMetadataPayloadStore`:
+
+| Entity | Fields |
+| --- | --- |
+| `SyncPayloadManifest` | UUID `id`, `taskId`, optional `checkpointId`; `schemaId` (80), `checksumVersion` (32), `contentHash` (64); integer `byteCount`, `chunkCount` |
+| `SyncPayloadChunk` | UUID `id`, `payloadId`; integer `ordinal`; `content` (1,800 UTF-16 code units), `contentHash` (64) |
+
+Both declare synchronizer-only `read` and `create`, with no update/delete policy
+in the Rayfin API. The SQL store likewise has only fixed SELECT/INSERT commands.
+The manifest ID derives from codec schema, task and checkpoint; each chunk ID
+derives from manifest and ordinal. Content is canonical JSON from a mandatory
+reviewed projection codec, not an arbitrary upstream response. The envelope
+rejects credential keys, credential-shaped text and URLs, and enforces nesting,
+node, string and aggregate limits. It does not replace domain-specific checks
+that distinguish metadata from business data.
+
+Payloads are limited to 1 MiB of UTF-16LE bytes and 292 chunks. Surrogate pairs
+are not split across rows. Checksum version `sha256-utf16le-v1` matches Node
+`createHash('sha256').update(content, 'utf16le')` and SQL
+`HASHBYTES('SHA2_256', CONVERT(varbinary(max), @content))`. These checksums detect
+drift/corruption; they are not signatures against a privileged database writer.
+
+The SQL store inserts all chunks, inserts the manifest last, reads everything
+back, then commits the same application-locked transaction. A failed transaction
+rolls back rather than publishing partial storage. An uncertain commit is
+retried with the same deterministic key; different content produces
+`SQL_PAYLOAD_CONFLICT`. No payload is overwritten, pruned or deleted.
+
+Direct SQL does not inherit Rayfin GraphQL policies. The Functions entry helper
+must pass the synchronizer authority gate, and its SQL identity needs reviewed
+table permissions. Do not grant a general SQL endpoint to app-audience users.
+The additive entities and payload transactions have local tests only; deployment
+and application-identity execution remain required. The graph runtime is still
+disabled because a payload SQL lock cannot fence its independent GraphQL writes.
+
 ## SavedView
 
 A personal named view over Atlas navigation and filters.

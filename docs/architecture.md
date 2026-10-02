@@ -288,6 +288,76 @@ recovery in Fabric. There are no queues, timers, unattended triggers or persiste
 credentials. Closing the browser preserves confirmed checkpoints but schedules
 no work.
 
+#### SQL activation investigation (2026-10-02)
+
+The managed candidate database **is addressable** through the documented Fabric
+SQLDatabase API. A read-only authoring probe resolved SQLDatabase item
+`00f3d985-56b8-4aa6-b0de-3226be695251` in the candidate workspace from the
+trusted deployment workspace ID and the documented SQLDatabase item list. Its
+name and existing `SyncJobs`, `SyncTasks`, `SyncCommands` and `Workspaces` tables
+matched the candidate. Do not infer this binding from names at runtime: pin the
+reviewed SQLDatabase UUID in server configuration.
+
+The probe used an ephemeral Azure CLI SQL token, not a Function application token.
+The database reported `READ_WRITE`; that authoring identity had `CREATE TABLE`
+and `CREATE PROCEDURE` permission. Two separate TDS sessions demonstrated
+transaction-owned `sp_getapplock`: the first returned `0`, the contender returned
+`-1`, and the contender returned `0` after rollback. Unicode SHA-256 calculations
+matched between Node UTF-16LE and SQL `HASHBYTES`. No persistent database writes,
+schema changes or deployment occurred. The new payload tables are not deployed.
+
+`sql-control.ts` now supplies the supported SQL transaction boundary and bounded
+connection resolver. It uses only the documented SQLDatabase properties, verifies
+the returned item/workspace/type, restricts hosts to the Fabric SQL domain and
+port 1433, and uses TLS certificate validation. `createSqlPayloadBoundary` requires
+the existing caller-scoped synchronizer authority before requesting
+`AudienceType.Fabric` or `AudienceType.Sql` tokens. Connections are per invocation;
+tokens, full connection strings and driver errors are never persisted or returned.
+Each SQL request has a 10-second timeout and the transaction checks a 120-second
+total budget before commands and commit. Expiry rolls back; it is not a lease
+that grants another graph writer authority.
+
+`SqlMetadataPayloadStore` implements the immutable-store interface over two
+additive Rayfin entities. Inserts and manifest read-back share one SQL transaction
+and one transaction-owned application lock. There are no custom procedures or
+schema DDL in the driver. Deterministic task/checkpoint/schema IDs, ordered bounded
+chunks, byte counts and per-chunk/full-payload digests reject incomplete, changed
+or corrupted content. A lost commit response reports `SQL_COMMIT_UNCONFIRMED`;
+replaying the same input reads the original immutable result. The store issues
+no UPDATE or DELETE. A reviewed projection codec is required; there is no generic
+raw-response passthrough or production codec registry.
+
+This does **not** close the graph activation blocker. `sp_getapplock` is owned by
+a SQL transaction/session and releases on rollback, disconnect or server restart.
+The current graph's fluent GraphQL writes run on other connections. A lock check
+followed by a GraphQL mutation is a race: the lock can disappear while that
+mutation is still in flight, allowing another owner to cancel or publish before
+the stale mutation commits. Keeping a connection open, polling `APPLOCK_MODE`,
+renewing a lease or putting the lock in a sidecar database does not fence those
+writes. `SqlTransactionBoundary` intentionally does not implement the graph's
+`ExternalSerializer`; `requireSqlGraphFence()` fails closed.
+
+Before enabling `GraphRuntime`, either move **all** graph/checkpoint/cancellation/
+snapshot publication mutations into the locked SQL transaction with the existing
+authorization semantics, or obtain a supported database-enforced fencing path
+for every GraphQL mutation. A fence check outside the mutation is insufficient.
+Legacy browser publication and retention must also be fenced or disabled.
+Custom managed-database procedures/triggers still lack a reviewed Rayfin
+migration/deployment contract; SQL permission to create them is not that contract.
+Function application-identity access, payload migration, projection codec parity
+and deployed recovery are also unproven. The graph handlers remain unchanged and
+fail closed; this commit activates no background execution.
+
+Sources:
+
+- [Get SQL Database](https://learn.microsoft.com/en-us/rest/api/fabric/sqldatabase/items/get-sql-database)
+  documents coordinates and supported Entra identities.
+- [sys.sp_getapplock](https://learn.microsoft.com/en-us/sql/relational-databases/system-stored-procedures/sp-getapplock-transact-sql?view=fabric-sqldb)
+  documents Fabric SQL support, return codes, database scope and lock release.
+- Rayfin 1.36.2 `functions/connections/add-fabric-resource.md` documents
+  `AudienceType.Sql` and the mssql driver; `app-backend/index.md` requires managed
+  schema changes through `rayfin up` and warns about direct portal schema changes.
+
 ## Phase 3 workspace scope foundation
 
 `WorkspaceScope` stores only administrator-selected workspaces. Authenticated app users can read
