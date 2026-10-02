@@ -405,9 +405,26 @@ Switching goes through the shell: it re-reads the current URL so filters written
 originating selector, or its header or first-sync equivalent, after the new snapshot loads. The
 Synchronization tab projects only real store state: the in-flight browser run, the selected
 workspaces, persisted `SyncRun` audit rows and the configured synchronizer. Only the active
-workspace has a known status; other selected workspaces are reported as not loaded until opened.
+workspace has a known snapshot status; other selected workspaces are reported as not loaded until
+opened, or with their outcome from the latest browser batch.
 `Manage scope` uses `workspaceDiscover` and is rendered only for the configured synchronizer while
 the `fabric-app-functions` flag is enabled.
+
+**Sync all** and each row's **Sync** call `syncWorkspaces(ids)` in the store. The store runs the
+existing per-workspace `runFabricSync(targetWorkspaceId)` contract one workspace at a time in this
+browser tab, refuses a second batch while one is in flight, and records each member as queued,
+running, completed, failed or cancelled in `syncQueue`. A failed workspace does not stop the
+batch; cancel stops the running workspace and marks the rest cancelled. Only the active
+workspace's result replaces visible data, history and the first-sync gate state; other workspaces
+publish their own snapshot and are loaded when opened. Workspace switching stays blocked while a
+batch runs.
+
+One derivation (`syncRunView` in `src/atlas/sync-run.ts`) feeds every run surface. The header shows
+the compact status (stage and percent, cancelling, or "Sync failed" with a Details control that
+opens Workspace Hub Synchronization) and a thin progress line on its bottom edge, so routes never
+gain or lose a banner during a run. Workspace Hub renders the detailed view of the same state:
+phases, batch position, every failure with a bounded summary and its full text on demand, and the
+run actions. Long run errors stay in a fixed-layout table and expand into their own row.
 
 `SYNC_BACKEND_CAPABILITIES` in `src/atlas/workspace-sync.ts` keeps background runs and scheduled
 runs closed. The UI therefore states that a run executes in the synchronizer's browser tab through

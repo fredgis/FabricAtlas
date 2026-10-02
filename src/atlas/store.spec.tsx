@@ -63,6 +63,27 @@ function Harness() {
       <button type="button" onClick={() => void atlas.sync()}>
         Sync
       </button>
+      <button
+        type="button"
+        onClick={() =>
+          void atlas.syncWorkspaces([
+            ATLAS_CONFIG.workspaceId,
+            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          ])
+        }
+      >
+        Sync both
+      </button>
+      <span data-testid="queue">
+        {atlas.syncQueue
+          .map((entry) => `${entry.workspaceId.slice(0, 8)}:${entry.status}`)
+          .join(",")}
+      </span>
+      <span data-testid="queue-error">
+        {atlas.syncQueue.find((entry) => entry.error)?.error ?? ""}
+      </span>
+      <span data-testid="sync-workspace">{atlas.syncWorkspaceId ?? ""}</span>
+      <span data-testid="sync-error">{atlas.syncError ?? ""}</span>
       <button type="button" onClick={atlas.cancelSync}>
         Cancel sync
       </button>
@@ -423,6 +444,141 @@ describe("AtlasProvider synchronization", () => {
     );
     expect(aborted).toBe(true);
     expect(screen.getByTestId("stage")).toHaveTextContent("Ready to sync");
+  });
+
+  describe("multi-workspace queue", () => {
+    const SECOND = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+    beforeEach(() => {
+      workspaceScopeBackend.loadWorkspaceScopes.mockReset().mockResolvedValue([
+        {
+          id: ATLAS_CONFIG.workspaceId,
+          displayName: ATLAS_CONFIG.workspaceName,
+          workspaceType: "Workspace",
+          persisted: true,
+          selectedAt: "2026-10-01T08:00:00.000Z",
+        },
+        {
+          id: SECOND,
+          displayName: "Second workspace",
+          workspaceType: "Workspace",
+          persisted: true,
+          selectedAt: "2026-10-01T08:00:00.000Z",
+        },
+      ]);
+    });
+
+    async function renderReady() {
+      render(
+        <AtlasProvider isPreview={false} currentUser={currentUser}>
+          <Harness />
+        </AtlasProvider>,
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId("workspace-scope-count")).toHaveTextContent("2"),
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId("hydrating")).toHaveTextContent("false"),
+      );
+    }
+
+    it("runs selected workspaces one at a time and keeps going after a failure", async () => {
+      const pending = new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
+      let active = 0;
+      let maxActive = 0;
+      backend.runFabricSync.mockImplementation(
+        (_isPreview: boolean, _user: unknown, _report: unknown, _signal: AbortSignal, target: string) =>
+          new Promise((resolve, reject) => {
+            active += 1;
+            maxActive = Math.max(maxActive, active);
+            pending.set(target, {
+              resolve: (value) => {
+                active -= 1;
+                resolve(value);
+              },
+              reject: (error) => {
+                active -= 1;
+                reject(error);
+              },
+            });
+          }),
+      );
+      await renderReady();
+
+      fireEvent.click(screen.getByRole("button", { name: "Sync both" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("queue")).toHaveTextContent(
+          "11111111:running,aaaaaaaa:queued",
+        ),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Sync both" }));
+      expect(backend.runFabricSync).toHaveBeenCalledTimes(1);
+      expect(backend.runFabricSync.mock.calls[0][4]).toBe(ATLAS_CONFIG.workspaceId);
+
+      const primary = structuredClone(SAMPLE_DATA);
+      primary.workspace.fabricId = ATLAS_CONFIG.workspaceId;
+      await act(async () => {
+        pending.get(ATLAS_CONFIG.workspaceId)?.resolve(primary);
+      });
+      await waitFor(() =>
+        expect(screen.getByTestId("queue")).toHaveTextContent(
+          "11111111:completed,aaaaaaaa:running",
+        ),
+      );
+      expect(screen.getByTestId("sync-workspace")).toHaveTextContent(SECOND);
+      expect(screen.getByTestId("has-data")).toHaveTextContent("true");
+      expect(backend.runFabricSync.mock.calls[1][4]).toBe(SECOND);
+
+      await act(async () => {
+        pending.get(SECOND)?.reject(new Error("Fabric returned HTTP 403."));
+      });
+      await waitFor(() =>
+        expect(screen.getByTestId("syncing")).toHaveTextContent("false"),
+      );
+      expect(screen.getByTestId("queue")).toHaveTextContent(
+        "11111111:completed,aaaaaaaa:failed",
+      );
+      expect(screen.getByTestId("queue-error")).toHaveTextContent(
+        "Fabric returned HTTP 403.",
+      );
+      expect(screen.getByTestId("sync-error")).toHaveTextContent("");
+      expect(screen.getByTestId("active-workspace")).toHaveTextContent(
+        ATLAS_CONFIG.workspaceId,
+      );
+      expect(screen.getByTestId("item-count")).toHaveTextContent(
+        String(SAMPLE_DATA.items.length),
+      );
+      expect(maxActive).toBe(1);
+    });
+
+    it("cancels the running workspace and every queued workspace", async () => {
+      let rejectRun: ((error: Error) => void) | undefined;
+      backend.runFabricSync.mockImplementation(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectRun = reject;
+          }),
+      );
+      await renderReady();
+
+      fireEvent.click(screen.getByRole("button", { name: "Sync both" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("syncing")).toHaveTextContent("true"),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Cancel sync" }));
+      await act(async () => {
+        rejectRun?.(new SyncCancelledError("Synchronization cancelled."));
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId("syncing")).toHaveTextContent("false"),
+      );
+      expect(screen.getByTestId("queue")).toHaveTextContent(
+        "11111111:cancelled,aaaaaaaa:cancelled",
+      );
+      expect(backend.runFabricSync).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId("stage")).toHaveTextContent("Ready to sync");
+    });
   });
 
   it("uses the authenticated email as the persisted comment identity", async () => {

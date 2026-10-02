@@ -27,7 +27,8 @@ export function PreviewApiNotice({
       role="note"
       aria-label="Preview API information"
       className={cn(
-        "rounded-lg border border-lineage-upstream/30 bg-lineage-upstream/5 px-m py-s text-200 text-foreground",
+        // Explicit length syntax: tailwind-merge drops `text-200` next to a text color.
+        "rounded-lg border border-lineage-upstream/30 bg-lineage-upstream/5 px-m py-s text-[length:var(--text-200)] leading-200 text-foreground",
         className,
       )}
     >

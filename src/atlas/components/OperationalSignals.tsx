@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo } from "react";
 import {
   CircleAlert,
   CircleCheck,
@@ -11,10 +11,10 @@ import { ATLAS_CONFIG } from "../config";
 import { relativeTime } from "../model";
 import {
   fabricAppItemUrl,
+  fabricPortalContext,
   incidentImpact,
   MONITORING_SOURCES,
   monitorHubUrl,
-  type FabricPortalContext,
   type IncidentImpact,
   type MonitoringSource,
   type ObservedIncident,
@@ -22,6 +22,7 @@ import {
 } from "../observability";
 import { useAtlas } from "../store";
 import { Card, TypeGlyph, cn } from "../ui";
+import { NativeLink } from "./NativeLink";
 
 const IMPACT_PREVIEW_COUNT = 4;
 
@@ -36,28 +37,6 @@ const EXACT_TIME = new Intl.DateTimeFormat(undefined, {
 function exactTime(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : EXACT_TIME.format(date);
-}
-
-function portalContext(): FabricPortalContext {
-  return {
-    portalBase: import.meta.env.VITE_FABRIC_PORTAL_URL as string | undefined,
-    tenantId: ATLAS_CONFIG.tenantId,
-  };
-}
-
-function NativeLink({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className="inline-flex min-h-[var(--atlas-touch-target)] items-center gap-xs text-200 font-semibold text-brand-foreground underline-offset-4 hover:underline sm:min-h-0"
-    >
-      {children}
-      <ExternalLink className="icon-size-100 shrink-0" aria-hidden="true" />{" "}
-      <span className="sr-only">(opens in a new tab)</span>
-    </a>
-  );
 }
 
 export function EvidenceChip({ evidence }: { evidence: OperationalEvidence }) {
@@ -109,7 +88,7 @@ function SourceLinks({
   source: MonitoringSource;
   lastSyncedAt?: string;
 }) {
-  const context = portalContext();
+  const context = fabricPortalContext();
   switch (source.id) {
     case "fabric-job-history":
       return (
@@ -242,9 +221,13 @@ function IncidentRow({
             {incident.observedAt &&
               ` · captured ${relativeTime(incident.observedAt)}`}
           </p>
-          {incident.message && (
-            <p className="mt-xs line-clamp-2 break-words text-200 leading-200 text-foreground">
+          {incident.message ? (
+            <p className="mt-xs line-clamp-2 break-words text-200 leading-200 text-foreground" title={incident.message}>
               {incident.message}
+            </p>
+          ) : (
+            <p className="mt-xs text-200 leading-200 text-muted-foreground">
+              Error detail not collected by Atlas.
             </p>
           )}
         </div>

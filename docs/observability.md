@@ -109,6 +109,18 @@ checked on 2026-10-02.
   Metrics is not a capacity consumption report, and it has no individual error
   drill-down.
 
+## Job failure detail
+
+The Python User Data Function and the Fabric Core collector keep job instance
+identity, status and timestamps only. They deliberately drop Fabric's
+`failureReason`, because failure messages can carry paths, query text or other
+content outside the metadata allowlist; collector tests assert that the private
+failure text is never stored. Jobs & health therefore shows **Error detail not
+collected by Atlas** for a failed run without a stored message, with a link to
+the Monitor hub Job runs page where Fabric shows the error. A stored
+`JobRun.message` is shown with the label **Fabric job detail**. Atlas never
+claims that Fabric returned no detail.
+
 ## Remaining collector blockers
 
 The incident adapter stays unimplemented until each of these is resolved:
@@ -128,3 +140,7 @@ The incident adapter stays unimplemented until each of these is resolved:
 5. **No verified impact join.** Downstream impact stays inferred until an observed
    telemetry row can be matched to a downstream item by a verified signal rather
    than by snapshot lineage alone.
+6. **No failure reasons.** Showing Fabric's job error requires a reviewed
+   redaction and length policy for `failureReason`, matching changes in the Python
+   User Data Function and the Fabric Core collector, and parity tests before any
+   message is persisted.

@@ -31,4 +31,15 @@ describe("PreviewApiNotice", () => {
     expect(screen.getByText("Policies in Fabric")).toBeInTheDocument();
     expect(screen.getByText("OneLake Catalog Search")).toBeInTheDocument();
   });
+
+  it("keeps its compact type size even when a caller adds classes", () => {
+    render(
+      <PreviewApiNotice featureIds={["fabric-app-functions"]} className="mt-s" />,
+    );
+
+    const note = screen.getByRole("note", { name: "Preview API information" });
+    expect(note.className).toContain("text-[length:var(--text-200)]");
+    expect(note.className).toContain("leading-200");
+    expect(note.className).toContain("mt-s");
+  });
 });

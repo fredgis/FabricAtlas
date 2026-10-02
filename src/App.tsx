@@ -37,9 +37,8 @@ import {
 import { useThemeContext } from "@/hooks/theme.context";
 import { useAtlas } from "./atlas/store";
 import { CommandPalette } from "./atlas/components/CommandPalette";
-import { SynchronizationProgress } from "./atlas/components/SynchronizationProgress";
+import { SyncRunCompact, SyncRunProgressLine } from "./atlas/components/SyncRunStatus";
 import {
-  DEFAULT_WORKSPACE_SECTION,
   navigationForSearch,
   type AtlasFocusRequest,
   type AtlasNavigation,
@@ -51,10 +50,7 @@ import {
   urlForNavigation,
 } from "./atlas/routing";
 import { Avatar, cn } from "./atlas/ui";
-import {
-  relativeTime,
-  type AtlasData,
-} from "./atlas/model";
+import { type AtlasData } from "./atlas/model";
 import { buildSearchIndex } from "./atlas/search";
 import {
   CATALOG_SEARCH_FEATURE_ID,
@@ -251,13 +247,8 @@ function App() {
     sync,
     cancelSync,
     syncing,
-    syncProgress,
-    syncStage,
-    syncStartedAt,
-    syncError,
     configured,
     canSync,
-    lastSyncedAt,
     currentUser,
     isPreview,
     hasData,
@@ -458,10 +449,6 @@ function App() {
   }, [activeSnapshotLoaded, activeWorkspaceId]);
 
   const nav = (t: Tab) => navigate(t);
-  // The Synchronization section renders its own run banner.
-  const hubShowsSynchronization =
-    tab === "workspace" &&
-    (workspaceSection ?? DEFAULT_WORKSPACE_SECTION) === "synchronization";
 
   if (!isPreview && hydrating) return <AtlasBootView />;
   if (!isPreview && (!hasData || requiresDeploymentSync)) {
@@ -554,22 +541,17 @@ function App() {
             >
               <Search className="icon-size-200" />
             </button>
-            <span
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-              className={cn(
-                "hidden max-w-[240px] truncate text-[12px] text-muted-foreground sm:inline",
-                syncError && !syncing && "text-destructive",
-              )}
-              title={syncError}
-            >
-              {syncing
-                ? `${syncStage} · ${syncProgress}%`
-                : syncError
-                  ? `Sync failed: ${syncError}`
-                  : `synced ${relativeTime(lastSyncedAt)}`}
-            </span>
+            <SyncRunCompact
+              onOpenDetails={() =>
+                navigate({
+                  tab: "workspace",
+                  focus: {
+                    requestId: crypto.randomUUID(),
+                    workspaceSection: "synchronization",
+                  },
+                })
+              }
+            />
             <button
               type="button"
               onClick={() => {
@@ -624,16 +606,8 @@ function App() {
             </button>
             <Avatar name={currentUser.name} size={30} />
           </div>
+          <SyncRunProgressLine />
         </header>
-        {(syncing || syncProgress > 0) && !hubShowsSynchronization && (
-          <SynchronizationProgress
-            key={syncStartedAt}
-            progress={syncProgress}
-            stage={syncStage}
-            active={syncing}
-            variant="banner"
-          />
-        )}
         {density.error && (
           <p role="status" className="border-b border-status-warning/30 bg-status-warning/10 px-l py-s text-200 text-foreground">
             {density.error}

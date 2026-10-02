@@ -27,6 +27,9 @@ export const SYNC_PHASES = [
   },
 ] as const;
 
+/** Stage reported while an abort is propagating to the running request. */
+export const CANCELLING_STAGE = "Cancelling synchronization";
+
 export function syncPhaseIndex(progress: number): number {
   const normalized = Math.min(100, Math.max(0, progress));
   let phaseIndex = 0;

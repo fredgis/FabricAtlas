@@ -289,6 +289,35 @@ describe("MapView selection", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("opens the graph at 80% zoom and returns there on reset", () => {
+    window.history.replaceState(null, "", "/#map");
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+
+    const lakehouse = screen.getByLabelText(
+      "alpinerent_lakehouse, Lakehouse, healthy",
+    );
+    const position = { left: lakehouse.style.left, top: lakehouse.style.top };
+    expect(screen.getByText("80%")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    expect(screen.getByText("90%")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Zoom out" }));
+    fireEvent.click(screen.getByRole("button", { name: "Zoom out" }));
+    expect(screen.getByText("70%")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+    expect(screen.getByText("80%")).toBeInTheDocument();
+    const reset = screen.getByLabelText(
+      "alpinerent_lakehouse, Lakehouse, healthy",
+    );
+    expect(reset.style.left).toBe(position.left);
+    expect(reset.style.top).toBe(position.top);
+  });
+
   it("keeps node coordinates stable when selection changes", () => {
     window.history.replaceState(null, "", "/#map");
     render(

@@ -63,6 +63,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Upgraded the complete Rayfin package family from 1.34.0 to 1.36.2.
 - The FabCon integration branch deploys as the isolated
   `fabric-atlas-fabcon` Rayfin application.
+- Workspace Hub adds **Sync all** and a per-workspace **Sync** action. Runs are
+  serialized in the browser tab, each selected workspace shows queued,
+  running, synchronized, failed or cancelled, and only the active workspace's
+  result replaces visible data.
+- One compact run status in the application header, with a thin progress line
+  and a Details control for errors, replaces the full-width run banner, so
+  routes no longer shift during a run. Workspace Hub shows the detailed view of
+  the same state.
+- Map & lineage opens at 80% zoom and Reset returns to 80%.
+
+### Fixed
+
+- Long synchronization errors no longer stretch the Recent runs table one
+  character per line; the table keeps fixed columns and the full error opens in
+  its own row.
+- Jobs & health keeps one column template for every status and truncates long
+  item and job names with the full text available.
+- Failed jobs without a stored message say that Atlas did not collect the
+  error detail and link to the Monitor hub, instead of "No additional detail".
+- The Preview API notice keeps its compact type size; its size class was
+  dropped when combined with a text color.
 
 ## [1.12.4] - 2026-09-17
 

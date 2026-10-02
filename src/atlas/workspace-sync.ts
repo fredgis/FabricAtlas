@@ -30,11 +30,31 @@ export const SYNC_BACKEND_CAPABILITIES = {
 } as const satisfies Record<string, SyncCapability>;
 
 export const RECENT_RUNS_PREVIEW_COUNT = 5;
+export const ERROR_SUMMARY_LENGTH = 160;
+
+export type WorkspaceSyncStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+/** One workspace in the current or most recent browser synchronization batch. */
+export interface WorkspaceSyncEntry {
+  workspaceId: string;
+  status: WorkspaceSyncStatus;
+  error?: string;
+  startedAt?: string;
+  finishedAt?: string;
+}
 
 export type ScopeWorkspaceStatus =
   | { kind: "running"; phase: string; progress: number }
+  | { kind: "queued" }
   | { kind: "failed"; message: string; snapshotAt?: string }
   | { kind: "snapshot"; snapshotAt: string }
+  | { kind: "synchronized"; finishedAt?: string }
+  | { kind: "cancelled" }
   | { kind: "unsynchronized" }
   | { kind: "inactive" };
 
@@ -47,6 +67,22 @@ export interface ScopeWorkspaceRow {
   status: ScopeWorkspaceStatus;
 }
 
+/** Collapses whitespace and bounds an error to one readable summary line. */
+export function summarizeError(
+  message: string,
+  maxLength = ERROR_SUMMARY_LENGTH,
+): { summary: string; truncated: boolean } {
+  const normalized = message.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) {
+    return { summary: normalized, truncated: false };
+  }
+  const slice = normalized.slice(0, maxLength);
+  const boundary = slice.lastIndexOf(" ");
+  const summary =
+    boundary > maxLength * 0.6 ? slice.slice(0, boundary) : slice;
+  return { summary: `${summary.trimEnd()}…`, truncated: true };
+}
+
 export function scopeWorkspaceRows({
   scopes,
   activeWorkspaceId,
@@ -54,6 +90,8 @@ export function scopeWorkspaceRows({
   syncProgress,
   syncError,
   lastSyncedAt,
+  syncQueue = [],
+  syncWorkspaceId,
 }: {
   scopes: readonly WorkspaceScope[];
   activeWorkspaceId: string;
@@ -61,28 +99,48 @@ export function scopeWorkspaceRows({
   syncProgress: number;
   syncError?: string;
   lastSyncedAt?: string;
+  syncQueue?: readonly WorkspaceSyncEntry[];
+  syncWorkspaceId?: string;
 }): ScopeWorkspaceRow[] {
+  const entries = new Map(
+    syncQueue.map((entry) => [entry.workspaceId, entry]),
+  );
   return scopes.map((scope) => {
     const active = scope.id === activeWorkspaceId;
+    const entry = entries.get(scope.id);
+    const running =
+      syncing &&
+      (syncWorkspaceId ? syncWorkspaceId === scope.id : active);
     let status: ScopeWorkspaceStatus;
-    if (!active) {
-      status = { kind: "inactive" };
-    } else if (syncing) {
+    if (running) {
       status = {
         kind: "running",
         phase: SYNC_PHASES[syncPhaseIndex(syncProgress)].activeLabel,
         progress: Math.min(100, Math.max(0, Math.round(syncProgress))),
       };
-    } else if (syncError) {
+    } else if (syncing && entry?.status === "queued") {
+      status = { kind: "queued" };
+    } else if (active) {
+      const failure =
+        syncError ?? (entry?.status === "failed" ? entry.error : undefined);
+      if (failure) {
+        status = { kind: "failed", message: failure, snapshotAt: lastSyncedAt };
+      } else if (lastSyncedAt) {
+        status = { kind: "snapshot", snapshotAt: lastSyncedAt };
+      } else {
+        status = { kind: "unsynchronized" };
+      }
+    } else if (entry?.status === "failed") {
       status = {
         kind: "failed",
-        message: syncError,
-        snapshotAt: lastSyncedAt,
+        message: entry.error ?? "Synchronization failed.",
       };
-    } else if (lastSyncedAt) {
-      status = { kind: "snapshot", snapshotAt: lastSyncedAt };
+    } else if (entry?.status === "cancelled") {
+      status = { kind: "cancelled" };
+    } else if (entry?.status === "completed") {
+      status = { kind: "synchronized", finishedAt: entry.finishedAt };
     } else {
-      status = { kind: "unsynchronized" };
+      status = { kind: "inactive" };
     }
     return {
       id: scope.id,

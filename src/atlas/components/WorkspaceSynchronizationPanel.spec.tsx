@@ -66,6 +66,9 @@ function context(
     reloadWorkspaceScopes: vi.fn(async () => undefined),
     selectWorkspace: vi.fn(),
     sync: vi.fn(async () => undefined),
+    syncWorkspaces: vi.fn(async () => undefined),
+    syncQueue: [],
+    syncWorkspaceId: undefined,
     cancelSync: vi.fn(),
     ...overrides,
   } as unknown as AtlasContextValue;
@@ -159,6 +162,10 @@ describe("WorkspaceSynchronizationPanel", () => {
       within(dialog).getByRole("note", { name: "Preview API information" }),
     ).toHaveTextContent("Fabric Apps backend Functions");
     expect(
+      within(dialog).getByRole("note", { name: "Preview API information" })
+        .className,
+    ).toContain("text-[length:var(--text-200)]");
+    expect(
       await within(dialog).findByRole("checkbox", {
         name: new RegExp(SAMPLE_DATA.workspace.displayName),
       }),
@@ -242,5 +249,89 @@ describe("WorkspaceSynchronizationPanel", () => {
     expect(
       screen.getByRole("button", { name: "Show latest 5" }),
     ).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("keeps a long failure message to a bounded summary with the full error on demand", () => {
+    const longError = `Synchronization failed before snapshot publication. ${"Upstream response ".repeat(40)}end-of-error`;
+    renderPanel(
+      context({}, [
+        {
+          id: "failed-run",
+          startedAt: "2026-10-02T12:21:00.000Z",
+          finishedAt: "2026-10-02T12:24:18.000Z",
+          status: "failed",
+          triggeredBy: "Synchronizer",
+          failureMessage: longError,
+        },
+      ]),
+    );
+
+    const table = screen.getByRole("table", {
+      name: "Synchronization runs, newest first",
+    });
+    expect(table.className).toContain("table-fixed");
+    const [row] = within(table).getAllByRole("row").slice(1);
+    const summary = within(row).getByText(/^Synchronization failed before snapshot publication\./);
+    expect(summary.textContent!.length).toBeLessThanOrEqual(161);
+    expect(within(row).queryByText(/end-of-error/)).toBeNull();
+
+    const toggle = within(row).getByRole("button", { name: "Show full error" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    const detail = document.getElementById(toggle.getAttribute("aria-controls")!);
+    expect(detail).toHaveTextContent(longError.trim());
+    expect(within(table).getAllByRole("row")).toHaveLength(3);
+  });
+
+  it("offers Sync all and per-workspace Sync through the queue contract", () => {
+    const value = context();
+    renderPanel(value);
+
+    fireEvent.click(screen.getByRole("button", { name: "Sync all" }));
+    expect(value.syncWorkspaces).toHaveBeenCalledWith([ACTIVE, OTHER]);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Synchronize Second workspace" }),
+    );
+    expect(value.syncWorkspaces).toHaveBeenLastCalledWith([OTHER]);
+    expect(
+      screen.getByRole("button", {
+        name: `Synchronize ${SAMPLE_DATA.workspace.displayName}`,
+      }),
+    ).toBeEnabled();
+  });
+
+  it("shows running, queued and failed workspaces and blocks conflicting actions", () => {
+    const third = "5c0e3f74-0f2f-4b5c-a7f2-2f4c8f7d9e11";
+    const value = context({
+      syncing: true,
+      syncProgress: 40,
+      syncStage: "Discovering Notebook metadata (3/9)",
+      syncWorkspaceId: OTHER,
+      workspaceScopes: [
+        { id: ACTIVE, displayName: SAMPLE_DATA.workspace.displayName, persisted: true },
+        { id: OTHER, displayName: "Second workspace", persisted: true },
+        { id: third, displayName: "Third workspace", persisted: true },
+      ],
+      syncQueue: [
+        { workspaceId: ACTIVE, status: "failed", error: "Fabric returned HTTP 403." },
+        { workspaceId: OTHER, status: "running" },
+        { workspaceId: third, status: "queued" },
+      ],
+    });
+    renderPanel(value);
+
+    const table = screen.getByRole("table", {
+      name: "Workspaces in the shared synchronization scope",
+    });
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(within(rows[1]).getByText("Collecting")).toBeInTheDocument();
+    expect(within(rows[2]).getByText("Queued")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sync all" })).toBeDisabled();
+    for (const button of screen.getAllByRole("button", { name: /^Synchronize / })) {
+      expect(button).toBeDisabled();
+    }
+    expect(screen.getByText("2 of 3 · Second workspace")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "View run" })).toBeNull();
   });
 });

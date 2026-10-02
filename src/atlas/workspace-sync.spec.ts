@@ -75,6 +75,72 @@ describe("workspace synchronization projection", () => {
     });
   });
 
+  it("projects queued, running, synchronized, failed and cancelled batch members", () => {
+    const third = "5c0e3f74-0f2f-4b5c-a7f2-2f4c8f7d9e11";
+    const rows = scopeWorkspaceRows({
+      scopes: [
+        ...scopes,
+        { id: third, displayName: "Third workspace", persisted: true },
+      ],
+      activeWorkspaceId: ACTIVE,
+      syncing: true,
+      syncProgress: 64,
+      syncWorkspaceId: OTHER,
+      lastSyncedAt: "2026-10-02T10:00:00.000Z",
+      syncQueue: [
+        { workspaceId: ACTIVE, status: "completed", finishedAt: "2026-10-02T11:00:00.000Z" },
+        { workspaceId: OTHER, status: "running" },
+        { workspaceId: third, status: "queued" },
+      ],
+    });
+
+    expect(rows.map((row) => row.status.kind)).toEqual([
+      "snapshot",
+      "running",
+      "queued",
+    ]);
+    expect(rows[1].status).toEqual({
+      kind: "running",
+      phase: "Validating",
+      progress: 64,
+    });
+
+    const finished = scopeWorkspaceRows({
+      scopes: [
+        ...scopes,
+        { id: third, displayName: "Third workspace", persisted: true },
+      ],
+      activeWorkspaceId: ACTIVE,
+      syncing: false,
+      syncProgress: 0,
+      lastSyncedAt: "2026-10-02T10:00:00.000Z",
+      syncQueue: [
+        { workspaceId: ACTIVE, status: "completed", finishedAt: "2026-10-02T11:00:00.000Z" },
+        { workspaceId: OTHER, status: "failed", error: "Fabric returned HTTP 403." },
+        { workspaceId: third, status: "cancelled" },
+      ],
+    });
+    expect(finished.map((row) => row.status)).toEqual([
+      { kind: "snapshot", snapshotAt: "2026-10-02T10:00:00.000Z" },
+      { kind: "failed", message: "Fabric returned HTTP 403." },
+      { kind: "cancelled" },
+    ]);
+
+    const synchronized = scopeWorkspaceRows({
+      scopes,
+      activeWorkspaceId: ACTIVE,
+      syncing: false,
+      syncProgress: 0,
+      syncQueue: [
+        { workspaceId: OTHER, status: "completed", finishedAt: "2026-10-02T11:00:00.000Z" },
+      ],
+    });
+    expect(synchronized[1].status).toEqual({
+      kind: "synchronized",
+      finishedAt: "2026-10-02T11:00:00.000Z",
+    });
+  });
+
   it("orders persisted runs and the live browser run newest first", () => {
     const runs: SyncRun[] = [
       {

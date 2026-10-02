@@ -81,6 +81,7 @@ import {
   MAP_INSPECTOR_DEFAULT_WIDTH,
   isMapInspectorWidth,
 } from "../map-inspector";
+import { DEFAULT_MAP_ZOOM, stepMapZoom } from "../map-zoom";
 import { useAtlas } from "../store";
 import {
   Avatar,
@@ -547,7 +548,7 @@ export function MapView({
   const [selectedObjectIds, setSelectedObjectIds] = useState<Set<string>>(
     new Set(),
   );
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(DEFAULT_MAP_ZOOM);
   const [copied, setCopied] = useState(false);
   const [impactReportOpen, setImpactReportOpen] = useState(false);
   const [lineageView, setLineageView] =
@@ -1316,7 +1317,7 @@ export function MapView({
   const resetGraph = () => {
     setDrag({});
     setObjectDrag({});
-    setZoom(1);
+    setZoom(DEFAULT_MAP_ZOOM);
     setFocusId(activeId);
     setSelectedItemIds(new Set(activeId ? [activeId] : []));
     setSelectedObjectIds(
@@ -2462,7 +2463,7 @@ export function MapView({
             <button
               type="button"
               aria-label="Zoom out"
-              onClick={() => setZoom((value) => Math.max(0.55, value - 0.1))}
+              onClick={() => setZoom((value) => stepMapZoom(value, -1))}
               className="flex h-[30px] w-[30px] items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
             >
               <ZoomOut size={14} />
@@ -2473,7 +2474,7 @@ export function MapView({
             <button
               type="button"
               aria-label="Zoom in"
-              onClick={() => setZoom((value) => Math.min(1.35, value + 0.1))}
+              onClick={() => setZoom((value) => stepMapZoom(value, 1))}
               className="flex h-[30px] w-[30px] items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground"
             >
               <ZoomIn size={14} />

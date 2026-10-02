@@ -1,3 +1,4 @@
+import { ATLAS_CONFIG } from "./config";
 import {
   createLineageIndex,
   getLineageImpact,
@@ -225,6 +226,14 @@ export const MONITOR_HUB_PAGES: Record<MonitorHubPage, string> = {
 export interface FabricPortalContext {
   portalBase?: string;
   tenantId?: string;
+}
+
+/** Portal origin and tenant for native links, from the deployment configuration. */
+export function fabricPortalContext(): FabricPortalContext {
+  return {
+    portalBase: import.meta.env.VITE_FABRIC_PORTAL_URL as string | undefined,
+    tenantId: ATLAS_CONFIG.tenantId,
+  };
 }
 
 const DEFAULT_PORTAL = "https://app.fabric.microsoft.com";
