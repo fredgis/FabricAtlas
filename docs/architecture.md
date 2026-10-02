@@ -570,7 +570,10 @@ families (`MaterializedLakeView`, `KQLMaterializedView`, `OneLakeShortcut`) and 
 fallbacks for Workload Hub and unknown types. Each family states catalog, objects, lineage,
 access and operations coverage independently as collected, partial, adapter only, deferred,
 unsupported, excluded by design or not applicable. The Catalog item drawer renders it as
-**Atlas coverage**, and `inventoryGapList` produces the API-backed gap list. MLVs are never
+**Atlas coverage**, and Governance Center → Coverage opens with an item family inventory,
+an **Evidence details** pane and the `inventoryGapList` follow-ups, following the #42 Governance
+Center concept. The shared chips and evidence rows live in
+`src/atlas/components/FamilyCoverageEvidence.tsx`. MLVs are never
 fabricated as top-level items: awareness comes from `RefreshMaterializedLakeViews` jobs on the
 parent Lakehouse and from MLV execution definitions. See [item-families.md](item-families.md).
 

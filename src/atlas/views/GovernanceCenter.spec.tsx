@@ -43,6 +43,23 @@ describe("GovernanceCenterView", () => {
     ).toBeInTheDocument();
   });
 
+  it("puts the item family inventory and evidence pane first in Coverage", async () => {
+    renderView();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Coverage/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Coverage/ }));
+
+    const inventory = await screen.findByRole("listbox", { name: "Item family coverage" });
+    expect(inventory).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Evidence details" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Inventory gaps" })).toBeInTheDocument();
+    const collectionStatus = screen.queryByRole("heading", { name: "Collection status" });
+    if (collectionStatus) {
+      expect(
+        inventory.compareDocumentPosition(collectionStatus) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+  });
+
   it("supports arrow-key tab navigation", async () => {
     renderView();
     const findings = screen.getByRole("tab", { name: /Findings/ });

@@ -22,6 +22,26 @@ The dimensions are **catalog**, **objects**, **lineage**, **access** and
 **operations**. The Catalog item drawer shows them in an **Atlas coverage**
 section for every item, including unknown and Workload Hub types.
 
+Governance Center → **Coverage** opens with the item family inventory, laid
+out like the #42 Governance Center concept: a partial-coverage banner, four
+summary cards, a dense keyboard-navigable inventory table with one status chip
+per dimension, an **Evidence details** pane for the selected family (sticky on
+wide screens, a focus-managed dialog on narrow screens) and an **Inventory
+gaps** card whose unobserved families stay collapsed until requested. Every
+chip pairs an icon with text, and all colours come from the shared semantic
+tokens, so light and dark themes stay consistent.
+
+Concept elements that are deliberately not reproduced because no supported
+data exists:
+
+| Concept element | Reason |
+| --- | --- |
+| Row overflow menu (`⋯`) and pane `⋯` menu | No per-family action is backed by an API |
+| "Next review" date | Atlas has no review schedule for coverage; the pane shows the registry follow-up instead |
+| Owner column | Item families have no owner; owners stay on items |
+| Shortcut and mirroring provenance in Map & lineage evidence | The provenance adapter is not published to snapshots yet, so no persisted evidence exists to show |
+| "Design concept · demo data" badge | Marks fictional mockup data and is never shown |
+
 ## Families
 
 - **Documented item types.** All 51 values of the Fabric `ItemType`
@@ -89,5 +109,5 @@ row below is one bounded follow-up, not a collector rewrite.
 ## Validation
 
 ```powershell
-npm test -- src\atlas\item-families.spec.ts src\atlas\components\ItemCoveragePanel.spec.tsx src\atlas\views\Catalog.spec.tsx
+npm test -- src\atlas\item-families.spec.ts src\atlas\components\ItemCoveragePanel.spec.tsx src\atlas\components\ItemFamilyCoverageSection.spec.tsx src\atlas\views\Catalog.spec.tsx src\atlas\views\GovernanceCenter.spec.tsx
 ```

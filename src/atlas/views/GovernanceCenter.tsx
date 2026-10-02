@@ -27,6 +27,7 @@ import { TrendChart } from "../components/TrendChart";
 import { GovernanceExceptionControl } from "../components/GovernanceExceptionControl";
 import { GovernancePolicyEditor } from "../components/GovernancePolicyEditor";
 import { HistoricalChangeDetails } from "../components/HistoricalChangeDetails";
+import { ItemFamilyCoverageSection } from "../components/ItemFamilyCoverageSection";
 import { ATLAS_CONFIG } from "../config";
 import {
   buildGovernanceFindings,
@@ -1095,6 +1096,7 @@ export function GovernanceCenterView({
             diagnostics={coverage}
             historyLoading={historyLoading}
             syncSections={data.workspace.syncSections}
+            snapshot={data}
           />
         </motion.div>
       </Tabs.Content>
@@ -2234,18 +2236,21 @@ function CoverageSection({
   diagnostics,
   historyLoading,
   syncSections,
+  snapshot,
 }: {
   diagnostics: ReturnType<typeof getCoverageDiagnostics>;
   historyLoading: boolean;
   syncSections?: NonNullable<
     ReturnType<typeof useAtlas>["data"]["workspace"]["syncSections"]
   >;
+  snapshot: Pick<ReturnType<typeof useAtlas>["data"], "items" | "jobs" | "workspace">;
 }) {
   const sectionEntries = Object.entries(syncSections ?? {}).sort(
     ([left], [right]) => left.localeCompare(right),
   );
   return (
     <div className="flex flex-col gap-l">
+      <ItemFamilyCoverageSection data={snapshot} />
       {sectionEntries.length > 0 && (
         <Card className="overflow-hidden">
           <div className="border-b border-border bg-secondary/55 px-l py-m">
