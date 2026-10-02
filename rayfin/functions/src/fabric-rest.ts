@@ -148,7 +148,11 @@ export interface FabricLongRunningLimits {
  * Fixed, allowlisted Fabric query parameters. Callers can only opt into known
  * flags; arbitrary query keys or values are not representable.
  */
-export type FabricQuery = Readonly<{ beta?: true }>;
+export type FabricQuery = Readonly<{
+  beta?: true;
+  type?: "Report" | "SemanticModel";
+  format?: "TMSL";
+}>;
 
 export interface FabricPagedOptions {
   query?: FabricQuery;
@@ -172,12 +176,22 @@ interface FabricSendOptions {
 function allowlistedQuery(query: FabricQuery | undefined): URLSearchParams {
   const params = new URLSearchParams();
   if (!query) return params;
-  if (Object.keys(query).some((key) => key !== "beta")) {
+  if (Object.keys(query).some((key) => !["beta", "type", "format"].includes(key))) {
     throw new FabricRestError("invalid-response");
   }
   if (query.beta !== undefined) {
     if (query.beta !== true) throw new FabricRestError("invalid-response");
     params.set("beta", "true");
+  }
+  if (query.type !== undefined) {
+    if (query.type !== "Report" && query.type !== "SemanticModel") {
+      throw new FabricRestError("invalid-response");
+    }
+    params.set("type", query.type);
+  }
+  if (query.format !== undefined) {
+    if (query.format !== "TMSL") throw new FabricRestError("invalid-response");
+    params.set("format", query.format);
   }
   return params;
 }
@@ -419,8 +433,9 @@ export class FabricRestClient {
   async getObject(
     path: string,
     budget?: RequestBudget,
+    query?: FabricQuery,
   ): Promise<Record<string, unknown>> {
-    return this.#request(fabricApiUrl(path), budget);
+    return this.#request(fabricApiUrl(path, query), budget);
   }
 
   /**
@@ -462,8 +477,9 @@ export class FabricRestClient {
     path: string,
     limits: FabricLongRunningLimits,
     budget?: RequestBudget,
+    query?: FabricQuery,
   ): Promise<Record<string, unknown>> {
-    const first = await this.#send(fabricApiUrl(path), budget, {
+    const first = await this.#send(fabricApiUrl(path, query), budget, {
       method: "POST",
       maxResponseBytes: limits.maxResponseBytes,
       accepted: true,

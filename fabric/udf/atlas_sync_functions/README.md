@@ -83,6 +83,16 @@ and [Get Pages In Group](https://learn.microsoft.com/rest/api/power-bi/reports/g
 > returned part, replacing `function_app.py` and the library version in
 > `definition.json` only when those changes are intentional.
 
+## Phase 4 replacement boundary
+
+The Rayfin `workspaceCollectPowerBi` stage now provides supported Fabric
+definition-based semantic schema, selected sanitized DAX, PBIR pages/bindings,
+and opt-in Preview Fabric admin owner/access evidence. It is non-authoritative;
+this Python scanner remains the active required-section source. Rayfin 1.36.2
+does not provide a documented deployed Power BI application-token audience,
+and its semantic-model connector is delegated-only. No browser-token workaround
+was added. See [the exact coverage and remaining blocker](../../../docs/powerbi-scanner-replacement.md).
+
 ## Functions
 
 | Function | Params | Returns |

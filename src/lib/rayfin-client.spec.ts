@@ -123,6 +123,7 @@ describe("Rayfin Functions contract", () => {
       | "workspaceCollectDefinitions"
       | "workspaceCollectItemRelations"
       | "workspaceCollectKqlMetadata"
+      | "workspaceCollectPowerBi"
       | "syncStart"
       | "syncContinue"
       | "syncStatus"

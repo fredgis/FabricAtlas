@@ -34,6 +34,12 @@ import {
   workspaceDiscover,
   type WorkspaceDiscoveryResult,
 } from './workspace-discovery.js';
+import {
+  workspaceCollectPowerBi,
+  type PowerBiAdminEvidenceInput,
+  type PowerBiItemsInput,
+  type PowerBiStageEnvelope,
+} from './workspace-powerbi.js';
 
 const udf = new UserDataFunctions();
 
@@ -111,6 +117,20 @@ udf.func(
     correlationId: SyncUuidInput | null = null,
   ): Promise<KqlMetadataStageEnvelope> =>
     workspaceCollectKqlMetadata(ctx, protocolVersion, workspaceId, items, correlationId),
+  [],
+);
+
+udf.func(
+  'workspaceCollectPowerBi',
+  async (
+    ctx: RayfinContext<AtlasSchema, AudienceType.Fabric>,
+    protocolVersion: 1,
+    workspaceId: SyncUuidInput,
+    items: PowerBiItemsInput,
+    includeAdminEvidence: PowerBiAdminEvidenceInput,
+    correlationId: SyncUuidInput | null = null,
+  ): Promise<PowerBiStageEnvelope> =>
+    workspaceCollectPowerBi(ctx, protocolVersion, workspaceId, items, includeAdminEvidence, correlationId),
   [],
 );
 

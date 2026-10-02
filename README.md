@@ -568,6 +568,7 @@ Pull requests are welcome. Read
 - [Architecture](docs/architecture.md)
 - [Data model](docs/data-model.md)
 - [Metadata coverage audit](docs/fabric-metadata-coverage-audit.md)
+- [Phase 4 Power BI metadata replacement and blocker](docs/powerbi-scanner-replacement.md)
 - [Security policy](.github/SECURITY.md)
 - [Code of conduct](.github/CODE_OF_CONDUCT.md)
 
