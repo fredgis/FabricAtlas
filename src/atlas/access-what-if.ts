@@ -8,6 +8,7 @@ import {
 } from "./access-coverage";
 import { csvCell } from "./access-export";
 import { highestRecordedGrant, type AccessReviewRow } from "./governance";
+import { markdownText } from "./markdown";
 import type { AccessLevel, AccessSource, Grant } from "./model";
 
 export const WHAT_IF_NOTICE =
@@ -129,10 +130,6 @@ function pathSummary(path: AccessGrantPath): string {
     `scope ${path.grant.itemFabricId ?? "Workspace"}`,
     `${path.observations} recorded observation(s)`,
   ].join("; ");
-}
-
-function markdownText(value: string): string {
-  return value.replace(/[\r\n]+/g, " ").replace(/[\\`*_[\]()#<>|!]/g, "\\$&");
 }
 
 export function accessWhatIfToMarkdown(result: AccessWhatIfResult): string {

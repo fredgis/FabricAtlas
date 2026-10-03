@@ -5297,6 +5297,43 @@ def _merge_optional_trackers(target, source):
                 current["codes"].append(code)
 
 
+def _collect_item_jobs(
+    fabric_token,
+    workspace_id,
+    item,
+    tracker,
+    errors,
+    error_prefix="jobs",
+):
+    try:
+        values = _get_all(
+            fabric_token,
+            f"/workspaces/{workspace_id}/items/{item['id']}/jobs/instances",
+        )
+        jobs = []
+        for value in values[:3]:
+            job = _sanitize_job(value, item)
+            if job is None:
+                raise ValueError("job record was invalid")
+            jobs.append(job)
+        _track_optional(tracker, "success")
+        return jobs
+    except SLICE_RETRY_ERRORS:
+        raise
+    except urllib.error.HTTPError as error:
+        code = _safe_error_code(error, optional=True)
+        if code == "endpoint-unsupported":
+            _track_optional(tracker, "unsupported", code)
+        else:
+            _track_optional(tracker, "failed", code)
+            errors.append(f"{error_prefix}: {code}")
+    except Exception as error:
+        code = _safe_error_code(error, optional=True)
+        _track_optional(tracker, "failed", code)
+        errors.append(f"{error_prefix}: {code}")
+    return []
+
+
 @udf.function()
 def sync_items(
     fabricToken: str,
@@ -5306,7 +5343,6 @@ def sync_items(
     definitionToken: str = "",
     kustoToken: str = "",
     sqlToken: str = "",
-    storageToken: str = "",
 ) -> dict:
     """Return resumable deep metadata for a validated workspace item batch."""
     ws = _workspace_id(workspaceId)
@@ -5414,38 +5450,19 @@ def sync_items(
                 item_errors.append(f"enrichment:{item_id}: {code}")
                 out["itemFailures"][item_id] = code
 
-            safe_jobs = []
             try:
-                jobs = _get_all(
+                safe_jobs = _collect_item_jobs(
                     fabricToken,
-                    f"/workspaces/{ws}/items/{item_id}/jobs/instances",
+                    ws,
+                    item,
+                    item_trackers["jobs"],
+                    item_errors,
+                    f"jobs:{item_id}",
                 )
-                _track_optional(item_trackers["jobs"], "success")
-                safe_jobs = []
-                for value in jobs[:3]:
-                    job = _sanitize_job(value, item)
-                    if job is None:
-                        raise ValueError("job record was invalid")
-                    safe_jobs.append(job)
                 deadline.checkpoint()
-            except urllib.error.HTTPError as error:
-                code = _safe_error_code(error, optional=True)
-                if code == "endpoint-unsupported":
-                    _track_optional(
-                        item_trackers["jobs"],
-                        "unsupported",
-                        code,
-                    )
-                else:
-                    _track_optional(item_trackers["jobs"], "failed", code)
-                    item_errors.append(f"jobs:{item_id}: {code}")
-            except Exception as error:
-                if isinstance(error, SLICE_RETRY_ERRORS):
-                    out["remainingItemIds"] = requested_item_ids[index:]
-                    break
-                code = _safe_error_code(error, optional=True)
-                _track_optional(item_trackers["jobs"], "failed", code)
-                item_errors.append(f"jobs:{item_id}: {code}")
+            except SLICE_RETRY_ERRORS:
+                out["remainingItemIds"] = requested_item_ids[index:]
+                break
 
             _merge_optional_trackers(trackers, item_trackers)
             out["errors"].extend(item_errors)
@@ -5725,8 +5742,14 @@ def sync_compatibility(
                     out["itemMetadata"][item_id] = metadata
                     extra_edges.extend(artifact.get("_objectEdges") or [])
                     if "jobs" in requested["collectors"]:
-                        jobs = _get_all(fabricToken, f"/workspaces/{ws}/items/{item_id}/jobs/instances")
-                        out["jobs"].extend(_sanitize_job(job, item) for job in jobs[:3])
+                        out["jobs"].extend(_collect_item_jobs(
+                            fabricToken,
+                            ws,
+                            item,
+                            trackers["jobs"],
+                            out["errors"],
+                            f"jobs:{item_id}",
+                        ))
                     deadline.checkpoint()
                     out["completedItemIds"].append(item_id)
                 except SLICE_RETRY_ERRORS:
@@ -5752,7 +5775,6 @@ def sync_all(
     definitionToken: str = "",
     kustoToken: str = "",
     sqlToken: str = "",
-    storageToken: str = "",
     deferEnrichment: str = "",
 ) -> dict:
     """Return the v2 metadata-only Fabric Atlas synchronization envelope."""
@@ -5929,6 +5951,7 @@ def sync_all(
             )
         artifacts = list(artifacts_by_id.values())
 
+        deadline_exhausted = False
         if out["sections"].get("scanner", {}).get("status") == "complete":
             access_failed = False
             access_failure_code = None
@@ -6016,6 +6039,14 @@ def sync_all(
                             for key, value in access.items()
                             if value is not None
                         })
+                except DeadlineExceeded:
+                    deadline_exhausted = True
+                    access_failed = True
+                    access_failure_code = "deadline-exhausted"
+                    out["errors"].append(
+                        "enrichment: deadline-exhausted"
+                    )
+                    break
                 except Exception as error:
                     access_failed = True
                     code = _safe_error_code(error)
@@ -6051,13 +6082,14 @@ def sync_all(
                 out["lineage"] = []
                 _record_failure(out, "lineage", error)
 
+            schema_artifacts = [] if deadline_exhausted else artifacts
             schema_state = out["sections"].get("schema", {})
             schema_failed = (
                 schema_state.get("status") == "failed"
                 and schema_state.get("code") != "not-run"
             )
             all_schema = {}
-            for artifact in artifacts:
+            for artifact in schema_artifacts:
                 artifact_id = _artifact_id(artifact)
                 try:
                     item_schema = _item_schema(
@@ -6078,7 +6110,7 @@ def sync_all(
                 _derive_storage_schemas(
                     fabricToken,
                     ws,
-                    artifacts,
+                    schema_artifacts,
                     all_schema,
                     resolve_details=not defer_enrichment,
                 )
@@ -6089,7 +6121,7 @@ def sync_all(
                 )
             artifact_types = {
                 _artifact_id(artifact): artifact.get("_type")
-                for artifact in artifacts
+                for artifact in schema_artifacts
                 if _artifact_id(artifact)
             }
             all_schema = {
@@ -6123,7 +6155,14 @@ def sync_all(
                 item_id: _public_schema(tables)
                 for item_id, tables in workspace_schema.items()
             }
-            if schema_failed:
+            if deadline_exhausted:
+                _set_section(
+                    out,
+                    "schema",
+                    "failed",
+                    "deadline-exhausted",
+                )
+            elif schema_failed:
                 _set_section(
                     out,
                     "schema",
@@ -6136,7 +6175,7 @@ def sync_all(
                 _set_section(out, "schema", "complete")
 
             config_failed = False
-            for artifact in artifacts:
+            for artifact in schema_artifacts:
                 artifact_id = _artifact_id(artifact)
                 if artifact_id not in workspace_item_ids:
                     continue
@@ -6155,12 +6194,20 @@ def sync_all(
                     out["errors"].append(
                         f"config: {_safe_error_code(error)}"
                     )
-            _set_section(
-                out,
-                "config",
-                "failed" if config_failed else "complete",
-                "upstream-failure" if config_failed else None,
-            )
+            if deadline_exhausted:
+                _set_section(
+                    out,
+                    "config",
+                    "failed",
+                    "deadline-exhausted",
+                )
+            else:
+                _set_section(
+                    out,
+                    "config",
+                    "failed" if config_failed else "complete",
+                    "upstream-failure" if config_failed else None,
+                )
         else:
             scanner_code = out["sections"].get("scanner", {}).get(
                 "code",
@@ -6174,36 +6221,18 @@ def sync_all(
                 _set_section(out, name, "failed", scanner_code)
                 out["errors"].append(f"{name}: {scanner_code}")
 
-        if not defer_enrichment:
+        if not defer_enrichment and not deadline_exhausted:
             for item in out["items"]:
                 try:
-                    jobs = _get_all(
+                    out["jobs"].extend(_collect_item_jobs(
                         fabricToken,
-                        f"/workspaces/{ws}/items/{item['id']}/jobs/instances",
-                    )
-                    _track_optional(trackers["jobs"], "success")
-                    for value in jobs[:3]:
-                        job = _sanitize_job(value, item)
-                        if job is None:
-                            raise ValueError("job record was invalid")
-                        out["jobs"].append(job)
-                except urllib.error.HTTPError as error:
-                    code = _safe_error_code(error, optional=True)
-                    if code == "endpoint-unsupported":
-                        _track_optional(
-                            trackers["jobs"],
-                            "unsupported",
-                            code,
-                        )
-                    else:
-                        _track_optional(trackers["jobs"], "failed", code)
-                        out["errors"].append(f"jobs: {code}")
-                except Exception as error:
-                    code = _safe_error_code(error, optional=True)
-                    _track_optional(trackers["jobs"], "failed", code)
-                    out["errors"].append(f"jobs: {code}")
-                    if isinstance(error, DeadlineExceeded):
-                        break
+                        ws,
+                        item,
+                        trackers["jobs"],
+                        out["errors"],
+                    ))
+                except SLICE_RETRY_ERRORS:
+                    break
 
     for name, tracker in trackers.items():
         _finish_optional_section(out, name, tracker)

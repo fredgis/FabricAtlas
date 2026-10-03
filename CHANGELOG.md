@@ -68,6 +68,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   Agreement column.
 - Preserved valid per-item schema when another optional collector fails.
 - Fixed Map test build regressions and retained strict TypeScript validation.
+- Replaced exponential lineage cycle checks with bounded strongly connected
+  component detection and fixed DAX references after astral Unicode text.
+- Kept published snapshots visible when cancellation arrives after the manifest,
+  surfaced hydration failures explicitly and prevented orphan cleanup starvation.
+- Unified compatibility job collection and stopped Python enrichment cleanly
+  when its execution deadline is exhausted.
+- Escaped Markdown exports and selected code fences that cannot be closed by
+  synchronized metadata or DAX expressions.
+- Restored reduced-motion support, accessible saved-view and Catalog overlays,
+  and dark-theme destructive text contrast.
+- Made fresh-clone installation restore typed Functions dependencies and
+  declared the MCP authentication packages used at runtime.
+- Removed superseded collector shadows, definition benchmarks, inactive SQL
+  payload code, the unused storage token and the unused Rayfin storage service.
 
 ## [1.12.4] - 2026-09-17
 

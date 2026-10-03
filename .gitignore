@@ -25,6 +25,7 @@ coverage
 .playwright/
 .pytest_cache/
 .worktrees/
+__pycache__/
 
 rayfin/.env*
 rayfin/.deployments.json

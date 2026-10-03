@@ -103,6 +103,8 @@ export interface AtlasContextValue {
   canSync: boolean;
   hasData: boolean;
   requiresDeploymentSync: boolean;
+  hydrationError?: string;
+  retryHydration: () => void;
   syncError?: string;
   currentUser: CurrentUser;
   workspaceScopes: WorkspaceScope[];
@@ -234,6 +236,8 @@ export function AtlasProvider({
     isPreview ? PREVIEW_HISTORY : EMPTY_HISTORY,
   );
   const [hydrating, setHydrating] = useState(!isPreview);
+  const [hydrationError, setHydrationError] = useState<string | undefined>();
+  const [hydrationAttempt, setHydrationAttempt] = useState(0);
   const [historyLoading, setHistoryLoading] = useState(!isPreview);
   const [historyError, setHistoryError] = useState<string | undefined>();
   const [historyFailedSnapshotIds, setHistoryFailedSnapshotIds] = useState(
@@ -304,6 +308,9 @@ export function AtlasProvider({
     workspaceScopes.find(
       (workspace) => workspace.id === activeWorkspaceId,
     )?.displayName ?? initialScope.displayName;
+  const retryHydration = useCallback(() => {
+    setHydrationAttempt((attempt) => attempt + 1);
+  }, []);
   const progressResetTimer = useRef<number | undefined>(undefined);
   const syncAbortController = useRef<AbortController | undefined>(undefined);
   const operationGeneration = useRef(0);
@@ -625,6 +632,7 @@ export function AtlasProvider({
     window.queueMicrotask(() => {
       if (!alive || operationGeneration.current !== generation) return;
       setHydrating(true);
+      setHydrationError(undefined);
       setHistoryLoading(true);
       setHistoryError(undefined);
       setHistoryFailedSnapshotIds(new Set());
@@ -685,8 +693,11 @@ export function AtlasProvider({
             }
           });
       })
-      .catch(() => {
+      .catch((error) => {
         if (alive && operationGeneration.current === generation) {
+          setHydrationError(
+            error instanceof Error ? error.message : String(error),
+          );
           setHistoryLoading(false);
         }
       })
@@ -701,6 +712,7 @@ export function AtlasProvider({
   }, [
     activeWorkspaceId,
     activeWorkspaceName,
+    hydrationAttempt,
     isPreview,
     reloadComments,
   ]);
@@ -747,7 +759,6 @@ export function AtlasProvider({
           abortController.signal,
           targetWorkspaceId,
         );
-        if (abortController.signal.aborted) return { status: "cancelled" };
         if (appliesToActive) {
           if (operationGeneration.current !== generation) {
             return { status: "cancelled" };
@@ -1425,6 +1436,8 @@ export function AtlasProvider({
       canSync,
       hasData,
       requiresDeploymentSync,
+      hydrationError,
+      retryHydration,
       syncError,
       currentUser,
       workspaceScopes,
@@ -1452,7 +1465,7 @@ export function AtlasProvider({
       removeGovernanceException: removeSharedGovernanceException,
       loadHistorySnapshot,
     }),
-    [data, history, hydrating, historyLoading, historyError, historyFailedSnapshotIds, savedViews, savedViewsLoading, savedViewsError, findingAcks, findingAcksLoading, findingAcksError, findingAckPendingIds, governancePolicy.targets, governancePolicyLoading, governancePolicyError, governanceExceptions, governanceExceptionsLoading, governanceExceptionsError, governanceExceptionPendingIds, commentsLoading, commentsError, syncing, syncProgress, syncStage, syncStartedAt, lastSyncedAt, isPreview, configured, canSync, hasData, requiresDeploymentSync, syncError, currentUser, workspaceScopes, workspaceScopesLoading, workspaceScopesError, activeWorkspaceId, reloadWorkspaceScopes, selectWorkspace, sync, syncWorkspaces, syncQueue, syncWorkspaceId, cancelSync, reloadComments, addComment, addSavedView, removeSavedView, saveFindingAcknowledgement, removeFindingAcknowledgement, reloadGovernancePolicy, saveGovernanceTargets, resetGovernanceTargets, reloadGovernanceExceptions, saveSharedGovernanceException, removeSharedGovernanceException, loadHistorySnapshot],
+    [data, history, hydrating, historyLoading, historyError, historyFailedSnapshotIds, savedViews, savedViewsLoading, savedViewsError, findingAcks, findingAcksLoading, findingAcksError, findingAckPendingIds, governancePolicy.targets, governancePolicyLoading, governancePolicyError, governanceExceptions, governanceExceptionsLoading, governanceExceptionsError, governanceExceptionPendingIds, commentsLoading, commentsError, syncing, syncProgress, syncStage, syncStartedAt, lastSyncedAt, isPreview, configured, canSync, hasData, requiresDeploymentSync, hydrationError, retryHydration, syncError, currentUser, workspaceScopes, workspaceScopesLoading, workspaceScopesError, activeWorkspaceId, reloadWorkspaceScopes, selectWorkspace, sync, syncWorkspaces, syncQueue, syncWorkspaceId, cancelSync, reloadComments, addComment, addSavedView, removeSavedView, saveFindingAcknowledgement, removeFindingAcknowledgement, reloadGovernancePolicy, saveGovernanceTargets, resetGovernanceTargets, reloadGovernanceExceptions, saveSharedGovernanceException, removeSharedGovernanceException, loadHistorySnapshot],
   );
 
   return <AtlasContext.Provider value={value}>{children}</AtlasContext.Provider>;

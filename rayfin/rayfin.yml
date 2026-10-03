@@ -23,12 +23,9 @@ services:
     allowedRedirectUris:
       - http://localhost:5173
       - http://127.0.0.1:5173
-      - https://daily-cliff-7ae44bdc6a-centralus.webapp.fabricapps.net
   data:
     enabled: true
     dialect: mssql
-  storage:
-    enabled: true
   staticHosting:
     enabled: true
     folder: dist

@@ -139,6 +139,31 @@ describe("semantic model X-Ray", () => {
     );
   });
 
+  it("escapes labels and contains DAX expressions with embedded fences", () => {
+    const unsafe = buildSemanticModelXRay(MODEL, [
+      {
+        name: "Sales<img>",
+        columns: [],
+        measures: [
+          {
+            name: "Unsafe",
+            expr: "1\n```\n<img src=x>",
+          },
+        ],
+      },
+    ]);
+    const evidence = xrayEvidenceMarkdown(
+      unsafe,
+      key("measure", "Sales<img>", "Unsafe"),
+      "[Model](javascript:alert(1))",
+    );
+
+    expect(evidence).toContain(
+      "# \\[Model\\]\\(javascript:alert\\(1\\)\\): Sales\\<img\\>",
+    );
+    expect(evidence).toContain("````dax\n1\n```\n<img src=x>\n````");
+  });
+
   it("stays linear on large models", () => {
     const measures = Array.from({ length: 3_000 }, (_, index) => ({
       name: `M${index}`,

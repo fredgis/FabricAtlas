@@ -742,6 +742,68 @@ function connectedComponents(items: Item[], index: LineageIndex): string[][] {
   return components;
 }
 
+function stronglyConnectedComponents(
+  nodeIds: readonly string[],
+  adjacency: ReadonlyMap<string, readonly string[]>,
+): string[][] {
+  const indexes = new Map<string, number>();
+  const lowLinks = new Map<string, number>();
+  const stack: string[] = [];
+  const onStack = new Set<string>();
+  const components: string[][] = [];
+  let nextIndex = 0;
+  const visit = (id: string) => {
+    indexes.set(id, nextIndex);
+    lowLinks.set(id, nextIndex);
+    nextIndex += 1;
+    stack.push(id);
+    onStack.add(id);
+  };
+
+  for (const root of nodeIds) {
+    if (indexes.has(root)) continue;
+    visit(root);
+    const frames = [{ id: root, next: 0 }];
+    while (frames.length > 0) {
+      const frame = frames[frames.length - 1];
+      const neighbors = adjacency.get(frame.id) ?? [];
+      if (frame.next < neighbors.length) {
+        const neighbor = neighbors[frame.next];
+        frame.next += 1;
+        if (!indexes.has(neighbor)) {
+          visit(neighbor);
+          frames.push({ id: neighbor, next: 0 });
+        } else if (onStack.has(neighbor)) {
+          lowLinks.set(
+            frame.id,
+            Math.min(lowLinks.get(frame.id)!, indexes.get(neighbor)!),
+          );
+        }
+        continue;
+      }
+      frames.pop();
+      const parent = frames[frames.length - 1];
+      if (parent) {
+        lowLinks.set(
+          parent.id,
+          Math.min(lowLinks.get(parent.id)!, lowLinks.get(frame.id)!),
+        );
+      }
+      if (lowLinks.get(frame.id) !== indexes.get(frame.id)) continue;
+      const component: string[] = [];
+      let member: string | undefined;
+      do {
+        member = stack.pop();
+        if (member === undefined) break;
+        onStack.delete(member);
+        component.push(member);
+      } while (member !== frame.id);
+      components.push(component);
+    }
+  }
+  return components;
+}
+
 export function buildStagedLayout(
   items: Item[],
   edges: Edge[],
@@ -802,28 +864,30 @@ export function buildStagedLayout(
     );
     const adjacency = new Map<string, string[]>();
     for (const edge of componentEdges) {
-      adjacency.set(edge.source, [
-        ...(adjacency.get(edge.source) ?? []),
-        edge.target,
-      ]);
+      const targets = adjacency.get(edge.source) ?? [];
+      targets.push(edge.target);
+      adjacency.set(edge.source, targets);
     }
-    const reaches = (
-      start: string,
-      target: string,
-      visited = new Set<string>(),
-    ): boolean => {
-      if (start === target) return true;
-      if (visited.has(start)) return false;
-      visited.add(start);
-      return (adjacency.get(start) ?? []).some((next) =>
-        reaches(next, target, new Set(visited)),
-      );
-    };
-    const cycleEdges = new Set(
-      componentEdges
-        .filter((edge) => reaches(edge.target, edge.source))
-        .map((edge) => `${edge.source}\u0000${edge.target}`),
-    );
+    const cyclicComponentById = new Map<string, string[]>();
+    for (const cyclicComponent of stronglyConnectedComponents(
+      component,
+      adjacency,
+    )) {
+      if (cyclicComponent.length < 2) continue;
+      for (const id of cyclicComponent) {
+        cyclicComponentById.set(id, cyclicComponent);
+      }
+    }
+    const cycleEdges = new Set<string>();
+    for (const edge of componentEdges) {
+      const sourceComponent = cyclicComponentById.get(edge.source);
+      if (
+        sourceComponent &&
+        sourceComponent === cyclicComponentById.get(edge.target)
+      ) {
+        cycleEdges.add(`${edge.source}\u0000${edge.target}`);
+      }
+    }
     const lastStage = LINEAGE_STAGE_LABELS.length - 1;
     for (
       let pass = 0;

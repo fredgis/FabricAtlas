@@ -24,29 +24,20 @@ import {
   type SyncIdentity,
 } from "./live-sync";
 import {
-  completeCoreCollectorShadow,
-  coreCollectorParitySummary,
-  coreCollectorShadowEnabled,
-  startCoreCollectorShadow,
-} from "./core-collector-shadow";
-import { runDefinitionCollectorShadow } from "./definition-collector-shadow";
-import { runItemRelationsCollectorShadow, type ItemRelationsShadowCollection } from "./item-relations-collector-shadow";
-import {
   ITEM_RELATIONS_EVIDENCE_ENTITY,
   persistItemRelationsEvidence,
   type ItemRelationsEvidenceApi,
 } from "./item-relations-evidence-store";
-import { runKqlCollectorShadow } from "./kql-collector-shadow";
 import {
   OPERATIONAL_INCIDENT_ENTITY,
   persistOperationalIncidents,
   type OperationalIncidentApi,
 } from "./operational-incident-store";
 import {
-  runPowerBiCollectorShadow,
-  runSqlCollectorShadow,
-} from "./remaining-collectors-shadow";
-import { collectBrowserWorkspace, pythonCollectorRollbackEnabled } from "./browser-collector-sync";
+  collectBrowserWorkspace,
+  pythonCollectorRollbackEnabled,
+  type ItemRelationsCollection,
+} from "./browser-collector-sync";
 import { normalizeLineageEdges } from "./lineage";
 import { DEPLOYMENT_ID } from "./release";
 import {
@@ -227,26 +218,6 @@ function persistedList(
 function assertSyncActive(signal?: AbortSignal): void {
   if (signal?.aborted) {
     throw new SyncCancelledError("Synchronization cancelled.");
-  }
-}
-
-const ITEM_RELATIONS_SHADOW_TIMEOUT = "Item Relations shadow timed-out";
-
-async function boundedShadowSummary(
-  promise: Promise<string | undefined>,
-  fallback: string,
-  milliseconds = 180_000,
-): Promise<string | undefined> {
-  let timer: number | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<string>((resolve) => {
-        timer = window.setTimeout(() => resolve(fallback), milliseconds);
-      }),
-    ]);
-  } finally {
-    if (timer != null) window.clearTimeout(timer);
   }
 }
 
@@ -565,13 +536,8 @@ interface SyncAttempt {
   startedAt: Date;
   data: Record<string, EntityApi>;
   user: SyncIdentity;
-  coreParitySummary?: string;
-  definitionShadowSummary?: string;
-  itemRelationsShadowSummary?: string;
-  itemRelationsCollection?: ItemRelationsShadowCollection;
-  kqlShadowSummary?: string;
-  sqlShadowSummary?: string;
-  powerBiShadowSummary?: string;
+  collectorSummary?: string;
+  itemRelationsCollection?: ItemRelationsCollection;
 }
 
 function textOrFallback(value: unknown, fallback: string): string {
@@ -739,109 +705,17 @@ export async function runFabricSync(
         attempt.workspaceId, user, attempt.id, reportProgress, signal,
       );
       raw = collected.raw;
-      attempt.coreParitySummary = collected.summary;
-      attempt.definitionShadowSummary = "Definitions: active Rayfin collector";
-      attempt.kqlShadowSummary = "KQL: active Rayfin collector plus explicit data-plane gaps";
-      attempt.sqlShadowSummary = "SQL: active Rayfin collector plus explicit unavailable-identity gaps";
-      attempt.powerBiShadowSummary = "Power BI definitions: active Rayfin; scanner compatibility retained";
-      attempt.itemRelationsShadowSummary = "Item Relations: active Rayfin Preview evidence (non-authoritative)";
+      attempt.collectorSummary = collected.summary;
       attempt.itemRelationsCollection = collected.itemRelationsCollection;
     } else {
-    const coreShadow = startCoreCollectorShadow(
-      attempt.workspaceId,
-      attempt.id,
-    );
-    const definitionShadow = boundedShadowSummary(
-      coreShadow.then((coreEnvelope) =>
-        runDefinitionCollectorShadow(
-          attempt.workspaceId,
-          attempt.id,
-          coreEnvelope,
-        ),
-      ),
-      "Definitions shadow timed-out",
-    );
-    let itemRelationsCollection: ItemRelationsShadowCollection | undefined;
-    const itemRelationsShadow = boundedShadowSummary(
-      coreShadow.then((coreEnvelope) =>
-        runItemRelationsCollectorShadow(
-          attempt.workspaceId,
-          attempt.id,
-          coreEnvelope,
-          {
-            onCollected: (collection) => {
-              itemRelationsCollection = collection;
-            },
-          },
-        ),
-      ),
-      ITEM_RELATIONS_SHADOW_TIMEOUT,
-    );
-    const kqlShadow = boundedShadowSummary(
-      coreShadow.then((coreEnvelope) =>
-        runKqlCollectorShadow(
-          attempt.workspaceId,
-          attempt.id,
-          coreEnvelope,
-        ),
-      ),
-      "KQL shadow timed-out",
-    );
-    const sqlShadow = boundedShadowSummary(
-      coreShadow.then((coreEnvelope) =>
-        runSqlCollectorShadow(
-          attempt.workspaceId,
-          attempt.id,
-          coreEnvelope,
-        ),
-      ),
-      "SQL shadow timed-out",
-    );
-    const powerBiShadow = boundedShadowSummary(
-      coreShadow.then((coreEnvelope) =>
-        runPowerBiCollectorShadow(
-          attempt.workspaceId,
-          attempt.id,
-          coreEnvelope,
-        ),
-      ),
-      "Power BI shadow timed-out",
-    );
-    raw = await invokeSyncAll(
-      attempt.workspaceId,
-      user,
-      reportProgress,
-      signal,
-      attempt.id,
-    );
-    const coreParity = completeCoreCollectorShadow(
-      await coreShadow,
-      raw,
-    );
-    if (coreParity) {
-      attempt.coreParitySummary = coreCollectorParitySummary(coreParity);
-    } else if (coreCollectorShadowEnabled()) {
-      attempt.coreParitySummary = "Core parity unavailable";
-    }
-    [
-      attempt.definitionShadowSummary,
-      attempt.itemRelationsShadowSummary,
-      attempt.kqlShadowSummary,
-      attempt.sqlShadowSummary,
-      attempt.powerBiShadowSummary,
-    ] = await Promise.all([
-      definitionShadow,
-      itemRelationsShadow,
-      kqlShadow,
-      sqlShadow,
-      powerBiShadow,
-    ]);
-    // A timed-out shadow may still finish later; only a collection that
-    // completed within the bounded window is eligible for persistence.
-    attempt.itemRelationsCollection =
-      attempt.itemRelationsShadowSummary === ITEM_RELATIONS_SHADOW_TIMEOUT
-        ? undefined
-        : itemRelationsCollection;
+      raw = await invokeSyncAll(
+        attempt.workspaceId,
+        user,
+        reportProgress,
+        signal,
+        attempt.id,
+      );
+      attempt.collectorSummary = "Collectors: explicit Python rollback";
     }
     reportProgress?.(62, "Workspace metadata complete");
     const atlas = mapSyncToAtlas(raw, WS_FALLBACK);
@@ -875,7 +749,7 @@ export async function runFabricSync(
  * Stores Item Relations (Beta) evidence after the snapshot marker is visible.
  * It never throws: Preview evidence must not fail an authoritative sync.
  */
-async function persistShadowItemRelationsEvidence(
+async function persistItemRelationsCollection(
   attempt: SyncAttempt,
   atlas: AtlasData,
 ): Promise<void> {
@@ -1395,22 +1269,10 @@ async function persistSync(
   reportProgress?.(97, "Finalizing the workspace snapshot");
   const syncSummary = [
     `${atlas.items.length} items · ${atlas.edges.length} lineage edges · ${atlas.principals.length} principals · ${atlas.jobs.length} jobs`,
-    attempt.coreParitySummary,
-    attempt.definitionShadowSummary,
-    attempt.itemRelationsShadowSummary,
-    attempt.kqlShadowSummary,
-    attempt.sqlShadowSummary,
-    attempt.powerBiShadowSummary,
+    attempt.collectorSummary,
   ]
     .filter((value): value is string => !!value)
     .join(" · ");
-  await updateSyncAttempt(
-    attempt,
-    "completed",
-    syncedAt,
-    atlas.items.length,
-    syncSummary,
-  );
   assertSyncActive(signal);
   await createSnapshotRow(
     "Workspace",
@@ -1418,14 +1280,23 @@ async function persistSync(
     { ...manifest, id: crypto.randomUUID() },
     signal,
   );
-  if (attempt.itemRelationsCollection && !signal?.aborted) {
+  try {
+    await updateSyncAttempt(
+      attempt,
+      "completed",
+      syncedAt,
+      atlas.items.length,
+      syncSummary,
+    );
+  } catch (error) {
+    console.warn("[atlas] published snapshot audit update deferred", error);
+  }
+  if (attempt.itemRelationsCollection) {
     reportProgress?.(98, "Storing Item Relations evidence");
-    await persistShadowItemRelationsEvidence(attempt, atlas);
+    await persistItemRelationsCollection(attempt, atlas);
   }
-  if (!signal?.aborted) {
-    reportProgress?.(98, "Recording operational incidents");
-    await persistSnapshotIncidents(attempt, atlas, syncedAt);
-  }
+  reportProgress?.(98, "Recording operational incidents");
+  await persistSnapshotIncidents(attempt, atlas, syncedAt);
   reportProgress?.(99, "Applying snapshot retention");
   try {
     await pruneSnapshots(data, wid, snapshotId, writerEmail);
@@ -2316,7 +2187,9 @@ async function cleanupOrphanSnapshots(
     })
     .sort((left, right) => left.timestamp - right.timestamp)
     .map(({ row }) => row);
-  for (const attempt of candidates.slice(0, MAX_SNAPSHOTS_PRUNED_PER_SYNC)) {
+  let cleaned = 0;
+  for (const attempt of candidates) {
+    if (cleaned >= MAX_SNAPSHOTS_PRUNED_PER_SYNC) break;
     const snapshotId = String(attempt.snapshotId);
     const attemptWriter = realText(attempt.writerEmail) ?? writerEmail;
     try {
@@ -2327,6 +2200,16 @@ async function cleanupOrphanSnapshots(
         false,
         attemptWriter,
       );
+      const rowCount =
+        rows.itemRows.length +
+        rows.edgeRows.length +
+        rows.principalRows.length +
+        rows.grantRows.length +
+        rows.jobRows.length +
+        rows.regularConfigRows.length +
+        rows.schemaRows.length +
+        rows.objectEdgeRows.length;
+      if (rowCount === 0) continue;
       await deleteSnapshotContent(
         data,
         rows,
@@ -2334,6 +2217,7 @@ async function cleanupOrphanSnapshots(
         snapshotId,
         attemptWriter,
       );
+      cleaned += 1;
     } catch (error) {
       console.warn("[atlas] orphan snapshot cleanup deferred", error);
     }
@@ -2485,52 +2369,55 @@ export async function loadFromDb(
   targetWorkspaceId?: string,
 ): Promise<AtlasData | null> {
   if (isPreview) return null;
+  const data = await dataApi();
+  const wid = workspaceId(targetWorkspaceId);
+  const read = readerFor(data);
+  const workspaceRows = await readTrustedWorkspaceMarkers(read, wid);
+  let syncRows: Row[] = [];
   try {
-    const data = await dataApi();
-    const wid = workspaceId(targetWorkspaceId);
-    const read = readerFor(data);
-    const workspaceRows = await readTrustedWorkspaceMarkers(read, wid);
-    let syncRows: Row[] = [];
-    try {
-      syncRows = await readTrustedSyncRuns(read, wid);
-    } catch (error) {
-      console.warn("[atlas] sync history unavailable", error);
-    }
-
-    for (const marker of trustedMarkers(workspaceRows, wid)) {
-      try {
-        const snapshotId = String(marker.snapshotId);
-        const markerWriter = realText(marker.writerEmail);
-        if (!markerWriter) continue;
-        const rows = await readSnapshotRows(
-          read,
-          wid,
-          snapshotId,
-          false,
-          markerWriter,
-        );
-        const catalog = catalogFromRows(marker, rows);
-        return {
-          ...catalog,
-          comments: [],
-          syncRuns: syncRunsFromRows(
-            syncRows,
-            catalog.workspace.syncedAt ?? new Date(0).toISOString(),
-          ),
-        };
-      } catch (error) {
-        console.warn(
-          "[atlas] ignored incomplete database snapshot",
-          marker.snapshotId,
-          error,
-        );
-      }
-    }
-    return null;
+    syncRows = await readTrustedSyncRuns(read, wid);
   } catch (error) {
-    console.warn("[atlas] loadFromDb failed", error);
-    return null;
+    console.warn("[atlas] sync history unavailable", error);
   }
+
+  const markers = trustedMarkers(workspaceRows, wid);
+  let snapshotError: unknown;
+  for (const marker of markers) {
+    try {
+      const snapshotId = String(marker.snapshotId);
+      const markerWriter = realText(marker.writerEmail);
+      if (!markerWriter) continue;
+      const rows = await readSnapshotRows(
+        read,
+        wid,
+        snapshotId,
+        false,
+        markerWriter,
+      );
+      const catalog = catalogFromRows(marker, rows);
+      return {
+        ...catalog,
+        comments: [],
+        syncRuns: syncRunsFromRows(
+          syncRows,
+          catalog.workspace.syncedAt ?? new Date(0).toISOString(),
+        ),
+      };
+    } catch (error) {
+      snapshotError = error;
+      console.warn(
+        "[atlas] ignored incomplete database snapshot",
+        marker.snapshotId,
+        error,
+      );
+    }
+  }
+  if (markers.length > 0 && snapshotError) {
+    throw new Error("No validated snapshot could be loaded.", {
+      cause: snapshotError,
+    });
+  }
+  return null;
 }
 
 export async function loadHistoricalSnapshotFromDb(

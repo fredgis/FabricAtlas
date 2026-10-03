@@ -3,6 +3,7 @@ import {
   type AtlasChange,
   type HistoricalSnapshot,
 } from "./history";
+import { markdownCodeBlock, markdownText } from "./markdown";
 import {
   createLineageIndex,
   getLineageImpact,
@@ -392,35 +393,31 @@ export function breakingChangeBrief(
   to: { snapshotId: string; syncedAt?: string },
 ): string {
   const lines = [
-    `# ${candidate.title}`,
+    `# ${markdownText(candidate.title)}`,
     "",
     `- Severity: ${candidate.severity} (score ${candidate.score})`,
     `- Kind: ${BREAKING_CHANGE_LABEL[candidate.kind]}`,
     `- Compared snapshots: ${from.snapshotId}${from.syncedAt ? ` (${from.syncedAt})` : ""} → ${to.snapshotId}${to.syncedAt ? ` (${to.syncedAt})` : ""}`,
-    `- Affected item: ${candidate.item.name}${candidate.item.type ? ` (${candidate.item.type})` : ""}`,
-    `- Documented owner: ${candidate.item.ownerName || candidate.item.ownerEmail || "Not documented"}`,
+    `- Affected item: ${markdownText(candidate.item.name)}${candidate.item.type ? ` (${markdownText(candidate.item.type)})` : ""}`,
+    `- Documented owner: ${markdownText(candidate.item.ownerName || candidate.item.ownerEmail || "Not documented")}`,
     ...(candidate.object
-      ? [`- Object: ${candidate.object.table ? `${candidate.object.table}.` : ""}${candidate.object.name} (${candidate.object.kind})`]
+      ? [`- Object: ${candidate.object.table ? `${markdownText(candidate.object.table)}.` : ""}${markdownText(candidate.object.name)} (${candidate.object.kind})`]
       : []),
     `- Evidence: Atlas snapshot comparison, change ${candidate.changeIds.join(", ")}`,
     "",
     "## Before",
     "",
-    "```",
-    valueText(candidate.before),
-    "```",
+    ...markdownCodeBlock(valueText(candidate.before)),
     "",
     "## After",
     "",
-    "```",
-    valueText(candidate.after),
-    "```",
+    ...markdownCodeBlock(valueText(candidate.after)),
     "",
     `## Downstream items in the earlier snapshot (${candidate.downstream.length})`,
     "",
     ...(candidate.downstream.length
       ? candidate.downstream.map(
-          (entry) => `- ${entry.name}${entry.type ? ` (${entry.type})` : ""}, ${entry.distance === 0 ? "directly affected" : `${entry.distance} hop${entry.distance === 1 ? "" : "s"}`}`,
+          (entry) => `- ${markdownText(entry.name)}${entry.type ? ` (${markdownText(entry.type)})` : ""}, ${entry.distance === 0 ? "directly affected" : `${entry.distance} hop${entry.distance === 1 ? "" : "s"}`}`,
         )
       : ["- None recorded"]),
     "",
@@ -428,7 +425,7 @@ export function breakingChangeBrief(
     "",
     ...(candidate.dependentObjects.length
       ? candidate.dependentObjects.map(
-          (entry) => `- ${entry.itemName}: ${entry.table ? `${entry.table}.` : ""}${entry.name} (${entry.kind}, ${entry.confidence})`,
+          (entry) => `- ${markdownText(entry.itemName)}: ${entry.table ? `${markdownText(entry.table)}.` : ""}${markdownText(entry.name)} (${entry.kind}, ${entry.confidence})`,
         )
       : ["- None recorded"]),
     "",

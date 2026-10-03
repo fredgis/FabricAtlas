@@ -182,6 +182,19 @@ describe("breaking change guard", () => {
     expect(brief).toContain("Report visual field usage is not exposed by Fabric APIs");
   });
 
+  it("contains Markdown control characters in labels and evidence values", () => {
+    const candidate = structuredClone(byKind("column-removed")[0]);
+    candidate.title = "[Removed](javascript:alert(1))<img>";
+    candidate.before = "before\n```\nafter";
+
+    const brief = breakingChangeBrief(candidate, before, after);
+
+    expect(brief).toContain(
+      "# \\[Removed\\]\\(javascript:alert\\(1\\)\\)\\<img\\>",
+    );
+    expect(brief).toContain("````\nbefore\n```\nafter\n````");
+  });
+
   it("returns no candidates for identical snapshots", () => {
     expect(analyzeBreakingChanges(before, before).candidates).toEqual([]);
   });

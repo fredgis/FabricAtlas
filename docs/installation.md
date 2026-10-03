@@ -37,6 +37,9 @@ npm run lint
 npm run build
 ```
 
+The root install also restores `rayfin/functions` through `postinstall`, so the
+typed collector imports resolve on a fresh clone.
+
 ## 2. Run the local preview
 
 ```powershell
@@ -89,6 +92,10 @@ This command:
 - builds and publishes the React application;
 - records the hosting origin in `rayfin/.deployments.json`;
 - adds the hosting origin to `allowedRedirectUris` in `rayfin/rayfin.yml`.
+
+The committed manifest contains only local development redirects. Each
+deployment adds its own hosting origin locally, which keeps repository
+templates independent from the maintainer's deployed app.
 
 If the old Fabric App was deleted, remove the stale local deployment registry
 before creating the replacement:

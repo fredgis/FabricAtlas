@@ -54,25 +54,6 @@ const mocks = vi.hoisted(() => {
     mapSyncToAtlas: vi.fn(),
   };
 });
-const coreShadow = vi.hoisted(() => ({
-  startCoreCollectorShadow: vi.fn(),
-  completeCoreCollectorShadow: vi.fn(),
-  coreCollectorShadowEnabled: vi.fn(),
-  coreCollectorParitySummary: vi.fn(),
-}));
-const definitionShadow = vi.hoisted(() => ({
-  runDefinitionCollectorShadow: vi.fn(),
-}));
-const itemRelationsShadow = vi.hoisted(() => ({
-  runItemRelationsCollectorShadow: vi.fn(),
-}));
-const kqlShadow = vi.hoisted(() => ({
-  runKqlCollectorShadow: vi.fn(),
-}));
-const remainingShadows = vi.hoisted(() => ({
-  runSqlCollectorShadow: vi.fn(),
-  runPowerBiCollectorShadow: vi.fn(),
-}));
 const browserCollectors = vi.hoisted(() => ({ collectBrowserWorkspace: vi.fn() }));
 
 vi.mock("@/lib/rayfin-client", () => ({
@@ -87,11 +68,6 @@ vi.mock("./live-sync", async (importOriginal) => {
     mapSyncToAtlas: mocks.mapSyncToAtlas,
   };
 });
-vi.mock("./core-collector-shadow", () => coreShadow);
-vi.mock("./definition-collector-shadow", () => definitionShadow);
-vi.mock("./item-relations-collector-shadow", () => itemRelationsShadow);
-vi.mock("./kql-collector-shadow", () => kqlShadow);
-vi.mock("./remaining-collectors-shadow", () => remainingShadows);
 vi.mock("./browser-collector-sync", async (importOriginal) => ({
   ...await importOriginal<typeof import("./browser-collector-sync")>(),
   collectBrowserWorkspace: browserCollectors.collectBrowserWorkspace,
@@ -263,27 +239,6 @@ describe("Rayfin snapshot persistence", () => {
     mocks.mapSyncToAtlas
       .mockReset()
       .mockReturnValue(structuredClone(SAMPLE_DATA));
-    coreShadow.startCoreCollectorShadow.mockReset().mockResolvedValue(undefined);
-    coreShadow.completeCoreCollectorShadow.mockReset();
-    coreShadow.coreCollectorShadowEnabled.mockReset().mockReturnValue(false);
-    coreShadow.coreCollectorParitySummary
-      .mockReset()
-      .mockReturnValue("Core parity core-match");
-    definitionShadow.runDefinitionCollectorShadow
-      .mockReset()
-      .mockResolvedValue(undefined);
-    itemRelationsShadow.runItemRelationsCollectorShadow
-      .mockReset()
-      .mockResolvedValue(undefined);
-    kqlShadow.runKqlCollectorShadow
-      .mockReset()
-      .mockResolvedValue(undefined);
-    remainingShadows.runSqlCollectorShadow
-      .mockReset()
-      .mockResolvedValue(undefined);
-    remainingShadows.runPowerBiCollectorShadow
-      .mockReset()
-      .mockResolvedValue(undefined);
   });
 
   it("does not publish a Workspace marker when an individual write fails", async () => {
@@ -486,109 +441,6 @@ describe("Rayfin snapshot persistence", () => {
     expect(mocks.invokeSyncAll).not.toHaveBeenCalled();
   });
 
-  it("runs the Rayfin Core collector in shadow with the Python correlation", async () => {
-    const shadowEnvelope = { schemaVersion: 2, syncMode: "base" };
-    coreShadow.startCoreCollectorShadow.mockResolvedValue(shadowEnvelope);
-    const raw = { schemaVersion: 2, syncMode: "complete" };
-    mocks.invokeSyncAll.mockResolvedValue(raw);
-    coreShadow.completeCoreCollectorShadow.mockReturnValue({
-      authoritative: false,
-      equal: false,
-      coreEqual: true,
-      coverageEqual: false,
-      discrepancyCount: 4,
-      truncated: false,
-      counts: {
-        rayfin: { items: 14, roleAssignments: 3, jobs: 8 },
-        python: { items: 14, roleAssignments: 3, jobs: 8 },
-      },
-      discrepancies: [],
-    });
-    definitionShadow.runDefinitionCollectorShadow.mockResolvedValue(
-      "Definitions shadow complete=2; unsupported=0; failed=0",
-    );
-    itemRelationsShadow.runItemRelationsCollectorShadow.mockResolvedValue(
-      "Item Relations shadow complete=4; failed=0; relations=3",
-    );
-    kqlShadow.runKqlCollectorShadow.mockResolvedValue(
-      "KQL shadow complete=2; unsupported=0; failed=0; schemas=1",
-    );
-    remainingShadows.runSqlCollectorShadow.mockResolvedValue(
-      "SQL shadow complete=1; unsupported=0; failed=0",
-    );
-    remainingShadows.runPowerBiCollectorShadow.mockResolvedValue(
-      "Power BI shadow items=2",
-    );
-
-    await runFabricSync(false, identity);
-
-    const correlationId = mocks.invokeSyncAll.mock.calls[0][4];
-    expect(coreShadow.startCoreCollectorShadow).toHaveBeenCalledWith(
-      workspaceId,
-      correlationId,
-    );
-    expect(coreShadow.completeCoreCollectorShadow).toHaveBeenCalledWith(
-      shadowEnvelope,
-      raw,
-    );
-    expect(
-      definitionShadow.runDefinitionCollectorShadow,
-    ).toHaveBeenCalledWith(
-      workspaceId,
-      correlationId,
-      shadowEnvelope,
-    );
-    expect(
-      itemRelationsShadow.runItemRelationsCollectorShadow,
-    ).toHaveBeenCalledWith(
-      workspaceId,
-      correlationId,
-      shadowEnvelope,
-      expect.objectContaining({ onCollected: expect.any(Function) }),
-    );
-    expect(kqlShadow.runKqlCollectorShadow).toHaveBeenCalledWith(
-      workspaceId,
-      correlationId,
-      shadowEnvelope,
-    );
-    expect(remainingShadows.runSqlCollectorShadow).toHaveBeenCalledWith(
-      workspaceId,
-      correlationId,
-      shadowEnvelope,
-    );
-    expect(
-      remainingShadows.runPowerBiCollectorShadow,
-    ).toHaveBeenCalledWith(
-      workspaceId,
-      correlationId,
-      shadowEnvelope,
-    );
-    expect(mocks.data.SyncRun.update).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        summary: expect.stringContaining("Core parity core-match"),
-      }),
-    );
-    expect(mocks.data.SyncRun.update).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        summary: expect.stringContaining("Definitions shadow complete=2"),
-      }),
-    );
-    expect(mocks.data.SyncRun.update).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        summary: expect.stringContaining("Item Relations shadow complete=4"),
-      }),
-    );
-    expect(mocks.data.SyncRun.update).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        summary: expect.stringContaining("KQL shadow complete=2"),
-      }),
-    );
-  });
-
   it("stores collected Item Relations evidence only after the snapshot marker", async () => {
     const lakehouse = SAMPLE_DATA.items.find((item) => item.itemType === "Lakehouse")!;
     const model = SAMPLE_DATA.items.find((item) => item.itemType === "SemanticModel")!;
@@ -618,17 +470,12 @@ describe("Rayfin snapshot persistence", () => {
       workspaceItemCount: SAMPLE_DATA.items.length,
       stopReasons: [],
     };
-    itemRelationsShadow.runItemRelationsCollectorShadow.mockImplementation(
-      async (
-        _workspaceId: string,
-        _correlationId: string,
-        _core: unknown,
-        dependencies?: { onCollected?: (value: typeof collection) => void },
-      ) => {
-        dependencies?.onCollected?.(collection);
-        return "Item Relations shadow complete=1";
-      },
-    );
+    vi.stubEnv("VITE_ATLAS_COLLECTOR_ROLLBACK", "false");
+    browserCollectors.collectBrowserWorkspace.mockResolvedValue({
+      raw: {},
+      summary: "Collectors: Rayfin active",
+      itemRelationsCollection: collection,
+    });
 
     await runFabricSync(false, identity);
 
@@ -659,26 +506,21 @@ describe("Rayfin snapshot persistence", () => {
   });
 
   it("keeps a published sync successful when evidence storage fails", async () => {
-    itemRelationsShadow.runItemRelationsCollectorShadow.mockImplementation(
-      async (
-        _workspaceId: string,
-        _correlationId: string,
-        _core: unknown,
-        dependencies?: { onCollected?: (value: unknown) => void },
-      ) => {
-        dependencies?.onCollected?.({
-          evidence: createItemRelationsEvidence(
-            workspaceId,
-            "2026-10-02T10:00:00.000Z",
-            [],
-          ),
-          sampledItemCount: 0,
-          workspaceItemCount: 0,
-          stopReasons: [],
-        });
-        return "Item Relations shadow complete=0";
+    vi.stubEnv("VITE_ATLAS_COLLECTOR_ROLLBACK", "false");
+    browserCollectors.collectBrowserWorkspace.mockResolvedValue({
+      raw: {},
+      summary: "Collectors: Rayfin active",
+      itemRelationsCollection: {
+        evidence: createItemRelationsEvidence(
+          workspaceId,
+          "2026-10-02T10:00:00.000Z",
+          [],
+        ),
+        sampledItemCount: 0,
+        workspaceItemCount: 0,
+        stopReasons: [],
       },
-    );
+    });
     mocks.data.ItemRelationsEvidenceSnapshot.create.mockRejectedValue(
       new Error("evidence table missing"),
     );
@@ -695,7 +537,12 @@ describe("Rayfin snapshot persistence", () => {
     warn.mockRestore();
   });
 
-  it("stores no evidence when the shadow reports no collection", async () => {
+  it("stores no evidence when the collector reports no collection", async () => {
+    vi.stubEnv("VITE_ATLAS_COLLECTOR_ROLLBACK", "false");
+    browserCollectors.collectBrowserWorkspace.mockResolvedValue({
+      raw: {},
+      summary: "Collectors: Rayfin active",
+    });
     await runFabricSync(false, identity);
 
     expect(mocks.data.ItemRelationsEvidenceSnapshot.create).not.toHaveBeenCalled();
@@ -814,7 +661,6 @@ describe("Rayfin snapshot persistence", () => {
     );
     expect(browserCollectors.collectBrowserWorkspace).toHaveBeenCalledTimes(1);
     expect(mocks.invokeSyncAll).not.toHaveBeenCalled();
-    expect(coreShadow.startCoreCollectorShadow).not.toHaveBeenCalled();
     const marker = mocks.data.Workspace.create.mock.invocationCallOrder[0];
     const content = ["FabricItem", "LineageEdge", "Principal", "AccessGrant", "JobRun", "ConfigEntry", "SyncRun"]
       .flatMap((name) => mocks.data[name].create.mock.invocationCallOrder as number[]);
@@ -829,7 +675,7 @@ describe("Rayfin snapshot persistence", () => {
     expect(mocks.invokeSyncAll).not.toHaveBeenCalled();
   });
 
-  it("retries the completed SyncRun update before publishing the manifest", async () => {
+  it("retries the completed SyncRun update after publishing the manifest", async () => {
     mocks.data.SyncRun.update.mockRejectedValueOnce(
       new Error("temporary update failure"),
     );
@@ -838,6 +684,11 @@ describe("Rayfin snapshot persistence", () => {
 
     expect(mocks.data.SyncRun.update).toHaveBeenCalledTimes(2);
     expect(mocks.data.Workspace.create).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.data.Workspace.create.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      Math.min(...mocks.data.SyncRun.update.mock.invocationCallOrder),
+    );
   });
 
   it("does not publish the manifest when synchronization is cancelled during persistence", async () => {
@@ -1019,6 +870,45 @@ describe("Rayfin snapshot persistence", () => {
     expect(
       mocks.data.SyncRun.rows.some((row) => row.id === "orphan-attempt"),
     ).toBe(true);
+  });
+
+  it("does not let empty orphan audit rows starve later snapshot cleanup", async () => {
+    for (let index = 0; index < 5; index += 1) {
+      mocks.data.SyncRun.rows.push({
+        id: `empty-attempt-${index}`,
+        workspace_id: workspaceId,
+        snapshotId: `00000000-0000-4000-8000-00000000000${index}`,
+        writerEmail: identity.email,
+        startedAt: new Date(`2026-09-05T0${index}:00:00.000Z`),
+        finishedAt: new Date(`2026-09-05T0${index}:01:00.000Z`),
+        status: "failed",
+      });
+    }
+    const orphanSnapshotId = "99999999-9999-4999-8999-999999999998";
+    mocks.data.SyncRun.rows.push({
+      id: "later-orphan-attempt",
+      workspace_id: workspaceId,
+      snapshotId: orphanSnapshotId,
+      writerEmail: identity.email,
+      startedAt: new Date("2026-09-05T10:00:00.000Z"),
+      finishedAt: new Date("2026-09-05T10:01:00.000Z"),
+      status: "failed",
+    });
+    mocks.data.FabricItem.rows.push({
+      id: "later-orphan-item",
+      workspace_id: workspaceId,
+      snapshotId: orphanSnapshotId,
+      writerEmail: identity.email,
+      fabricId: "later-orphan",
+      displayName: "Later orphan",
+      itemType: "Lakehouse",
+    });
+
+    await runFabricSync(false, identity);
+
+    expect(mocks.data.FabricItem.delete).toHaveBeenCalledWith({
+      id: "later-orphan-item",
+    });
   });
 
   it("keeps young unpublished attempts inside the orphan grace period", async () => {
@@ -1793,7 +1683,7 @@ describe("Rayfin snapshot persistence", () => {
     });
   });
 
-  it("does not hydrate a snapshot containing a generic ITEM row", async () => {
+  it("reports a malformed snapshot instead of presenting it as unsynchronized", async () => {
     const snapshotId = "66666666-6666-4666-8666-666666666666";
     mocks.data.Workspace.findMany.mockResolvedValue([
       {
@@ -1824,7 +1714,17 @@ describe("Rayfin snapshot persistence", () => {
       },
     ]);
 
-    await expect(loadFromDb(false)).resolves.toBeNull();
+    await expect(loadFromDb(false)).rejects.toThrow(
+      /validated snapshot could be loaded/i,
+    );
+  });
+
+  it("surfaces data API failures during hydration", async () => {
+    mocks.data.Workspace.findMany.mockRejectedValue(
+      new Error("Data API unavailable"),
+    );
+
+    await expect(loadFromDb(false)).rejects.toThrow(/Data API unavailable/);
   });
 
   it("ignores sync audit rows from untrusted writers", async () => {

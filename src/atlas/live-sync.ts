@@ -345,7 +345,6 @@ export interface SyncRequestTokens {
   definitionToken?: string;
   kustoToken?: string;
   sqlToken?: string;
-  storageToken?: string;
   deferEnrichment?: string;
   itemIds?: string;
   correlationId?: string;

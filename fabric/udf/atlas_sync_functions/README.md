@@ -122,8 +122,8 @@ The complete platform-gap matrix is in
 | --- | --- | --- |
 | `ping` | `name` | smoke test |
 | `sync_compatibility` | `fabricToken, workspaceId, collectorPlan, correlationId?, definitionToken?, kustoToken?, sqlToken?` | Exact-gap scanner or item envelope with echoed plan and completed/remaining IDs |
-| `sync_all` | `fabricToken, workspaceId, correlationId?, definitionToken?, kustoToken?, sqlToken?, storageToken?, deferEnrichment?` | Schema v2 payload with workspace data, required/optional section status, metadata capabilities and safe errors |
-| `sync_items` | `fabricToken, workspaceId, itemIds, correlationId?, definitionToken?, kustoToken?, sqlToken?, storageToken?` | Resumable deep metadata slice with completed and remaining item IDs |
+| `sync_all` | `fabricToken, workspaceId, correlationId?, definitionToken?, kustoToken?, sqlToken?, deferEnrichment?` | Schema v2 payload with workspace data, required/optional section status, metadata capabilities and safe errors |
+| `sync_items` | `fabricToken, workspaceId, itemIds, correlationId?, definitionToken?, kustoToken?, sqlToken?` | Resumable deep metadata slice with completed and remaining item IDs |
 
 Required sections are `workspace`, `items`, `roleAssignments`, `scanner`,
 `schema`, `lineage`, `access` and `config`. Optional sections are `jobs`,

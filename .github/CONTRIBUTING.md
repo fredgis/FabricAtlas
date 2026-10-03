@@ -7,11 +7,13 @@ Contributions are welcome.
 ```powershell
 git clone https://github.com/fredgis/FabricAtlas.git
 Set-Location FabricAtlas
-npm install
+npm ci
 npm test
 npm run lint
 npm run build
 ```
+
+`npm ci` also restores the typed Rayfin Functions dependencies.
 
 ## Pull requests
 

@@ -5,8 +5,11 @@ import {
   validateRawSync, type CompatibilityCollector, type CompatibilityPlan, type RawSync, type SyncIdentity,
 } from "./live-sync";
 import { validateCoreCollectorEnvelope } from "./core-collector-parity";
-import { createItemRelationsEvidence, parseItemRelationsEvidence } from "./item-relations-evidence";
-import type { ItemRelationsShadowCollection } from "./item-relations-collector-shadow";
+import {
+  createItemRelationsEvidence,
+  parseItemRelationsEvidence,
+  type ItemRelationsEvidence,
+} from "./item-relations-evidence";
 import { sourceProvenanceSnapshot } from "./source-provenance-snapshot";
 
 type Name = "workspaceCollectCore" | "workspaceCollectDefinitions" | "workspaceCollectItemRelations"
@@ -19,10 +22,19 @@ export type BrowserCollectorClient = {
 };
 type Status = { status?: "complete" | "unsupported" | "failed"; code?: string };
 type Item = { id: string; type: string };
+type ItemRelationsStopReason = NonNullable<
+  AppFunctionsSchema["workspaceCollectItemRelations"]["output"]["stopReason"]
+>;
+export interface ItemRelationsCollection {
+  evidence: ItemRelationsEvidence;
+  sampledItemCount: number;
+  workspaceItemCount: number;
+  stopReasons: ItemRelationsStopReason[];
+}
 export interface BrowserCollectorResult {
   raw: RawSync;
   summary: string;
-  itemRelationsCollection?: ItemRelationsShadowCollection;
+  itemRelationsCollection?: ItemRelationsCollection;
 }
 export interface BrowserCollectorDependencies {
   client?: BrowserCollectorClient;
@@ -392,9 +404,9 @@ export async function collectBrowserWorkspace(
     raw.sections!.storageSchema = coverage;
     raw.capabilities!.storageSchema = { ...coverage };
   }
-  let itemRelationsCollection: ItemRelationsShadowCollection | undefined;
+  let itemRelationsCollection: ItemRelationsCollection | undefined;
   const evidence = [];
-  const stopReasons: NonNullable<ItemRelationsShadowCollection["stopReasons"]> = [];
+  const stopReasons: ItemRelationsStopReason[] = [];
   for (let offset = 0; offset < items.length; offset += 16) {
     const itemIds = items.slice(offset, offset + 16).map((item) => item.id);
     let result: AppFunctionsSchema["workspaceCollectItemRelations"]["output"];

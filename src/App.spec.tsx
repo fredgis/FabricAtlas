@@ -240,7 +240,7 @@ describe("App", () => {
             name: /details/,
         });
         await waitFor(() => expect(dialog).toHaveFocus());
-        expect(screen.getByRole("main")).not.toHaveFocus();
+        expect(document.activeElement).toBe(dialog);
     });
 
     it("opens a searched Catalog item without stealing modal focus", async () => {

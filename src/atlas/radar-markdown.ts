@@ -1,12 +1,10 @@
 import type { FindingDelta, RiskyChange } from "./radar";
 import type { SnapshotSummary } from "./history";
 import { INCIDENT_LIMITATIONS, type IncidentDelta } from "./observability";
+import { markdownText } from "./markdown";
 
 function clean(value: unknown): string {
-  return String(value ?? "")
-    .replace(/[\r\n]+/g, " ")
-    .replace(/([\\`*_{}[\]()#+.!|-])/g, "\\$1")
-    .trim();
+  return markdownText(value);
 }
 
 function incidentLine(delta: IncidentDelta): string {

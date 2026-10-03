@@ -141,7 +141,7 @@ describe("SemanticXRayPanel", () => {
       fireEvent.click(screen.getByRole("button", { name: "Export dependency evidence" }));
     });
 
-    expect(exported).toContain("# AlpineRent Sales Model: revenue_by_month [Revenue MoM %]");
+    expect(exported).toContain("# AlpineRent Sales Model: revenue\\_by\\_month [Revenue MoM %]");
     const capabilities = screen.getByText("Lineage depth capability states").closest("details")!;
     expect(capabilities).toHaveTextContent("Ontology metrics deferred · 2026-10-02");
     expect(capabilities).toHaveTextContent("Ontology entity inheritance deferred · 2026-10-02");

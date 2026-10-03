@@ -1,4 +1,5 @@
 import { extractDaxRefs, type DaxRef } from "./dax-refs";
+import { markdownCodeBlock, markdownText } from "./markdown";
 import type { ModelTableSchema } from "./model";
 
 // Model-level DAX dependency evidence for one semantic model. Edges use only
@@ -276,16 +277,16 @@ export function xrayEvidenceMarkdown(
       .map((entry) => xray.objects.get(entry))
       .filter((entry): entry is XRayObject => !!entry)
       .sort((left, right) => (impact.distance.get(left.key) ?? 0) - (impact.distance.get(right.key) ?? 0) || left.key.localeCompare(right.key))
-      .map((entry) => `- ${entry.table} ${xrayObjectLabel(entry)} (${entry.kind}, ${impact.distance.get(entry.key)} hop${impact.distance.get(entry.key) === 1 ? "" : "s"})`);
+      .map((entry) => `- ${markdownText(entry.table)} ${markdownText(xrayObjectLabel(entry))} (${entry.kind}, ${impact.distance.get(entry.key)} hop${impact.distance.get(entry.key) === 1 ? "" : "s"})`);
   const dependencies = xrayImpact(xray, key, "dependsOn", true);
   const consumers = xrayImpact(xray, key, "usedBy", true);
   const unresolved = xray.references.filter((reference) => reference.from === key);
   return [
-    `# ${modelName}: ${object.table} ${xrayObjectLabel(object)}`,
+    `# ${markdownText(modelName)}: ${markdownText(object.table)} ${markdownText(xrayObjectLabel(object))}`,
     "",
     `- Kind: ${object.kind}`,
-    ...(object.dataType ? [`- Data type: ${object.dataType}`] : []),
-    ...(object.expression ? ["", "```dax", object.expression, "```"] : []),
+    ...(object.dataType ? [`- Data type: ${markdownText(object.dataType)}`] : []),
+    ...(object.expression ? ["", ...markdownCodeBlock(object.expression, "dax")] : []),
     "",
     `## Depends on (${dependencies.keys.size})`,
     ...(dependencies.keys.size ? describe(dependencies.keys, dependencies) : ["- None"]),
@@ -296,7 +297,7 @@ export function xrayEvidenceMarkdown(
       : ["- No DAX consumers in this model. Report and visual usage is not exposed by Fabric APIs."]),
     "",
     `## Unresolved or ambiguous references (${unresolved.length})`,
-    ...(unresolved.length ? unresolved.map((entry) => `- ${entry.reference}: ${entry.status}`) : ["- None"]),
+    ...(unresolved.length ? unresolved.map((entry) => `- ${markdownText(entry.reference)}: ${entry.status}`) : ["- None"]),
     "",
   ].join("\n");
 }

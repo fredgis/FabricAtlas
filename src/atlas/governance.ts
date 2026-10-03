@@ -6,6 +6,12 @@ import type {
   Item,
   Principal,
 } from "./model";
+import {
+  buildPrincipalIndexes,
+  normalizePrincipalReference,
+  principalCandidates,
+  type PrincipalIndexes,
+} from "./principal-resolution";
 import { isItemMetadataSchemaEntry } from "./item-metadata";
 import { lineageEdgeKey } from "./lineage";
 import { searchJobId } from "./search";
@@ -206,44 +212,12 @@ interface ResolvedGrant {
   candidates: Principal[];
 }
 
-function principalIndexes(principals: Principal[]): {
-  byId: Map<string, Principal[]>;
-  byEmail: Map<string, Principal[]>;
-  byName: Map<string, Principal[]>;
-} {
-  const byId = new Map<string, Principal[]>();
-  const byEmail = new Map<string, Principal[]>();
-  const byName = new Map<string, Principal[]>();
-  const add = (
-    index: Map<string, Principal[]>,
-    value: string | undefined,
-    principal: Principal,
-  ) => {
-    const key = normalize(value);
-    if (!key) return;
-    const matches = index.get(key) ?? [];
-    matches.push(principal);
-    index.set(key, matches);
-  };
-
-  for (const principal of principals) {
-    add(byId, principal.principalId, principal);
-    add(byEmail, principal.email, principal);
-    add(byName, principal.displayName, principal);
-  }
-  return { byId, byEmail, byName };
-}
-
 function resolveGrant(
   grant: Grant,
-  indexes: ReturnType<typeof principalIndexes>,
+  indexes: PrincipalIndexes,
 ): ResolvedGrant {
-  const ref = normalize(grant.principalRef);
-  const candidates =
-    indexes.byId.get(ref) ??
-    indexes.byEmail.get(ref) ??
-    indexes.byName.get(ref) ??
-    [];
+  const ref = normalizePrincipalReference(grant.principalRef);
+  const candidates = principalCandidates(indexes, grant.principalRef);
   const orderedCandidates = [...candidates].sort((left, right) =>
     compareText(left.principalId, right.principalId),
   );
@@ -283,7 +257,7 @@ export function buildAccessReviewRows(
   data: Pick<AtlasData, "items" | "principals" | "grants"> &
     Partial<Pick<AtlasData, "workspace">>,
 ): AccessReviewRow[] {
-  const indexes = principalIndexes(data.principals);
+  const indexes = buildPrincipalIndexes(data.principals);
   const resolvedGrants = data.grants.map((grant) =>
     resolveGrant(grant, indexes),
   );
@@ -568,7 +542,7 @@ export function buildGovernanceFindings(
   const adminRefs = new Set(
     adminPrincipals.map((principal) => `principal:${principal.principalId}`),
   );
-  const indexes = principalIndexes(data.principals);
+  const indexes = buildPrincipalIndexes(data.principals);
   workspaceAdminGrants.forEach((grant) =>
     adminRefs.add(resolveGrant(grant, indexes).key),
   );

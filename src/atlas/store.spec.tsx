@@ -84,6 +84,10 @@ function Harness() {
       </span>
       <span data-testid="sync-workspace">{atlas.syncWorkspaceId ?? ""}</span>
       <span data-testid="sync-error">{atlas.syncError ?? ""}</span>
+      <span data-testid="hydration-error">{atlas.hydrationError ?? ""}</span>
+      <button type="button" onClick={atlas.retryHydration}>
+        Retry hydration
+      </button>
       <button type="button" onClick={atlas.cancelSync}>
         Cancel sync
       </button>
@@ -444,6 +448,69 @@ describe("AtlasProvider synchronization", () => {
     );
     expect(aborted).toBe(true);
     expect(screen.getByTestId("stage")).toHaveTextContent("Ready to sync");
+  });
+
+  it("keeps a published result when cancellation arrives after persistence", async () => {
+    let resolveSync: ((value: typeof SAMPLE_DATA) => void) | undefined;
+    backend.runFabricSync.mockImplementation(
+      async () =>
+        new Promise<typeof SAMPLE_DATA>((resolve) => {
+          resolveSync = resolve;
+        }),
+    );
+
+    render(
+      <AtlasProvider isPreview={false} currentUser={currentUser}>
+        <Harness />
+      </AtlasProvider>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("hydrating")).toHaveTextContent("false"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Sync" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("syncing")).toHaveTextContent("true"),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel sync" }));
+    await act(async () => {
+      resolveSync?.(structuredClone(SAMPLE_DATA));
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("syncing")).toHaveTextContent("false"),
+    );
+    expect(screen.getByTestId("has-data")).toHaveTextContent("true");
+    expect(screen.getByTestId("stage")).toHaveTextContent(
+      "Workspace is ready",
+    );
+  });
+
+  it("exposes hydration failures and retries without presenting first sync", async () => {
+    backend.loadFromDb
+      .mockRejectedValueOnce(new Error("Data API unavailable"))
+      .mockResolvedValueOnce(structuredClone(SAMPLE_DATA));
+
+    render(
+      <AtlasProvider isPreview={false} currentUser={currentUser}>
+        <Harness />
+      </AtlasProvider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("hydration-error")).toHaveTextContent(
+        "Data API unavailable",
+      ),
+    );
+    expect(screen.getByTestId("has-data")).toHaveTextContent("false");
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry hydration" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("has-data")).toHaveTextContent("true"),
+    );
+    expect(screen.getByTestId("hydration-error")).toHaveTextContent("");
+    expect(backend.loadFromDb).toHaveBeenCalledTimes(2);
   });
 
   describe("multi-workspace queue", () => {

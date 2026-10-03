@@ -3908,6 +3908,48 @@ class SyncOrchestrationTests(unittest.TestCase):
         self.assertEqual(result["sections"]["scanner"]["status"], "complete")
         self.assertEqual(result["sections"]["schema"]["status"], "complete")
 
+    def test_sync_all_stops_enrichment_and_marks_schema_on_deadline(self):
+        items = [
+            {
+                "id": "model",
+                "type": "SemanticModel",
+                "displayName": "Model",
+            },
+            {
+                "id": "report",
+                "type": "Report",
+                "displayName": "Report",
+            },
+        ]
+        scan = {
+            "datasets": [{"id": "model", "tables": [], "users": []}],
+            "reports": [{"id": "report", "users": []}],
+        }
+
+        with mock.patch.object(
+            function_app,
+            "_enrich_artifact",
+            side_effect=function_app.DeadlineExceeded(
+                "execution deadline exhausted"
+            ),
+        ) as enrich:
+            result = self._run_sync(items, scan)
+
+        self.assertEqual(enrich.call_count, 1)
+        self.assertEqual(
+            result["sections"]["access"],
+            {"status": "failed", "code": "deadline-exhausted"},
+        )
+        self.assertEqual(
+            result["sections"]["schema"],
+            {"status": "failed", "code": "deadline-exhausted"},
+        )
+        self.assertEqual(
+            result["sections"]["config"],
+            {"status": "failed", "code": "deadline-exhausted"},
+        )
+        self.assertIn("enrichment: deadline-exhausted", result["errors"])
+
     def test_optional_unsupported_jobs_do_not_fail_required_snapshot(self):
         result = self._run_sync(
             [
@@ -4326,6 +4368,18 @@ class StorageSchemaCompatibilityTests(unittest.TestCase):
             "schemaItemIds": [],
         })
 
+    def jobs_plan(self):
+        return json.dumps({
+            "version": 1,
+            "stage": "items",
+            "items": [{
+                "id": self.lakehouse_id,
+                "type": "Lakehouse",
+                "collectors": ["jobs"],
+            }],
+            "schemaItemIds": [],
+        })
+
     def test_item_compatibility_reports_observed_empty_or_collected_schema_per_item(self):
         item = {
             "id": self.lakehouse_id,
@@ -4383,6 +4437,68 @@ class StorageSchemaCompatibilityTests(unittest.TestCase):
         ]
         self.assertIn(status["status"], ("failed", "unsupported"))
         self.assertTrue(status["code"])
+
+    def test_item_compatibility_rejects_invalid_jobs_without_emitting_null(self):
+        item = {
+            "id": self.lakehouse_id,
+            "type": "Lakehouse",
+            "displayName": "Lake",
+        }
+
+        def get_all(_token, path):
+            if "/jobs/instances" in path:
+                return [None]
+            raise AssertionError(path)
+
+        with (
+            mock.patch.object(function_app, "_get", return_value=item),
+            mock.patch.object(function_app, "_get_all", side_effect=get_all),
+            mock.patch.object(function_app, "_item_schema", return_value=[]),
+            mock.patch.object(function_app, "_item_config", return_value=[]),
+        ):
+            result = function_app.sync_compatibility(
+                "fixture-token",
+                self.workspace_id,
+                self.jobs_plan(),
+            )
+
+        self.assertEqual(result["jobs"], [])
+        self.assertEqual(
+            result["sections"]["jobs"],
+            {"status": "failed", "code": "invalid-response"},
+        )
+
+    def test_item_compatibility_requeues_jobs_when_deadline_is_exhausted(self):
+        item = {
+            "id": self.lakehouse_id,
+            "type": "Lakehouse",
+            "displayName": "Lake",
+        }
+
+        def get_all(_token, path):
+            if "/jobs/instances" in path:
+                raise function_app.DeadlineExceeded(
+                    "execution deadline exhausted"
+                )
+            raise AssertionError(path)
+
+        with (
+            mock.patch.object(function_app, "_get", return_value=item),
+            mock.patch.object(function_app, "_get_all", side_effect=get_all),
+            mock.patch.object(function_app, "_item_schema", return_value=[]),
+            mock.patch.object(function_app, "_item_config", return_value=[]),
+        ):
+            result = function_app.sync_compatibility(
+                "fixture-token",
+                self.workspace_id,
+                self.jobs_plan(),
+            )
+
+        self.assertEqual(result["completedItemIds"], [])
+        self.assertEqual(
+            result["remainingItemIds"],
+            [self.lakehouse_id],
+        )
 
 
 class CollectorCompatibilityCleanupTests(unittest.TestCase):
