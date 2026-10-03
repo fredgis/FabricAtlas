@@ -97,37 +97,7 @@ Atlas does not replace Fabric administration, deployment or monitoring tools.
 It is a metadata reading and review layer. Links return users to Fabric when a
 portal-only control is required.
 
-## Deployment evidence
-
-### Controlled main-to-v2 comparison
-
-The release comparison used clean deployments and fresh FGI-MAIN snapshots.
-The stable `main` build and the FabCon candidate were scanned against the same
-workspace.
-
-| Metric | Stable `main` | Version 2 candidate |
-|---|---:|---:|
-| Fabric items | 78 | 79 |
-| Tabular assets | 623 | 2,436 |
-| Tables and schema objects | 75 | 217 |
-| Columns | 486 | 2,157 |
-| Measures | 62 | 62 |
-| Atlas lineage links | 66 | 67 |
-| Principals | 2 | 2 |
-| Access grants | 144 | 146 |
-| Recent jobs | 28 | 28 |
-
-No product inventory metric decreased. The larger schema inventory comes from
-SQL Database, Warehouse, schema-enabled Lakehouse and Mirrored Database
-collection through SQL endpoint identities.
-
-The broader Asset Catalog shown in later screenshots contains 2,915 objects
-across 39 items. That total also includes KQL functions, ontology objects,
-graph types, Data Agent sources and selected source elements. The controlled
-comparison table above uses the narrower tabular bucket so the two releases can
-be compared consistently.
-
-### Example workspace state
+## Example workspace state
 
 The FGI-MAIN manifest used by the screenshots reports:
 
@@ -838,8 +808,6 @@ No MCP tool changes Fabric permissions or Atlas data.
 Fabric Atlas is MIT licensed. The About page exposes the product version,
 build identifier, source repository, release history and clone command.
 
-![About page in the validated FabCon candidate.](fabric-atlas-whitepaper/assets/28-about.png){ width=100% }
-
 | Repository area | Responsibility |
 |---|---|
 | `src/App.tsx` | Application shell, active workspace and hash navigation |
@@ -928,7 +896,6 @@ Within those limits, Atlas answers four recurring questions:
 | 27 | Team notes |
 | 28 | Architecture and metadata flow |
 | 29 | Immutable snapshot lifecycle |
-| 30 | About and open-source information |
 
 ## Appendix B: glossary
 

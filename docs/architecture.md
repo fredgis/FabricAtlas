@@ -1,1282 +1,376 @@
 # Architecture
 
-Fabric Atlas is one place to see everything in a Fabric workspace, plus a team comment layer. It is a
-Rayfin Data App, so the backend is described in TypeScript and provisioned by Rayfin on Fabric.
+Fabric Atlas is a React and Rayfin Data App that indexes governance metadata
+from selected Microsoft Fabric workspaces. It stores validated metadata
+snapshots in a Fabric SQL database. It never stores workspace business rows.
 
-## The pieces
+## System overview
 
+```mermaid
+flowchart LR
+  U["Fabric user"] --> P["Fabric portal"]
+  P --> A["Fabric Atlas\nReact application"]
+  A <--> AUTH["Fabric brokered\nauthentication"]
+  A --> C["Browser sync coordinator"]
+  C --> RF["Rayfin Functions"]
+  C --> PY["Python compatibility UDF"]
+  RF <--> FABRIC["Fabric REST and\ndefinition APIs"]
+  RF <--> DATA["SQL metadata endpoints"]
+  PY <--> PBI["Power BI scanner,\nPBIR-Legacy and Kusto"]
+  RF --> V["Validate and merge"]
+  PY --> V
+  V --> API["Rayfin Data API"]
+  API --> DB[("Fabric SQL database")]
+  V --> M["Workspace manifest\npublished last"]
+  M --> DB
 ```
-Fabric portal (iframe)
-        │  brokered auth (Entra ID)
-        ▼
-React + Vite SPA  ── Rayfin static hosting (dist/)
-        ├──────────► Rayfin Functions ──────────────► Fabric + SQL metadata APIs
-        ├──────────► Python UDF compatibility ─────► Power BI scanner + exact gaps
-        │
-        │  RayfinClient
-        ▼
-Rayfin Data API (Data API Builder)  ──  Fabric SQL database (mssql)
-        ▲
-        │  Sync writes here
-   synchronized metadata  (items · lineage · jobs · permissions · definitions)
-```
 
-- The front end lives in `src/`. Atlas feature code is in `src/atlas/` (model, store, UI helpers,
-  lineage logic and product views).
-- The data model lives in `rayfin/data/` as decorator classes and is registered in
-  `rayfin/data/schema.ts`. `rayfin.yml` enables `auth`, `data` (mssql), `storage`, `staticHosting`
-  and `functions`.
-- `RayfinClient` (`src/lib/rayfin-client.ts`) talks to the Rayfin Data API, which serves the Fabric
-  SQL database. Auth is Fabric brokered (`src/services/rayfin-auth.service.ts`).
-- Rayfin Functions live in `rayfin/functions/`, a separate npm package that `rayfin up` builds and
-  deploys with application authentication. The active browser Sync calls the bounded Core,
-  definition, source provenance, Item Relations, KQL, SQL and Power BI definition collectors serially, then uses the
-  existing validated manifest-last writer. Exact unsupported or unverified gaps are delegated to
-  the Python `sync_compatibility` function; the explicit rollback flag restores the previous
-  Python collector path. This cutover does not provide background execution or scheduling.
-  Composition preserves distinct scanner item grants and removes repeated grants. Active
-  stage statuses replace Core migration placeholders. Unavailable Lakehouse/Warehouse SQL
-  structure requests bounded scanner schema fallback, including an explicitly labelled
-  downstream-model subset without additional storage requests. Storage schema is optional:
-  missing inventory publishes unsupported per-item coverage without discarding valid catalog,
-  access or lineage evidence. Shortcut-only or derived inventory remains explicitly partial.
-  `Storage schema coverage` configuration rows record each Lakehouse/Warehouse status;
-  workspace storage coverage is unsupported when none is collected and partial when mixed.
-  Incomplete required sections, mismatched identities, malformed payloads and interrupted
-  collection still preserve the previous published snapshot. No stale or invented tables fill gaps.
-  The Phase 2 `syncStart`, `syncContinue`, `syncStatus` and `syncCancel` functions remain a
-  fail-closed durable-execution probe. Phase 3 also registers
-  `workspaceDiscover`, which uses an application-identity Fabric token and returns only bounded
-  workspace identity fields after a synchronizer-only Rayfin policy check. The first collector
-  tranche adds `workspaceCollectCore`, a read-only dual-run Fabric Core collector stage behind the
-  same gate; it never publishes snapshots. `workspaceCollectDefinitions` is the matching
-  read-only definition stage for Ontology, GraphModel and DataAgent items, and
-  `workspaceCollectItemRelations` collects non-authoritative Item Relations API (Beta) evidence.
-  `workspaceCollectKqlMetadata` collects Fabric REST Eventhouse and KQL database properties and KQL
-  structural schema from the documented KQL Database definition; the Kusto data plane stays unused.
-  `workspaceCollectPowerBi` adds SemanticModel TMSL structure, selected sanitized DAX,
-  PBIR pages/model references and opt-in Preview Fabric admin owner/access evidence.
-  It never claims Power BI scanner parity or uses browser tokens.
-  `workspaceCollectSqlMetadata` collects SQL Database, Warehouse and Lakehouse SQL analytics
-  endpoint catalog structure with fixed, parameterized `sys.*` queries over the Sql audience.
-  `searchCatalogPreview` runs optional, default-off OneLake Catalog Search (Preview) discovery
-  behind the same gate and returns metadata-only, non-authoritative entries to the search palette.
-  The optional `workspaceCollectPowerBiScanner` uses declared Rayfin Secret Store
-  configuration and public OAuth client credentials for a dedicated approved
-  service principal. It is disabled by default, synchronizer-gated, tenant/workspace
-  allowlisted, metadata-only and independent of generic Fabric tokens.
-  `rayfin/functions/src/types.ts`
-  (`AppFunctionsSchema`) and `rayfin/functions/runtimemetadata.json` are generated by
-  `npx rayfin functions init` or `npx rayfin dev functions apply`; never edit them by hand.
-  `RayfinClient` is typed with that schema and calls the deployed Functions route; only Vite
-  development honors `VITE_RAYFIN_FUNCTIONS_URL` for a local Functions host.
+## Runtime components
+
+| Component | Responsibility |
+|---|---|
+| React application | Navigation, workspace switching, synchronization, catalog, lineage, governance and access review |
+| Fabric brokered authentication | Signs the user into the app inside the Fabric portal |
+| Rayfin Functions | Collect core Fabric metadata with application identity and bounded contracts |
+| Python compatibility UDF | Collect only the remaining Power BI, PBIR-Legacy and Kusto gaps |
+| Rayfin Data API | Exposes the persisted Atlas schema with row policies |
+| Fabric SQL database | Stores workspace-scoped snapshots, history, notes and personal state |
+| Local Atlas MCP | Optional read-only stdio access to validated snapshots |
+
+## Workspace scope
+
+`WorkspaceScope` stores the synchronizer-selected workspaces shared with the
+complete authenticated app audience.
+
+Each workspace has:
+
+- its own validated manifest;
+- its own items, lineage, access, jobs and configuration rows;
+- its own synchronization history;
+- one active snapshot at a time.
+
+Only one workspace is active in the UI. Switching workspaces reloads that
+workspace's latest trusted snapshot without mixing rows from another
+workspace.
+
+The configured synchronizer is the only identity allowed to:
+
+- change the shared workspace scope;
+- publish or prune snapshots;
+- update shared governance targets and exceptions.
+
+## Synchronization flow
+
+Synchronization is serialized in the synchronizer's browser tab.
+
+1. Discover the selected workspace scope.
+2. Create a correlated `SyncRun`.
+3. Invoke bounded Rayfin collectors.
+4. Build the exact Python compatibility plan.
+5. Validate every collector envelope and item identity.
+6. Merge required and optional evidence.
+7. Write snapshot child rows.
+8. Read the rows back through production pagination.
+9. Publish the workspace manifest last.
+10. Apply retention after publication.
+
+A failed or cancelled run preserves the previous validated snapshot.
+A failed workspace does not stop another selected workspace from
+synchronizing.
 
 ### Collector ownership
 
 | Evidence | Primary collector | Compatibility path |
 |---|---|---|
-| Workspace, items, roles and jobs | Rayfin `workspaceCollectCore` | Python rollback only |
-| Lakehouse, Warehouse, Mirrored Database and SQL Database tables, views and columns | Rayfin `workspaceCollectSqlMetadata` over Fabric REST and the SQL audience | None; partial or unavailable application-identity coverage stays explicit |
-| Shortcuts, mirroring and source provenance | Rayfin `workspaceCollectSourceProvenance` | None; shortcuts identify targets but do not expose target columns |
-| Ontology, Graph Model and Data Agent definitions | Rayfin `workspaceCollectDefinitions` | None; permission or format gaps stay explicit |
-| KQL definition structure | Rayfin `workspaceCollectKqlMetadata` | Python Kusto data-plane fallback because Rayfin 1.36.2 has no Kusto audience |
-| Power BI schema and PBIR structure | Rayfin `workspaceCollectPowerBi` | Python admin scanner for access and authoritative scanner lineage because Rayfin 1.36.2 has no documented Power BI audience |
-
-The browser composes these results per item. One failed optional collector does
-not erase another item's valid schema. Python is a bounded compatibility
-adapter only for documented platform gaps, not a scheduler.
-- Preview and Beta integrations are registered in `src/atlas/preview-api.ts`. Screens reuse
-  `PreviewApiNotice` so API maturity, version, documentation, observation boundary and limitations
-  stay explicit instead of being encoded in page-specific copy.
-- `src/atlas/item-relations-evidence.ts` is the pure Item Relations API (Beta) evidence contract
-  selectively ported from the experiment branch. It never writes `LineageEdge`. See
-  [item-relations-evidence.md](item-relations-evidence.md).
-- **Map & lineage** is the single lineage screen, with local Graph, Evidence, Changes and X-Ray tabs.
-  `src/atlas/lineage-evidence.ts` groups normalized Atlas snapshot edges and optional Item
-  Relations evidence by endpoint pair and source. Graph draws either Atlas snapshot lineage
-  or Item Relations API (Beta) lineage, never both; Evidence can compare both. The
-  `Item Relations API evidence (Preview)` switch appears only when the `item-relations` flag
-  is on, and reads a persisted, validated `ItemRelationsEvidenceSnapshot` envelope for the
-  active workspace. Missing or failed Preview reads do not draw Atlas fallback, and Preview
-  temporarily uses Items mode, restoring the prior Atlas mode when turned off.
-  While evidence is loading or unavailable, real inventory nodes and an explicit
-  status remain visible without Atlas links. Preview positions follow normalized
-  source-to-consumer API direction, including external upstream nodes; stored
-  neighbours reserve positions before expansion. Cycles keep their evidence and
-  cannot run entirely left-to-right. Arrow tips stop outside card borders at every
-  zoom. The Data flow relations and Control relations switches are unchanged.
-  Changes holds the
-  lineage time machine and breaking change guard; X-Ray holds the semantic model DAX dependency
-  explorer. See [lineage-depth.md](lineage-depth.md) for rules, limits and deferred capabilities.
-- `ItemRelationsEvidenceSnapshot` stores non-authoritative Item Relations evidence written after a
-  published snapshot by the active bounded collector. It is never read into `LineageEdge`.
-
-## Page layout
-
-Main screens reuse `PageHeader` for a compact title, purpose and primary actions.
-The global workspace selector is the only active-workspace control; First Sync,
-Manage scope, batch synchronization and comparison filters retain their own roles.
-Governance opens on Posture. Overview reuses the real posture radar and score
-meters, with secondary coverage collapsed. Access What-if keeps results and
-modeled layers first, with paths and limitations in Advanced. About keeps runtime,
-sync mode and capability groups visible, with technical contracts collapsed.
-
-## Phase 12 compatibility decisions (2026-10-02)
-
-The [dated decision record](fabcon-phase-12-decisions.md) closes the seven
-Phase 12 investigations with adopt/defer outcomes, primary-source citations,
-a distribution compatibility matrix and the completed Ossie mapping study.
-These are documentation decisions, not new collectors or a synchronization
-cutover.
-
-The existing capacity-backed Fabric Apps deployment remains the baseline, with
-Fabric SSO and managed MSSQL. Pro/PPU and F0 announcements do not establish a
-capacity-free Atlas stack. Org Apps can include Fabric Apps (Preview), but Atlas
-rollout awaits live related-item access/revocation checks. Workload Hub packaging
-awaits lifecycle, consent and tenant-isolation validation.
-
-IQ Sharing and Semantic Views adapters remain deferred without verified public
-metadata contracts. Apache Ossie has public specifications and a converter, but
-identity, conversion fidelity and content boundaries prevent direct adoption.
-Spark runtime lineage remains deferred: private-preview partner documentation
-does not establish a Microsoft public capture contract.
-
-PostgreSQL migration has no measured justification and is not a supported
-Fabric-managed Rayfin dialect. Enabling the storage service does not approve
-attachments; a concrete artifact workflow must first define provenance,
-retention and deletion. Q remains outside core implementation. Shared catalog
-reads, append-only team notes and user-scoped personal state are unchanged.
-
-## Data model
-
-The declared entities capture the workspace, team context, personal review state, local
-durable synchronization probe and non-authoritative Preview evidence.
-See [data-model.md](data-model.md) for fields.
-
-| Entity | Holds |
-| --- | --- |
-| `Workspace` | The indexed workspace |
-| `FabricItem` | Every item (Lakehouse, Notebook, Pipeline, Semantic model, Report, …) |
-| `LineageEdge` | Directed dependency between two items |
-| `Principal` | Users, groups, service principals, guests |
-| `AccessGrant` | Recorded workspace/item grants and their sources, not fully evaluated data access |
-| `AccessPolicyEvidence` | Optional workspace policy context and blocked central-evaluation coverage, never grant decisions |
-| `JobRun` | Refresh / pipeline / notebook run history |
-| `ConfigEntry` | Flat key/value config facts per item (drives the expandable tree) |
-| `Comment` | Team notes on the workspace or an item |
-| `SyncRun` | Audit of each Sync |
-| `SavedView` | User-scoped filter and navigation presets |
-| `AccessReview` | Legacy user-scoped access-review decisions and notes |
-| `AccessReviewEvent` | Personal append-only review history bound to permission evidence |
-| `FindingAck` | User-scoped Governance Radar acknowledgements and mutes |
-| `GovernancePolicy` | Shared workspace targets for the six posture pillars |
-| `GovernanceException` | Shared, justified exceptions with an expiry |
-| `SyncJob` | Shared probe progress and a reserved candidate snapshot UUID |
-| `SyncTask` | Synchronizer-only probe checkpoint and original claim request |
-| `SyncCommand` | Synchronizer-only idempotent command identity and outcome |
-| `WorkspaceScope` | Administrator-selected workspaces shared with the app audience |
-| `SynchronizerAuthority` | Synchronizer-only Function caller sentinel |
-| `ItemRelationsEvidenceSnapshot` | Chunked, non-authoritative Item Relations API (Beta) evidence per workspace and snapshot |
-| `OperationalIncident` | Allowlisted observed job-failure incidents per workspace and snapshot, from sanitized job history |
-
-## Phase 2 durable-execution probe (not the browser collector path)
-
-Browser Sync now composes Rayfin collectors with exact Python compatibility
-gaps and writes the existing snapshot entities. The separate request-driven
-durable probe writes `SyncJob`, `SyncTask` and `SyncCommand`; it does not drive
-the browser collector composition or publish a `Workspace` manifest. A
-completed probe is not a completed Fabric metadata synchronization.
-
-Each function obtains the fluent client through `ctx.getDataClient()`. Functions use application
-authentication, but Rayfin DB requests retain the invocation's caller identity and obey data
-policies. `SyncJob` reads are shared with authenticated app users. All job mutations and every
-task/command action require the configured synchronizer subject. Application authentication does
-not grant the complete app audience these internal permissions. Existing snapshot policies and
-manifest-last publication remain unchanged.
-
-| Job state | Persisted meaning and next action |
-| --- | --- |
-| `queued` | One probe task is planned; invoke `syncContinue` to create/claim its checkpoint |
-| `running` | A probe claim is committed; only its original `requestId` can resume it |
-| `waiting` | The task is complete; a fresh `syncContinue` request must finalize the probe job |
-| `completed` | The probe job is terminal; no workspace snapshot was published |
-| `failed` | The probe job is terminal with an allowlisted safe failure |
-| `cancelled` | Cancellation is committed; pending/running tasks cannot be revived |
-
-`syncStart` attaches to the one unique active workspace job instead of resetting its progress.
-Commands reserve a globally unique, bounded SHA-256 key for `requestId`; the input hash also binds
-the operation, workspace, job and protocol version. Reusing a request UUID with different input
-returns `REQUEST_CONFLICT`. Job/snapshot/task IDs are domain-separated deterministic UUIDv8 values.
-Accepted commands checkpoint their intended slice before work, so retrying a committed probe
-checkpoint cannot accidentally finalize the next slice. Successful retries return current
-persisted progress, not a stale saved response.
-
-The nullable unique job `activeKey` is always populated by the spike. Active jobs use the workspace
-hash; terminal jobs replace it in the same job-row update with a unique `v1:released:<job UUID>`
-key. This avoids MSSQL's single-NULL unique-constraint behavior without another workspace-state
-entity. Task completion precedes waiting progress; task cancellation precedes terminal job
-cancellation. Read-back repairs a lost response or an interrupted sequence on a later invocation.
-
-This spike supports one configured synchronizer and externally serialized mutating invocations
-across all hosts. The fluent API does not provide a conditional claim, compare-and-swap, or a
-transaction across these rows. A per-process busy guard rejects local overlap but cannot enforce
-cross-host serialization. Unique keys enforce record identity and one active reservation, not
-distributed task ownership. There are no leases, timed takeover, timers, workers or scheduling.
-Distributed concurrency is a blocker for a broader rollout, not a guarantee of this implementation.
-Before retrying, confirm the prior host invocation ended; a browser disconnect or client timeout
-alone is not that confirmation.
-
-Closing the browser preserves committed rows but neither schedules nor promises another
-invocation. Checkpoints remain queued, running or waiting until an authorized caller explicitly
-continues or cancels. No token or endpoint is persisted. Initiator fields stay unset because this
-SDK exposes no trusted subject/email accessor; the Functions do not decode its raw token.
-
-Root unit tests exercise orchestration with a test-only fluent-client transport and inspect policy
-declarations. Functions build checks the entity decorators and typed data calls. The additive
-schema and Functions package have also been deployed to the isolated FabCon candidate, where the
-three tables were confirmed in the candidate SQL Database. This proves deployment compatibility,
-not caller-scoped execution, SQL uniqueness under contention or browser recovery.
-
-### Phase 2 decision: Rayfin primary with documented compatibility fallbacks
-
-Rayfin Functions are the primary collector and persistence target. The Python
-UDF is retained only for capabilities that Rayfin 1.36.2 cannot obtain through
-a reviewed deployed identity or transactional primitive. Migrated collectors
-must not route back through Python.
-
-Every retained fallback records the Rayfin version, missing platform contract,
-minimal Python scope and requested Rayfin capability in
-[rayfin-platform-gaps.md](rayfin-platform-gaps.md).
-
-The blockers are explicit:
-
-- deployed `ctx.getDataClient()` calls require an authenticated Rayfin caller token
-- unattended execution has no verified trigger or delegated user identity
-- the fluent data API has no compare-and-swap or cross-row transaction for distributed claims
-- the probe does not collect Fabric metadata or publish snapshots
-- closing the browser preserves rows but does not continue work
-
-Automated direct-token validation also requires a delegated `Item.Execute.All` token. A cached
-`user_impersonation` token is not sufficient, and external Entra exchange remains disabled in the
-candidate configuration. No access or refresh token is persisted as a workaround.
-
-Do not connect the product Sync button to these functions or claim browser-resumable
-synchronization until an embedded authorized run proves start, continuation, cancellation,
-recovery and duplicate-publication safety. See
-[installation.md](installation.md#phase-2-integration-status) for the validation boundary and the
-optional-parameter typegen limitation.
-
-### Phase 2 v2 server cutover framework (disabled)
-
-The additive framework in `rayfin/functions/src/sync/graph-*.ts` registers
-`syncGraphStart`, `syncGraphContinue`, `syncGraphStatus` and `syncGraphCancel`.
-It does not replace the product Sync button or the v1 persistence probe.
-Authorized v2 mutation calls currently return `SERIALIZATION_REQUIRED` before
-creating graph or snapshot rows. Status can read an existing v2 root. This
-framework has local tests and generated contracts, not deployed execution evidence.
-
-One `SyncRootRun` plans at most 16 workspace `SyncJob` rows. Each workspace has
-the versioned, ordered task graph:
-
-`core -> definitions -> relations -> kql -> sql -> scanner -> persist -> publish`
-
-Collector stages are adapters, not duplicate collector implementations. Each
-receives its stable task UUID, upstream payload references and an optional
-checkpoint reference. It must use a reviewed immutable metadata store to recover
-the same task/checkpoint result after a lost response. References are UUIDs plus
-SHA-256 digests, never URLs, tokens or serialized collector responses. The
-`MetadataPayloadStore<TProjection>` interface is a deployment seam, not an
-installed store. The assembler must verify digests and assemble only those frozen
-projections, without re-collecting mutable upstream data. SQL/scanner collectors
-can plug in through these same interfaces.
-
-Start recovers partially planned rows with deterministic IDs. A continue command
-binds one request UUID to one task slice before execution. A repeated command
-cannot advance another slice. Paged collectors return an opaque checkpoint;
-persist writes at most 64 rows per invocation in eight-row batches. A new request
-is needed for the next slice. Root states are `planning`, `ready`, `running`,
-`completed` and `cancelled`; workspace progress separates `collect`, `persist`
-and `publish`. Operational errors leave the last confirmed checkpoint for retry
-or cancellation and expose only fixed error codes/messages.
-
-#### Serialization evidence and blocker
-
-The installed Rayfin 1.36.2 `GraphQLEntityClient.update` takes
-`WhereUniqueInput`, whose declaration contains primary-key fields, not predicates.
-Query `.where()` is not an atomic update condition. The version-locked Rayfin
-guides `data/graphql.md`, `known-limitations.md` and
-`functions/writing-functions.md` provide no verified compare-and-swap primitive.
-The `functions/connections/add-fabric-resource.md` guide documents external SQL
-connections, but specifically directs app-database access to `ctx.getDataClient()`.
-It does not establish a supported deployment/grant path for a stored procedure in
-the same managed Rayfin database. No SQL claim procedure or synthetic GraphQL
-transaction is installed.
-
-`ExternalSerializer` is therefore mandatory for internal mutation execution.
-Its scope covers **all** writers, cancellation and retention across roots,
-workspaces and hosts. It must not hand over ownership while any previous
-invocation or uncertain write can still commit. Caller booleans, a process mutex,
-request timeouts and browser disconnection do not prove this. Reserved lease
-fields are rejected even when expired; there is no timed takeover or CAS claim.
-Tests inject a test-only serialized executor. No production executor is wired.
-
-#### Internal snapshot publication
-
-`snapshot-publisher.ts` uses the caller-scoped fluent data client and existing
-entity policies. The configured writer email must satisfy the existing
-subject/email create policy. It accepts only internally assembled, bounded
-metadata entity projections; no public Function accepts snapshot rows. The new
-path contains no browser GraphQL mutation.
-
-Snapshot, row, audit and manifest IDs are deterministic. A frozen publication
-digest prevents an assembler from changing data on retry. Eight-row fast writes
-settle before failed rows retry sequentially; read-back compares expected fields
-rather than trusting an exception or merely finding an ID. Publication verifies
-the exact paginated row-ID inventory and row contents, confirms audit completion,
-then creates the immutable `Workspace` manifest last. A lost manifest response
-recovers the same marker. Progress/command bookkeeping can follow that marker;
-no snapshot data does. Legacy hydration still selects only manifests and can
-continue showing the previous valid snapshot.
-
-Cancellation commits the root barrier before child cleanup, checks it during
-collection, persistence and immediately before publication, and can retry
-interrupted cleanup. Under the required serializer contract, an acknowledged
-cancel prevents any later marker. It cannot retract a marker already committed
-before cancellation, including one whose response was lost. Cancellation reports
-that earlier publication accurately. Different workspaces publish separately,
-not in a cross-workspace transaction.
-
-The new publisher deletes nothing. Retention and orphan cleanup are deferred,
-not silently reused against resumable staging. Before enabling the runtime,
-disable the legacy browser writer/cleanup or bring them under the same verified
-serialization boundary, and review retention protection for active graph rows
-and payloads. Also prove immutable storage, collector/codec parity, invocation
-budgets (including the final full verification), caller-scoped policies and
-recovery in Fabric. There are no queues, timers, unattended triggers or persisted
-credentials. Closing the browser preserves confirmed checkpoints but schedules
-no work.
-
-#### SQL activation investigation (2026-10-02)
-
-The managed candidate database **is addressable** through the documented Fabric
-SQLDatabase API. A read-only authoring probe resolved SQLDatabase item
-`00f3d985-56b8-4aa6-b0de-3226be695251` in the candidate workspace from the
-trusted deployment workspace ID and the documented SQLDatabase item list. Its
-name and existing `SyncJobs`, `SyncTasks`, `SyncCommands` and `Workspaces` tables
-matched the candidate. Do not infer this binding from names at runtime: pin the
-reviewed SQLDatabase UUID in server configuration.
-
-The probe used an ephemeral Azure CLI SQL token, not a Function application token.
-The database reported `READ_WRITE`; that authoring identity had `CREATE TABLE`
-and `CREATE PROCEDURE` permission. Two separate TDS sessions demonstrated
-transaction-owned `sp_getapplock`: the first returned `0`, the contender returned
-`-1`, and the contender returned `0` after rollback. Unicode SHA-256 calculations
-matched between Node UTF-16LE and SQL `HASHBYTES`. No persistent database writes,
-schema changes or deployment occurred. The new payload tables are not deployed.
-
-`sql-control.ts` now supplies the supported SQL transaction boundary and bounded
-connection resolver. It uses only the documented SQLDatabase properties, verifies
-the returned item/workspace/type, restricts hosts to the Fabric SQL domain and
-port 1433, and uses TLS certificate validation. `createSqlPayloadBoundary` requires
-the existing caller-scoped synchronizer authority before requesting
-`AudienceType.Fabric` or `AudienceType.Sql` tokens. Connections are per invocation;
-tokens, full connection strings and driver errors are never persisted or returned.
-Each SQL request has a 10-second timeout and the transaction checks a 120-second
-total budget before commands and commit. Expiry rolls back; it is not a lease
-that grants another graph writer authority.
-
-`SqlMetadataPayloadStore` implements the immutable-store interface over two
-additive Rayfin entities. Inserts and manifest read-back share one SQL transaction
-and one transaction-owned application lock. There are no custom procedures or
-schema DDL in the driver. Deterministic task/checkpoint/schema IDs, ordered bounded
-chunks, byte counts and per-chunk/full-payload digests reject incomplete, changed
-or corrupted content. A lost commit response reports `SQL_COMMIT_UNCONFIRMED`;
-replaying the same input reads the original immutable result. The store issues
-no UPDATE or DELETE. A reviewed projection codec is required; there is no generic
-raw-response passthrough or production codec registry.
-
-This does **not** close the graph activation blocker. `sp_getapplock` is owned by
-a SQL transaction/session and releases on rollback, disconnect or server restart.
-The current graph's fluent GraphQL writes run on other connections. A lock check
-followed by a GraphQL mutation is a race: the lock can disappear while that
-mutation is still in flight, allowing another owner to cancel or publish before
-the stale mutation commits. Keeping a connection open, polling `APPLOCK_MODE`,
-renewing a lease or putting the lock in a sidecar database does not fence those
-writes. `SqlTransactionBoundary` intentionally does not implement the graph's
-`ExternalSerializer`; `requireSqlGraphFence()` fails closed.
-
-Before enabling `GraphRuntime`, either move **all** graph/checkpoint/cancellation/
-snapshot publication mutations into the locked SQL transaction with the existing
-authorization semantics, or obtain a supported database-enforced fencing path
-for every GraphQL mutation. A fence check outside the mutation is insufficient.
-Legacy browser publication and retention must also be fenced or disabled.
-Custom managed-database procedures/triggers still lack a reviewed Rayfin
-migration/deployment contract; SQL permission to create them is not that contract.
-Function application-identity access, payload migration, projection codec parity
-and deployed recovery are also unproven. The graph handlers remain unchanged and
-fail closed; this commit activates no background execution.
-
-Sources:
-
-- [Get SQL Database](https://learn.microsoft.com/en-us/rest/api/fabric/sqldatabase/items/get-sql-database)
-  documents coordinates and supported Entra identities.
-- [sys.sp_getapplock](https://learn.microsoft.com/en-us/sql/relational-databases/system-stored-procedures/sp-getapplock-transact-sql?view=fabric-sqldb)
-  documents Fabric SQL support, return codes, database scope and lock release.
-- Rayfin 1.36.2 `functions/connections/add-fabric-resource.md` documents
-  `AudienceType.Sql` and the mssql driver; `app-backend/index.md` requires managed
-  schema changes through `rayfin up` and warns about direct portal schema changes.
-
-## Phase 3 workspace scope foundation
-
-`WorkspaceScope` stores only administrator-selected workspaces. Authenticated app users can read
-those selected rows so navigation can expose the shared scope. Create, update and delete remain
-restricted to the configured synchronizer subject, and create also requires the configured writer
-email. Unselected discovery results are never persisted. Scope removal is refused when any shared
-catalog, note, governance or synchronization row still references the workspace. A separate
-reviewed archival and deletion policy is required before previously shared data can be hidden.
-
-The `workspaceDiscover` Function lists workspaces through the Fabric REST API with the AppBackend
-application identity. Before requesting Fabric, it must read the deterministic
-`SynchronizerAuthority` sentinel. The first authorized invocation creates that sentinel through
-the same synchronizer-only policy. A caller whose row-level policy hides the sentinel cannot pass
-through an empty query. The Function paginates with bounded retries, validates continuation
-origins, limits response size and returns only workspace ID, display name, type and capacity ID.
-
-The Atlas store now exposes the shared scope and one active workspace ID. Changing that ID clears
-the previous workspace state, rehydrates only the selected workspace and scopes comments, history,
-saved views, governance state and synchronization writes to that ID. Late hydration from the prior
-workspace is discarded through the existing operation generation guard.
-
-Workspace Hub exposes the shared scope through four local tabs: Workspace, Synchronization,
-Configuration and Team notes (`workspace.section` in the URL, Synchronization by default). When
-the shared scope holds more than one workspace, the application header renders a compact native
-`Active workspace` selector from `WorkspaceScope` (inside the navigation drawer below the `md`
-breakpoint), so every shared view shows which workspace it reads. The Workspace tab and the
-first-sync gate keep their own selector, so a user who switches to an unsynchronized workspace can
-always return to a published one. Every selector is disabled while a synchronization runs.
-Switching goes through the shell: it re-reads the current URL so filters written with
-`replaceState` survive the remount, keeps the route unchanged and returns focus to the
-originating selector, or its header or first-sync equivalent, after the new snapshot loads. The
-Synchronization tab projects only real store state: the in-flight browser run, the selected
-workspaces, persisted `SyncRun` audit rows and the configured synchronizer. Only the active
-workspace has a known snapshot status; other selected workspaces are reported as not loaded until
-opened, or with their outcome from the latest browser batch.
-`Manage scope` uses `workspaceDiscover` and is rendered only for the configured synchronizer while
-the `fabric-app-functions` flag is enabled.
-
-The Selected workspaces table follows the issue #42 layout: a checkbox column, status, details
-and a row actions menu (`RowActionsMenu`, a WAI-ARIA menu button with arrow, Home, End and
-Escape handling and no extra dependency). When the synchronizer sees more than one workspace,
-the checkboxes choose which workspaces the header action synchronizes: **Sync all** when every
-row is checked, **Sync selected** otherwise (disabled with none checked). Each row menu offers
-**Synchronize now**, **Open in Atlas** for a non-active workspace and **Open in Fabric**; actions
-that conflict with a running batch stay focusable, marked `aria-disabled` and state why. All of
-them call `syncWorkspaces(ids)` in the store. The store runs the
-existing per-workspace `runFabricSync(targetWorkspaceId)` contract one workspace at a time in this
-browser tab, refuses a second batch while one is in flight, and records each member as queued,
-running, completed, failed or cancelled in `syncQueue`. A failed workspace does not stop the
-batch; cancel stops the running workspace and marks the rest cancelled. Only the active
-workspace's result replaces visible data, history and the first-sync gate state; other workspaces
-publish their own snapshot and are loaded when opened. Workspace switching stays blocked while a
-batch runs. Recent runs rows have a menu to copy the persisted run ID and, for failures, the
-full error text.
-
-One derivation (`syncRunView` in `src/atlas/sync-run.ts`) feeds every run surface. The header shows
-the compact status (stage and percent, cancelling, or "Sync failed" with a Details control that
-opens Workspace Hub Synchronization) and a thin progress line on its bottom edge, so routes never
-gain or lose a banner during a run. Workspace Hub renders the detailed view of the same state:
-phases, batch position, every failure with a bounded summary and its full text on demand, and the
-run actions. Long run errors stay in a fixed-layout table and expand into their own row.
-
-`SYNC_BACKEND_CAPABILITIES` in `src/atlas/workspace-sync.ts` keeps background runs and scheduled
-runs closed. The UI therefore states that a run executes in the synchronizer's browser tab through
-Rayfin collectors plus exact Python compatibility gaps, shows the schedule as disabled with the
-verified reason: the schedule switch stays off and, like **Edit schedule**, is natively disabled
-and described by that reason. No resume control is rendered. The configured deployment workspace
-remains the fallback until the administrator persists an explicit shared scope.
-
-The v2 multi-workspace catalog is active. `WorkspaceScope` stores the shared
-selection, each workspace publishes an independent manifest, and the browser
-serializes one bounded workspace run at a time. Cross-workspace Preview
-relationships use composite workspace and item identities. They never become
-trusted `LineageEdge` rows.
-
-Scheduled refresh remains disabled while any fallback step is driven through
-the browser or Python UDF. Persisted checkpoints support safe resume, not
-unattended continuation.
-
-### Active browser-serialized collector composition
-
-`workspaceCollectCore` starts the active Rayfin-first collection path. It writes no Rayfin rows
-itself; the browser validates and merges every bounded stage, invokes Python only for the exact
-compatibility gaps, and then publishes through the unchanged manifest-last writer. It takes
-`protocolVersion: 1`, a strict RFC workspace UUID and a strict correlation UUID or `null`; it
-accepts no token, URL, endpoint or request body. Input validation and the policy-protected
-`SynchronizerAuthority` sentinel gate run before the application-identity Fabric token is read.
-
-The Function calls fixed `api.fabric.microsoft.com/v1` paths for the workspace, its items, its
-role assignments and each item's `jobs/instances`. `rayfin/functions/src/fabric-rest.ts` rejects
-redirects, validates continuation origin and path, detects pagination loops and bounds pages,
-records, streamed response bytes and the 150-second execution budget. It retries `429`, `5xx` and
-network timeouts up to three attempts and honors `Retry-After` only up to 10 seconds; longer waits
-are reported as `retry-after-deferred`. Every failure becomes a fixed section/code pair; upstream
-bodies and the token are never returned or logged.
-
-The result is a schema-version 2 `base` envelope compatible with `RawSync`. Records use the
-same bounded sanitization as the compatibility collector without descriptions or other extra Fabric fields. Unknown item
-types are kept verbatim; item IDs must be UUIDs because they are interpolated into job URLs.
-Jobs follow all bounded pages before keeping the first three returned runs per item, matching the
-Python projection order. Collection is limited to 1,000 job records per item, three pages, 100
-items and 150 HTTP attempts. Job failures, throttling or budget exhaustion fail only the optional
-`jobs` section.
-`scanner`, `schema`, `lineage`, `access`, `config`, `definitions`, `kqlSchema` and `sqlSchema`
-plus all scanner-dependent capabilities are explicitly `unsupported` with
-`collector-not-migrated`, and every item has `scannerMatched: false`.
-
-No complete status is fabricated, so a Core envelope is never published alone.
-The browser composer requires the exact follow-up plan, validates each collector
-envelope and supplies only documented Python compatibility sections before
-`validateRawSync` can accept the candidate. Use
-`validateCoreCollectorEnvelope` and `compareCoreCollectorParity` (see
-[core-collector-parity.md](core-collector-parity.md)) for stage validation.
-Parity excludes descriptions from compared Core fields because this stage
-intentionally omits them. A repeated explicit job ID for one item fails that
-item's jobs with `invalid-response` instead of emitting duplicates.
-
-### Fabric definition stage (active)
-
-`workspaceCollectDefinitions` ports the Python definition retrieval and safe projections. It takes
-`protocolVersion: 1`, a strict workspace UUID, one to eight unique `{ id, type }` items and a
-strict correlation UUID or `null`. It accepts no token, URL or endpoint. The same input validation
-and `SynchronizerAuthority` gate run before the Fabric token is read. The envelope is marked
-`stage: "definitions"` and `authoritative: false`, writes no Rayfin rows and is accepted only
-through the browser composer that binds it to the active workspace run.
-
-Only `Ontology`, `GraphModel` and `DataAgent` map to the documented
-`POST /v1/workspaces/{workspaceId}/{ontologies|graphModels|dataAgents}/{id}/getDefinition`
-routes through a fixed allowlist. Every other type, including unknown future types, is reported
-as `unsupported/item-type-unsupported` without a request. A `202` response is resolved by polling
-only `GET /v1/operations/{operationId}` and `.../result`; the operation UUID comes from
-`x-ms-operation-id` or the last `Location` segment, and the `Location` host is never requested.
-Polling honors `Retry-After` between 1 and 5 seconds, at most 12 polls per item, inside the shared
-150-second budget and 120-request batch budget. POSTs carry no body, reject redirects and use the
-shared retry, response-size and cancellation rules.
-
-Definition parts are limited to 500, 16 MiB per response and 8 MiB of decoded JSON per item. Part
-paths must be relative without empty, `.` or `..` segments or control characters. Recognized
-parts must use strict `InlineBase64` UTF-8 JSON objects. Forward-compatible paths are counted and
-skipped without decoding. AI instructions, few-shot examples, publish descriptions, styling,
-`.platform`, documents and resource links are never decoded or returned.
-
-Successful items return only the reviewed `artifactMetadata` contract that the frontend already
-parses into schema objects and object lineage, the Python Config facts and capability rows, and
-referenced item UUIDs for item lineage. The derived `_definitionSchema` and object-edge assembly
-remain frontend projections of `artifactMetadata`. Projected text is bounded to the frontend
-limits and rejected as `unsafe-content-rejected` when it resembles credentials, bearer tokens,
-SAS signatures or connection strings. Collections are capped at 512 entries and data-agent trees
-at 2,048 selected elements and 16 levels, with truncation reported in the item code.
-
-Each item has explicit evidence: `complete` (optionally `forward-compatible-parts-skipped`,
-`artifact-metadata-truncated` or `projection-truncated`), `unsupported`
-(`item-type-unsupported`, `endpoint-unsupported`, `read-write-permission-required`,
-`encrypted-label-blocked`) or `failed` with a fixed code. One failed item never invalidates other
-items. Deadline, timeout, deferred `Retry-After`, persistent throttling, request-budget exhaustion
-or cancellation stop the batch, and remaining items are `failed/not-attempted`. Unlike the Python
-collector, the Function omits the free-text data-agent publish description, reports a failed LRO
-as `operation-failed` and an unfinished one as `operation-incomplete`.
-
-### Item Relations API (Beta) collector (active Preview evidence)
-
-`workspaceCollectItemRelations` queries the documented upstream and downstream
-`/items/{itemId}/relations/{direction}?beta=true` routes for 1-16 root items behind the same input
-validation and `SynchronizerAuthority` gate. It returns the schema-version 1 evidence contract of
-`src/atlas/item-relations-evidence.ts` with raw dependency relations, per item and direction
-evidence and fixed failure codes, plus `authoritative: false`. Orientation, prior-evidence merging
-and lineage comparison remain in that pure module, and nothing is written to `LineageEdge`. The
-collector added the `not-attempted` failure code to that contract for queries skipped after a
-deadline, request-budget, cancellation or throttling stop. See
-[item-relations-evidence.md](item-relations-evidence.md#phase-4-functions-collector) for its
-query allowlist, continuation rules and bounds.
-
-### OneLake Catalog Search (Preview) discovery (Phase 8)
-
-`searchCatalogPreview` calls only the fixed `POST /v1/catalog/search` endpoint with the Fabric
-application identity after the `SynchronizerAuthority` gate. Inputs are strict: bounded search
-text, allowlisted item types, at most 12 workspace UUIDs, a page size of 1-50 and a continuation
-token that must be sent alone. One invocation reads at most four pages and 200 entries within a
-45-second budget, with three attempts per page and `Retry-After` honored up to five seconds.
-The envelope keeps allowlisted metadata only, stable `item:{id}`/`workspace:{id}` keys, fixed
-failure codes and source coverage (pages, skipped, merged and truncated entries, stop reason and
-whether more entries exist). It is `authoritative: false`, persists nothing and is never used
-to delete or hide snapshot evidence.
-
-The `VITE_ATLAS_FEATURE_CATALOG_SEARCH` flag is off by default. When enabled, the `Ctrl+K`
-palette shows a user-initiated **Search catalog** action to the synchronizer and appends a
-separate, source-labelled `OneLake catalog · Preview` option group after the unchanged local
-results, with the shared `PreviewApiNotice`. Entries whose stable ID matches the snapshot open
-the authoritative Atlas view; others open their workspace in Fabric. See
-[catalog-search.md](catalog-search.md) for the contract, bounds and the remaining
-application-identity verification.
-
-### Item families and source provenance (Phase 8)
-
-`src/atlas/item-families.ts` is the item-family capability registry. It registers all 51
-documented Fabric `ItemType` values (kept identical to the Catalog Search allowlist), derived
-families (`MaterializedLakeView`, `KQLMaterializedView`, `OneLakeShortcut`) and explicit
-fallbacks for Workload Hub and unknown types. Each family states catalog, objects, lineage,
-access and operations coverage independently as collected, partial, adapter only, deferred,
-unsupported, excluded by design or not applicable. The Catalog item drawer renders it as
-**Atlas coverage**, and Governance Center → Coverage opens with an item family inventory,
-an **Evidence details** pane and the `inventoryGapList` follow-ups, following the #42 Governance
-Center concept. The shared chips and evidence rows live in
-`src/atlas/components/FamilyCoverageEvidence.tsx`. MLVs are never
-fabricated as top-level items: awareness comes from `RefreshMaterializedLakeViews` jobs on the
-parent Lakehouse and from MLV execution definitions. See [item-families.md](item-families.md).
-
-`workspaceCollectSourceProvenance` is a read-only, adapter-only Function behind the
-`SynchronizerAuthority` gate. It projects documented OneLake shortcuts, mirrored database
-properties, `mirroring.json` and mirroring status, and MLV execution definitions into explicit
-IDs: OneLake target workspace/item IDs, Fabric connection IDs, landing-zone and SQL endpoint IDs.
-URLs, buckets, subpaths, source database names and free text are dropped. The pure
-`buildSourceProvenance` contract in `src/atlas/source-provenance.ts` turns that evidence into
-deterministic, namespaced provenance edges, unresolved records for missing identifiers and
-policy-origin evidence whose destination enforcement is always `not-verified`. Nothing is
-published to snapshots or `LineageEdge` until the durable cutover. See
-[source-provenance.md](source-provenance.md).
-
-### KQL metadata stage (dual-run)
-
-`workspaceCollectKqlMetadata` takes `protocolVersion: 1`, a strict workspace UUID, 1-16 unique
-`{ id, type }` items and a strict correlation UUID or `null`, behind the same validation and
-`SynchronizerAuthority` gate. It calls only documented Fabric REST routes with
-`AudienceType.Fabric`: `GET /v1/workspaces/{workspaceId}/eventhouses/{id}`,
-`GET .../kqlDatabases/{id}` and `POST .../kqlDatabases/{id}/getDefinition`. All three support
-service principals; the item reads need read permission and getDefinition needs read **and
-write** permission. It projects the fields the Python collector already uses: Eventhouse query
-service origin and KQL database IDs, and KQL database parent Eventhouse ID, query service origin,
-database type and identity. Query service URIs must be HTTPS origins on
-`*.kusto.fabric.microsoft.com` or `*.kusto.windows.net` without credentials, path or query; they
-are recorded, never called. Ingestion URIs, capacity units, OneLake retention, descriptions and
-labels are not returned. Config rows match the Python `Eventhouse`, `KQL database`,
-`KQL stored functions`, `KQL materialized views` and `Tables` sections. `KQLQueryset` and
-`KQLDashboard` stay distinct as `unsupported/no-structural-properties`, because their Fabric REST
-items have no properties and their definitions contain queries. Other types are
-`item-type-unsupported`.
-
-KQL database schema comes from the definition's `DatabaseSchema.kql` part
-(`rayfin/functions/src/kql-schema.ts`). `.platform` and `DatabaseProperties.json` are skipped
-unread, other parts are counted and never decoded, and paths with empty, `.` or `..` segments,
-duplicate schema parts, non-`InlineBase64` payloads, invalid base64 (padded or unpadded, as in
-Fabric's samples), invalid UTF-8 or more than 8 MiB decoded fail the schema. A lexer that honors
-comments, regular and verbatim strings, multi-line blocks and bracket nesting splits statements
-only at line-leading top-level commands, and an unbalanced script fails as `invalid-definition`.
-The parser returns only:
-
-- tables and their scalar-typed columns from `.create`, `.create-merge`, `.alter` and
-  `.alter-merge table(s)`, with Kusto type aliases normalized and plain or `['escaped']` names;
-- functions from `.create`, `.create-or-alter` and `.alter function` by name and parameter
-  names and types (tabular parameters as `tabular`); property bags, defaults and bodies are
-  skipped unread;
-- materialized views by name, with `sourceTable` only for `on table` sources; their query-derived
-  columns are unavailable.
-
-Policies, ingestion mappings, docstrings, folders and database or entity principals are counted as
-ignored. External tables (connection strings), data commands, drops, renames, `based-on`, unknown
-column types, credential-like or overlong names, column type conflicts, stray text and any other
-command are counted as unsupported and never returned. The schema is `complete` only when every
-statement is supported or ignored; otherwise it is `complete/partial-unsupported`, or
-`projection-truncated` after 1,000 tables, 1,000 columns per table, 512 functions or 512 views.
-Functions with more than 64 parameters are unsupported. Unknown parts give
-`forward-compatible-parts-skipped`, a missing schema part is
-`unsupported/schema-part-missing`, and getDefinition 401/403, 400/404 and 423 are unsupported as
-`read-write-permission-required`, `endpoint-unsupported` and `encrypted-label-blocked`. Schemas
-are returned in `schemas` keyed by item ID, and parsed schemas also as reviewed `kql`
-`artifactMetadata`. Definition responses are capped at 16 MiB, projected schemas at 16 MiB per
-batch, LRO polling at 12 polls per database inside the shared 120-request and 150-second budget,
-and deadline, throttling, request-budget, schema-budget or cancellation stops mark remaining
-items `not-attempted`.
-
-Differences from the Python collector: function folders, docstrings and return types,
-materialized-view columns and docstrings, and external tables are not returned.
-
-**Blocker (2026-10-02, Rayfin 1.36.2):** the Kusto data-plane query used by Python
-(`.show database [...] schema as json` to `{queryServiceUri}/v1/rest/mgmt`) remains unavailable.
-The installed `@microsoft/fabric-user-data-functions` `AudienceType` has only `Sql`, `Storage`,
-`Fabric`, `AzureAI` and `ADO`, and its runtime ignores undeclared audiences. `Kusto` appears only
-in an internal scope-override map documented as not implying enum membership. The `kusto`
-connector is experimental, its authoring is held in this release, it is delegated-only, bound to
-one database at authoring time and invoked from the browser client. The envelope records this as
-`kqlDataPlaneSchema/kusto-audience-unsupported` with the supported replacement
-`fabric-kql-database-definition`, which is the structural path for the Atlas cutover. Browser
-tokens are not forwarded and no token is stored.
-
-### Phase 4 Power BI metadata stage (supported partial replacement)
-
-`workspaceCollectPowerBi` uses only the declared Fabric application token after
-the `SynchronizerAuthority` gate. It verifies item identities, reads documented
-SemanticModel/Report definitions, and optionally reads Preview Fabric admin
-ownership, modification, tags and access evidence. It preserves structural
-schema, sanitized selected DAX, explicit relationships, PBIR page inventory and
-verified same-workspace model-to-report edges. Static dependencies remain a
-labeled subset; unknown model workspaces are never inferred.
-
-Rayfin 1.36.2 has no documented deployed Power BI application-token audience,
-and its semantic-model connector is delegated-only. Scanner lineage, scanner
-fields and engine dependencies therefore remain explicitly unsupported, with
-dated platform/tenant blockers. The browser merges this non-authoritative
-structure with the exact Python scanner compatibility result before validation
-and publication. See
-[powerbi-scanner-replacement.md](powerbi-scanner-replacement.md) for exact
-coverage, privacy limits and the minimum capability needed for full removal.
-
-### SQL metadata stage (active)
-
-`workspaceCollectSqlMetadata` takes `protocolVersion: 1`, a strict workspace UUID, 1-8 unique
-`{ id, type }` items and a strict correlation UUID or `null`, behind the same validation and
-`SynchronizerAuthority` gate. Both tokens are read only after that gate. Its context declares
-exactly the documented `AudienceType.Fabric | AudienceType.Sql` audiences:
-
-- **Fabric** reads fixed coordinates from `GET /v1/workspaces/{workspaceId}/sqlDatabases/{id}`
-  (`serverFqdn`, `databaseName`), `.../warehouses/{id}` (`connectionString` host) and
-  `.../lakehouses/{id}` (`sqlEndpointProperties`). The response must repeat the requested item
-  ID, type and workspace. Hosts must be DNS names under `.database.fabric.microsoft.com` (SQL
-  Database) or `.datawarehouse.fabric.microsoft.com` (Warehouse and Lakehouse SQL analytics
-  endpoint) on port 1433. URLs, credentials, connection-string keywords, other ports, other
-  suffixes and lookalike hosts are `failed/invalid-connection-coordinates` and never contacted.
-  SQL Database names are bounded and must not contain connection-string syntax. Warehouse and
-  Lakehouse sessions route by the validated item GUID, as documented by Rayfin.
-- **Sql** opens one TDS session per item with `mssql`/`tedious`, TLS with certificate validation,
-  the minted access token, read-only intent for SQL Database (Python parity) and no driver-level
-  retries. It runs four fixed `SELECT TOP (@rowLimit)` statements over `sys.objects`,
-  `sys.schemas`, `sys.columns`, `sys.types`, `sys.key_constraints`, `sys.index_columns`,
-  `sys.tables`, `sys.foreign_keys` and `sys.foreign_key_columns`. Row limits and type filters are
-  typed parameters; identifiers, coordinates and caller values never enter SQL text. Table rows,
-  module or view definitions, defaults, computed expressions, credentials and connection strings
-  are never selected.
-
-Each item returns explicit evidence. `SQLEndpoint` items are `unsupported/parent-item-required`
-because their documented route goes through the parent Lakehouse; other types are
-`item-type-unsupported`. A Lakehouse without SQL endpoint properties or with a provisioning status
-other than `Success` is `unsupported/sql-endpoint-unavailable` or
-`unsupported/sql-endpoint-not-provisioned`. `catalogs` records per item the source
-(`fabric-sql-database-catalog`, `fabric-warehouse-catalog` or
-`fabric-lakehouse-sql-endpoint-catalog`), user schema names, table/view/column/key counts and a
-`structure` status for the schema-name and key-constraint queries; a failure there keeps the object
-inventory as `complete/partial-unsupported`.
-
-`schema` uses the existing Atlas schema-table contract. SQL Database and Warehouse objects are
-`SQL table`/`SQL view`, and Lakehouse SQL analytics endpoint objects are `SQL endpoint table`/
-`SQL endpoint view`, each with a distinct catalog `source`. Config rows keep the Python
-`SQL database`, `Metadata capability`, `SQL Primary keys`, `SQL Foreign keys`, `Inventory` and
-`Tables` sections and add `Warehouse` collation/timestamps and Lakehouse `SQL endpoint` item ID
-and provisioning status. SQL catalogs have no reviewed artifact-metadata kind, so
-`artifactMetadata` is always empty. Warehouse and Lakehouse connection strings are never returned;
-the SQL Database `Server` row keeps the Python `host,1433` value.
-
-Bounds: eight items, 32 Fabric REST attempts, 48 SQL operations (connections plus queries), two
-connection attempts on transient failures, 15-second connections and 20-second queries capped by
-the shared 150-second budget, 50,000 object rows, 1,000 schemas, 5,000 key rows and 8 MiB streamed
-per query, 1,000 objects per item, 1,024 columns per object and 16 MiB of projected schema per
-batch. A row bound drops the possibly partial trailing object or constraint and reports
-`projection-truncated`. Names over 128 characters, with surrounding whitespace, controls, line
-separators or bidirectional overrides are skipped and counted as `rejectedNames`
-(`partial-unsupported`). Malformed rows fail only that catalog as `invalid-response`.
-
-Login or permission failures are `unsupported/authorization-failed`; connection failures, query
-failures and timeouts are `failed` as `sql-connection-failed`, `sql-catalog-query-failed` and
-`sql-timeout`; an unloadable driver is `unsupported/tds-runtime-unavailable` for the remaining
-items. SQL throttling, deadline, SQL-operation budget, aggregate schema budget and cancellation
-stop the batch and mark remaining items `not-attempted`, like the Fabric REST stops. Driver
-messages, server names from errors, principal names and tokens are never returned or logged.
-
-Differences from the Python collector: Warehouse and Lakehouse SQL analytics endpoint catalogs are
-new (Python reads only SQL Database over TDS), objects group by `object_id` instead of
-case-insensitive names, and object, column and row limits truncate the projection instead of
-failing it. Python allows 500 columns per object; the stage keeps up to 1,024.
-
-The optional Secret Store adapter supplies a documented 1.36.2 scanner identity
-alternative without an invented audience. It reads public Power BI scanner
-schema, selected expressions, owners/access and observed local item-lineage
-evidence, but remains disabled until credentials, scope and tenant approval are
-explicitly configured. Missing required scanner metadata fails closed. See
-[powerbi-scanner-secret-store.md](powerbi-scanner-secret-store.md) for setup and
-the live-validation/cutover boundary.
-
-## Authorization and collaboration scope
-
-The synchronized catalog entities use `@authenticated('read')` without a
-row-level reader policy. Every authenticated user who can open the deployed app
-can therefore read the whole governance graph for every administrator-selected
-workspace: items, object inventory, lineage, principals, grants, jobs,
-configuration, history and shared comments. Deployment owners must treat the
-Fabric app audience as the catalog read boundary.
-
-Writes remain narrower. Snapshot creation, updates and retention are restricted
-to the configured immutable Rayfin subject (`claims.sub`); the synchronizer
-email remains contact and historical writer metadata. `SavedView`, `AccessReview` and `FindingAck` bind all
-operations to `claims.sub == user_id`. Comment creation requires both the
-authenticated email and subject to match `authorEmail` and `authorId`.
-Team notes persist the authenticated email as both the author label and policy-
-bound email, while `authorId` remains bound to `claims.sub`. Client-selected
-catalog labels cannot impersonate another note author.
-
-`AccessReviewEvent` uses the same personal subject boundary but exposes only
-create and read. Shared `GovernancePolicy` and `GovernanceException` records are
-readable by the app audience and writable only by the configured synchronizer.
-
-Comments are append-only: authenticated app users can read them and
-their authenticated author can create them, but the entity exposes no update
-or delete action.
-
-## Phase 6 access evidence foundation
-
-Access Review presents **recorded grant pairs**, not reachable or unrestricted
-principal/item pairs. The existing additive calculation still picks the highest
-recorded grant; the compatibility properties `effectiveAccess` and
-`effectiveGrants` do not evaluate data-plane restrictions.
-
-`src/atlas/access-coverage.ts` separates observed grants, unavailable evidence,
-unsupported layers, denied evidence reads and partial assessments. Each row
-lists its evaluated grant layers, while the inspector and CSV separately report
-workspace grants, item grants, group membership, OneLake security, Purview DLP
-and Fabric Policies. Missing layer records stay unavailable, not absent. A
-complete `access` collection section does not establish complete permissions or
-restriction coverage. Failed sections retain recorded grants as partial; an
-explicit authorization failure means an **evidence read** was denied, not that
-the principal's access is denied.
-
-OneLake role membership/data scope and DLP restriction state remain unsupported
-because no verified public read contract is available. Fabric Policies evaluation
-and group expansion remain unavailable because Atlas has not collected them.
-Portal guidance links are manual review aids, not evidence collectors. Other
-data-plane and row/column restrictions remain outside this grant-only assessment.
-No restriction-free state is emitted by this foundation.
-
-The five-column matrix follows the issue #42 hierarchy: principal, item, granted
-level, restrictions and coverage. The right evidence inspector follows the
-image's numbered grant, restriction-evidence and assessment sections, with
-actual source/role/reference records beside the grant explanation. It becomes a
-managed Radix drawer below the token-defined desktop breakpoint, with initial
-focus, Tab containment, Escape dismissal and focus restoration. The drawer does
-not discard a What-if scenario when closed or resized.
-Existing semantic tokens, typography and density preserve the Fabric-aligned
-ledger language in both themes (ENERGY 1 / RHYTHM 2 / MOTION 1); numbered sections
-separate observed grants from unknown restrictions rather than decorative steps.
-The coverage filter matches any evidence layer, with `Partial` also matching the
-overall assessment. It is retained in navigation and personal saved views.
-Workspace display is scoped to the active snapshot, not an all-workspace query.
-CSV and copied summaries carry sources, workspace/snapshot identity, snapshot
-observation time, unknown/incomplete layers and the grant-only limitation. Missing provenance says
-`Not recorded`; snapshot time is not a fabricated per-API observation time.
-
-### Read-only grant What-if (#37)
-
-`src/atlas/access-what-if.ts` models only the selected pair's recorded workspace
-and item grant paths, using the same `highestRecordedGrant` engine as Access
-Review. Users can exclude an individual path, all recorded workspace-inherited
-paths or all recorded item paths, then immediately reset the scenario. Exact
-duplicate observations are one modeled path because the current grant contract
-has no collector grant ID; aliases and distinct sources are not merged by name.
-Every remaining path lists its recorded source, scope, role and principal
-reference. Missing roles and provenance stay `Not recorded`.
-
-Current and simulated highest recorded grants appear side by side. The unchanged
-case explains remaining grants; the no-positive-grant case explicitly does not
-prove removal of actual access. Group membership changes, OneLake security, DLP,
-Fabric Policies and other data-plane/row/column restrictions are not simulated.
-Exports state the original grant layers modeled even when all their recorded
-paths are excluded. Partial, denied and missing layer evidence remains explicit.
-
-Scenario exclusions live only in component state. They reset on pair, source
-snapshot/evidence or mode changes and are never put into navigation URLs or
-personal saved views. The mode and selected pair can use existing navigation,
-but personal write controls are hidden in What-if. Markdown and scenario CSV
-downloads contain the selected metadata, excluded and remaining paths, snapshot
-provenance and limits; no tokens, credentials or unmodeled policy results are
-exported. This view has no permission mutation or Fabric write-back route.
-
-The additive `AccessPolicyEvidence` entity and optional
-`workspaceCollectAccessPolicyEvidence` Function now store only verified Core
-workspace networking and inbound external-share exception settings. Those are
-context reads, not central Fabric Policies evaluation or principal/item access.
-The central evaluation contract remains unverified and is explicitly blocked.
-Both browser and server collection gates default off. No OneLake role or DLP
-read, Fabric mutation, or grant-truth change is introduced. Personal decisions
-in Review matrix and Principals remain grant-bound and do not certify restriction
-coverage. See [access-policy-evidence.md](access-policy-evidence.md) for exact
-public sources, omitted fields, ownership policies, bounds and the closed live gate.
-
-Source grants must not be confused with access to Atlas. All selected workspace
-metadata remains shared with the authenticated app audience; delegated connector
-visibility does not retroactively filter materialized snapshots for each viewer.
-Personal review decisions and saved views remain subject-scoped.
-
-Remaining live/contract gates: validate actual workspace-settings collection
-identity/tenant behavior, obtain a public central Fabric Policies operation
-contract, and verify principal-specific applicability before expanding this
-grant-only assessment. Stable collector grant identities remain unavailable in
-the current grant payload. OneLake and DLP remain manual/unsupported until verified public contracts
-exist; the fictional restriction counts and principals in the concept image are
-never production fixtures.
-
-## Phase 9 observability and incidents
-
-Jobs & health separates *observed* failures from *inferred* downstream impact
-(`src/atlas/observability.ts`). An observed incident is the latest recorded run
-of an item and job type that failed in the synchronized Fabric job history. It
-carries the workspace, item, job type, Fabric run ID when collected, run start
-and snapshot capture time, plus a stable incident key
-(`incident:v1:<workspace>:<item>:<job type>`).
-
-After the `Workspace` marker is published, the browser synchronization writes
-one allowlisted `OperationalIncident` row per incident
-(`src/atlas/operational-incident-store.ts`). Rows never contain failure
-reasons, logs, query text or business rows; their IDs are deterministic per
-snapshot and incident key, and `firstObservedAt` carries over while the same
-key keeps failing between published snapshots. A missing entity or failed
-write only logs a warning. Jobs & health overlays stored records on the
-incidents derived from the snapshot (run ID, failing since) and states when
-records are unavailable.
-
-Downstream impact walks authoritative, normalized snapshot lineage from the
-failed item. A consumer is labelled observed only when it has its own observed
-incident in the same snapshot; every other consumer stays inferred and is never
-stored. `diffIncidents` compares two validated snapshots into opened,
-persisting, recovered (a newer run was captured) and no-longer-reported
-incidents. Governance Radar lists opened incidents once (replacing the
-failed-run finding of the same run), raises them to critical only when a
-consumer is also failing, and adds them to the exported digest with
-provenance and limits. The Radar card states how many entries need review and
-groups them into one signal tile per kind (`groupRadarSignals` in
-`src/atlas/radar-signals.ts`: risky change kind, opened job failures, or new
-findings by category) with the exact entry count. Tiles are collapsed
-disclosures; opening one lists its entries with the existing exception, open
-evidence, acknowledge and mute actions. `src/atlas/incident-feeds.ts` builds the incident
-section and Markdown of a Sync Brief and Watchlist events from the same deltas;
-Jobs & health shows the section and copies it as Markdown.
-
-The Monitoring sources card states what Atlas collects: job history only.
-Workspace monitoring is shown as not collected. Monitor hub alerts and Fabric
-App Metrics are shown as Fabric portal only, with links to the verified Monitor
-hub routes (`/monitoringhub/jobs`, `/alerts`, `/applications`) and to the
-deployed app item when its IDs are configured. See
-[observability.md](observability.md) for the routes, workspace monitoring
-permissions, retention and cost prerequisites, and the remaining collector
-blockers.
-
-## Phase 11 read-only Atlas MCP
-
-`src/atlas/mcp/` defines a read-only MCP contract over the validated snapshot.
-Eight tools cover workspace scope, snapshot provenance, catalog lookup, known
-impact, lineage evidence, access evidence coverage, operational incidents and
-snapshot changes. They reuse the same search, lineage, Item Relations, access,
-observability and history functions as the UI. Every response carries the
-snapshot ID, sync and retrieval times, sources, coverage and limitations.
-There is no write, remediation, permission or chat tool, and unknown methods
-and tools are refused.
-
-`src/mcp/` is a local stdio entry point built with `npm run build:mcp`. It
-signs in through Rayfin's direct Entra exchange, so only users with Execute
-permission on the Atlas app item get a session. It reads through
-`loadWorkspaceScopes`, `loadFromDb`, `loadHistoryFromDb` and
-`readLatestItemRelationsEvidence`, only for selected workspaces, and never
-reads personal review state. It stays disabled until `ATLAS_MCP_ENABLED`, a
-public client registration and `services.auth.fabric.externalEntraExchange`
-(explicitly `false`) are configured and deployed. See
-[atlas-mcp.md](atlas-mcp.md) for the verified comparison with Fabric Core and
-Fabric IQ MCP, the contract and the remaining gates.
-
-## Sync
-
-The Sync button calls `runFabricSync` (`src/atlas/backend.ts`). The browser
-builds an exact collector plan for the target workspace, invokes typed Rayfin
-Functions serially, calls the Python compatibility UDF only for retained gaps,
-validates every envelope and writes the merged result through the Rayfin Data
-API.
-
-Initial synchronization and later refreshes use the same five-phase progress
-tracker. The discovery phase reports the actual number of enriched items and
-the active Fabric item type, together with elapsed time, rather than advancing
-a simulated percentage.
-
-Rayfin collector calls carry no browser tokens or arbitrary URLs. Each
-Function acquires only its declared application audience after validating the
-workspace, item batch, correlation ID and `SynchronizerAuthority` policy.
-Collectors bound pages, records, response bytes, attempts, sleeps and execution
-time. They return fixed section and item evidence instead of upstream bodies.
-
-The Python compatibility path receives only the delegated audiences required
-for Power BI scanner evidence, PBIR-Legacy pages and Kusto live metadata. It
-uses its existing 180-second budget below the Fabric User Data Function limit.
-The explicit rollback flag can restore the previous Python collector during an
-incident, but it is not the normal v2 path.
-
-Contract version 2 separates required sections from optional enrichment and
-records metadata capabilities for ownership, sensitivity, endorsement, tags,
-KQL schema, SQL schema, item definitions, source provenance and policy
-evidence. Required-section failure rejects the refresh. Optional permission,
-encrypted-label, endpoint or throttling failures remain visible as evidence
-without erasing valid results from other items. Valid empty workspaces are
-accepted.
-
-The browser runs one selected workspace at a time. A failed workspace does not
-stop the remaining batch and cannot replace another workspace's manifest.
-Users can cancel the active run; queued workspaces become cancelled. The
-browser warns before refresh or navigation closes the tab while collection is
-active.
-
-Each refresh creates one correlated `SyncRun` attempt before Fabric discovery,
-then records the real terminal time, duration and outcome. Content rows are
-written first and re-read through the same fully paginated hydration path. The
-`Workspace` manifest is written only after the persisted snapshot reconstructs
-successfully. A failed or incomplete refresh never becomes active.
-
-Team notes are loaded independently from snapshot hydration. A note transport,
-pagination or parsing failure appears only in the notes surface and cannot hide
-an otherwise valid catalog.
-
-Content rows are created in bounded batches of eight requests. Entity groups
-remain sequential and each in-flight batch settles before an error is
-propagated. The audit attempt is updated in place rather than deleted and
-recreated.
-
-After the new manifest is visible, Atlas applies trusted snapshot retention.
-Every candidate is filtered by workspace, snapshot and writer, child rows are
-deleted in bounded batches, and the Workspace manifest is deleted last. Only
-the configured synchronizer has delete permission. Cleanup failures are logged
-and retried by a later sync without invalidating the published snapshot.
-Unpublished failed, stale-running or legacy-completed attempts are eligible for
-scoped child-row cleanup only after a one-hour grace period; their `SyncRun`
-audit evidence is retained.
-When the synchronizer changes, explicitly configured former writers remain
-trusted for reads and cleanup while only the current writer can create or
-delete rows.
-
-Snapshot creation is bound to the configured synchronization administrator.
-Rayfin create policies compare the authenticated email with each row's
-`writerEmail` and with the deployment's configured synchronizer. Database reads
-also filter that writer before pagination, and hydration ignores any manifest
-that fails the same trust boundary.
-
-The workspace manifest stores the deployed build ID and explicit snapshot
-contract marker. The first deployment, a new major/minor contract or an
-intentional marker revision shows the guided sync screen until the authorized
-synchronizer publishes its snapshot. Compatible patch releases reuse the
-validated snapshot history. A blocked user sees the configured synchronizer
-account to contact. After synchronization, current data and history switch to
-the new snapshot together before background reconciliation.
-
-The MSAL account used for Sync must match the current Rayfin user and tenant.
-Tokens use session storage so switching Fabric users cannot silently reuse the
-first account from a persistent browser cache. Optional audience acquisition
-fails closed and never substitutes data from another identity.
-
-## Governance history
-
-`loadHistoryFromDb` reads older trusted manifests with snapshot-scoped queries.
-Each candidate passes the same writer, row-count, schema and item validation as
-the active catalog. Invalid historical snapshots are skipped.
-
-`src/atlas/history.ts` compares validated snapshots without depending on row
-order. It detects changes to items, schema objects, access grants, sensitivity,
-lineage and jobs, then derives the trend series used by Governance Center.
-Fabric principal IDs are authoritative. Unique normalized email correlation
-keeps legacy snapshots comparable when older access rows used a name or email.
-
-Workspace manifests from summary version 1 also carry the complete trend
-metrics. Startup loads those compact summaries for the ledger and trend, plus
-the current and previous detailed catalogs. Selecting another Change Center
-snapshot lazily loads and validates that catalog through a snapshot-scoped
-query; in-flight loads are discarded when a newer sync starts.
-
-Change details retain full values and DAX rather than only ledger previews.
-Historical impact uses the explicitly selected before or after catalog. A
-removed object is inspected in its earlier snapshot; unavailable historical
-evidence never falls back to the current graph.
-
-## Personal governance state
-
-Saved views and access-review decisions are separate from synchronized
-snapshots. Rayfin policies bind their `user_id` field to the authenticated
-subject claim, so each user reads and changes only their own records.
-
-Governance Center groups findings, snapshot changes, trends and metadata
-coverage. Access Review uses the same additive grant calculation as the
-Asset Catalog and lineage inspector, with explicit restriction-evidence limits.
-
-## Navigation state
-
-Display preferences are separate from shareable navigation. Density, Catalog
-layout and lineage inspector width are stored in browser local storage, keyed
-by the authenticated user and configured workspace. They are not cloud-synced
-and are not included in copied URLs. A storage failure leaves a visible warning.
-Compact mode adjusts spacing and control height rather than reducing font size.
-
-`src/atlas/routing.ts` parses and serializes Atlas-owned URL parameters while
-preserving unrelated Fabric host parameters. Catalog, Asset Catalog,
-Governance Center, Access Review, Jobs and Workspace Hub use namespaced keys;
-Map retains its established lineage query keys. Browser back/forward therefore
-restores the active section, filters, selected evidence and Change Center
-snapshot pair.
-
-Live filter changes use `replaceState`, while destination changes use
-`pushState`. Re-selecting the exact current route is a no-op so browser history
-does not accumulate duplicate entries.
-
-## Governance intelligence
-
-`src/atlas/radar.ts` compares the exact latest adjacent snapshot pair. Stable
-finding IDs identify new, persisting and resolved findings; risky Change Center
-events add access, sensitivity, lineage and removal signals. A deployment-ID
-boundary creates a clean baseline instead of reporting every existing finding
-as new.
-
-`FindingAck` stores personal acknowledgement or mute state under a
-`claims.sub == user_id` policy. Mutations are serialized per finding, and a
-personalization failure never hides the underlying Radar alerts.
-
-`src/atlas/posture.ts` evaluates documentation, ownership, sensitivity, access,
-lineage and operations. Non-applicable evidence is excluded rather than scored
-as zero. Current and previous loaded catalogs provide Overview deltas; opening
-Posture lazily hydrates older catalogs for a consistent trend.
-
-`GovernancePolicy` supplies workspace targets, all defaulting to 70%. Current
-targets apply consistently to current and historical scores; earlier policy
-versions are not retained. `GovernanceException` attaches an administrator's
-reason and expiry to a finding without suppressing the finding or changing
-its score.
-
-Access-review events include a canonical permission fingerprint. A changed
-grant or principal resolution requires revalidation even when the strongest
-access level is unchanged. Legacy decisions remain visible as history, and
-clear actions append events instead of deleting earlier decisions.
-
-`src/atlas/offboarding.ts` composes existing metadata, effective access and
-indexed lineage into departure/removal packs. It blocks ownership claims for
-ambiguous principals and recommends only resolved internal user successors.
-
-## Object lineage
-
-Verified object edges are stored beside schema chunks as hidden `ConfigEntry`
-rows. The generic contract identifies item and object, uses stable IDs and
-accepts only `confidence: verified`. It covers physical object-to-ontology
-bindings, entity relationships, Graph Model mappings and selected source
-objects feeding Data Agents. Historical impact loads the edges from the
-selected snapshot.
-
-Atlas does not read Ontology or Graph Model instances. Those are business data,
-not workspace metadata.
-
-### DAX object lineage
-
-`src/atlas/dax-refs.ts` strips strings and comments before extracting qualified
-columns and measures. `src/atlas/schema-lineage.ts` emits dependencies only
-when a reference resolves uniquely to a real synchronized schema object.
-
-Verified DAX edges remain inside the semantic model. A cross-item source hop is
-marked inferred and requires both real item lineage and one unique matching
-upstream table/column. Asset Catalog and impact reports display confidence
-explicitly; item-level fallback remains unchanged when no object evidence
-resolves.
-
-## Object inventory
-
-- Lakehouse tables come from the paginated Fabric Tables API when available.
-- Schema-enabled lakehouse columns can be derived through the real Lakehouse to
-  SQL endpoint to Semantic Model lineage.
-- Warehouse and SQL Database objects use scanner metadata, with a clearly
-  labelled downstream model subset when complete SQL catalog access is not
-  available.
-- KQL Database tables and columns come from one database-wide read-only schema
-  command. Function and materialized-view bodies are not retained.
-- SQL Database tables, views and columns come from one constant `sys.*`
-  metadata query. Atlas does not select table rows or retain module definitions.
-- Ontology definitions are reduced to entities, properties, source bindings,
-  relationships and contextualizations.
-- Graph Model definitions are reduced to node/edge types and source/property
-  mappings; filter values and instances are discarded.
-- Data Agent definitions retain publication state, source references and
-  selected element trees. Instructions, few-shots and answers are discarded.
-- Semantic Models include tables, columns, measures, descriptions, hidden
-  flags and measure expressions. Dataset expressions are requested only because
-  the scanner requires that option for measure DAX.
-- Dataflows, Datamarts and Semantic Models include documented upstream
-  Dataflow, Datamart and Semantic Model relationships by immutable ID.
-  Authoritative snapshot edges stay inside their workspace manifest.
-  Cross-workspace Item Relations evidence uses composite workspace and item
-  identities and remains in the separate Preview graph.
-- Reports include pages. Fabric APIs do not expose complete visual field
-  bindings through this flow.
-
-Scanner payloads cross an explicit metadata allowlist. Atlas never serializes
-table rows, datasource or connection details, dataset/table Mashup expressions,
-Power Query definitions, notebook source or pipeline definitions. Ownership is
-reported only where Microsoft documents a type-specific field:
-`configuredBy` for Semantic Models, Dataflows and Datamarts, and `createdBy` for
-Reports. Unknown collection state remains `N/A` instead of becoming a false
-missing-owner or unlabeled finding.
-
-In preview / standalone mode there is no token, so Sync just refreshes the sample dataset. The data
-layer is one abstraction (`src/atlas/store.tsx`) so the UI code is identical in both modes.
-
-## Workspace Hub
-
-Posting a comment calls `addComment`, which optimistically updates the UI and persists a `Comment`
-row through `client.data.Comment.create`. Because comments are stored in the Fabric SQL database,
-they persist and are shared across the whole team. Configuration and comments are presented together
-in Workspace Hub so technical facts and human context stay adjacent. The
-display name resolved for a new note is preserved on reload; notes remain
-append-only.
-
-## Theming
-
-Light is the default so the embedded app follows the surrounding Fabric portal.
-`src/hooks/use-theme.ts` stores an explicit light or dark preference and toggles
-the `.dark` class for Tailwind.
-
-Design tokens in `src/global.css` map the Atlas semantic palette to Fabric UX
-and Fluent 2 neutrals, brand actions, status colors, spacing, radii and
-elevation. Atlas keeps a restrained purple-to-teal spectrum for product
-identity and lineage while standard interactions use the Fabric brand color.
-
-Radix dialog and tab primitives provide modal focus containment, restoration
-and keyboard navigation without changing the Fabric-aligned visual layer.
-Global search builds one metadata index per loaded snapshot and applies a short
-debounce before ranking results. Optional OneLake Catalog Search results are
-appended after that deterministic ranking in their own labelled group and never
-change it. Item and object lineage retain their visual
-graph while also exposing selected relationships as assistive text.
-
-The lineage engine builds incoming, outgoing, incident and neighbor indexes
-once per edge set. Traversal is proportional to the reachable subgraph, layout
-scores do not filter all edges inside sort comparators, and Map reuses active
-impact when focus and selection match.
-
-Dense Access, Asset Catalog and Jobs blocks use Chromium
-`content-visibility:auto` containment. Access has one responsive selectable
-list, and Jobs has one semantic definition-list timeline that changes layout
-without duplicating content.
-
-## Build transparency
-
-The production build reports large application and radar chunks. Vite also
-reports that the `backend.ts` Rayfin client dynamic import cannot form a
-separate chunk because persistence modules import the same client statically.
-These warnings do not change runtime correctness. Bundle splitting remains a
-measured performance task rather than a release claim.
-
-Type checking is a blocking build step. `npm run typecheck` executes
-`tsc -b --force` with `strict` and `noEmit`; `noCheck` is not enabled.
-
-## Preview vs deployed
-
-| | Preview / standalone | Deployed in Fabric |
-| --- | --- | --- |
-| Auth | none | Fabric brokered (Entra ID) |
-| Data | in-memory sample set | Fabric SQL via RayfinClient |
-| Sync | refreshes the sample | composes Rayfin collectors plus exact Python compatibility, then publishes a workspace snapshot |
-| Comments | in-memory | persisted to `Comment` |
-| Saved views and reviews | current preview session | user-scoped Rayfin entities |
-
-This lets the app be fully explorable (and screenshot-able) offline, while the same code runs for
-real once deployed.
+| Workspaces, items, roles and jobs | `workspaceCollectCore` | Explicit rollback only |
+| Ontology, Graph Model and Data Agent definitions | `workspaceCollectDefinitions` | None |
+| Power BI model and PBIR structure | `workspaceCollectPowerBi` | Scanner fallback where definition evidence is unsupported |
+| Item Relations Preview | `workspaceCollectItemRelations` | None; remains Beta and non-authoritative |
+| KQL structural metadata | `workspaceCollectKqlMetadata` | Kusto live schema where required |
+| SQL Database, Warehouse, Lakehouse and Mirrored Database catalogs | `workspaceCollectSqlMetadata` | None |
+| Shortcuts, mirroring and materialized lake view provenance | `workspaceCollectSourceProvenance` | None |
+| Fabric Policies context | `workspaceCollectAccessPolicyEvidence` | Portal-only evidence stays unavailable |
+| Power BI admin scanner and scanner lineage | Python `sync_compatibility` | Retained until Rayfin exposes a documented Power BI audience |
+| PBIR-Legacy pages | Python `sync_compatibility` | Retained until the supported definition path covers legacy reports |
+| Kusto live metadata | Python `sync_compatibility` | Retained until Rayfin exposes a documented Kusto audience |
+
+Rayfin collector output is not published directly. The browser accepts a
+snapshot only after the complete required contract passes validation.
+
+## Rayfin Function contracts
+
+Functions are synchronizer-gated and accept strict workspace, item and
+correlation identifiers. They do not accept browser tokens, arbitrary URLs or
+arbitrary queries.
+
+Shared protections include:
+
+- fixed Fabric API routes;
+- redirect rejection;
+- continuation origin and path validation;
+- page, record and response-size limits;
+- bounded retries and `Retry-After` handling;
+- execution deadlines and cancellation;
+- fixed error codes without upstream response bodies;
+- metadata-only allowlists.
+
+The generated Function schema and runtime metadata live in
+`rayfin/functions/src/types.ts` and
+`rayfin/functions/runtimemetadata.json`. Regenerate them through the Rayfin
+CLI. Do not edit them by hand.
+
+## Python compatibility boundary
+
+The Python UDF exposes:
+
+- `sync_compatibility` for the exact retained collector plan;
+- `sync_all` and `sync_items` for explicit rollback;
+- `ping` for basic validation.
+
+The normal 2.0 path uses `sync_compatibility`. It cannot rediscover the
+workspace or run an unrequested collector.
+
+The UDF keeps its existing execution deadline, retry bounds, payload limits and
+metadata allowlists. It never returns table rows, credentials, connection
+strings, prompts, few-shot examples or query text.
+
+See [Rayfin platform gaps](rayfin-platform-gaps.md) for the contracts required
+to remove this compatibility layer.
+
+## Snapshot publication
+
+The workspace manifest is the visibility marker.
+
+```mermaid
+flowchart LR
+  S["Create SyncRun"] --> C["Collect metadata"]
+  C --> V{"Required evidence valid?"}
+  V -->|No| F["Fail run and keep current snapshot"]
+  V -->|Yes| W["Write child rows"]
+  W --> R["Read rows back"]
+  R --> M{"Counts and identities match?"}
+  M -->|No| F
+  M -->|Yes| P["Publish Workspace manifest"]
+  P --> A["Activate snapshot and apply retention"]
+```
+
+Rows without a complete manifest remain invisible to normal hydration.
+
+Snapshot retention defaults to 12 and can be configured from 2 to 50. Child
+rows are removed before a stale manifest. Cleanup failure does not invalidate
+the newly published snapshot.
+
+## Persisted model
+
+| Entity | Purpose |
+|---|---|
+| `Workspace` | Workspace-scoped snapshot manifest and compact governance summary |
+| `FabricItem` | Top-level Fabric item |
+| `LineageEdge` | Trusted source-to-consumer relationship |
+| `Principal` | User, group, service principal or guest |
+| `AccessGrant` | Workspace or item grant evidence |
+| `JobRun` | Recent Fabric job evidence |
+| `ConfigEntry` | Bounded configuration, schema chunks and provenance |
+| `Comment` | Shared append-only workspace or item note |
+| `SyncRun` | Running, completed or failed synchronization attempt |
+| `WorkspaceScope` | Shared selected workspace IDs |
+| `ItemRelationsEvidenceSnapshot` | Chunked Beta relationship evidence |
+| `OperationalIncident` | Sanitized observed job-failure incident |
+| `SavedView` | User-scoped navigation preset |
+| `AccessReview` and `AccessReviewEvent` | User-scoped review state and history |
+| `FindingAck` | User-scoped acknowledgement or mute |
+| `GovernancePolicy` | Shared posture targets |
+| `GovernanceException` | Shared time-bounded exception |
+
+The complete entity definitions and policies are in `rayfin/data/`.
+
+## Read scopes
+
+The selected catalog and shared notes are readable by every authenticated user
+admitted to the Fabric App.
+
+The following state is user-scoped:
+
+- saved views;
+- access-review decisions;
+- Radar acknowledgements and mutes;
+- browser-local display preferences.
+
+The Fabric App audience is therefore the catalog disclosure boundary.
+
+## Catalog and object inventory
+
+Atlas indexes every top-level Fabric item returned by the Items API. Deeper
+inventory depends on the item family and verified collection contract.
+
+Supported object projections include:
+
+- Lakehouse tables and SQL analytics endpoint columns;
+- Warehouse, SQL Database and Mirrored Database tables, views and columns;
+- Semantic Model tables, columns, measures and selected DAX;
+- KQL tables, columns, functions, parameters and materialized views;
+- Ontology entities, properties, bindings and relationships;
+- Graph Model node types, edge types and mappings;
+- Data Agent source references and selected elements;
+- shortcuts, mirroring and materialized lake view provenance.
+
+The item-family registry in `src/atlas/item-families.ts` records catalog,
+object, lineage, access and operations coverage independently.
+
+## Lineage
+
+### Trusted Atlas lineage
+
+`LineageEdge` contains validated snapshot relationships normalized from source
+to consumer. The initial graph layout is stable and staged from orchestration
+through storage, endpoints, models and consumers.
+
+Impact mode filters the graph to the selected upstream and downstream
+component. Reset restores the computed layout and clears selection, focus,
+drag state and Preview expansion.
+
+### Item Relations Preview
+
+Item Relations evidence is stored separately from `LineageEdge`.
+
+The Preview switch replaces the trusted graph while active. It preserves raw
+`relationType`, composite `workspaceId:itemId` identities, collection status
+and cross-workspace evidence.
+
+Preview evidence never becomes trusted lineage automatically.
+
+### Object lineage and X-Ray
+
+Object lineage combines synchronized objects with trusted item relationships.
+DAX edges are emitted only when a reference resolves to one real synchronized
+column or measure.
+
+Semantic X-Ray provides:
+
+- model selection;
+- measure and column search;
+- Depends on and Used by direction;
+- direct and transitive traversal;
+- ambiguity and cycle evidence.
+
+Atlas does not claim report visual field usage because the current collection
+path does not expose it reliably.
+
+## Governance and access
+
+Governance Center reads the same validated snapshot through:
+
+- Posture;
+- Findings;
+- Changes;
+- History;
+- Coverage;
+- Policies & AI.
+
+Access Review combines recorded workspace and item grant paths. It keeps
+restriction layers separate from grant evidence.
+
+What-if removes recorded grant paths in memory only. It does not call a Fabric
+write API and does not claim to model unavailable OneLake security, Purview DLP
+or group membership.
+
+## Operations
+
+Jobs & health stores recent job metadata and sanitized operational incidents.
+Observed failures remain separate from downstream impact inferred through
+lineage.
+
+Atlas currently collects Fabric job history. Workspace monitoring, Monitor Hub
+alerts and Fabric App Metrics remain portal-only.
+
+## Scheduling boundary
+
+Synchronization still requires an open browser because:
+
+- Fabric Apps backend Functions expose no documented unattended timer or
+  trigger;
+- the remaining compatibility collectors require a delegated identity;
+- Atlas never stores or replays browser access or refresh tokens;
+- Rayfin exposes no distributed claim and transactional fencing contract for
+  an unattended multi-host workflow.
+
+Scheduled refresh remains disabled.
+
+## Read-only Atlas MCP
+
+The optional local stdio MCP server reads the same validated snapshots as the
+app. It runs on the MCP client machine, not inside a Rayfin Function.
+
+The MCP is read-only and limited to the selected workspace scope. It exposes
+catalog, impact, lineage, access, incident and snapshot evidence without
+personal review state.
+
+Activation remains gated by a dedicated public client, delegated
+`Item.Execute.All`, reviewed external Entra exchange and live Conditional
+Access validation.
+
+## Security boundary
+
+Atlas stores governance metadata, not business content.
+
+Excluded content includes:
+
+- table and event rows;
+- credentials and connection payloads;
+- Power Query and source expressions;
+- notebook source and cells;
+- pipeline activities and expressions;
+- Data Agent prompts, instructions and few-shots;
+- graph instances and filter values;
+- KQL rows, query text and policy bodies;
+- mirrored source rows and source database names.
+
+Unexpected collector fields are not persisted by default.
+
+## Deployment
+
+The canonical Fabric deployment command is:
+
+```powershell
+npx rayfin up `
+  --tenant <tenant-id> `
+  --workspace-id <workspace-id> `
+  --item-name fabric-atlas `
+  --yes
+```
+
+Rayfin deploys the AppBackend, SQL schema, typed Functions and static app.
+Publish the Python compatibility UDF separately by round-tripping its complete
+Fabric definition and replacing only `function_app.py`.
+
+See [Installation and deployment](installation.md) for the complete workflow.
+
+## Source map
+
+| Path | Responsibility |
+|---|---|
+| `src/App.tsx` | Application shell and active-workspace navigation |
+| `src/atlas/store.tsx` | Hydration, switching, synchronization and comments |
+| `src/atlas/browser-collector-sync.ts` | Rayfin collector composition and compatibility planning |
+| `src/atlas/live-sync.ts` | Snapshot contracts and Python compatibility invocation |
+| `src/atlas/backend.ts` | Persistence and trusted snapshot loading |
+| `src/atlas/lineage.ts` | Lineage normalization, traversal and layout |
+| `src/atlas/item-relations-evidence.ts` | Beta relation contract and semantics |
+| `src/atlas/source-provenance-snapshot.ts` | Shortcut, mirroring and materialized lake view projection |
+| `src/atlas/views/` | Product screens |
+| `src/mcp/` and `src/atlas/mcp/` | Local read-only MCP |
+| `rayfin/data/` | Entities and row policies |
+| `rayfin/functions/` | Typed Rayfin Functions |
+| `fabric/udf/atlas_sync_functions/` | Python compatibility collector |
+
+## Related documentation
+
+- [Data model](data-model.md)
+- [Item-family coverage](item-families.md)
+- [Lineage depth](lineage-depth.md)
+- [Item Relations evidence](item-relations-evidence.md)
+- [Source provenance](source-provenance.md)
+- [Access policy evidence](access-policy-evidence.md)
+- [Observability](observability.md)
+- [Rayfin platform gaps](rayfin-platform-gaps.md)
+- [Atlas MCP](atlas-mcp.md)

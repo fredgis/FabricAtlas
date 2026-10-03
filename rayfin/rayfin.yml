@@ -1,5 +1,5 @@
-id: fabric-atlas-fabcon
-name: Fabric Atlas FabCon
+id: fabric-atlas
+name: Fabric Atlas
 version: 2.0.0
 secrets:
   - name: ATLAS_POWERBI_SCANNER_ENABLED
@@ -23,13 +23,7 @@ services:
     allowedRedirectUris:
       - http://localhost:5173
       - http://127.0.0.1:5173
-      - https://agile-lotus-88c0a929ca-centralus.webapp.fabricapps.net
-      - https://epic-grass-a6e15dee0b-centralus.webapp.fabricapps.net
-      - http://localhost:5174
-      - http://127.0.0.1:5174
-      - https://sleek-mango-daf3df4502-centralus.webapp.fabricapps.net
-      - https://curly-bolt-17d896b321-centralus.webapp.fabricapps.net
-      - https://solar-shell-33dd5470f2-centralus.webapp.fabricapps.net
+      - https://daily-cliff-7ae44bdc6a-centralus.webapp.fabricapps.net
   data:
     enabled: true
     dialect: mssql

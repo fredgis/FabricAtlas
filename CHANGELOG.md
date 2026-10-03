@@ -227,7 +227,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Data Agent draft/published source inventory and selected table, column, measure, KQL, ontology and graph objects.
 - Verified object lineage for physical source bindings, ontology relationships, Graph Model mappings and Data Agent selections.
 - Object-level impact, filtering, search, deep links and historical comparison for the new metadata types.
-- A cited Fabric metadata coverage audit in `docs/fabric-metadata-coverage-audit.md`.
+- A cited Fabric metadata coverage review.
 
 ### Changed
 

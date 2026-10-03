@@ -241,12 +241,15 @@ are kept. The entity is additive and needs no data migration; until it is
 deployed, Atlas derives incidents from the snapshot job history and says so.
 See [observability.md](observability.md#stored-incident-records).
 
-## Phase 2 durable synchronization probe
+## Durable synchronization probe
 
-These three additive entities are separate from immutable snapshots and the existing `SyncRun`
-audit. The deployed browser still uses the Python UDF/browser synchronization flow. The probe
-allocates a candidate `snapshotId` but never publishes its manifest or writes snapshot children.
-Its UUID references are scalar fields, with no navigation to a `Workspace` manifest.
+These three additive entities are separate from immutable snapshots and the
+existing `SyncRun` audit. They remain a fail-closed durability probe; the
+active browser flow uses Rayfin-first collectors plus exact Python
+compatibility and does not use the probe to publish a snapshot. The probe
+allocates a candidate `snapshotId` but never publishes its manifest or writes
+snapshot children. Its UUID references are scalar fields, with no navigation
+to a `Workspace` manifest.
 
 ### SyncJob
 

@@ -1,88 +1,102 @@
-# Rayfin platform gaps and retained compatibility
+# Rayfin platform gaps
 
-Assessment: **2026-10-02, Rayfin 1.36.2**.
+Assessment: **3 October 2026, Rayfin 1.36.2**.
 
-## Active collection boundary
+Fabric Atlas 2.0 is Rayfin-first. Typed Rayfin Functions collect the catalog,
+definitions, SQL and KQL structure, Item Relations, source provenance and
+policy evidence. Python remains only where Rayfin does not expose the required
+runtime contract.
 
-Fabric Atlas now uses a browser-serialized, Rayfin-first collector path:
+## What is missing
+
+### To remove the Python compatibility UDF
+
+| Missing Rayfin capability | Atlas evidence still collected in Python | Exit condition |
+|---|---|---|
+| Documented Power BI application audience or first-party scanner connector | Admin scanner metadata, access and authoritative scanner lineage | A deployed Function can call `admin/workspaces/getInfo`, poll scan status/result and return the reviewed metadata-only projection |
+| Supported PBIR-Legacy report-page path | Page inventory for legacy reports | Rayfin Power BI collection covers both modern PBIR and PBIR-Legacy reports with application identity |
+| Documented Kusto application audience | Live Kusto schema fallback | A deployed Function receives a supported Kusto token and can run the bounded metadata command |
+
+When these three contracts exist and pass live parity, `sync_compatibility` can
+be removed.
+
+### To run synchronization without an open browser
+
+| Missing Rayfin capability | Current consequence | Exit condition |
+|---|---|---|
+| Supported unattended timer or trigger | Synchronization must be started in the browser | A Function can start a workspace run on a schedule with application identity |
+| Distributed claim or lease primitive | No safe multi-host continuation owner | One worker can claim a task slice idempotently and another cannot publish it |
+| Same-database transaction or fencing primitive | Publication cannot be atomically tied to checkpoints | Snapshot rows, task state and manifest visibility can be committed or rejected together |
+| Supported continuation contract | Closing the browser stops future slices | A durable run can resume after worker or browser interruption without replaying delegated tokens |
+
+Atlas does not store or replay browser access or refresh tokens to work around
+these gaps.
+
+### To complete access-policy evidence
+
+| Missing public contract | Current Atlas state |
+|---|---|
+| OneLake security role membership and data scope | Unsupported, portal review required |
+| Purview DLP restriction state | Unsupported, Purview review required |
+| Fabric Policies evaluation operation | Unavailable unless a verified tenant contract is supplied |
+
+These policy gaps do not require Python and do not block catalog publication.
+They remain explicit coverage states.
+
+## Active Rayfin collection
 
 - `workspaceCollectCore`
 - `workspaceCollectDefinitions`
+- `workspaceCollectPowerBi`
 - `workspaceCollectItemRelations`
 - `workspaceCollectKqlMetadata`
 - `workspaceCollectSqlMetadata`
-- `workspaceCollectPowerBi`
+- `workspaceCollectSourceProvenance`
+- `workspaceCollectAccessPolicyEvidence`
 
-The browser validates and merges those bounded envelopes, requests only the
-remaining compatibility gaps from the Python UDF, then uses the existing
-manifest-last snapshot writer. `VITE_ATLAS_COLLECTOR_ROLLBACK=true` restores
-the previous Python-first collection path without changing publication rules.
-
-Rayfin collector output is authoritative only after the browser composition
-passes the complete snapshot contract. Item Relations evidence remains Beta,
-non-authoritative and separate from `LineageEdge`.
+The browser validates and merges these bounded envelopes, requests only the
+exact compatibility plan, then publishes through the manifest-last writer.
 
 ## Retained Python compatibility
 
-`sync_compatibility` accepts an exact collector plan, echoes it in the result
-and cannot rediscover the workspace or run an unrequested collector.
+`sync_compatibility` can collect only the requested plan:
 
-| Gap | Retained Python evidence | Why Rayfin does not replace it yet |
-|---|---|---|
-| Power BI admin scanner | Access, scanner metadata and authoritative item lineage | The optional Secret Store service-principal scanner needs operator credentials, tenant settings and live parity before activation |
-| Semantic-model scanner fallback | Schema only for definitions that explicitly report unsupported | Definition access can require write permission or be blocked by sensitivity labels |
-| Legacy report pages | PBIR-Legacy page fallback | The supported definition path does not cover every legacy report |
-| Kusto data plane | Live schema fallback where available | Rayfin Functions expose no documented Kusto audience |
+- Power BI admin scanner evidence;
+- semantic-model scanner fallback when a definition is unsupported;
+- PBIR-Legacy pages;
+- Kusto live metadata.
 
-Lakehouse Tables REST, Warehouse catalogs, SQL Database catalogs, item
-properties and supported definitions run only through Rayfin Functions.
-Application-identity permission failures remain explicit partial or
-unsupported evidence and do not route those migrated collectors back through
-Python.
+`sync_all` and `sync_items` remain explicit rollback paths.
 
-The UDF keeps its 180-second execution deadline, bounded retries,
-same-origin continuation validation, page/record limits, 25 MiB envelope cap
-and metadata-only allowlists. It never returns business rows, credentials,
-connection strings, prompts, few-shot examples or query text.
+The UDF keeps:
 
-## Capabilities deliberately not claimed
+- a 180-second deadline;
+- bounded retries and `Retry-After`;
+- same-origin continuation validation;
+- page, record and response-size limits;
+- metadata-only allowlists.
 
-- Background continuation and scheduled refresh
-- Distributed task claiming across Function hosts
-- Transactional fencing of Rayfin GraphQL mutations with SQL application locks
-- Engine-complete XMLA/DMV DAX dependencies
-- Public read APIs for OneLake role membership or Purview DLP restriction state
-- Verified central Fabric Policies evaluation, whose operation contract is not public
-- Kusto application-audience support in Fabric Apps Functions
+It never returns business rows, credentials, connection strings, prompts,
+few-shot examples or query text.
 
-These gaps remain explicit capability states. They do not invalidate the
-validated catalog and do not block browser-driven multi-workspace Sync.
+## Scheduling decision
 
-## Scheduling blocker
+Scheduled refresh stays disabled until Rayfin provides the unattended trigger,
+identity and distributed ownership contracts above.
 
-The active collector still needs a browser-held delegated identity for the
-remaining compatibility calls. Fabric Apps backend Functions expose no
-documented timer or unattended trigger, and Atlas never stores or replays
-browser access or refresh tokens.
+Browser-driven multi-workspace synchronization is supported now. Each workspace
+publishes an independent snapshot and a failed workspace does not invalidate
+another workspace.
 
-Closing the browser can preserve committed rows but does not execute another
-slice. Scheduled refresh therefore stays disabled. This is the Phase 2
-platform blocker; it does not block multi-workspace scope, per-workspace Sync
-or the active Rayfin collector cutover.
+## Removal checklist
 
-## Requested platform capabilities
+The Python UDF can be deleted only when:
 
-The following additions would remove the remaining compatibility layer:
+1. Power BI scanner parity passes in the target tenant.
+2. PBIR-Legacy pages are covered.
+3. Kusto live schema parity passes.
+4. No compatibility collector remains in the browser plan.
+5. Failure isolation and last-known-good publication still pass.
 
-1. A documented Power BI audience or first-party scanner connector for Fabric
-   Apps Functions.
-2. A documented Kusto audience for Function application identities.
-3. A same-database transaction/procedure path that can fence publication and
-   checkpoint mutations atomically.
-4. A supported unattended trigger with application identity and bounded
-   continuation semantics.
-5. A public Fabric Policies evaluation operation contract and read contracts
-   for OneLake security and DLP evidence.
-
-Until those contracts exist and pass live tenant parity, Atlas keeps only the
-bounded compatibility paths listed above.
+Unattended scheduling is a separate gate. Removing Python does not by itself
+provide a timer, durable continuation or distributed claim ownership.

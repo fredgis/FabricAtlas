@@ -1,4 +1,4 @@
-# Phase 4 Power BI metadata replacement
+# Power BI metadata replacement
 
 Contract and identity review: **2026-10-02, Rayfin 1.36.2**.
 

@@ -1,4 +1,4 @@
-# Atlas MCP: read-only evidence interface (Phase 11)
+# Atlas MCP: read-only evidence interface
 
 **Status (2 October 2026):** implemented and tested locally, disabled by
 default, not deployed. Live use is blocked by the deployment and identity

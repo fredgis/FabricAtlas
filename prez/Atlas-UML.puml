@@ -3,80 +3,109 @@ hide empty methods
 hide circle
 skinparam backgroundColor #FFFFFF
 skinparam defaultFontName Segoe UI
-skinparam defaultFontSize 18
 skinparam shadowing false
-skinparam roundCorner 0
 skinparam linetype ortho
-skinparam nodesep 38
-skinparam ranksep 45
 skinparam classAttributeIconSize 0
 skinparam classBackgroundColor #FFFFFF
 skinparam classBorderColor #117865
 skinparam classFontColor #0C695A
-skinparam classFontSize 21
-skinparam classFontStyle bold
-skinparam classAttributeFontColor #242424
-skinparam classAttributeFontSize 18
 skinparam ArrowColor #616161
-skinparam ArrowFontColor #242424
-skinparam noteBackgroundColor #EFF6FC
-skinparam noteBorderColor #0078D4
-skinparam noteFontColor #242424
-skinparam nodesep 48
-skinparam ranksep 50
-class Workspace <<entity>> {
-  + id : string {UUID, PK}
-  + fabricId : string
-  + snapshotId : string [0..1] {UUID}
-  + writerEmail : string [0..1]
+
+class Workspace <<manifest>> {
+  + id : UUID
+  + fabricId : UUID
+  + snapshotId : UUID
+  + writerSubject : string
 }
-class FabricItem <<entity>> {
-  + id : string {UUID, PK}
-  + workspace_id : string {UUID}
-  + snapshotId : string [0..1] {UUID}
-  + fabricId : string
-  + displayName : string
+
+class FabricItem <<snapshot>> {
+  + workspace_id : UUID
+  + snapshotId : UUID
+  + fabricId : UUID
   + itemType : string
-  + health : ItemHealth
 }
-class Principal <<entity>> {
-  + id : string {UUID, PK}
-  + principalId : string
-  + displayName : string
-  + kind : PrincipalKind
-}
-class AccessGrant <<entity>> {
-  + id : string {UUID, PK}
-  + principalRef : string
-  + itemFabricId : string [0..1]
-  + accessLevel : AccessLevel
-}
-class LineageEdge <<entity>> {
-  + id : string {UUID, PK}
-  + sourceFabricId : string
-  + targetFabricId : string
+
+class LineageEdge <<snapshot>> {
+  + sourceFabricId : UUID
+  + targetFabricId : UUID
   + relation : string
-  + broken : boolean
 }
-class JobRun <<entity>> {
-  + id : string {UUID, PK}
-  + itemFabricId : string
-  + status : JobStatus
-  + startedAt : Date [0..1]
+
+class Principal <<snapshot>> {
+  + principalId : string
+  + kind : string
 }
-class ConfigEntry <<entity>> {
-  + id : string {UUID, PK}
-  + itemFabricId : string
+
+class AccessGrant <<snapshot>> {
+  + principalRef : string
+  + itemFabricId : UUID
+  + accessLevel : string
+}
+
+class JobRun <<snapshot>> {
+  + itemFabricId : UUID
+  + status : string
+}
+
+class ConfigEntry <<snapshot>> {
+  + itemFabricId : UUID
   + section : string
   + label : string
-  + value : string [0..1]
 }
-Workspace "1" -down- "0..*" FabricItem
-FabricItem "0..1" -right- "0..*" AccessGrant
-Principal "0..1" -down- "0..*" AccessGrant
-FabricItem "0..1" -down- "0..*" LineageEdge
-FabricItem "0..1" -left- "0..*" JobRun
-FabricItem "0..1" -down- "0..*" ConfigEntry
-Workspace -[hidden]right- Principal
-LineageEdge -[hidden]right- ConfigEntry
+
+class WorkspaceScope <<shared>> {
+  + selectedWorkspaceIds : set
+}
+
+class ItemRelationsEvidenceSnapshot <<evidence>> {
+  + workspaceId : UUID
+  + snapshotId : UUID
+  + chunkCount : int
+}
+
+class AccessPolicyEvidence <<evidence>> {
+  + workspaceId : UUID
+  + snapshotId : UUID
+}
+
+class OperationalIncident <<evidence>> {
+  + workspaceId : UUID
+  + itemFabricId : UUID
+  + runId : string
+}
+
+class SavedView <<personal>> {
+  + workspace_id : UUID
+  + user_id : string
+}
+
+class AccessReview <<personal>> {
+  + workspace_id : UUID
+  + user_id : string
+}
+
+class FindingAck <<personal>> {
+  + workspace_id : UUID
+  + user_id : string
+}
+
+Workspace "1" --> "0..*" FabricItem
+Workspace "1" --> "0..*" LineageEdge
+Workspace "1" --> "0..*" Principal
+Workspace "1" --> "0..*" AccessGrant
+Workspace "1" --> "0..*" JobRun
+Workspace "1" --> "0..*" ConfigEntry
+Workspace "1" --> "0..1" ItemRelationsEvidenceSnapshot
+Workspace "1" --> "0..1" AccessPolicyEvidence
+Workspace "1" --> "0..*" OperationalIncident
+
+Principal "0..1" --> "0..*" AccessGrant : principalRef
+FabricItem "0..1" --> "0..*" AccessGrant : itemFabricId
+FabricItem "0..1" --> "0..*" JobRun : itemFabricId
+FabricItem "0..1" --> "0..*" ConfigEntry : itemFabricId
+
+WorkspaceScope ..> Workspace : selected IDs
+SavedView ..> Workspace
+AccessReview ..> Workspace
+FindingAck ..> Workspace
 @enduml

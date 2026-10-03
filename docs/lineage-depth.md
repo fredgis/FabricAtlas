@@ -1,6 +1,6 @@
-# Lineage depth (Phase 5)
+# Lineage depth
 
-Phase 5 adds four read-only views to **Map & lineage**. Each one uses only
+Fabric Atlas exposes four read-only depth views in **Map & lineage**. Each one uses only
 evidence that Atlas already synchronizes or persists. Where the evidence does
 not exist, the UI and `src/atlas/lineage-capabilities.ts` state a dated
 capability gap instead of approximating it.

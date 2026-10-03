@@ -1,6 +1,6 @@
-# Observability and operational incidents (Phase 9)
+# Observability and operational incidents
 
-Fabric Atlas does not collect live monitoring telemetry. Phase 9 adds to
+Fabric Atlas does not collect live monitoring telemetry. The product adds to
 **Jobs & health**, Governance Radar and the incident feeds:
 
 - native links to the Fabric Monitor hub and to the Atlas app's own metrics

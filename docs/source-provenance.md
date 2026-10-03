@@ -1,6 +1,6 @@
 # Source and security provenance
 
-Phase 8 extends the [#18](https://github.com/fredgis/FabricAtlas/issues/18)
+This design applies the [#18](https://github.com/fredgis/FabricAtlas/issues/18)
 external-lineage principles to mirrored and shortcut sources. Atlas tracks
 mirroring and shortcut relationships that documented Fabric contracts expose
 with explicit identifiers. It builds no ingestion connectors and no bespoke
