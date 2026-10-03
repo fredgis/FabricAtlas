@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.0.0-alpha.1";
+  "2.0.0";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,37 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.0.0",
+    date: "2026-10-03",
+    title: "Rayfin-first multi-workspace governance",
+    sections: [
+      {
+        title: "Collection and scope",
+        items: [
+          "Typed Rayfin Functions collect core inventory, definitions, Power BI structure, Item Relations, KQL structure, SQL catalogs, source provenance and policy evidence.",
+          "Python compatibility is limited to the Power BI admin scanner, PBIR-Legacy pages, Kusto live metadata and explicit rollback.",
+          "Selected workspaces publish independent manifests and switch through one shared active-workspace control.",
+        ],
+      },
+      {
+        title: "Lineage and governance",
+        items: [
+          "Atlas and Item Relations Preview are separate graph sources with stable source-to-consumer layouts, focused impact and complete reset behavior.",
+          "Evidence, Changes and Semantic X-Ray expose relation provenance, historical deltas and resolved DAX consumers.",
+          "Coverage and Policies & AI keep collected, unavailable, unsupported and not-applicable evidence distinct.",
+        ],
+      },
+      {
+        title: "Access and operations",
+        items: [
+          "Access Review adds read-only What-if scenarios while keeping restriction layers and evidence limits explicit.",
+          "Jobs & health separates observed failures from inferred downstream impact and documents portal-only monitoring sources.",
+          "The optional local Atlas MCP provides deterministic read-only tools over validated snapshots.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.9.2",
     date: "2026-08-30",

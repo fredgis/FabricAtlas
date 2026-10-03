@@ -1,6 +1,6 @@
 id: fabric-atlas-fabcon
 name: Fabric Atlas FabCon
-version: 2.0.0-alpha.1
+version: 2.0.0
 secrets:
   - name: ATLAS_POWERBI_SCANNER_ENABLED
     description: Optional scanner adapter switch. Missing or false keeps it disabled.

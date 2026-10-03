@@ -4,173 +4,70 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.0-alpha.1] - Unreleased
+## [2.0.0] - 2026-10-03
 
 ### Added
 
-- A six-pillar governance posture radar rendered by Fabric Visuals. Current
-  scores and configured targets share a fixed 0-100 scale; unknown pillars
-  leave gaps. Chart selection and keyboard-accessible pillar controls update
-  the same evidence and history view.
-- A UI-only Fabric redesign of Overview, Governance Center, Policies & AI,
-  Workspace Hub, Map & lineage and Semantic X-Ray. The existing Segoe UI
-  typography and spacing tokens remain; soft semantic score colors distinguish
-  red, amber, green and neutral N/A. Governance uses line tabs and a persistent
-  desktop evidence pane with a mobile drawer. Policy settings remain context,
-  never restriction decisions or AI exposure assessments. Synchronization
-  remains browser-driven with scheduling disabled, and Beta relationships
-  remain separate from Atlas snapshot lineage.
-- Rayfin TypeScript Functions foundation with a typed, bounded `ping`
-  contract.
-- A shared registry and compact notice component for Preview, Beta and
-  private-preview API evidence.
-- A pure, flag-gated Item Relations API (Beta) evidence contract selectively
-  ported from `experiment/item-relations-api`: response validation,
-  per-family direction (including `PushData` and `CascadeDelete`), unknown
-  relation types, cross-workspace node keys, cycles, prior-evidence
-  preservation and comparison with authoritative lineage. It is not wired to
-  a screen or to synchronization yet.
-- Workspace Hub Synchronization tab with the run banner, selected workspaces,
-  a disabled schedule card that states why scheduling is unavailable, and
-  recent `SyncRun` history. Workspace Hub also gains a Workspace tab, and the
-  first-sync gate can switch back to another selected workspace.
-- A compact global `Active workspace` selector in the application header (in
-  the navigation drawer on narrow screens) when the shared scope holds more
-  than one workspace. Switching is blocked during synchronization and keeps
-  the route and focus.
-- **Jobs & health** observability foundation: failures observed in the
-  synchronized job history are shown apart from downstream impact inferred
-  from snapshot lineage, with a Monitoring sources card that marks workspace
-  monitoring as not collected and links to the verified Monitor hub Job runs,
-  Alerts and Applications pages and to the app's Metrics.
-- Additive `OperationalIncident` entity. After the snapshot marker, the browser
-  synchronization stores one allowlisted row per observed job-failure incident
-  (workspace, item, job type, Fabric run ID, run start, observation and first
-  observation time; never failure reasons, logs or query text). A missing
-  entity or failed write never fails the sync. Downstream impact is joined from
-  snapshot lineage and labelled observed only when the consumer is failing too.
-  Opened incidents feed Governance Radar and its digest; tested Sync Brief and
-  Watchlist incident feeds are ready for those pages, and Jobs & health shows
-  incident changes since the previous snapshot with a Markdown copy.
-- **Map & lineage** gains Graph, Evidence and Changes tabs. Evidence lists
-  every relationship with its sources and a provenance pane; Changes lists
-  lineage added, removed or broken between the last two snapshots. Legacy
-  `#map-beta` links open the single map with Preview evidence enabled.
-- Behind the default-off `VITE_ATLAS_FEATURE_ITEM_RELATIONS` flag, an
-  `Include Item Relations API evidence (Preview)` checkbox overlays persisted
-  Beta relations as dashed purple edges, flags direction conflicts in amber,
-  places endpoints outside the snapshot in a separate lane and keeps every
-  snapshot node in place. With no persisted evidence it says so and draws
-  nothing.
-- Additive `ItemRelationsEvidenceSnapshot` entity for non-authoritative Item
-  Relations evidence. When the default-off Item Relations collector shadow
-  succeeds, the evidence is merged with the previous envelope (so failed or
-  unfinished queries keep their earlier response), stored in checksummed
-  chunks after the Atlas snapshot is published, and read back by Map &
-  lineage. The status line reports partial coverage, early stops and evidence
-  from an earlier snapshot. `LineageEdge` is never written.
-- **Map & lineage → Changes** compares any two retained snapshots as a lineage
-  time machine (one stable union graph with Before, Changes and After views,
-  historical ghosts for removed items, reversed and changed relationships, and
-  Change Center links) and as a deterministic breaking change guard (removed
-  or retyped schema objects, changed measure expressions, removed or reversed
-  lineage and lost ownership, with downstream impact from the earlier
-  snapshot, filters and a Markdown brief).
-- **Map & lineage → X-Ray** explores every table, measure and column of a
-  semantic model with resolved DAX dependencies, explicit unresolved or
-  ambiguous references, cycle detection, direct or transitive impact and
-  evidence export.
-- Item Relations (Beta) lane nodes can be expanded from stored evidence, one
-  bounded hop at a time, without moving shown nodes. Live expansion of
-  external items, Ontology metrics and Ontology inheritance are recorded as
-  dated deferred capabilities.
-- Map & lineage follows the #42 lineage mockup: Items, Relationships and
-  Conflicts to review summary cards; a workspace scope chip and Data flow /
-  Control relations switches; teal verified edges, dashed purple Beta edges
-  and amber conflict markers on nodes; three-line node cards and dashed
-  workspace frames for external Beta endpoints; a source legend bottom left
-  with minimap and zoom bottom right; a restructured relationship evidence
-  pane with per-source status, statement, source and confidence, a
-  **Review conflict** action and the separation note; and table cards with
-  right evidence panes on the Evidence and Breaking changes views.
-- Optional OneLake Catalog Search (Preview) discovery in the `Ctrl+K` palette
-  behind the default-off `VITE_ATLAS_FEATURE_CATALOG_SEARCH` flag. The
-  synchronizer-only `searchCatalogPreview` Function calls the fixed Catalog
-  Search endpoint with bounded pages, results, time and retries, and returns
-  allowlisted, source-labelled metadata with coverage. Results follow the
-  unchanged snapshot results and never delete or hide snapshot evidence.
-- An item-family capability registry covering all 51 documented Fabric item
-  types, Materialized Lake Views and OneLake shortcuts as Lakehouse-adjacent
-  derived families, KQL materialized views, and Workload Hub and unknown
-  types. Each family states catalog, objects, lineage, access and operations
-  coverage independently; the Catalog drawer shows it as **Atlas coverage**,
-  and an API-backed inventory gap list drives bounded follow-ups.
-- A read-only, adapter-only `workspaceCollectSourceProvenance` Function for
-  documented OneLake shortcuts, mirrored database definitions and status, and
-  MLV execution definitions, plus a pure provenance contract that creates
-  edges only from explicit IDs, records missing identifiers as unresolved and
-  keeps policy origin separate from destination enforcement, which is never
-  claimed as verified.
+- Multi-workspace scope with shared selection, independent manifests,
+  active-workspace switching and browser-serialized batch synchronization.
+- Rayfin-first metadata collection for core inventory, definitions, Power BI
+  structure, Item Relations, KQL structure, SQL catalogs, source provenance and
+  access-policy evidence.
+- Exact Python compatibility planning for the Power BI admin scanner,
+  PBIR-Legacy pages, Kusto live metadata and explicit rollback.
+- SQL Database, Warehouse, schema-enabled Lakehouse and Mirrored Database
+  tables, views and columns through read-only SQL endpoint catalogs.
+- OneLake shortcut, mirroring and materialized lake view provenance with
+  metadata-only privacy boundaries.
+- Item Relations Preview as a separate Beta graph source with raw relation
+  labels, cross-workspace identities, collection status and an Evidence desk.
+- Semantic model X-Ray with direct and transitive DAX dependencies, consumer
+  tracing, ambiguity reporting and cycle detection.
+- Focused lineage Impact mode, free node movement and complete Reset behaviour
+  for Atlas and Preview graphs.
+- Item-family Coverage across catalog, objects, lineage, access and operations.
+- Policies & AI evidence for semantic models, Data Agents, configured sources,
+  protection metadata and Fabric Policies context.
+- Read-only Access What-if scenarios that remove recorded grant paths locally
+  without changing Fabric permissions.
+- Operational incidents, downstream impact context and explicit monitoring
+  boundaries in Jobs & health.
+- Optional local read-only Atlas MCP tools for catalog, lineage, access,
+  incidents and snapshot comparison.
+- Global workspace search across items, objects, people, jobs, configuration
+  and notes, plus optional OneLake Catalog Preview discovery.
 
 ### Changed
 
-- Synchronization progress uses four run phases (Discover, Collect, Validate,
-  Publish) mapped from the existing browser milestones.
 - Upgraded the complete Rayfin package family from 1.34.0 to 1.36.2.
-- The FabCon integration branch deploys as the isolated
-  `fabric-atlas-fabcon` Rayfin application.
-- Workspace Hub adds **Sync all** and a per-workspace **Sync** action. Runs are
-  serialized in the browser tab, each selected workspace shows queued,
-  running, synchronized, failed or cancelled, and only the active workspace's
-  result replaces visible data.
-- One compact run status in the application header, with a thin progress line
-  and a Details control for errors, replaces the full-width run banner, so
-  routes no longer shift during a run. Workspace Hub shows the detailed view of
-  the same state.
-- Map & lineage opens at 80% zoom and Reset returns to 80%.
-- The header (navigation drawer on narrow screens) is the only active-workspace
-  switcher. Map & lineage, Access Review and Workspace Hub no longer repeat
-  their own workspace selectors; scope management, sync batch selection and the
-  first-sync gate keep theirs.
-- Access Review states its evidence boundary once, in a Granted / Partial /
-  Unknown / Denied legend. Rows show compact badges instead of repeating
-  "restrictions not evaluated" and the evaluated layers; accessible row names,
-  the evidence inspector, copied summaries and CSV exports keep the full text.
-- About groups gated capabilities as Implemented · active, Available · off,
-  Portal only, Deferred · contract blocked and Private Preview · not collected,
-  with maturity shown separately and the unavailable groups collapsed.
-  Ontology now reads as active because every synchronization collects it.
-- Governance Center groups findings by rule with compact preset filters, splits
-  Coverage into Item families, Metadata quality and Sensitivity views, and
-  drops the summary disclosure and the duplicate baseline sentence.
-- Policies & AI states its purpose, drops the always-unknown AI exposure
-  column and KPI in favour of one note, and no longer shows unrelated build
-  notes.
-- Item-type glyph colours keep white codes at 4.5:1 contrast or better.
+- Rebuilt Overview around the governance radar, workspace health and priority
+  signals.
+- Reorganized Governance Center into Posture, Findings, Changes, History,
+  Coverage and Policies & AI.
+- Reworked Map & lineage into exclusive Atlas and Preview sources with stable
+  left-to-right layouts, Graph, Evidence, Changes and X-Ray views.
+- Sorted Catalog groups and Asset Catalog items and objects alphabetically.
+- Compacted operational incidents and monitoring sources while retaining
+  keyboard access and full evidence.
+- Kept synchronized catalog reads and team notes shared with the authenticated
+  app audience while personal review state remains user-scoped.
+- Updated README, architecture documentation and the Fabric Atlas whitepaper
+  for the Rayfin-first 2.0 architecture.
 
 ### Fixed
 
-- The governance exception dialog and the Access, Policies & AI and Coverage
-  evidence drawers were 20px wide, and the X-Ray and Policies & AI search
-  fields collapsed, because `xs`/`xl` width utilities resolved to spacing
-  tokens.
-- Status chips no longer fall back to 16px: class merging now knows the custom
-  type scale.
-- Governance Center tabs no longer overlap on narrow screens.
-- A failed synchronization of another workspace now names that workspace in
-  the header and says which workspace's snapshot is shown.
-- Long synchronization errors no longer stretch the Recent runs table one
-  character per line; the table keeps fixed columns and the full error opens in
-  its own row.
-- Jobs & health keeps one column template for every status and truncates long
-  item and job names with the full text available.
-- Failed jobs without a stored message say that Atlas did not collect the
-  error detail and link to the Monitor hub, instead of "No additional detail".
-- The Preview API notice keeps its compact type size; its size class was
-  dropped when combined with a text color.
-- Catalog Search keeps dotted Workload Hub item types such as
-  `Microsoft.WaaS.BusinessProcessSolutions` instead of skipping them as
-  malformed entries.
+- Restored schema-enabled Lakehouse inventory by routing SQL metadata through
+  the Lakehouse SQL analytics endpoint ID.
+- Added Mirrored Database business tables and columns through its SQL endpoint.
+- Prevented cross-workspace drag operations from retaining pointer capture.
+- Ensured Impact mode hides unrelated components and Reset clears focus,
+  selection, drag state and Preview expansion.
+- Kept Preview arrowheads visible outside node borders without hiding the line
+  inside the card.
+- Removed competing Atlas/Preview conflict presentation and the redundant
+  Agreement column.
+- Preserved valid per-item schema when another optional collector fails.
+- Fixed Map test build regressions and retained strict TypeScript validation.
 
 ## [1.12.4] - 2026-09-17
 

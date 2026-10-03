@@ -41,7 +41,7 @@ The screenshots use FGI-MAIN as one example deployment. Its counts and findings
 are not product defaults or a reference architecture.
 
 <a href="docs/fabric-atlas-whitepaper.pdf">
-  <img src="docs/assets/fabric-atlas-whitepaper-hero.png" alt="Fabric Atlas whitepaper preview with the cover, lineage, governance and departure pack pages" width="100%">
+  <img src="docs/assets/fabric-atlas-whitepaper-hero.png" alt="Fabric Atlas 2.0 whitepaper preview with the cover, Lineage Evidence, X-Ray, coverage and multi-workspace pages" width="100%">
 </a>
 
 [Read the PDF](docs/fabric-atlas-whitepaper.pdf) ·
@@ -51,6 +51,10 @@ are not product defaults or a reference architecture.
 
 Atlas includes an optional local stdio MCP server for deterministic, read-only
 access to validated catalog, lineage, access, incident and snapshot evidence.
+It runs on the MCP client machine and reads the same validated Rayfin
+snapshots as the app. It does not run as a Rayfin Function or a permanent cloud
+service.
+
 Build it after generating the deployed Rayfin environment:
 
 ```powershell
@@ -77,37 +81,46 @@ Example `.vscode/mcp.json` configuration:
 }
 ```
 
-The public client uses device-code authentication. The signed-in user must
-belong to the Fabric app audience, and tools can read only the
-administrator-selected Atlas workspace scope. No tool changes Fabric,
-permissions or Atlas data. See [Atlas MCP](docs/atlas-mcp.md) for setup gates,
-tool contracts and limitations.
+The server is disabled by default. Activation requires a dedicated
+single-tenant public client, delegated `Item.Execute.All`, a reviewed
+`externalEntraExchange` setting and Conditional Access support for device code.
+The signed-in user must belong to the Fabric app audience, and tools can read
+only the administrator-selected Atlas workspace scope. No tool changes Fabric,
+permissions or Atlas data. See [Atlas MCP](docs/atlas-mcp.md) for the remaining
+identity gates, tool contracts and limitations.
 
 ## Technical presentation
 
 The [Fabric Atlas development and architecture presentation](prez/Fabric-Atlas-Dev-Architecture.pdf)
-explains the C4 architecture, resumable User Data Function refresh, immutable
-snapshot publication, Rayfin entity model, UML view, and physical MSSQL model.
-The editable [PowerPoint deck](prez/Fabric-Atlas-Dev-Architecture.pptx) and
-PlantUML sources are available in [`prez/`](prez/).
+documents the original UDF-based architecture, immutable snapshot publication,
+Rayfin entity model and physical MSSQL model. The current Rayfin-first
+architecture and 2.0 product evidence are documented in
+[Architecture](docs/architecture.md) and the
+[whitepaper](docs/fabric-atlas-whitepaper.pdf). The editable deck and PlantUML
+sources remain in [`prez/`](prez/).
 
 ## What it does
 
 Fabric workspaces spread operational metadata across many portal pages and APIs.
 Fabric Atlas collects that metadata without copying business data.
 
-- Browse workspace items as cards or a sortable table, then inspect their internal objects.
-- Inspect Lakehouse, Warehouse, SQL Database and KQL tables, views, columns,
-  functions and materialized views when the required metadata access is available.
+- Select the workspaces Atlas is allowed to index, synchronize them
+  independently and switch the active workspace without mixing snapshots.
+- Browse Fabric items as cards or a sortable table, then inspect their internal
+  objects in an alphabetized Asset Catalog.
+- Inspect Lakehouse, Warehouse, SQL Database, Mirrored Database and KQL
+  tables, views, columns, functions and materialized views when the required
+  metadata access is available.
 - Explore Ontology entities, properties, relationships and bindings, Graph Model
   node and edge types, and Data Agent source selections.
 - Trace item and verified object lineage from physical sources through models,
-  ontologies, graphs, agents and reports.
+  ontologies, graphs, agents and reports. Item Relations Preview can replace
+  the Atlas graph temporarily and keeps the raw API relation types visible.
 - Review effective access, direct shares and external principals.
 - Check sensitivity coverage and confidential assets.
 - Compare validated snapshots and review governance findings.
-- Expand cross-workspace lineage evidence, inspect semantic-model dependencies,
-  and compare historical lineage snapshots.
+- Expand stored cross-workspace lineage evidence, inspect semantic-model
+  dependencies and compare historical lineage snapshots.
 - Review Policies & AI evidence without inferring exposure or compliance.
 - Focus on newly introduced risks with Governance Radar and personal acknowledgements.
 - Track six posture pillars against explicit governance targets.
@@ -115,8 +128,31 @@ Fabric Atlas collects that metadata without copying business data.
 - Trace resolved DAX dependencies between measures and synchronized schema objects.
 - Search the whole workspace with `Ctrl+K` and save useful filter views.
 - Export access reviews and verified lineage impact reports.
-- Inspect jobs, configuration and team notes in one workspace hub.
+- Inspect failures, inferred downstream impact, monitoring boundaries,
+  configuration and team notes without mixing observed and inferred evidence.
 - Refresh the catalog through a guided synchronization flow.
+
+## Validation snapshot
+
+The final FabCon comparison used clean deployments and fresh FGI-MAIN
+snapshots on 3 October 2026. These figures describe that test workspace only.
+
+| Metric | Stable `main` | FabCon candidate |
+|---|---:|---:|
+| Fabric items | 78 | 79 |
+| Assets | 623 | 2,436 |
+| Tables / schema objects | 75 | 217 |
+| Columns | 486 | 2,157 |
+| Measures | 62 | 62 |
+| Atlas lineage links | 66 | 67 |
+| Principals | 2 | 2 |
+| Access grants | 144 | 146 |
+| Jobs | 28 | 28 |
+
+No product inventory metric decreased. The candidate adds SQL Database,
+Warehouse, schema-enabled Lakehouse and Mirrored Database structure. Detailed
+baselines and the comparison are saved outside the repository during release
+validation.
 
 ## Functionalities
 
@@ -130,11 +166,14 @@ Fabric Atlas collects that metadata without copying business data.
 | Progress donut | Replaces the initial topology illustration with an accessible percentage and stage-driven donut |
 | Immutable snapshots | Writes catalog rows first and publishes the workspace manifest only after every write succeeds |
 | Last-known-good fallback | Ignores incomplete snapshots and loads the newest valid workspace state |
-| Trusted snapshot retention | Keeps 2–50 validated snapshots, supports explicit writer rotation and removes stale rows only after a new manifest is published |
+| Trusted snapshot retention | Keeps 2 to 50 validated snapshots, supports explicit writer rotation and removes stale rows only after a new manifest is published |
 | Lightweight history | Stores versioned trend summaries in manifests and loads detailed comparisons only when selected |
 | Versioned sync contract | Records required, optional and metadata-capability status for every synchronized snapshot |
-| Bounded UDF execution | Uses a 180-second deadline below Fabric's 200-second function limit, bounded retries and transport-size safety without truncating object-lineage relations by count |
-| Resumable deep discovery | Runs one authoritative base scan, then processes item metadata in type-grouped UDF slices that automatically continue, split or isolate a slow item |
+| Multi-workspace scope | Stores an administrator-selected workspace list and publishes one independent manifest per workspace |
+| Rayfin-first collection | Uses typed Functions for core inventory, definitions, Item Relations, KQL, SQL, Power BI structure, provenance and policy evidence |
+| Exact compatibility plan | Calls the Python UDF only for Power BI admin scanner evidence, PBIR-Legacy pages, Kusto live metadata and explicit rollback |
+| Bounded collector execution | Applies per-request deadlines, pagination, retry, cancellation, SQL operation and response-size limits |
+| Per-item failure isolation | Keeps valid schemas from successful items when another item or optional metadata source fails |
 | Accessible sync feedback | Shows five real phases, the active stage and elapsed time during both initial synchronization and later refreshes |
 | Deployment gate | Requires synchronization for the first deployment or a new major/minor snapshot contract, while compatible patch releases reuse validated history |
 | Trusted synchronizer | Restricts snapshot publication to the configured synchronization account |
@@ -157,6 +196,8 @@ Fabric Atlas collects that metadata without copying business data.
 | Lazy Change Center evidence | Keeps the ledger immediate and hydrates older detailed catalogs only for the selected comparison |
 | Metadata coverage | Separates collected gaps from metadata that Fabric did not expose, using explicit `N/A` states |
 | Posture targets | Scores six reproducible pillars against shared, configurable workspace targets, all set to 70% by default |
+| Radar-led Overview | Reuses the six posture pillars as the Overview focal point, beside current health and priority signals |
+| Policies & AI | Reviews policy evidence, Data Agent sources and protection coverage without inferring compliance or AI exposure |
 | Governance exceptions | Records an administrator's justification and expiry beside a finding without hiding the finding or changing its raw score |
 | Sensitivity posture | Groups protected and unlabeled items and surfaces confidential assets |
 | Saved governance views | Persists personal filters such as metadata gaps, external access or failed operations |
@@ -170,11 +211,13 @@ Fabric Atlas collects that metadata without copying business data.
 |---|---|
 | Workspace catalog | Groups Fabric items by type with search, health, ownership, labels, tags and detail drawers |
 | Catalog table | Keeps cards available and adds sorting by name, health, documented owner or last refresh within collapsed item-type groups |
-| Asset Catalog | Lists relational, KQL, ontology, graph and Data Agent objects under their parent Fabric item, while keeping synchronized schema-capable items visible when no objects are exposed |
+| Asset Catalog | Lists relational, KQL, ontology, graph and Data Agent objects alphabetically under their parent Fabric item, while keeping synchronized schema-capable items visible when no objects are exposed |
 | Deep metadata | Shows data types, descriptions, visibility, sources, row counts, measure expressions and collection provenance when available |
 | DAX dependency evidence | Resolves measure references only to real synchronized columns or measures and labels inferred source hops |
 | KQL inventory | Discovers databases, tables, columns, stored functions and materialized views through read-only Kusto metadata |
 | SQL Database inventory | Discovers schemas, tables, views and columns through read-only system catalogs |
+| Storage SQL inventory | Reads Warehouse, schema-enabled Lakehouse and Mirrored Database tables, views and columns through their SQL endpoint IDs |
+| Source provenance | Keeps OneLake shortcut targets, mirroring provider and selection context, replication state and materialized lake view references without retaining source URLs or rows |
 | Ontology inventory | Decodes entity types, properties, time-series properties, source bindings, relationship types and contextualizations |
 | Graph Model inventory | Shows node and edge types plus source and property mappings without reading graph instances |
 | Data Agent inventory | Shows draft/published sources and selected tables, columns, measures, KQL objects, ontology entities and graph types without retaining prompts |
@@ -189,13 +232,16 @@ Fabric Atlas collects that metadata without copying business data.
 
 | Functionality | What it provides |
 |---|---|
-| Item lineage | Places Fabric items in lifecycle stages from orchestration to consumption |
+| Item lineage | Places Fabric items in a stable source-to-consumer layout with no backward edges in the initial graph |
+| Item Relations Preview | Replaces Atlas links while enabled, labels every line with the raw API `relationType`, and keeps Beta evidence out of authoritative snapshots |
+| Cross-workspace exploration | Expands stored Preview neighbours by composite workspace and item identity without querying unselected workspaces live |
+| Evidence desk | Explains the relation type, active source, observation time, workspace boundary and coverage for the lines currently drawn |
 | Object mode | Expands relational, KQL, semantic, ontology, graph and Data Agent objects using verified snapshot relationships |
-| Impact tracing | Highlights upstream and downstream paths without moving the selected node |
+| Impact tracing | Hides unrelated graph components and keeps only the selected upstream and downstream subgraph |
 | Indexed graph engine | Reuses adjacency indexes for traversal, impact, connected groups and staged layout |
 | Accessible relationships | Exposes item and object edges as text and distinguishes upstream paths with a dashed pattern |
-| Multi-selection | Moves several selected item or object nodes together |
-| Layout controls | Provides zoom, fit, reset, filters, minimap and persistent deep links |
+| Graph editing | Moves Atlas and Preview boxes freely, including cross-workspace nodes, with guarded pointer release |
+| Layout controls | Provides zoom, fit, filters, minimap and persistent deep links; Reset clears focus, Impact, drag state and Preview expansion |
 | Readable map and inspector | Wraps node labels, keeps inactive context readable and supports pointer or keyboard resizing of the details inspector |
 | Impact reports | Exports verified dependency evidence as Markdown for an item or schema object |
 | Object-level impact | Switches to DAX-resolved object granularity when evidence exists and preserves item fallback otherwise |
@@ -212,6 +258,9 @@ Fabric Atlas collects that metadata without copying business data.
 | Additive effective access | Combines workspace and item grants so a direct share never reduces inherited access |
 | Stable principal identity | Uses Fabric principal IDs and safely correlates legacy name or email references across snapshots |
 | Access Review matrix | Reviews every reachable principal and item pair with permission, source and evidence |
+| Evidence coverage | Separates recorded grants from OneLake security, Purview DLP and Fabric Policies layers that are unavailable, unsupported or not evaluated |
+| Read-only What-if | Removes recorded grant paths in memory and explains which layers were modeled without changing Fabric permissions |
+| Policy context | Stores bounded Fabric Policies evaluation evidence separately from recorded grants |
 | Responsive access ledger | Uses one keyboard-navigable representation across mobile and desktop without hidden duplicate rows |
 | Principal review | Groups all reachable items under collapsible principal sections |
 | Review decisions | Appends personal Reviewed, Accepted, Needs action and clear events with retained notes and history |
@@ -233,6 +282,8 @@ Fabric Atlas collects that metadata without copying business data.
 | Responsive job timeline | Shows compact mobile cards and an aligned desktop grid without horizontal table scrolling |
 | Job filters | Searches run history, isolates failures and saves recurring operational views |
 | Active filter chips | Removes search, status, focused item or focused run constraints independently |
+| Operational evidence | Keeps observed failed runs separate from downstream items inferred through snapshot lineage |
+| Monitoring boundaries | States which evidence Atlas collects and links to Monitor Hub or app metrics for portal-only sources |
 | Workspace Hub | Keeps synchronized configuration and shared team notes in one grouped interface |
 | Item notes | Adds append-only team context to the workspace or a specific Fabric item |
 | Sync audit | Records who synchronized the workspace, when it ran and how much metadata was indexed |
@@ -266,46 +317,61 @@ Fabric Atlas collects that metadata without copying business data.
 |---|---|
 | Fabric brokered authentication | Runs inside the Fabric portal with the signed-in Entra identity |
 | Bound token selection | Matches every Fabric, Kusto and SQL token account and tenant to the current signed-in Fabric user |
+| Rayfin Functions | Runs typed metadata collectors with application identity and synchronizer-only invocation policies |
+| Minimal Python compatibility | Retains delegated Power BI scanner, PBIR-Legacy page and Kusto live metadata only where Rayfin lacks a supported audience |
 | Metadata-only storage | Allowlists governance metadata and excludes rows, datasource details, connections and Power Query or source expressions |
 | Definition sanitization | Excludes Data Agent instructions and few-shots, graph filter values, ontology documents/resource links, KQL function bodies and SQL module definitions |
 | Scoped enrichment | Keeps advanced KQL, SQL and definition scans optional and reports missing token, permission or encrypted-label capability explicitly |
 | User-scoped preferences | Protects saved views and access-review decisions with Rayfin row policies |
 | User-scoped Radar actions | Protects acknowledgements and mutes through the authenticated subject claim |
 | Fabric deployment | Builds, migrates the schema and deploys the app through `npx rayfin up` |
+| Fail-closed durable probe | Exercises persisted commands and checkpoints without claiming unattended scheduling or distributed task ownership |
 | Open-source project | Includes MIT licensing, contribution guidance, security reporting and release history |
 
 </details>
 
 ## Product screenshots
 
-### Guided deployment sync
-
-The first deployment or a new major/minor snapshot contract starts with a
-controlled metadata refresh. A five-phase tracker, active stage, elapsed time
-and target workspace stay visible throughout the scan. The same tracker appears
-during later refreshes, while compatible patch releases reuse the validated
-catalog. Deep discovery advances with the real completed-item count. A slow
-type is continued in a new UDF slice, and an individual slow item is retried in
-isolation. Repeated no-progress attempts stop with an explicit item-level error
-instead of looping forever. The browser warns before leaving while this
-resumable queue is active.
-
-![Guided Fabric Atlas deployment sync](docs/screenshots/deployment-sync-v1111.png)
+These screens come from the deployed FabCon candidate and a live FGI-MAIN
+metadata snapshot. Counts change when the workspace is synchronized again.
 
 ### Workspace overview
 
-The overview brings health, freshness, governance signals and inventory reach
-together in a Fabric-native operational landing page.
+The overview uses the governance radar as its visual anchor, with current
+health, priority signals, freshness and inventory reach beside it.
 
-![Fabric Atlas workspace overview](docs/screenshots/workspace-overview-v1111.png)
+![Fabric Atlas workspace overview](docs/screenshots/workspace-overview-fabcon.png)
+
+### Catalog
+
+The Catalog keeps every Fabric item visible, grouped by type and available as
+cards or a sortable table. Search, ownership, health and tags narrow the view.
+
+![Fabric Atlas item catalog](docs/screenshots/catalog-fabcon.png)
+
+### Asset Catalog
+
+Items and their tables, views, columns, measures and metadata objects are sorted
+alphabetically. Selecting an asset exposes its source, model context and
+additive effective access.
+
+![Fabric Atlas Asset Catalog](docs/screenshots/asset-catalog-fabcon.png)
 
 ### Interactive lineage
 
-The map follows Fabric assets from orchestration to consumption. Selecting an
-item highlights its verified path while the inspector keeps schema, access,
-runs and impact actions beside the graph.
+The Atlas graph follows verified snapshot relationships from orchestration to
+consumption. Impact mode removes unrelated components while the inspector keeps
+upstream, downstream, schema, access and run evidence in view.
 
-![Fabric Atlas item lineage](docs/screenshots/interactive-lineage-v1111.png)
+![Fabric Atlas item lineage](docs/screenshots/interactive-lineage-fabcon.png)
+
+### Item Relations Preview
+
+Preview replaces the Atlas graph while enabled. It labels each line with the
+raw API `relationType`, reports cross-workspace evidence and remains clearly
+marked as Beta rather than authoritative lineage.
+
+![Fabric Atlas Item Relations Preview](docs/screenshots/item-relations-preview-fabcon.png)
 
 ### Object lineage
 
@@ -314,32 +380,58 @@ items. The inspector keeps ownership, impact and related metadata visible while
 objects are selected or rearranged. Selecting an object from another Fabric item
 switches the active item and rebuilds the object graph. Deep-lineage tables can
 be expanded or collapsed together. Connected Fabric items are grouped into
-collapsible summary nodes, while Impact mode preserves the graph layout and only
-changes the highlighted dependency paths. Hold the left mouse button on the
-canvas background and drag to pan the complete graph.
+collapsible summary nodes. Hold the left mouse button on the canvas background
+to pan. Item and Preview boxes can be moved freely, and Reset returns the graph
+to its computed source-to-consumer layout.
 
-![Fabric Atlas object lineage](docs/screenshots/object-lineage-v1111.png)
-
-### Asset Catalog
-
-Tables, views, columns and measures are grouped by Fabric item. Selecting an
-asset exposes its source, model context and additive effective access.
-
-![Fabric Atlas Asset Catalog](docs/screenshots/asset-catalog-v1111.png)
+![Fabric Atlas object lineage](docs/screenshots/object-lineage-fabcon.png)
 
 ### Governance Center
 
-Governance Radar, findings, snapshot changes, history, coverage and posture are
-grouped into one governance workspace with saved views and evidence links.
+Governance Radar, findings, snapshot changes, history, coverage, posture and
+Policies & AI evidence are grouped into one governance workspace.
 
-![Fabric Atlas Governance Center](docs/screenshots/governance-center-v1113.png)
+![Fabric Atlas Governance Center](docs/screenshots/governance-center-fabcon.png)
+
+### Policies & AI
+
+Policies & AI lists semantic models, Data Agents, configured sources and
+protection evidence. Unknown exposure and unavailable controls stay explicit
+instead of being presented as compliant.
+
+![Fabric Atlas Policies and AI](docs/screenshots/policies-ai-fabcon.png)
 
 ### Access Review
 
-The review matrix combines inherited and direct permissions, then supports
-focused filtering, personal decisions and CSV export.
+The review matrix combines inherited and direct permissions, shows which
+restriction layers were evaluated, and includes a read-only What-if simulator.
 
-![Fabric Atlas Access Review](docs/screenshots/access-review-v1113.png)
+![Fabric Atlas Access Review](docs/screenshots/access-review-fabcon.png)
+
+### Jobs & health
+
+Jobs & health separates observed failures from inferred downstream reach. The
+monitoring panel also states which signals Atlas collected and which remain in
+the Fabric portal.
+
+![Fabric Atlas Jobs and health](docs/screenshots/jobs-health-fabcon.png)
+
+### Multi-workspace synchronization
+
+The synchronizer can run one selected workspace while another workspace keeps
+its last validated snapshot. Here FGI-ORACLE is in discovery at 12%, FGI-MAIN
+remains the active catalog, and workspace switching is paused until the browser
+run finishes or is cancelled.
+
+![Fabric Atlas synchronizing FGI-ORACLE while FGI-MAIN remains available](docs/screenshots/multi-workspace-sync-fabcon.png)
+
+### Workspace Hub
+
+Workspace Hub shows the selected synchronization scope, latest validated
+snapshot and manual run history. Scheduling remains visibly disabled until
+Fabric exposes a supported unattended trigger and identity contract.
+
+![Fabric Atlas Workspace Hub](docs/screenshots/workspace-hub-fabcon.png)
 
 ### Impact reports
 
@@ -353,109 +445,98 @@ upstream, downstream and relationship evidence.
 ```mermaid
 flowchart LR
   U["Fabric user"]
-  APP["Fabric Atlas<br/>React + Rayfin"]
+  APP["Fabric Atlas<br/>React app in Fabric"]
   AUTH["Brokered authentication"]
-  BASE["Base UDF slice<br/>sync_all · max 180 s"]
-  PLAN["Type-grouped item queue"]
-  ITEMS["Enrichment UDF slices<br/>sync_items · max 180 s each"]
-  MERGE["Validate and merge<br/>complete workspace result"]
-  API["Fabric and Power BI APIs"]
-  DB[("Atomic Rayfin snapshot<br/>manifest written last")]
+  PLAN["Browser sync coordinator<br/>workspace and item batches"]
+  FN["Typed Rayfin Functions<br/>bounded collectors"]
+  PY["Python compatibility UDF<br/>documented gaps only"]
+  FABRIC["Fabric REST and definition APIs"]
+  PBI["Power BI admin scanner<br/>and legacy report pages"]
+  DATA["Kusto and SQL metadata endpoints"]
+  VALIDATE["Contract validation<br/>failure isolation and merge"]
+  API["Rayfin Data API"]
+  DB[("Fabric SQL Database<br/>immutable snapshot")]
+  MANIFEST["Workspace manifest<br/>written last"]
 
   U -->|"open in Fabric"| APP
   APP <-->|"brokered session"| AUTH
-  APP -->|"authoritative topology"| BASE
-  BASE <-->|"workspace metadata"| API
-  BASE -->|"items to enrich"| PLAN
-  PLAN -->|"next item type and batch"| ITEMS
-  ITEMS <-->|"KQL, SQL and definition metadata"| API
-  ITEMS -->|"completed IDs + remaining IDs"| PLAN
-  PLAN -->|"all items complete"| MERGE
-  MERGE -->|"validated snapshot"| DB
+  APP -->|"start Sync"| PLAN
+  PLAN -->|"typed invokes"| FN
+  PLAN -->|"exact compatibility plan"| PY
+  FN <-->|"inventory, definitions, relations, provenance"| FABRIC
+  FN <-->|"read-only metadata"| DATA
+  PY <-->|"scanner and legacy evidence"| PBI
+  PY <-->|"Kusto live fallback"| DATA
+  FN -->|"bounded envelopes"| VALIDATE
+  PY -->|"bounded envelopes"| VALIDATE
+  VALIDATE -->|"complete snapshot rows"| API
+  API --> DB
+  VALIDATE -->|"publish after every required write"| MANIFEST
+  MANIFEST --> DB
 
   classDef user fill:#742774,stroke:#a66dd4,color:#ffffff,stroke-width:2px;
   classDef app fill:#1677c8,stroke:#6fc7ff,color:#ffffff,stroke-width:2px;
   classDef auth fill:#5b5fc7,stroke:#a7a9ff,color:#ffffff,stroke-width:2px;
-  classDef udf fill:#0e8a99,stroke:#67e8e2,color:#ffffff,stroke-width:2px;
-  classDef api fill:#16855b,stroke:#6ee7a8,color:#ffffff,stroke-width:2px;
+  classDef collector fill:#0e8a99,stroke:#67e8e2,color:#ffffff,stroke-width:2px;
+  classDef source fill:#16855b,stroke:#6ee7a8,color:#ffffff,stroke-width:2px;
   classDef database fill:#9a6b00,stroke:#f2c94c,color:#ffffff,stroke-width:2px;
 
   class U user;
-  class APP,PLAN,MERGE app;
+  class APP,PLAN,VALIDATE app;
   class AUTH auth;
-  class BASE,ITEMS udf;
-  class API api;
-  class DB database;
+  class FN,PY collector;
+  class FABRIC,PBI,DATA source;
+  class API,DB,MANIFEST database;
 ```
 
-### How Atlas stays below the UDF timeout
+### Collector ownership
 
-Microsoft Fabric limits one User Data Function invocation to 200 seconds. Atlas
-uses a 180-second budget for each invocation, leaving 20 seconds for projection,
-serialization and the platform response.
+| Evidence | Primary path | Compatibility path |
+|---|---|---|
+| Workspaces, items, roles and jobs | `workspaceCollectCore` | Explicit Python rollback only |
+| Definitions and structural metadata | Rayfin definition, Power BI, KQL and SQL collectors | Semantic-model scanner fallback when a definition is unavailable |
+| Lakehouse, Warehouse, SQL Database and Mirrored Database objects | `workspaceCollectSqlMetadata` plus Lakehouse REST | None; unavailable application-identity coverage stays explicit |
+| Shortcuts, mirroring and MLV provenance | `workspaceCollectSourceProvenance` | None |
+| Item Relations evidence | `workspaceCollectItemRelations` | None; the API remains Beta and non-authoritative |
+| Access-policy context | `workspaceCollectAccessPolicyEvidence` | Portal-only layers remain marked unavailable |
+| Power BI admin scanner and authoritative scanner lineage | Python UDF | Retained because Rayfin Functions have no documented Power BI audience |
+| Kusto live schema | Python UDF | Retained because Rayfin Functions have no documented Kusto audience |
 
-The 180-second limit does not apply to the complete synchronization. Atlas first
-runs `sync_all` for the authoritative workspace topology, then invokes
-`sync_items` repeatedly for item batches grouped by Fabric type. Before a slice
-runs out of time, it returns both `completedItemIds` and `remainingItemIds`. The
-browser keeps the completed results and starts a fresh slice for the remaining
-items. Slow batches are split, and a slow individual item is retried alone.
+### Why synchronization can take several minutes
 
-Only after every slice is complete does Atlas validate the merged result and
-write the Rayfin manifest. A complete synchronization can therefore run for
-several minutes without any individual UDF invocation exceeding 180 seconds.
+Atlas splits one synchronization into bounded calls. Rayfin Functions keep
+headroom below the Fabric runtime limit, and the Python compatibility UDF uses
+a 180-second budget. The browser sends small item batches, validates every
+response and continues only the remaining work.
 
-The browser cannot call Fabric management APIs directly. A published User Data
-Function performs the metadata scan server-side with the signed-in user's
-delegated token. Its versioned response reports required, optional and
-capability status. Atlas first retrieves the authoritative workspace topology,
-then invokes resumable enrichment slices grouped by item type. Each slice
-returns completed and remaining item IDs, so timeout or response-size pressure
-causes automatic continuation instead of truncation. The app validates and
-size-bounds every result, stores one complete workspace-scoped snapshot through
-Rayfin, and keeps the previous valid snapshot
-if a refresh fails.
+The browser publishes nothing until every required collector has completed.
+One optional failure can leave an item partially covered, but it cannot erase a
+valid schema from another item or replace the last validated snapshot. The
+manifest is written after all snapshot rows.
+
+The current flow still needs an open browser because Fabric Apps Functions do
+not expose a supported unattended trigger or distributed task-claim primitive.
+Scheduled refresh stays disabled rather than storing or replaying a user's
+access token.
 
 See [Architecture](docs/architecture.md) for the full data flow.
 
-## Roadmap
+## Current limits and roadmap
 
-### v2 backlog
+The multi-workspace catalog, independent snapshots and stored cross-workspace
+Preview evidence are implemented. The remaining work is tied to platform
+contracts or a separate product decision.
 
-The following P2 and P3 work is planned for the v2 series. It is outside the
-v1.11 release scope. The table describes intended behaviour, not features
-available in the current app.
-
-| Priority | Planned feature | Scope |
+| Area | Current state | Next gate |
 |---|---|---|
-| P2 | Scheduled synchronization | Refresh metadata on the server without an open browser, using an identity supported by the required APIs and write policies |
-| P2 | Shared action plan | Assign findings, set deadlines and track team resolution, including actions from departure packs |
-| P2 | Teams and email notifications | Notify the team about relevant new findings and synchronization failures |
-| P2 | Simultaneous departures | Assess several departing principals together so reassignment does not depend on another departing person |
-| P2 | Entra group membership | Expand group evidence where permissions allow it, while distinguishing direct grants from membership-derived access |
-| P2 | Multi-workspace catalog and verified lineage | Index an explicitly selected workspace scope and show cross-workspace relationships only when Microsoft exposes the evidence |
-| P2 | Durable background synchronization | Persist continuation state server-side so a refresh can survive a closed browser and later support scheduled execution |
-| P3 | Report visual field usage | Read supported report definitions to trace measure and column references to visuals, subject to report permissions and sensitivity restrictions |
-
-### Multi-workspace milestones
-
-Multi-workspace catalog support is planned and tracked in
-[#4](https://github.com/fredgis/FabricAtlas/issues/4). The implementation will
-stay focused on a controlled set of workspaces rather than scanning an entire
-tenant automatically.
-
-| <sub>Target</sub> | <sub>Planned PR</sub> | <sub>Release</sub> | <sub>Engineering scope</sub> | <sub>Exit criteria</sub> |
-|---|---:|---|---|---|
-| <sub>Q4 CY26</sub> | <sub>PR 1</sub> | <sub>v2.0.0</sub> | <sub>Keep catalog reads shared with the authorized app audience and restrict scope changes to the configured synchronizer. Refactor persistence around an explicit `workspaceId`, add independent manifests and migrate the existing single-workspace snapshot.</sub> | <sub>A failed or incomplete workspace refresh cannot invalidate another workspace snapshot.</sub> |
-| <sub>Q4 CY26</sub> | <sub>PR 2</sub> | <sub>v2.0.0</sub> | <sub>Add UDF workspace discovery, persist the selected indexing scope, and run a bounded synchronization queue with progress and errors reported per workspace.</sub> | <sub>The synchronizer can select workspaces, refresh them independently and retry only failures.</sub> |
-| <sub>Q4 CY26</sub> | <sub>PR 3</sub> | <sub>v2.0.0</sub> | <sub>Add available, selected and active workspace state with lazy snapshot loading. Aggregate Overview, Catalog, Asset Catalog, Access, Sensitivity and Jobs. Keep Workspace Hub, configuration and comments tied to one active workspace.</sub> | <sub>Multi-workspace catalog MVP ready for release.</sub> |
-| <sub>Q1 CY27</sub> | <sub>PR 4</sub> | <sub>v2.0.1</sub> | <sub>Use composite graph IDs, open one workspace by default and allow comparison of up to three workspaces in separate visual groups. Show local lineage only at this stage.</sub> | <sub>Comparison stays readable and never creates an inferred connection.</sub> |
-| <sub>Q1 CY27</sub> | <sub>PR 5</sub> | <sub>v2.0.2</sub> | <sub>Run grouped metadata scans for the selected workspaces, build a global item index and persist source and target workspace IDs on relationships returned by Microsoft.</sub> | <sub>Verified cross-workspace lineage appears only when both endpoints are part of the indexed scope.</sub> |
-
-`v2.0.0` is the multi-workspace catalog milestone planned for Q4 CY26.
-`v2.0.1` adds lineage comparison, followed by verified cross-workspace
-relationships in `v2.0.2` during Q1 CY27. These dates are targets and may move
-if Fabric API coverage changes.
+| Scheduled synchronization | Disabled. Sync still needs a browser-held delegated identity | A supported unattended trigger and identity for every required API |
+| Durable server execution | Additive commands and checkpoints are implemented as a fail-closed probe | Distributed claim or transaction primitive plus live browser-closure recovery |
+| Python compatibility | Limited to Power BI scanner, PBIR-Legacy pages, Kusto live metadata and rollback | Documented Power BI and Kusto audiences for Rayfin Functions |
+| Atlas MCP | Read-only stdio server implemented and disabled by default | Public client, `Item.Execute.All`, reviewed token exchange and live validation |
+| OneLake security and Purview DLP | Portal links and explicit unavailable states | Public read APIs for role membership and restriction evidence |
+| Report visual usage | Not collected | A supported report definition path with sensitivity and permission handling |
+| Shared action plans and notifications | Not implemented | Reviewed team workflow, ownership model and delivery channel |
+| 2.0 maintenance | Version 2.0.0 is the current release line | Patch releases for verified fixes; larger workflows depend on the contracts above |
 
 ## Quickstart
 
@@ -480,12 +561,14 @@ The local app uses the included AlpineRent preview estate.
 npx rayfin login --tenant <tenant-id> --select
 $env:RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_EMAIL = "<authorized-sync-user>"
 $env:RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_SUBJECT = "<authorized-sync-subject>"
-npx rayfin up --workspace "<workspace-name>"
+npx rayfin up --tenant <tenant-id> --workspace-id <workspace-id> --item-name fabric-atlas --yes
 ```
 
-Publish the function in
-[`fabric/udf/atlas_sync_functions/`](fabric/udf/atlas_sync_functions/), then add
-these public values to the git-ignored `rayfin/.env` file:
+`rayfin up` applies the MSSQL schema, static app, runtime settings and typed
+Functions. Publish the compatibility UDF in
+[`fabric/udf/atlas_sync_functions/`](fabric/udf/atlas_sync_functions/) by
+round-tripping its complete Fabric definition, then add these public values to
+the git-ignored `rayfin/.env` file:
 
 ```dotenv
 RAYFIN_PUBLIC_ATLAS_SPA_CLIENT_ID=<entra-client-id>
@@ -494,6 +577,8 @@ RAYFIN_PUBLIC_ATLAS_WORKSPACE_NAME=<workspace-display-name>
 RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_EMAIL=<authorized-sync-user>
 RAYFIN_PUBLIC_ATLAS_SYNC_ADMIN_SUBJECT=<authorized-sync-subject>
 RAYFIN_PUBLIC_ATLAS_SNAPSHOT_RETENTION_COUNT=12
+# Optional collector rollback during incident recovery:
+VITE_ATLAS_COLLECTOR_ROLLBACK=false
 # Optional during synchronizer rotation:
 RAYFIN_PUBLIC_ATLAS_PREVIOUS_SYNC_WRITERS=<former-user@example.com>
 RAYFIN_PUBLIC_ATLAS_SENSITIVITY_RANKS='{"<label-id>":3,"<lower-label-id>":1}'
@@ -502,7 +587,9 @@ RAYFIN_PUBLIC_ATLAS_SENSITIVITY_RANKS='{"<label-id>":3,"<lower-label-id>":1}'
 Keep the configured synchronizer available in the CLI process environment when
 running `npx rayfin up`: its immutable Rayfin subject is needed to compile the
 database policies, while the email remains the visible contact and historical
-snapshot identifier. The app opens on a guided synchronization screen.
+snapshot identifier. A new deployment opens on the guided synchronization
+screen. After the first snapshot, the synchronizer can add other workspaces in
+Workspace Hub and refresh each workspace independently.
 
 The complete Entra, UDF and deployment steps are in
 [docs/installation.md](docs/installation.md).
@@ -518,12 +605,11 @@ npm run build
 `npm run typecheck` runs `tsc -b --force` with strict checking and `noEmit`.
 The project does not enable TypeScript's `noCheck` option.
 
-The current production build intentionally ships one main application chunk of
-about 0.9 MB minified, or about 0.25 MB gzip. Vite also reports that the dynamic
-Rayfin client import in `backend.ts` cannot form a separate chunk because
-personal-state modules import the same client statically. This is accepted for
-the current accelerator scale and should be revisited if the application or
-startup cost grows materially.
+The production build still reports large application and radar chunks. Vite
+also reports that the dynamic Rayfin client import cannot form a separate chunk
+because several persistence modules import the same client statically. The
+candidate accepts those warnings for now; bundle splitting remains a measured
+performance task, not a release claim.
 
 | Path | Purpose |
 |---|---|
@@ -534,9 +620,14 @@ startup cost grows materially.
 | `src/atlas/search.ts` | Global workspace search index |
 | `src/atlas/lineage.ts` | Lineage normalization, traversal and layout |
 | `src/atlas/backend.ts` | Workspace snapshots and Rayfin persistence |
-| `src/atlas/live-sync.ts` | UDF invocation and response mapping |
+| `src/atlas/browser-collector-sync.ts` | Browser-serialized Rayfin collector composition and exact compatibility planning |
+| `src/atlas/live-sync.ts` | Snapshot contracts, compatibility UDF invocation and merge logic |
+| `src/atlas/item-relations-evidence.ts` | Item Relations API contract, relation semantics and stored Beta graph |
+| `src/atlas/source-provenance-snapshot.ts` | Shortcut, mirroring and MLV projection into snapshot metadata |
+| `src/mcp/` and `src/atlas/mcp/` | Local read-only Atlas MCP transport and evidence tools |
 | `rayfin/data/` | Persisted entity model |
-| `fabric/udf/atlas_sync_functions/` | Server-side Fabric metadata scan |
+| `rayfin/functions/` | Typed Rayfin collectors, search and durable-execution probes |
+| `fabric/udf/atlas_sync_functions/` | Minimal Python compatibility collector and rollback path |
 
 ## Access and collaboration scope
 
@@ -646,8 +737,8 @@ metadata capability was not collected; it is not treated as a missing value.</su
 | <sub>Mirrored Database</sub> | <sub>Item metadata, default schema, SQL endpoint, provider and replication state</sub> | <sub>Tables, views and columns from the read-only SQL endpoint catalog; selected source tables from `mirroring.json` retain provenance</sub> | <sub>Scanner relations plus provider, connection and SQL endpoint bindings</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported; replication state from the mirroring adapter</sub> | <sub>Requires SQL catalog visibility for columns; source rows, source database names and replication contents are never read</sub> |
 | <sub>User Data Function</sub> | <sub>Item and scanner metadata</sub> | <sub>Function source and endpoints are not expanded</sub> | <sub>Scanner relations</sub> | <sub>Workspace roles and item users</sub> | <sub>When supported</sub> | <sub>Function code is not copied</sub> |
 | <sub>Fabric App / AppBackend</sub> | <sub>Item identity from the Fabric Items API</sub> | <sub>No internal service inventory</sub> | <sub>Only when a Fabric API exposes a relation</sub> | <sub>Workspace roles</sub> | <sub>When supported</sub> | <sub>Not currently an admin-scanner artifact type</sub> |
-| <sub>Materialized lake view</sub> | <sub>Not a top-level item; shown on its parent Lakehouse</sub> | <sub>Selected view names from MLV execution definitions (read-only adapter, not yet published)</sub> | <sub>Included lakehouses by ID, treated as refresh scope rather than lineage</sub> | <sub>Inherits Lakehouse access</sub> | <sub>`RefreshMaterializedLakeViews` jobs on the Lakehouse</sub> | <sub>No documented API lists every view; distinct from KQL materialized views</sub> |
-| <sub>OneLake shortcut</sub> | <sub>Not a top-level item</sub> | <sub>Name, path and target type (read-only adapter, not yet published)</sub> | <sub>OneLake targets by explicit IDs; external targets by connection ID only</sub> | <sub>Decided at the target; not collected</sub> | <sub>Not applicable</sub> | <sub>Target URLs, buckets and subpaths are never stored</sub> |
+| <sub>Materialized lake view</sub> | <sub>Not a top-level item; shown on its parent Lakehouse</sub> | <sub>Selected view names and refresh scope from MLV execution definitions</sub> | <sub>Included lakehouses by ID, treated as refresh scope rather than lineage</sub> | <sub>Inherits Lakehouse access</sub> | <sub>`RefreshMaterializedLakeViews` jobs on the Lakehouse</sub> | <sub>No documented API lists every view; distinct from KQL materialized views</sub> |
+| <sub>OneLake shortcut</sub> | <sub>Not a top-level item</sub> | <sub>Name, path and target type stored under the parent item</sub> | <sub>OneLake targets by explicit IDs; external targets by connection ID only</sub> | <sub>Decided at the target; not collected</sub> | <sub>Not applicable</sub> | <sub>Target URLs, buckets and subpaths are never stored; the API does not expose target columns</sub> |
 | <sub>Event Schema Set</sub> | <sub>Item identity from the Fabric Items API</sub> | <sub>Deferred: the documented definition supports user identity only</sub> | <sub>Only when a Fabric API exposes a relation</sub> | <sub>Workspace roles</sub> | <sub>When supported</sub> | <sub>Preview; event payloads are never read</sub> |
 | <sub>Workload Hub item</sub> | <sub>ID, name and dotted `Publisher.Workload.ItemType`</sub> | <sub>No Fabric-documented structural contract</sub> | <sub>Only when the APIs expose a relation</sub> | <sub>Workspace roles; item users when exposed</sub> | <sub>The jobs endpoint is attempted</sub> | <sub>Kept visible with an explicit fallback label</sub> |
 | <sub>Other or new Fabric item type</sub> | <sub>ID, name, type and description when returned</sub> | <sub>Top-level item only</sub> | <sub>Only when the APIs expose a relation</sub> | <sub>Workspace roles; item users when exposed</sub> | <sub>The jobs endpoint is attempted</sub> | <sub>Unknown types stay visible with a neutral item glyph</sub> |

@@ -495,8 +495,11 @@ verified reason: the schedule switch stays off and, like **Edit schedule**, is n
 and described by that reason. No resume control is rendered. The configured deployment workspace
 remains the fallback until the administrator persists an explicit shared scope.
 
-The v2 multi-workspace graph remains an internal fail-closed framework until collector payload
-adapters and an externally serialized claim path are integrated.
+The v2 multi-workspace catalog is active. `WorkspaceScope` stores the shared
+selection, each workspace publishes an independent manifest, and the browser
+serializes one bounded workspace run at a time. Cross-workspace Preview
+relationships use composite workspace and item identities. They never become
+trusted `LineageEdge` rows.
 
 Scheduled refresh remains disabled while any fallback step is driven through
 the browser or Python UDF. Persisted checkpoints support safe resume, not
@@ -505,7 +508,7 @@ unattended continuation.
 ### Active browser-serialized collector composition
 
 `workspaceCollectCore` starts the active Rayfin-first collection path. It writes no Rayfin rows
-itself; the browser validates and merges every bounded stage, invokes Python only for the planned
+itself; the browser validates and merges every bounded stage, invokes Python only for the exact
 compatibility gaps, and then publishes through the unchanged manifest-last writer. It takes
 `protocolVersion: 1`, a strict RFC workspace UUID and a strict correlation UUID or `null`; it
 accepts no token, URL, endpoint or request body. Input validation and the policy-protected
@@ -520,7 +523,7 @@ are reported as `retry-after-deferred`. Every failure becomes a fixed section/co
 bodies and the token are never returned or logged.
 
 The result is a schema-version 2 `base` envelope compatible with `RawSync`. Records use the
-Python `sync_all` sanitization without descriptions or other extra Fabric fields. Unknown item
+same bounded sanitization as the compatibility collector without descriptions or other extra Fabric fields. Unknown item
 types are kept verbatim; item IDs must be UUIDs because they are interpolated into job URLs.
 Jobs follow all bounded pages before keeping the first three returned runs per item, matching the
 Python projection order. Collection is limited to 1,000 job records per item, three pages, 100
@@ -530,24 +533,24 @@ items and 150 HTTP attempts. Job failures, throttling or budget exhaustion fail 
 plus all scanner-dependent capabilities are explicitly `unsupported` with
 `collector-not-migrated`, and every item has `scannerMatched: false`.
 
-No complete status is fabricated, so a truthful Core-only envelope cannot become a snapshot. The
-production `validateRawSync` rejects it because those required sections are incomplete, and the
-browser base flow would also require an `enrichmentItemIds` plan covering every item, which this
-stage does not return. Use `validateCoreCollectorEnvelope` and `compareCoreCollectorParity`
-(see [core-collector-parity.md](core-collector-parity.md)) for stage validation and dual-run
-comparison. Parity excludes descriptions from compared Core fields because this stage
-intentionally omits them. A repeated explicit job ID for one item fails that item's jobs with
-`invalid-response` instead of emitting duplicates. Browser Sync continues to use the published
-Python UDF.
+No complete status is fabricated, so a Core envelope is never published alone.
+The browser composer requires the exact follow-up plan, validates each collector
+envelope and supplies only documented Python compatibility sections before
+`validateRawSync` can accept the candidate. Use
+`validateCoreCollectorEnvelope` and `compareCoreCollectorParity` (see
+[core-collector-parity.md](core-collector-parity.md)) for stage validation.
+Parity excludes descriptions from compared Core fields because this stage
+intentionally omits them. A repeated explicit job ID for one item fails that
+item's jobs with `invalid-response` instead of emitting duplicates.
 
-### Fabric definition stage (dual-run, no cutover)
+### Fabric definition stage (active)
 
 `workspaceCollectDefinitions` ports the Python definition retrieval and safe projections. It takes
 `protocolVersion: 1`, a strict workspace UUID, one to eight unique `{ id, type }` items and a
 strict correlation UUID or `null`. It accepts no token, URL or endpoint. The same input validation
 and `SynchronizerAuthority` gate run before the Fabric token is read. The envelope is marked
-`stage: "definitions"` and `authoritative: false`, writes no Rayfin rows and is rejected by the
-production enrichment validator.
+`stage: "definitions"` and `authoritative: false`, writes no Rayfin rows and is accepted only
+through the browser composer that binds it to the active workspace run.
 
 Only `Ontology`, `GraphModel` and `DataAgent` map to the documented
 `POST /v1/workspaces/{workspaceId}/{ontologies|graphModels|dataAgents}/{id}/getDefinition`
@@ -582,7 +585,7 @@ or cancellation stop the batch, and remaining items are `failed/not-attempted`. 
 collector, the Function omits the free-text data-agent publish description, reports a failed LRO
 as `operation-failed` and an unfinished one as `operation-incomplete`.
 
-### Item Relations API (Beta) collector (no cutover)
+### Item Relations API (Beta) collector (active Preview evidence)
 
 `workspaceCollectItemRelations` queries the documented upstream and downstream
 `/items/{itemId}/relations/{direction}?beta=true` routes for 1-16 root items behind the same input
@@ -720,11 +723,13 @@ labeled subset; unknown model workspaces are never inferred.
 Rayfin 1.36.2 has no documented deployed Power BI application-token audience,
 and its semantic-model connector is delegated-only. Scanner lineage, scanner
 fields and engine dependencies therefore remain explicitly unsupported, with
-dated platform/tenant blockers. This stage is non-authoritative and leaves the
-active Python UDF, RawSync validation and publisher unchanged. See
+dated platform/tenant blockers. The browser merges this non-authoritative
+structure with the exact Python scanner compatibility result before validation
+and publication. See
 [powerbi-scanner-replacement.md](powerbi-scanner-replacement.md) for exact
 coverage, privacy limits and the minimum capability needed for full removal.
-### SQL metadata stage (dual-run)
+
+### SQL metadata stage (active)
 
 `workspaceCollectSqlMetadata` takes `protocolVersion: 1`, a strict workspace UUID, 1-8 unique
 `{ id, type }` items and a strict correlation UUID or `null`, behind the same validation and
@@ -983,58 +988,41 @@ Fabric IQ MCP, the contract and the remaining gates.
 
 ## Sync
 
-The Sync button calls `runFabricSync` (`src/atlas/backend.ts`). When deployed,
-the browser invokes the published `sync_all` Fabric User Data Function. The
-required read-only Fabric/Power BI token is accompanied by separate optional
-definition (`Item.ReadWrite.All`), Kusto and Azure SQL tokens acquired for the
-same signed-in identity. Each token is used only by its matching metadata
-collector. The `storageToken` function parameter is reserved
-for future OneLake discovery and is not currently acquired by the browser. The
-app maps the response, writes it through the Rayfin Data API, and records a
-`SyncRun`.
+The Sync button calls `runFabricSync` (`src/atlas/backend.ts`). The browser
+builds an exact collector plan for the target workspace, invokes typed Rayfin
+Functions serially, calls the Python compatibility UDF only for retained gaps,
+validates every envelope and writes the merged result through the Rayfin Data
+API.
 
 Initial synchronization and later refreshes use the same five-phase progress
 tracker. The discovery phase reports the actual number of enriched items and
 the active Fabric item type, together with elapsed time, rather than advancing
 a simulated percentage.
 
-Each browser request has its own 195-second abort deadline. Users can cancel an
-active synchronization, and expiring audience tokens are renewed silently
-between slices.
+Rayfin collector calls carry no browser tokens or arbitrary URLs. Each
+Function acquires only its declared application audience after validating the
+workspace, item batch, correlation ID and `SynchronizerAuthority` policy.
+Collectors bound pages, records, response bytes, attempts, sleeps and execution
+time. They return fixed section and item evidence instead of upstream bodies.
+
+The Python compatibility path receives only the delegated audiences required
+for Power BI scanner evidence, PBIR-Legacy pages and Kusto live metadata. It
+uses its existing 180-second budget below the Fabric User Data Function limit.
+The explicit rollback flag can restore the previous Python collector during an
+incident, but it is not the normal v2 path.
 
 Contract version 2 separates required sections from optional enrichment and
 records metadata capabilities for ownership, sensitivity, endorsement, tags,
-KQL schema, SQL schema and item definitions. Required-section failure rejects
-the refresh. Optional token, permission, encrypted-label or endpoint failures
-remain visible as evidence but do not invalidate otherwise authoritative
-metadata. Valid empty workspaces are accepted.
+KQL schema, SQL schema, item definitions, source provenance and policy
+evidence. Required-section failure rejects the refresh. Optional permission,
+encrypted-label, endpoint or throttling failures remain visible as evidence
+without erasing valid results from other items. Valid empty workspaces are
+accepted.
 
-Microsoft Fabric currently enforces a
-[200-second User Data Function execution limit](https://learn.microsoft.com/en-us/python/api/fabric-user-data-functions/fabric.functions.userdatafunctiontimeouterror?view=fabric-user-data-functions-python-latest).
-Atlas uses one 180-second monotonic budget across API calls, SQL/KQL
-metadata queries, incremental response reads, retries and sleeps, leaving 20
-seconds for final projection, serialization and platform response handling. It
-retries bounded `429` and transient `5xx` responses, caps upstream and final
-payloads at 25 MiB, and returns structured safe errors. The browser independently
-streams and caps the response at 26 MiB before parsing.
-
-Object-lineage relations are not truncated by count. Synchronization starts
-with a deferred-enrichment base call that returns the authoritative workspace,
-scanner, access and base-lineage envelope. The client then groups workspace
-items by Fabric type and invokes `sync_items` in bounded operational batches.
-Each batch returns `completedItemIds` and `remainingItemIds`. When its remaining
-budget is too short to start another item, the UDF returns a continuation before
-the platform timeout.
-
-The client requeues continuations, splits a timed-out or oversized multi-item
-batch, and retries a single slow item in a fresh function slice. Repeated
-no-progress attempts are bounded, and a deterministic single-item response-size
-failure is surfaced explicitly instead of looping forever. Other item types
-continue independently in the same queue. A platform
-`UserDataFunctionTimeoutError` is therefore a retry signal for the affected
-slice, not a reason to discard completed slices. Non-retryable validation or
-permission failures still preserve the previous validated snapshot. The
-browser warns before refresh or navigation closes the tab while the queue is
+The browser runs one selected workspace at a time. A failed workspace does not
+stop the remaining batch and cannot replace another workspace's manifest.
+Users can cancel the active run; queued workspaces become cancelled. The
+browser warns before refresh or navigation closes the tab while collection is
 active.
 
 Each refresh creates one correlated `SyncRun` attempt before Fabric discovery,
@@ -1213,9 +1201,10 @@ resolves.
   flags and measure expressions. Dataset expressions are requested only because
   the scanner requires that option for measure DAX.
 - Dataflows, Datamarts and Semantic Models include documented upstream
-  Dataflow, Datamart and Semantic Model relationships by immutable ID. Scanner
-  workspace IDs prevent cross-workspace edges from entering the single-workspace
-  graph.
+  Dataflow, Datamart and Semantic Model relationships by immutable ID.
+  Authoritative snapshot edges stay inside their workspace manifest.
+  Cross-workspace Item Relations evidence uses composite workspace and item
+  identities and remains in the separate Preview graph.
 - Reports include pages. Fabric APIs do not expose complete visual field
   bindings through this flow.
 
@@ -1270,12 +1259,11 @@ without duplicating content.
 
 ## Build transparency
 
-The v1.9 production build emits one main application chunk of about 0.9 MB
-minified, or about 0.25 MB gzip. Vite reports the `backend.ts` Rayfin client
-dynamic import as ineffective because saved views, access reviews,
-acknowledgements and auth also import that client statically. This does not
-change runtime correctness; it means that import is not a code-splitting
-boundary. The tradeoff is accepted for the current accelerator size.
+The production build reports large application and radar chunks. Vite also
+reports that the `backend.ts` Rayfin client dynamic import cannot form a
+separate chunk because persistence modules import the same client statically.
+These warnings do not change runtime correctness. Bundle splitting remains a
+measured performance task rather than a release claim.
 
 Type checking is a blocking build step. `npm run typecheck` executes
 `tsc -b --force` with `strict` and `noEmit`; `noCheck` is not enabled.
@@ -1286,7 +1274,7 @@ Type checking is a blocking build step. `npm run typecheck` executes
 | --- | --- | --- |
 | Auth | none | Fabric brokered (Entra ID) |
 | Data | in-memory sample set | Fabric SQL via RayfinClient |
-| Sync | refreshes the sample | validates UDF result, writes a new snapshot |
+| Sync | refreshes the sample | composes Rayfin collectors plus exact Python compatibility, then publishes a workspace snapshot |
 | Comments | in-memory | persisted to `Comment` |
 | Saved views and reviews | current preview session | user-scoped Rayfin entities |
 

@@ -33,7 +33,7 @@ export function currentSnapshot(): AtlasData {
       displayName: "Sales analytics",
       capacity: "F8",
       region: "West Europe",
-      deploymentId: "2.0.0-alpha.1:snapshot-v1:test:2026-10-02T00:00:00.000Z",
+      deploymentId: "2.0.0:snapshot-v1:test:2026-10-02T00:00:00.000Z",
       snapshotId: SNAPSHOT_ID,
       syncedAt: SYNCED_AT,
       syncSections: {

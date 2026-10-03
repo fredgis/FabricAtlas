@@ -1,0 +1,199 @@
+\usepackage{fontspec}
+\usepackage{tikz}
+\usetikzlibrary{positioning}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{colortbl}
+\usepackage{etoolbox}
+\usepackage{needspace}
+\usepackage{microtype}
+
+\definecolor{atlasTeal}{HTML}{117865}
+\definecolor{atlasTealDark}{HTML}{0C695A}
+\definecolor{atlasPurple}{HTML}{742774}
+\definecolor{atlasBlue}{HTML}{0078D4}
+\definecolor{atlasGold}{HTML}{817400}
+\definecolor{atlasGreen}{HTML}{0E700E}
+\definecolor{atlasRed}{HTML}{BC2F32}
+\definecolor{atlasCanvas}{HTML}{F5F5F5}
+\definecolor{atlasCard}{HTML}{FFFFFF}
+\definecolor{atlasText}{HTML}{242424}
+\definecolor{atlasMuted}{HTML}{616161}
+\definecolor{atlasBorder}{HTML}{E0E0E0}
+\definecolor{atlasLightTeal}{HTML}{E3F7EF}
+\definecolor{atlasLightPurple}{HTML}{F7EFF8}
+\definecolor{atlasLightBlue}{HTML}{EEF6FC}
+
+\setmainfont{Segoe UI}
+\setsansfont{Segoe UI}
+\setmonofont{Consolas}
+
+\providecommand{\subtitle}[1]{\gdef\thesubtitle{#1}}
+\providecommand{\thesubtitle}{}
+
+\AtBeginDocument{
+  \hypersetup{
+    colorlinks=true,
+    linkcolor=atlasTealDark,
+    urlcolor=atlasBlue,
+    citecolor=atlasPurple,
+    pdfborder={0 0 0}
+  }
+}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.55em}
+\renewcommand{\arraystretch}{1.18}
+\arrayrulecolor{atlasBorder}
+\setkeys{Gin}{keepaspectratio}
+\floatplacement{figure}{H}
+
+\titleformat{\section}
+  {\color{atlasText}\Large\bfseries}
+  {\color{atlasTeal}\thesection}
+  {0.7em}
+  {}
+  [\vspace{0.2em}\color{atlasBorder}\titlerule]
+\titleformat{\subsection}
+  {\color{atlasTealDark}\large\bfseries}
+  {\thesubsection}
+  {0.65em}
+  {}
+\titleformat{\subsubsection}
+  {\color{atlasText}\normalsize\bfseries}
+  {\thesubsubsection}
+  {0.6em}
+  {}
+
+\pretocmd{\section}{\Needspace{7\baselineskip}}{}{}
+\pretocmd{\subsection}{\Needspace{5\baselineskip}}{}{}
+
+\captionsetup{
+  font=small,
+  labelfont={bf,color=atlasTealDark},
+  textfont={color=atlasMuted},
+  justification=centering,
+  singlelinecheck=false
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\color{atlasTealDark}\small\bfseries Fabric Atlas}
+\fancyhead[R]{\color{atlasMuted}\small Workspace intelligence for Microsoft Fabric}
+\fancyfoot[L]{\color{atlasMuted}\scriptsize Metadata only. No workspace business data is stored.}
+\fancyfoot[R]{\color{atlasTealDark}\small\thepage}
+\renewcommand{\headrulewidth}{0.35pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\AtBeginEnvironment{quote}{\color{atlasMuted}\itshape}
+
+\makeatletter
+\renewcommand{\maketitle}{
+  \begin{titlepage}
+    \thispagestyle{empty}
+    \begin{tikzpicture}[remember picture,overlay]
+      \fill[atlasCanvas] (current page.south west) rectangle (current page.north east);
+      \shade[left color=atlasPurple,right color=atlasBlue,middle color=atlasTeal]
+        (current page.north west) rectangle ([yshift=-1.25cm]current page.north east);
+      \fill[atlasTeal,opacity=0.055]
+        ([xshift=-1.2cm,yshift=-2.6cm]current page.north west) circle (4.0cm);
+      \fill[atlasPurple,opacity=0.055]
+        ([xshift=1.1cm,yshift=1.0cm]current page.south east) circle (4.8cm);
+      \draw[atlasBorder,opacity=0.42,step=0.8cm]
+        ([xshift=1.1cm,yshift=1.2cm]current page.south west)
+        grid
+        ([xshift=-1.1cm,yshift=-1.8cm]current page.north east);
+    \end{tikzpicture}
+
+    \vspace*{2.0cm}
+
+    \begin{tikzpicture}
+      \node[
+        rounded corners=4mm,
+        minimum width=2.0cm,
+        minimum height=2.0cm,
+        fill=atlasTeal,
+        draw=atlasTealDark,
+        line width=0.7pt
+      ] (mark) {};
+      \draw[white,line width=1.5pt]
+        (mark.center) circle (0.48cm);
+      \draw[white,line width=1.5pt]
+        ([xshift=-0.33cm]mark.center) -- ([xshift=0.33cm]mark.center);
+      \draw[white,line width=1.5pt]
+        ([yshift=-0.33cm]mark.center) -- ([yshift=0.33cm]mark.center);
+      \fill[white] (mark.center) circle (0.08cm);
+    \end{tikzpicture}
+
+    \vspace{1.0cm}
+
+    {\color{atlasTealDark}\small\bfseries\MakeUppercase{Microsoft Fabric governance}\par}
+    \vspace{0.35cm}
+    {\color{atlasText}\fontsize{34}{40}\selectfont\bfseries \@title\par}
+    \vspace{0.35cm}
+    {\color{atlasMuted}\fontsize{18}{24}\selectfont \thesubtitle\par}
+
+    \vspace{1.0cm}
+
+    {\color{atlasText}\large
+      Catalog \quad\textcolor{atlasBorder}{|}\quad
+      Lineage \quad\textcolor{atlasBorder}{|}\quad
+      Governance \quad\textcolor{atlasBorder}{|}\quad
+      Access \quad\textcolor{atlasBorder}{|}\quad
+      Operations
+    \par}
+
+    \vspace{1.2cm}
+
+    \begin{tikzpicture}[node distance=0.22cm]
+      \node[
+        rounded corners=2.5mm,
+        fill=atlasLightTeal,
+        draw=atlasTeal!45,
+        text=atlasTealDark,
+        inner xsep=9pt,
+        inner ysep=5pt,
+        font=\small\bfseries
+      ] (a) {FABRIC NATIVE};
+      \node[
+        right=of a,
+        rounded corners=2.5mm,
+        fill=atlasLightPurple,
+        draw=atlasPurple!40,
+        text=atlasPurple,
+        inner xsep=9pt,
+        inner ysep=5pt,
+        font=\small\bfseries
+      ] (b) {OPEN SOURCE};
+      \node[
+        right=of b,
+        rounded corners=2.5mm,
+        fill=atlasLightBlue,
+        draw=atlasBlue!35,
+        text=atlasBlue,
+        inner xsep=9pt,
+        inner ysep=5pt,
+        font=\small\bfseries
+      ] (c) {METADATA ONLY};
+    \end{tikzpicture}
+
+    \vfill
+
+    \begin{minipage}{0.90\textwidth}
+      \color{atlasMuted}
+      \small
+      Product version 2.0.0. Example deployment evidence: FGI-MAIN and
+      FGI-ORACLE, captured 3 October 2026.
+    \end{minipage}
+
+    \vspace{0.45cm}
+    {\color{atlasText}\large\bfseries \@date\par}
+  \end{titlepage}
+  \clearpage
+}
+\makeatother
