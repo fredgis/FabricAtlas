@@ -694,6 +694,23 @@ export function MapView({
   const suppressItemClick = useRef(false);
   const suppressObjectClick = useRef(false);
   const mapRef = useRef<HTMLDivElement>(null);
+  const viewportRestoreFrame = useRef<number | undefined>(undefined);
+
+  const preserveMapViewport = () => {
+    const viewport = mapRef.current;
+    if (!viewport) return;
+    const scrollLeft = viewport.scrollLeft;
+    const scrollTop = viewport.scrollTop;
+    if (viewportRestoreFrame.current != null) {
+      window.cancelAnimationFrame(viewportRestoreFrame.current);
+    }
+    viewportRestoreFrame.current = window.requestAnimationFrame(() => {
+      viewportRestoreFrame.current = undefined;
+      if (mapRef.current !== viewport) return;
+      viewport.scrollLeft = scrollLeft;
+      viewport.scrollTop = scrollTop;
+    });
+  };
 
   const selected =
     itemById.get(selId) ?? (selId ? itemById.get(startingId) : undefined);
@@ -1103,6 +1120,7 @@ export function MapView({
   ]);
 
   const nodeDown = (event: RPE<HTMLButtonElement>, id: string) => {
+    preserveMapViewport();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     const multi = event.ctrlKey || event.metaKey || event.shiftKey;
     let selection = selectedItemIds;
@@ -1126,6 +1144,7 @@ export function MapView({
     event: RPE<HTMLDivElement>,
     key: string,
   ) => {
+    preserveMapViewport();
     event.currentTarget.setPointerCapture?.(event.pointerId);
     dragging.current = {
       id: key,
@@ -1200,6 +1219,7 @@ export function MapView({
   };
   const nodeClick = (event: RME<HTMLButtonElement>, id: string) => {
     if (suppressItemClick.current) return;
+    preserveMapViewport();
     const multi = event.ctrlKey || event.metaKey || event.shiftKey;
     if (multi) {
       const next = new Set(selectedItemIds);
@@ -2331,6 +2351,10 @@ export function MapView({
                         key={item.fabricId}
                         type="button"
                         aria-pressed={selectedNode}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          preserveMapViewport();
+                        }}
                         onClick={(event) => nodeClick(event, item.fabricId)}
                         aria-label={`${item.displayName}, ${typeMeta(item.itemType).label}, ${item.health}`}
                         title={item.displayName}

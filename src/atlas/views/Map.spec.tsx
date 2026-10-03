@@ -358,6 +358,51 @@ describe("MapView selection", () => {
     expect(selectedLakehouse.style.top).toBe(position.top);
   });
 
+  it.each([
+    ["Atlas", "/#map"],
+    ["Item Relations Preview", "/?preview=item-relations#map"],
+  ])("keeps the %s viewport fixed when an item is selected", async (_source, url) => {
+    window.history.replaceState(null, "", url);
+    const { container } = render(
+      <AtlasProvider isPreview>
+        <MapView itemRelationsEnabled />
+      </AtlasProvider>,
+    );
+    const viewport = container.querySelector<HTMLDivElement>(".atlas-map-grid")!;
+    viewport.scrollLeft = 140;
+    viewport.scrollTop = 180;
+    const node = screen.getByLabelText(
+      "alpinerent_lakehouse, Lakehouse, healthy",
+    );
+
+    expect(fireEvent.mouseDown(node, {
+      button: 0,
+      clientX: 320,
+      clientY: 240,
+    })).toBe(false);
+    fireEvent.pointerDown(node, {
+      button: 0,
+      pointerId: 81,
+      clientX: 320,
+      clientY: 240,
+    });
+    fireEvent.pointerUp(node, {
+      button: 0,
+      pointerId: 81,
+      clientX: 320,
+      clientY: 240,
+    });
+    fireEvent.click(node);
+    await act(async () => {
+      await new Promise<void>((resolve) =>
+        window.requestAnimationFrame(() => resolve()),
+      );
+    });
+
+    expect(viewport.scrollLeft).toBe(140);
+    expect(viewport.scrollTop).toBe(180);
+  });
+
   it("shows only the selected impact subgraph", () => {
     window.history.replaceState(null, "", "/#map");
     const { container } = render(
