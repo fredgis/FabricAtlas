@@ -20,6 +20,12 @@ dist-ssr
 .vite
 coverage
 *.local
+
+# Local tool state
+.playwright/
+.pytest_cache/
+.worktrees/
+
 rayfin/.env*
 rayfin/.deployments.json
 rayfin/.temp/
