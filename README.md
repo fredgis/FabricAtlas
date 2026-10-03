@@ -17,6 +17,7 @@ the last validated snapshot in Fabric so everyone sees the same state.
 [Whitepaper](docs/fabric-atlas-whitepaper.pdf) ·
 [Technical presentation](prez/Fabric-Atlas-Dev-Architecture.pdf) ·
 [Capabilities](#capabilities) ·
+[Status legend](#status-legend) ·
 [Roadmap](#current-limits-and-roadmap) ·
 [Changelog](CHANGELOG.md) ·
 [Contribute](.github/CONTRIBUTING.md)
@@ -137,6 +138,58 @@ Detailed feature and coverage notes are in the
 [whitepaper](docs/fabric-atlas-whitepaper.pdf),
 [architecture](docs/architecture.md) and
 [item-family coverage](docs/item-families.md).
+
+## Status legend
+
+Atlas uses separate badge vocabularies for metadata coverage and access
+evidence. A recorded grant does not prove unrestricted data access, and a
+missing signal is never converted into a healthy result.
+
+### Item-family coverage
+
+| Status | Meaning |
+|---|---|
+| <img src="docs/assets/status-colors/healthy.svg" width="16" alt=""> **Collected** | Atlas published the dimension in the validated snapshot. |
+| <img src="docs/assets/status-colors/warning.svg" width="16" alt=""> **Partial** | Atlas published usable evidence, but the dimension is incomplete for this item family. |
+| <img src="docs/assets/status-colors/purple.svg" width="16" alt=""> **Adapter only** | A verified read-only adapter exists, but its evidence is not part of the published snapshot. |
+| <img src="docs/assets/status-colors/warning.svg" width="16" alt=""> **Deferred** | A documented contract exists, but Atlas does not project it into the snapshot yet. |
+| <img src="docs/assets/status-colors/neutral.svg" width="16" alt=""> **Unsupported** | No verified public API or contract is available for this dimension. |
+| <img src="docs/assets/status-colors/neutral.svg" width="16" alt=""> **Excluded by design** | The content is intentionally outside the Atlas metadata boundary, such as notebook source code and cells. |
+| <img src="docs/assets/status-colors/empty.svg" width="16" alt=""> **N/A** | The dimension does not apply to this item family. It is not counted as zero or treated as a gap. |
+
+### Access evidence
+
+These badges describe the evidence Atlas collected for a principal-item pair.
+They are not an allow or deny decision.
+
+| Status | Meaning |
+|---|---|
+| <img src="docs/assets/status-colors/healthy.svg" width="16" alt=""> **Granted** | Atlas recorded a grant and completed the relevant grant collection. This does not prove unrestricted data access. |
+| <img src="docs/assets/status-colors/warning.svg" width="16" alt=""> **Partial** | Atlas recorded a grant, but restrictions, group membership or another evidence layer remain incomplete or unevaluated. |
+| <img src="docs/assets/status-colors/neutral.svg" width="16" alt=""> **Unknown** | Atlas did not collect the evidence, or Fabric exposes no verified public API for it. Unknown is not a negative result. |
+| <img src="docs/assets/status-colors/danger.svg" width="16" alt=""> **Denied** | Fabric denied Atlas permission to read the evidence. It does not mean the reviewed principal was denied access. |
+
+### Access origin
+
+| Origin | Meaning |
+|---|---|
+| <img src="docs/assets/status-colors/neutral.svg" width="16" alt=""> **Inherited** | The recorded access comes from the workspace scope only. |
+| <img src="docs/assets/status-colors/purple.svg" width="16" alt=""> **Direct** | The recorded access comes from an item-scoped grant only. |
+| <img src="docs/assets/status-colors/teal.svg" width="16" alt=""> **Mixed** | Workspace and item grant paths both exist for the same principal-item pair. |
+
+### Recorded access level
+
+| Level | Meaning |
+|---|---|
+| <img src="docs/assets/status-colors/warning.svg" width="16" alt=""> **Owner permission** | Owner is the strongest recorded grant that remains. |
+| <img src="docs/assets/status-colors/healthy.svg" width="16" alt=""> **Edit** | Edit is the strongest recorded grant that remains. |
+| <img src="docs/assets/status-colors/teal.svg" width="16" alt=""> **View** | View is the strongest recorded grant that remains. |
+| <img src="docs/assets/status-colors/neutral.svg" width="16" alt=""> **No positive recorded grant** | No positive grant remains in the collected paths. This still does not prove that actual access has been removed. |
+
+The read-only What-if simulator removes selected recorded paths in the browser
+and recalculates the strongest remaining level. It never changes Fabric
+permissions and does not evaluate group membership, RLS, OLS, OneLake
+security, Purview DLP or actual data access.
 
 ## Product screenshots
 
