@@ -236,7 +236,7 @@ describe("MapView selection", () => {
 
   it("shows the full workspace by default without edge text overlays", () => {
     window.history.replaceState(null, "", "/#map");
-    render(
+    const { container } = render(
       <AtlasProvider isPreview>
         <MapView />
       </AtlasProvider>,
