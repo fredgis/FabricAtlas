@@ -29,6 +29,7 @@ services:
       - http://127.0.0.1:5174
       - https://sleek-mango-daf3df4502-centralus.webapp.fabricapps.net
       - https://curly-bolt-17d896b321-centralus.webapp.fabricapps.net
+      - https://solar-shell-33dd5470f2-centralus.webapp.fabricapps.net
   data:
     enabled: true
     dialect: mssql
