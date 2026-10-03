@@ -62,18 +62,25 @@ export interface CoverageEntry {
 
 export type ItemFamilyKind = "fabric-item" | "derived" | "workload-item" | "unknown-item";
 
-export type ItemFamilyAdapterId = "source-provenance";
+export type ItemFamilyAdapterId = "source-provenance" | "sql-metadata";
 
 export const ITEM_FAMILY_ADAPTERS: Record<
   ItemFamilyAdapterId,
-  { label: string; functionName: string; published: false; detail: string }
+  { label: string; functionName: string; published: boolean; detail: string }
 > = {
   "source-provenance": {
     label: "Source provenance",
     functionName: "workspaceCollectSourceProvenance",
-    published: false,
+    published: true,
     detail:
-      "Read-only shortcut, mirroring and MLV execution-definition evidence. Not yet part of published snapshots.",
+      "Read-only shortcut, mirroring and MLV execution-definition evidence published with the validated snapshot.",
+  },
+  "sql-metadata": {
+    label: "SQL metadata",
+    functionName: "workspaceCollectSqlMetadata",
+    published: true,
+    detail:
+      "Read-only tables, views and columns from fixed Fabric SQL endpoint catalog queries.",
   },
 };
 
@@ -347,13 +354,13 @@ const FAMILIES: readonly ItemFamilyCapability[] = [
     followUp: "Project source and destination item IDs from the documented Eventstream definition, without event payloads.",
   }),
   family("MirroredDatabase", {
-    adapters: ["source-provenance"],
+    adapters: ["sql-metadata", "source-provenance"],
     coverage: {
-      objects: entry("adapter-only", "Selected source tables from the documented mirroring.json. Requires read-write permission; not in published snapshots."),
+      objects: entry("collected", "Tables, views and columns from the SQL endpoint catalog, merged with selected source-table provenance from mirroring.json."),
       lineage: entry("partial", "Scanner relations. Provider, connection and SQL endpoint bindings come from the read-only adapter."),
-      operations: entry("adapter-only", "Replication state from getMirroringStatus. Not in published snapshots."),
+      operations: entry("collected", "Replication state from getMirroringStatus is stored with the snapshot."),
     },
-    followUp: "Publish mirroring provenance after the durable snapshot cutover.",
+    followUp: "Add object-level source mappings if Fabric exposes stable mirrored-column bindings.",
   }),
   family("UserDataFunction", {
     coverage: {

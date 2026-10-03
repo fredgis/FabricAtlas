@@ -76,7 +76,7 @@ Rayfin Data API (Data API Builder)  ──  Fabric SQL database (mssql)
 | Evidence | Primary collector | Compatibility path |
 |---|---|---|
 | Workspace, items, roles and jobs | Rayfin `workspaceCollectCore` | Python rollback only |
-| Lakehouse, Warehouse and SQL Database tables, views and columns | Rayfin `workspaceCollectSqlMetadata` over Fabric REST and the SQL audience | None; partial or unavailable application-identity coverage stays explicit |
+| Lakehouse, Warehouse, Mirrored Database and SQL Database tables, views and columns | Rayfin `workspaceCollectSqlMetadata` over Fabric REST and the SQL audience | None; partial or unavailable application-identity coverage stays explicit |
 | Shortcuts, mirroring and source provenance | Rayfin `workspaceCollectSourceProvenance` | None; shortcuts identify targets but do not expose target columns |
 | Ontology, Graph Model and Data Agent definitions | Rayfin `workspaceCollectDefinitions` | None; permission or format gaps stay explicit |
 | KQL definition structure | Rayfin `workspaceCollectKqlMetadata` | Python Kusto data-plane fallback because Rayfin 1.36.2 has no Kusto audience |

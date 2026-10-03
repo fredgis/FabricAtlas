@@ -352,7 +352,7 @@ describe("Map & lineage unified evidence", () => {
     );
   });
 
-  it("moves external Preview nodes vertically without changing their column", async () => {
+  it("moves external Preview nodes freely and releases them on pointer up", async () => {
     const { container } = renderMap({
       itemRelationsEnabled: true,
       loadItemRelationsEvidence: loadEvidence,
@@ -382,8 +382,19 @@ describe("Map & lineage unified evidence", () => {
       pointerId: 11,
     });
 
-    expect(external.style.left).toBe(initial.left);
+    expect(external.style.left).not.toBe(initial.left);
     expect(external.style.top).not.toBe(initial.top);
+    const released = { left: external.style.left, top: external.style.top };
+
+    fireEvent.pointerMove(external, {
+      clientX: 220,
+      clientY: 210,
+      pointerId: 11,
+    });
+
+    expect({ left: external.style.left, top: external.style.top }).toEqual(
+      released,
+    );
   });
 
   it("hides unrelated Preview components in Impact mode and Reset restores the initial graph", async () => {

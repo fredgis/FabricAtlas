@@ -33,7 +33,13 @@ export interface BrowserCollectorDependencies {
   maxCalls?: number;
 }
 const DEFINITIONS = new Set(["Ontology", "GraphModel", "DataAgent"]);
-const SQL = new Set(["SQLDatabase", "Warehouse", "Lakehouse", "SQLEndpoint"]);
+const SQL = new Set([
+  "SQLDatabase",
+  "Warehouse",
+  "Lakehouse",
+  "MirroredDatabase",
+  "SQLEndpoint",
+]);
 const KQL = new Set(["Eventhouse", "KQLDatabase", "KQLQueryset", "KQLDashboard"]);
 const PROVENANCE = new Set(["Lakehouse", "Warehouse", "KQLDatabase", "MirroredDatabase"]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

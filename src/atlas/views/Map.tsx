@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -1146,15 +1147,14 @@ export function MapView({
       current.ids.forEach((id) => {
         const origin = current.origins[id];
         next[id] = {
-          x: origin.x,
+          x: Math.max(12, origin.x + dx),
           y: Math.max(46, origin.y + dy),
         };
       });
       return next;
     });
   };
-  const nodeUp = (event: RPE<HTMLElement>) => {
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  const finishNodeDrag = useCallback(() => {
     const moved = dragging.current?.moved;
     dragging.current = null;
     setDragId(null);
@@ -1162,7 +1162,26 @@ export function MapView({
     window.setTimeout(() => {
       suppressItemClick.current = false;
     }, 0);
+  }, []);
+  const nodeUp = (event: RPE<HTMLElement>) => {
+    if (
+      typeof event.currentTarget.hasPointerCapture !== "function" ||
+      event.currentTarget.hasPointerCapture(event.pointerId)
+    ) {
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+    }
+    finishNodeDrag();
   };
+  useEffect(() => {
+    if (!dragId) return;
+    const stop = () => finishNodeDrag();
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    return () => {
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+  }, [dragId, finishNodeDrag]);
   const resetObjectContext = (
     clearQuery = false,
     expandedItemId = activeId,
@@ -2318,6 +2337,8 @@ export function MapView({
                         onPointerDown={(event) => nodeDown(event, item.fabricId)}
                         onPointerMove={nodeMove}
                         onPointerUp={nodeUp}
+                        onPointerCancel={nodeUp}
+                        onLostPointerCapture={finishNodeDrag}
                         className={cn(
                           "absolute flex touch-none select-none items-center gap-[10px] rounded-lg border bg-card px-[12px] text-left shadow-fabric-2 transition-[box-shadow,opacity,border-color,transform] hover:-translate-y-[1px] hover:shadow-fabric-8",
                           selectedNode ? "border-primary/70" : "border-border",
@@ -2398,7 +2419,8 @@ export function MapView({
                       onPointerMove={nodeMove}
                       onPointerUp={nodeUp}
                       onPointerCancel={nodeUp}
-                      className="absolute z-[3] flex touch-none cursor-ns-resize select-none items-center gap-[10px] rounded-lg border border-lineage-upstream/40 bg-card px-[12px] text-left shadow-fabric-2"
+                      onLostPointerCapture={finishNodeDrag}
+                      className="absolute z-[3] flex touch-none cursor-move select-none items-center gap-[10px] rounded-lg border border-lineage-upstream/40 bg-card px-[12px] text-left shadow-fabric-2"
                       style={{
                         left: node.x,
                         top: node.y,

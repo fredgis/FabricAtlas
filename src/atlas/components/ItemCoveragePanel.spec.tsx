@@ -8,9 +8,10 @@ describe("ItemCoveragePanel", () => {
     const panel = screen.getByRole("region", { name: "Atlas coverage" });
     const terms = within(panel).getAllByRole("term").map((term) => term.textContent);
     expect(terms).toEqual(["Catalog", "Objects", "Lineage", "Access", "Operations"]);
-    expect(within(panel).getAllByText("Adapter only")).toHaveLength(2);
-    expect(within(panel).getByText(/Selected source tables from the documented mirroring.json/)).toBeVisible();
-    expect(within(panel).getByText(/Not yet part of published snapshots/)).toBeVisible();
+    expect(within(panel).queryByText("Adapter only")).not.toBeInTheDocument();
+    expect(within(panel).getAllByText("Collected").length).toBeGreaterThanOrEqual(3);
+    expect(within(panel).getByText(/Tables, views and columns from the SQL endpoint catalog/)).toBeVisible();
+    expect(within(panel).getByText(/Replication state from getMirroringStatus/)).toBeVisible();
   });
 
   it("keeps unknown Workload Hub types visible without inventing coverage", () => {

@@ -131,7 +131,9 @@ function installBoundaries() {
     }),
     workspaceCollectSqlMetadata: invoke((input) => {
       const workspaceId = String(input.workspaceId);
-      const lake = estate(workspaceId).lake;
+      const e = estate(workspaceId);
+      const lake = e.lake;
+      const mirror = e.mirror;
       return {
         ...context(input, "sql-metadata"),
         items: (input.items as { id: string; type: string }[]).map((item) => ({ ...item, ...complete() })),
@@ -139,8 +141,23 @@ function installBoundaries() {
           [lake]: fixture.unavailable
             ? unsupported("token-unavailable")
             : { ...complete(), lakehouseTables: complete() },
+          [mirror]: fixture.unavailable
+            ? unsupported("token-unavailable")
+            : complete(),
         },
-        schema: fixture.unavailable ? {} : { [lake]: [lakeTable(workspaceId)] },
+        schema: fixture.unavailable ? {} : {
+          [lake]: [lakeTable(workspaceId)],
+          [mirror]: [{
+            name: "OPS.ORDERS",
+            source: "Fabric mirrored database SQL endpoint system catalog",
+            objectType: "SQL endpoint table",
+            columns: [
+              { name: "ORDER_ID", dataType: "bigint" },
+              { name: "CUSTOMER_ID", dataType: "bigint" },
+            ],
+            measures: [],
+          }],
+        },
         artifactMetadata: {},
         config: [],
         sections: {
@@ -243,7 +260,14 @@ describe("two-workspace collection, publication and hydration", () => {
         source: e.mirror, target: e.lake, relation: "onelake-shortcut",
       }));
       expect(hydrated?.schema?.[e.mirror]).toEqual([
-        expect.objectContaining({ name: "OPS.ORDERS", objectType: "Mirrored table", columns: [] }),
+        expect.objectContaining({
+          name: "OPS.ORDERS",
+          objectType: "SQL endpoint table",
+          columns: [
+            { name: "ORDER_ID", dataType: "bigint" },
+            { name: "CUSTOMER_ID", dataType: "bigint" },
+          ],
+        }),
       ]);
       expect(hydrated?.config).toContainEqual(expect.objectContaining({
         itemFabricId: e.mirror, label: "mirroring-source",

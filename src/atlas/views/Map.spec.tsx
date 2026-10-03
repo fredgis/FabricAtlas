@@ -783,9 +783,9 @@ describe("MapView selection", () => {
       pointerId: 4,
     });
 
-    expect(model.style.left).toBe(initial.modelLeft);
+    expect(model.style.left).not.toBe(initial.modelLeft);
     expect(model.style.top).not.toBe(initial.modelTop);
-    expect(lakehouse.style.left).toBe(initial.lakehouseLeft);
+    expect(lakehouse.style.left).not.toBe(initial.lakehouseLeft);
     expect(lakehouse.style.top).not.toBe(initial.lakehouseTop);
 
     fireEvent.click(screen.getByRole("button", { name: "Reset" }));

@@ -35,6 +35,8 @@ const SQL_ENDPOINT = "55555555-5555-4555-8555-555555555555";
 const NOTEBOOK = "66666666-6666-4666-8666-666666666666";
 const SECOND_DB = "77777777-7777-4777-8777-777777777777";
 const CORRELATION = "88888888-8888-4888-8888-888888888888";
+const MIRROR = "99999999-9999-4999-8999-999999999999";
+const MIRROR_ENDPOINT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const FABRIC_TOKEN = "fixture-fabric-token";
 const SQL_TOKEN = "fixture-sql-token";
 const BASE = `https://api.fabric.microsoft.com/v1/workspaces/${WS}`;
@@ -43,6 +45,7 @@ const SECOND_DB_URL = `${BASE}/sqlDatabases/${SECOND_DB}`;
 const WAREHOUSE_URL = `${BASE}/warehouses/${WAREHOUSE}`;
 const LAKEHOUSE_URL = `${BASE}/lakehouses/${LAKEHOUSE}`;
 const LAKEHOUSE_TABLES_URL = `${LAKEHOUSE_URL}/tables?maxResults=100`;
+const MIRROR_URL = `${BASE}/mirroredDatabases/${MIRROR}`;
 const DB_HOST = "fixture-db.database.fabric.microsoft.com";
 const DW_HOST = "fixture-dw.datawarehouse.fabric.microsoft.com";
 const LH_HOST = "fixture-lh.datawarehouse.fabric.microsoft.com";
@@ -129,6 +132,28 @@ function lakehouse(endpoint: Record<string, unknown> | null = {}, overrides: Rec
   };
 }
 
+function mirroredDatabase(
+  endpoint: Record<string, unknown> = {},
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    id: MIRROR,
+    type: "MirroredDatabase",
+    displayName: "Demo Oracle mirror",
+    workspaceId: WS,
+    properties: {
+      defaultSchema: "DEMO_DW",
+      sqlEndpointProperties: {
+        connectionString: LH_HOST,
+        id: MIRROR_ENDPOINT,
+        provisioningStatus: "Success",
+        ...endpoint,
+      },
+    },
+    ...overrides,
+  };
+}
+
 function routes(overrides: Routes = {}): Routes {
   return {
     [SQL_DB_URL]: () => json(sqlDatabase()),
@@ -138,6 +163,7 @@ function routes(overrides: Routes = {}): Routes {
     [LAKEHOUSE_TABLES_URL]: () => json({
       data: [{ name: "trips", schema: "dbo", type: "Table", columns: [] }],
     }),
+    [MIRROR_URL]: () => json(mirroredDatabase()),
     ...overrides,
   };
 }
@@ -217,6 +243,15 @@ function catalogs(overrides: Record<string, FakeCatalog> = {}): Record<string, F
     [SECOND_DB_NAME]: SALES_CATALOG,
     [WAREHOUSE]: WAREHOUSE_CATALOG,
     [SQL_ENDPOINT]: LAKEHOUSE_CATALOG,
+    [MIRROR_ENDPOINT]: {
+      objects: [
+        objectRow(40, "DEMO_DW", "DIM_STORE", "U", 1, "STORE_ID", "int"),
+        objectRow(40, "DEMO_DW", "DIM_STORE", "U", 2, "STORE_NAME", "varchar"),
+      ],
+      schemas: [{ schema_name: "DEMO_DW" }],
+      primaryKeys: [],
+      foreignKeys: [],
+    },
     ...overrides,
   };
 }
@@ -726,6 +761,38 @@ describe("SQL metadata trusted coordinates and mixed batches", () => {
       status: "complete",
       code: "partial-unsupported",
       lakehouseTables: { status: "unsupported", code: "endpoint-unsupported" },
+    });
+  });
+
+  it("collects mirrored database tables and columns through its SQL endpoint", async () => {
+    const { result, fetchImpl, sql } = collect(
+      routes(),
+      [{ id: MIRROR, type: "MirroredDatabase" }],
+    );
+
+    const envelope = await result;
+
+    expect(urls(fetchImpl)).toEqual([MIRROR_URL]);
+    expect(sql.connects[0].target).toEqual({
+      kind: "mirrored-database-sql-endpoint",
+      server: LH_HOST,
+      port: 1433,
+      database: MIRROR_ENDPOINT,
+      readOnlyIntent: false,
+    });
+    expect(envelope.schema[MIRROR]).toEqual([{
+      name: "DEMO_DW.DIM_STORE",
+      objectType: "SQL endpoint table",
+      source: "Fabric mirrored database SQL endpoint system catalog",
+      columns: [
+        { name: "STORE_ID", dataType: "int" },
+        { name: "STORE_NAME", dataType: "varchar" },
+      ],
+      measures: [],
+    }]);
+    expect(catalogStatus(envelope, MIRROR)).toEqual({
+      status: "complete",
+      code: undefined,
     });
   });
 

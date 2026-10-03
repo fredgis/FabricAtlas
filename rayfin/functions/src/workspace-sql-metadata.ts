@@ -56,6 +56,10 @@ export const SQL_PROPERTY_ROUTES: ReadonlyMap<string, { route: string; kind: Sql
   ["SQLDatabase", { route: "sqlDatabases", kind: "sql-database" }],
   ["Warehouse", { route: "warehouses", kind: "warehouse" }],
   ["Lakehouse", { route: "lakehouses", kind: "lakehouse-sql-endpoint" }],
+  ["MirroredDatabase", {
+    route: "mirroredDatabases",
+    kind: "mirrored-database-sql-endpoint",
+  }],
 ]);
 
 /**
@@ -145,6 +149,7 @@ export type SqlCatalogSource =
   | "fabric-sql-database-catalog"
   | "fabric-warehouse-catalog"
   | "fabric-lakehouse-sql-endpoint-catalog"
+  | "fabric-mirrored-database-sql-endpoint-catalog"
   | "fabric-lakehouse-tables-rest"
   | "fabric-lakehouse-rest-and-sql-catalog";
 
@@ -241,6 +246,8 @@ const CATALOG_SOURCES: Readonly<Record<SqlEndpointKind, SqlCatalogSource>> = {
   "sql-database": "fabric-sql-database-catalog",
   warehouse: "fabric-warehouse-catalog",
   "lakehouse-sql-endpoint": "fabric-lakehouse-sql-endpoint-catalog",
+  "mirrored-database-sql-endpoint":
+    "fabric-mirrored-database-sql-endpoint-catalog",
 };
 
 /** Atlas `source` labels; the SQL Database label matches the Python collector. */
@@ -248,12 +255,18 @@ const SCHEMA_SOURCES: Readonly<Record<SqlEndpointKind, string>> = {
   "sql-database": "Fabric SQL system catalog",
   warehouse: "Fabric Warehouse system catalog",
   "lakehouse-sql-endpoint": "Fabric SQL analytics endpoint system catalog",
+  "mirrored-database-sql-endpoint":
+    "Fabric mirrored database SQL endpoint system catalog",
 };
 
 const OBJECT_TYPES: Readonly<Record<SqlEndpointKind, { table: SqlSchemaTable["objectType"]; view: SqlSchemaTable["objectType"] }>> = {
   "sql-database": { table: "SQL table", view: "SQL view" },
   warehouse: { table: "SQL table", view: "SQL view" },
   "lakehouse-sql-endpoint": { table: "SQL endpoint table", view: "SQL endpoint view" },
+  "mirrored-database-sql-endpoint": {
+    table: "SQL endpoint table",
+    view: "SQL endpoint view",
+  },
 };
 
 const SCHEMA_UNSUPPORTED_CODES = new Set<SqlMetadataStatusCode>([

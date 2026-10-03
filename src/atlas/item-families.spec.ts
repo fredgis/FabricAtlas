@@ -69,15 +69,16 @@ describe("item family capability registry", () => {
     }
   });
 
-  it("never reports adapter-only evidence as collected", () => {
+  it("tracks published adapters and their collected coverage", () => {
     for (const family of [...documentedItemFamilies(), ...derivedItemFamilies()]) {
-      for (const adapter of family.adapters) expect(ITEM_FAMILY_ADAPTERS[adapter].published).toBe(false);
       const adapterDimensions = COVERAGE_DIMENSIONS.filter(
         (dimension) => family.coverage[dimension].state === "adapter-only",
       );
       if (adapterDimensions.length) expect(family.adapters.length, family.key).toBeGreaterThan(0);
     }
-    expect(itemFamilyCapability("MirroredDatabase").coverage.objects.state).toBe("adapter-only");
+    expect(ITEM_FAMILY_ADAPTERS["sql-metadata"].published).toBe(true);
+    expect(ITEM_FAMILY_ADAPTERS["source-provenance"].published).toBe(true);
+    expect(itemFamilyCapability("MirroredDatabase").coverage.objects.state).toBe("collected");
   });
 
   it("matches adapters to the item types the provenance stage actually reads", () => {
@@ -152,14 +153,8 @@ describe("observed families and inventory gap list", () => {
       jobs: [],
     });
     const gaps = inventoryGapList(observed);
-    expect(gaps.slice(0, 2).map((gap) => gap.key).sort()).toEqual(
-      ["MirroredDatabase", "Microsoft.WaaS.BusinessProcessSolutions"].sort(),
-    );
-    const mirror = gaps.find((gap) => gap.key === "MirroredDatabase")!;
-    expect(mirror.gaps.map((gap) => [gap.dimension, gap.state])).toEqual(
-      expect.arrayContaining([["objects", "adapter-only"], ["operations", "adapter-only"]]),
-    );
-    expect(mirror.followUp).toMatch(/durable snapshot cutover/);
+    expect(gaps[0].key).toBe("Microsoft.WaaS.BusinessProcessSolutions");
+    expect(gaps.some((gap) => gap.key === "MirroredDatabase")).toBe(false);
     const eventSchemaSet = gaps.find((gap) => gap.key === "EventSchemaSet")!;
     expect(eventSchemaSet).toMatchObject({ observedItems: 0, definitionUrl: expect.stringContaining("eventschemaset-definition") });
     expect(gaps.every((gap) => gap.gaps.every((entry) => ["unsupported", "deferred", "adapter-only"].includes(entry.state)))).toBe(true);

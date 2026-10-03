@@ -35,6 +35,12 @@ types return `unsupported/item-type-unsupported` without a request.
 | --- | --- | --- | --- | --- |
 | Shortcuts | Lakehouse, Warehouse, KQL database | [List Shortcuts](https://learn.microsoft.com/en-us/rest/api/fabric/core/onelake-shortcuts/list-shortcuts), GA, user/SP/MI | Name, path, target type, OneLake target workspace/item ID and path, external `connectionId`, transform type, SharePoint label-sync flag | `location`, `bucket`, `subpath`, `environmentDomain`, `deltaLakeFolder`, `tableName` and undocumented fields |
 | Mirroring | Mirrored database | [Get Mirrored Database](https://learn.microsoft.com/en-us/rest/api/fabric/mirroreddatabase/items/get-mirrored-database), [Get Definition](https://learn.microsoft.com/en-us/rest/api/fabric/mirroreddatabase/items/get-mirrored-database-definition) with [`mirroring.json`](https://learn.microsoft.com/en-us/rest/api/fabric/articles/item-management/definitions/mirrored-database-definition), [Get Mirroring Status](https://learn.microsoft.com/en-us/rest/api/fabric/mirroreddatabase/mirroring/get-mirroring-status) | SQL endpoint ID, default schema, source type and subtype, source and external-storage connection IDs, landing-zone workspace/item IDs, target format and retention, selected `schema.table` names, replication state | Source database name, landing-zone root folder, OneLake and SQL connection URLs |
+
+The separate Rayfin SQL metadata stage uses the mirrored database SQL endpoint
+ID to collect published tables, views and columns through fixed read-only
+`sys.*` catalog queries. The provenance definition remains the source for
+provider, connection, selection and replication context; neither stage reads
+business rows.
 | MLV execution definitions | Lakehouse | [List MLV Execution Definitions](https://learn.microsoft.com/en-us/rest/api/fabric/lakehouse/materialized-lake-views/list-mlv-execution-definitions), user/SP/MI | Definition ID and name, refresh mode, selected view names, lakehouse and environment references by ID, count of Variable Library references | Description and Variable Library references, which are never resolved |
 
 `getDefinition` needs read **and write** permission on the mirrored database.

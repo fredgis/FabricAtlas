@@ -8,7 +8,11 @@ import type * as Mssql from "mssql";
  * messages, principal names and tokens never leave this module.
  */
 
-export type SqlEndpointKind = "sql-database" | "warehouse" | "lakehouse-sql-endpoint";
+export type SqlEndpointKind =
+  | "sql-database"
+  | "warehouse"
+  | "lakehouse-sql-endpoint"
+  | "mirrored-database-sql-endpoint";
 
 export type SqlDriverErrorCode =
   | "tds-runtime-unavailable"
@@ -41,7 +45,7 @@ export interface SqlConnectionTarget {
   /** Lowercase host validated against the Fabric SQL origin allowlist. */
   server: string;
   port: 1433;
-  /** SQL Database name, or the Warehouse/Lakehouse item GUID used for routing. */
+  /** SQL Database name, or the Fabric SQL endpoint item GUID used for routing. */
   database: string;
   readOnlyIntent: boolean;
 }
@@ -211,6 +215,7 @@ export const SQL_HOST_SUFFIXES: Readonly<Record<SqlEndpointKind, string>> = {
   "sql-database": ".database.fabric.microsoft.com",
   warehouse: ".datawarehouse.fabric.microsoft.com",
   "lakehouse-sql-endpoint": ".datawarehouse.fabric.microsoft.com",
+  "mirrored-database-sql-endpoint": ".datawarehouse.fabric.microsoft.com",
 };
 
 export class SqlCoordinateError extends Error {

@@ -104,6 +104,7 @@ describe("SQL catalog trusted coordinates", () => {
     ["tcp:fixture-db.database.fabric.microsoft.com,1433", "sql-database", "fixture-db.database.fabric.microsoft.com"],
     ["abc-123.datawarehouse.fabric.microsoft.com", "warehouse", "abc-123.datawarehouse.fabric.microsoft.com"],
     ["abc-123.datawarehouse.fabric.microsoft.com", "lakehouse-sql-endpoint", "abc-123.datawarehouse.fabric.microsoft.com"],
+    ["abc-123.datawarehouse.fabric.microsoft.com", "mirrored-database-sql-endpoint", "abc-123.datawarehouse.fabric.microsoft.com"],
   ] as const)("accepts %s for %s", (value, kind, expected) => {
     expect(trustedSqlHost(value, kind)).toBe(expected);
   });

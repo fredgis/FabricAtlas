@@ -112,7 +112,8 @@ describe("ItemFamilyCoverageSection", () => {
       "Last observed",
       "Follow-up",
     ]);
-    expect(pane().getAllByText("Adapter only")).toHaveLength(2);
+    expect(pane().queryByText("Adapter only")).not.toBeInTheDocument();
+    expect(pane().getAllByText("Collected").length).toBeGreaterThanOrEqual(3);
     expect(pane().getByText("2m ago")).toBeVisible();
     expect(pane().getByRole("link", { name: "Open definition documentation" })).toHaveAttribute(
       "href",
@@ -150,8 +151,12 @@ describe("ItemFamilyCoverageSection", () => {
   it("keeps unobserved families collapsed until requested", () => {
     render(<ItemFamilyCoverageSection data={TENANT_SHAPED} />);
     const observed = screen.getByRole("list", { name: "Gaps in observed families" });
-    expect(within(observed).getByRole("heading", { name: "Mirrored DB" })).toBeVisible();
-    expect(within(observed).getByText(/Publish mirroring provenance/)).toBeVisible();
+    expect(within(observed).queryByRole("heading", { name: "Mirrored DB" })).not.toBeInTheDocument();
+    expect(
+      within(observed).getByRole("heading", {
+        name: /Business Process Solutions/,
+      }),
+    ).toBeVisible();
     const toggle = screen.getByRole("button", { name: /Show families not in this snapshot/ });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByRole("list", { name: "Gaps in families not in this snapshot" })).not.toBeInTheDocument();

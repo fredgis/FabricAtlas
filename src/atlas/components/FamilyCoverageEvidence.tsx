@@ -136,7 +136,7 @@ function PaneFact({ icon: Icon, label, children }: { icon: LucideIcon; label: st
   );
 }
 
-/** Adapter and derived-family notes; adapter evidence is never shown as collected. */
+/** Adapter and derived-family notes, including whether evidence is published. */
 export function FamilyCoverageNotes({
   capability,
   mlvRefreshJobs = 0,
