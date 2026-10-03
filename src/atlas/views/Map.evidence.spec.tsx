@@ -260,7 +260,7 @@ describe("Map & lineage unified evidence", () => {
       within(screen.getByLabelText("Map summary"))
         .getAllByRole("term")
         .map((term) => term.textContent),
-    ).toEqual(["Items", "Relationships"]);
+    ).toEqual(["Items", "Relationships", "Source"]);
     expect(screen.queryByText("Beta evidence · evaluation")).not.toBeInTheDocument();
     expect(
       screen.getAllByRole("switch").map((control) => control.textContent),
@@ -305,7 +305,7 @@ describe("Map & lineage unified evidence", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows all Beta graph edges, including agreement, without drawing Atlas edges", async () => {
+  it("shows Preview graph edges with API relationType labels and no Atlas comparison", async () => {
     const { container } = renderMap({
       itemRelationsEnabled: true,
       loadItemRelationsEvidence: loadEvidence,
@@ -328,7 +328,7 @@ describe("Map & lineage unified evidence", () => {
     }
     expect(container.querySelectorAll("svg g:not([data-evidence-source]) > path")).toHaveLength(0);
     expect(lakehouse()).toHaveAccessibleName(
-      "alpinerent_lakehouse, Lakehouse, healthy, direction conflict to review",
+      "alpinerent_lakehouse, Lakehouse, healthy",
     );
     expect(screen.getByText("Shared reference lakehouse")).toBeInTheDocument();
     expect(
@@ -337,75 +337,64 @@ describe("Map & lineage unified evidence", () => {
     expect(
       screen.getByText("Item Relations API (Beta, observed)"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Conflict (review needed)")).toBeInTheDocument();
+    expect(screen.getAllByText("Datasource").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Shortcut").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Conflict (review needed)")).not.toBeInTheDocument();
     const summary = screen.getByLabelText("Map summary");
-    expect(within(summary).getByText("Conflict to review").nextSibling).toHaveTextContent("1");
     expect(within(summary).getByText("Relationships").nextSibling).toHaveTextContent(
       "4",
+    );
+    expect(within(summary).getByText("Source").nextSibling).toHaveTextContent(
+      "Item Relations Preview",
     );
     expect(container.querySelectorAll("button[aria-pressed]")).toHaveLength(
       5,
     );
   });
 
-  it("opens source provenance and the direction conflict from the graph", async () => {
+  it("opens the active Preview source from the Evidence tab", async () => {
     renderMap({
       itemRelationsEnabled: true,
       loadItemRelationsEvidence: loadEvidence,
     }, "/?preview=item-relations#map");
 
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: /^Direction conflict: alpinerent_lakehouse to AlpineRent Sales Model/,
-      }),
-    );
+    await screen.findByText("4 drawn relations");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Evidence" }));
+    const table = screen.getByRole("table", { name: "Lineage relationships" });
+    const row = within(table)
+      .getAllByRole("button")
+      .find((button) => button.textContent?.includes("AlpineRent Sales Model"));
+    fireEvent.click(row!);
 
-    const pane = screen.getByRole("region", { name: "Relationship evidence" });
-    expect(pane).toHaveTextContent("Atlas snapshot · Collected");
-    expect(pane).toHaveTextContent(
-      "Reports that AlpineRent Sales Model uses data from alpinerent_lakehouse (Direct Lake).",
-    );
-    expect(pane).toHaveTextContent("Item Relations API · Beta");
-    expect(pane).toHaveTextContent(
-      "Reports an inverse relation (AlpineRent Sales Model → alpinerent_lakehouse).",
-    );
-    expect(
-      within(pane).getByText("Direction differs between sources"),
-    ).toBeInTheDocument();
-    expect(within(pane).getByText(/Evidence remains separate/)).toBeInTheDocument();
+    const pane = screen.getByRole("region", { name: "Line evidence" });
+    expect(pane).toHaveTextContent("Item Relations API · Preview");
+    expect(pane).toHaveTextContent("Datasource");
+    expect(pane).not.toHaveTextContent("Atlas snapshot · Validated");
 
     fireEvent.click(
       within(pane).getByRole("button", { name: "Close relationship evidence" }),
     );
-    expect(
-      screen.getByRole("complementary", { name: "Item details inspector" }),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Select a line to review/)).toBeInTheDocument();
   });
 
-  it("reviews a conflict from the evidence pane on the Evidence tab", async () => {
+  it("explains the active graph source without agreement controls", async () => {
     renderMap({
       itemRelationsEnabled: true,
       loadItemRelationsEvidence: loadEvidence,
     }, "/?preview=item-relations#map");
-    fireEvent.click(
-      await screen.findByRole("button", { name: /^Direction conflict:/ }),
-    );
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Review conflict" }));
-    });
+    await screen.findByText("4 drawn relations");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Evidence" }));
 
     expect(screen.getByRole("tab", { name: "Evidence" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
-    expect(
-      screen.getByRole("combobox", { name: "Filter relationships by agreement" }),
-    ).toHaveValue("conflict");
     const table = screen.getByRole("table", { name: "Lineage relationships" });
-    const rows = within(table).getAllByRole("button");
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toHaveAttribute("aria-current", "true");
+    expect(
+      within(table).getAllByRole("columnheader").map((header) => header.textContent),
+    ).toEqual(["Relationship", "Relation type", "Scope", "Evidence", "Open"]);
+    expect(screen.queryByRole("combobox", { name: /agreement/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/Review the exact relation type/)).toBeVisible();
   });
 
   it("filters data-flow and control relations without moving nodes", async () => {
@@ -492,36 +481,28 @@ describe("Map & lineage unified evidence", () => {
       itemRelationsEnabled: true,
       loadItemRelationsEvidence: loadEvidence,
     }, "/?preview=item-relations#map");
-    await screen.findByText("Conflict (review needed)");
+    await screen.findByText("4 drawn relations");
 
     await act(async () => {
       fireEvent.mouseDown(screen.getByRole("tab", { name: "Evidence" }));
     });
 
     const table = screen.getByRole("table", { name: "Lineage relationships" });
-    expect(within(table).getAllByRole("button").length).toBeGreaterThanOrEqual(
-      SAMPLE_DATA.edges.length,
-    );
+    expect(within(table).getAllByRole("button")).toHaveLength(4);
     expect(
       within(table).getAllByRole("columnheader").map((header) => header.textContent),
-    ).toEqual(["Relationship", "Type", "Sources", "Agreement", "Open"]);
+    ).toEqual(["Relationship", "Relation type", "Scope", "Evidence", "Open"]);
     expect(
       screen.getByRole("region", { name: "Item Relations evidence coverage" }),
     ).toHaveTextContent("Complete queries3");
-    fireEvent.change(
-      screen.getByRole("combobox", {
-        name: "Filter relationships by agreement",
-      }),
-      { target: { value: "conflict" } },
-    );
     const rows = within(table).getAllByRole("button");
-    expect(rows).toHaveLength(1);
+    expect(rows).toHaveLength(4);
 
     fireEvent.click(rows[0]);
     expect(rows[0]).toHaveAttribute("aria-current", "true");
     expect(
-      screen.getByRole("region", { name: "Relationship evidence" }),
-    ).toHaveTextContent("Direction differs between sources");
+      screen.getByRole("region", { name: "Line evidence" }),
+    ).toHaveTextContent("Item Relations API · Preview");
     expect(new URL(window.location.href).searchParams.get("view")).toBe(
       "evidence",
     );
@@ -534,13 +515,10 @@ describe("Map & lineage unified evidence", () => {
     expect(within(table).getAllByRole("button")).toHaveLength(
       SAMPLE_DATA.edges.length,
     );
-    expect(within(table).getAllByText("Atlas snapshot")).toHaveLength(
+    expect(within(table).getAllByText("Validated snapshot")).toHaveLength(
       SAMPLE_DATA.edges.length,
     );
-    expect(within(table).getAllByText("Not compared")).toHaveLength(
-      SAMPLE_DATA.edges.length,
-    );
-    expect(screen.getByText("Not included in this view")).toBeInTheDocument();
+    expect(screen.getByText("Atlas snapshot evidence")).toBeInTheDocument();
     expect(
       screen.queryByRole("region", { name: "Item Relations evidence coverage" }),
     ).not.toBeInTheDocument();

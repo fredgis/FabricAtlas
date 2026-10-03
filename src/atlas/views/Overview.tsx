@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo } from "react";
+import { useMemo } from "react";
 import type {
   AtlasNavigation,
   Tab,
@@ -17,7 +17,7 @@ import {
   buildAccessReviewRows,
   getCoverageDiagnostics,
 } from "../governance";
-import { Card, TypeGlyph } from "../ui";
+import { Card, TypeGlyph, cn } from "../ui";
 import {
   typeMeta,
   relativeTime,
@@ -30,10 +30,8 @@ import { scorePosture } from "../posture";
 import { workspaceDetailLabel } from "../workspace-display";
 import { summarizeHealth } from "../health-summary";
 import { ScoreMeter } from "../components/ScoreMeter";
-import { scoreBand } from "../components/score-style";
+import { scoreBand, scoreStyle } from "../components/score-style";
 import { PageHeader } from "../components/PageHeader";
-
-const PostureRadar = lazy(() => import("../components/PostureRadar").then((module) => ({ default: module.PostureRadar })));
 
 const JOB_TONE: Record<JobStatus, string> = {
   completed: "bg-status-healthy",
@@ -41,6 +39,58 @@ const JOB_TONE: Record<JobStatus, string> = {
   running: "bg-primary",
   cancelled: "bg-lineage-neutral",
 };
+
+function ScoreRing({
+  value,
+  label,
+  large = false,
+}: {
+  value: number | null;
+  label: string;
+  large?: boolean;
+}) {
+  const score = value == null ? 0 : Math.max(0, Math.min(100, value));
+  return (
+    <span className="relative inline-flex items-center justify-center" style={scoreStyle(value)}>
+      <svg
+        viewBox="0 0 42 42"
+        className={large ? "icon-size-800" : "icon-size-700"}
+        role="img"
+        aria-label={`${label}: ${value == null ? "not available" : `${value}%`}`}
+      >
+        <circle
+          cx="21"
+          cy="21"
+          r="16"
+          fill="none"
+          stroke="var(--color-muted)"
+          strokeWidth="4"
+        />
+        <circle
+          cx="21"
+          cy="21"
+          r="16"
+          pathLength="100"
+          fill="none"
+          stroke="var(--atlas-score-fill)"
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeDasharray={`${score} 100`}
+          transform="rotate(-90 21 21)"
+        />
+      </svg>
+      <span
+        className={`atlas-score absolute font-numeric font-semibold ${
+          large ? "text-500" : "text-200"
+        }`}
+        data-score-band={scoreBand(value)}
+        aria-hidden="true"
+      >
+        {value == null ? "N/A" : value}
+      </span>
+    </span>
+  );
+}
 
 export function OverviewView({
   onOpen,
@@ -300,14 +350,11 @@ export function OverviewView({
       aria-labelledby="overview-title"
       className="atlas-content-frame flex min-w-0 flex-col gap-l"
     >
-      <PageHeader title={data.workspace.displayName || "Fabric workspace"} titleId="overview-title"
+      <PageHeader
+        title={data.workspace.displayName || "Fabric workspace"}
+        titleId="overview-title"
         purpose="Inventory, governance gaps and recent activity."
-        actions={<nav aria-label="Overview destinations" className="flex flex-wrap gap-s">
-          {([["map", "Map & lineage"], ["catalog", "Catalog"], ["access", "Access"]] as const).map(([tab, label]) => (
-            <button key={tab} type="button" onClick={() => onOpen(tab)}
-              className="atlas-control rounded-md border border-border bg-card px-m text-200 font-semibold hover:bg-accent">{label}</button>
-          ))}
-        </nav>} />
+      />
       <div className="flex flex-wrap items-center justify-between gap-l border-y border-border px-l py-m">
         <dl className="flex flex-wrap gap-x-xxl gap-y-s" aria-label="Workspace inventory">
           {[["Fabric items", items.length], ["Tables, columns & measures", assetCount], ["Lineage links", edges.length]].map(([label, value]) => (
@@ -322,21 +369,21 @@ export function OverviewView({
         </span>
       </div>
 
-      <section aria-labelledby="posture-targets-title">
+      <section aria-labelledby="workspace-pulse-title">
         <div className="mb-m flex items-end justify-between gap-l">
           <div>
             <h2
-              id="posture-targets-title"
+              id="workspace-pulse-title"
               className="text-400 font-semibold"
             >
-              {targetsAvailable
-                ? `${postureAtTarget} of ${posture.pillars.length} pillars at target`
-                : governancePolicyLoading
-                  ? "Loading governance targets"
-                  : "Governance targets unavailable"}
+              Workspace pulse
             </h2>
             <p className="mt-xs text-200 text-muted-foreground">
-              Standard baseline: 70% for each governance pillar.
+              {targetsAvailable
+                ? `${postureAtTarget} of ${posture.pillars.length} governance signals meet the current target.`
+                : governancePolicyLoading
+                  ? "Loading governance targets."
+                  : "Governance targets are unavailable; current scores remain visible."}
             </p>
           </div>
           <button
@@ -352,71 +399,101 @@ export function OverviewView({
             }
             className="atlas-control shrink-0 rounded-md px-s text-200 font-semibold text-brand-foreground hover:underline"
           >
-            Open posture
+            Open Governance Center
           </button>
         </div>
         {governancePolicyError && (
           <p role="alert" className="mb-m rounded-lg border border-destructive/30 bg-destructive/10 p-m text-200">
-            {governancePolicyError} Open posture to retry. Raw scores remain visible below.
+            {governancePolicyError} Open Governance Center to retry. Raw scores remain visible below.
           </p>
         )}
-        <Card className="grid min-w-0 items-center gap-l p-m lg:grid-cols-2">
-          <Suspense fallback={<p role="status" className="p-l text-200 text-muted-foreground">Loading posture chart…</p>}>
-            <PostureRadar pillars={posture.pillars} selectedPillar="documentation" targetsAvailable={targetsAvailable}
-              onSelect={(pillar) => onOpen({ tab: "governance", focus: { requestId: crypto.randomUUID(), governanceSection: "posture", filters: { pillar } } })} />
-          </Suspense>
-          <div className="divide-y divide-border">
-          {posture.pillars.map((pillar) => {
-            const previous = previousPosture?.pillars.find(
-              (candidate) => candidate.pillar === pillar.pillar,
-            )?.score;
-            const delta =
-              pillar.score != null && previous != null
-                ? pillar.score - previous
-                : null;
-            return (
-              <button
-                key={pillar.pillar}
-                type="button"
-                onClick={() =>
-                  onOpen({
-                    tab: "governance",
-                    focus: {
-                      requestId: crypto.randomUUID(),
-                      governanceSection: "posture",
-                      filters: { pillar: pillar.pillar },
-                    },
-                  })
-                }
-                className="grid w-full min-w-0 grid-cols-[1fr_auto] items-center gap-x-l gap-y-xs p-s text-left transition-colors hover:bg-accent focus-visible:ring-inset focus-visible:ring-offset-0"
-              >
-                <div className="text-200 font-semibold capitalize">
-                  {pillar.pillar}
-                </div>
-                <div className="atlas-score font-numeric text-400 font-semibold" data-score-band={scoreBand(pillar.score)}>
-                  {pillar.score == null ? "N/A" : `${pillar.score}%`}
-                </div>
-                <div>
-                  <ScoreMeter label={`${pillar.pillar} posture score`} value={pillar.score} />
-                </div>
-                <div className="text-200 text-muted-foreground">
-                  {targetsAvailable ? `Target ${pillar.target}%` : "Target unavailable"}
-                  {delta == null
-                    ? ""
-                    : ` · ${delta >= 0 ? "+" : ""}${delta} pts`}
-                </div>
-              </button>
-            );
-          })}
+        <Card className="grid min-w-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.34fr)]">
+          <div className="p-l">
+            <div className="grid grid-cols-2 gap-l sm:grid-cols-3 xl:grid-cols-6">
+              {posture.pillars.map((pillar) => {
+                const previous = previousPosture?.pillars.find(
+                  (candidate) => candidate.pillar === pillar.pillar,
+                )?.score;
+                const delta =
+                  pillar.score != null && previous != null
+                    ? pillar.score - previous
+                    : null;
+                return (
+                  <button
+                    key={pillar.pillar}
+                    type="button"
+                    onClick={() =>
+                      onOpen({
+                        tab: "governance",
+                        focus: {
+                          requestId: crypto.randomUUID(),
+                          governanceSection: "posture",
+                          filters: { pillar: pillar.pillar },
+                        },
+                      })
+                    }
+                    className="group flex min-h-[var(--atlas-touch-target)] min-w-0 flex-col items-center gap-s rounded-lg px-s py-m text-center transition-colors hover:bg-accent focus-visible:ring-inset focus-visible:ring-offset-0"
+                    aria-label={`${pillar.pillar}: ${pillar.score == null ? "not available" : `${pillar.score}%`}. ${targetsAvailable ? `Target ${pillar.target}%` : "Target unavailable"}`}
+                  >
+                    <ScoreRing
+                      value={pillar.score}
+                      label={`${pillar.pillar} posture score`}
+                    />
+                    <span className="text-200 font-semibold capitalize">
+                      {pillar.pillar}
+                    </span>
+                    <span className="text-100 text-muted-foreground">
+                      {delta == null
+                        ? targetsAvailable
+                          ? `Target ${pillar.target}%`
+                          : "No target"
+                        : `${delta >= 0 ? "+" : ""}${delta} pts since previous`}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-m border-t border-border p-s lg:col-span-2">
-            <span className="text-200 font-semibold">Assessed item health</span>
-            <span className="atlas-score font-numeric text-300 font-semibold" data-score-band={scoreBand(healthPercentage)}>
-              {healthPercentage == null ? "Not assessed" : `${healthPercentage}%`}
+          <button
+            type="button"
+            onClick={() =>
+              onOpen({
+                tab: "governance",
+                focus: {
+                  requestId: crypto.randomUUID(),
+                  governanceSection: "findings",
+                  filters: { section: "findings", category: "operations" },
+                },
+              })
+            }
+            className="flex min-w-0 flex-col items-start justify-center gap-m border-t border-border bg-secondary/55 p-l text-left hover:bg-accent lg:border-l lg:border-t-0"
+          >
+            <span className="text-200 font-semibold text-muted-foreground">
+              Operational coverage
             </span>
-            <div className="min-w-0 flex-1"><ScoreMeter label="Assessed item health" value={healthPercentage} /></div>
-            <span className="text-200 text-muted-foreground">{pulse.label} · {health.assessed} of {health.total} items assessed</span>
-          </div>
+            <div className="flex items-center gap-l">
+              <ScoreRing
+                value={healthPercentage}
+                label="Assessed item health"
+                large
+              />
+              <span className="min-w-0">
+                <span className={cn("inline-flex rounded-md border px-s py-xxs text-200 font-semibold", pulse.className)}>
+                  {pulse.label}
+                </span>
+                <span className="mt-s block text-300 font-semibold">
+                  {health.assessed} of {health.total} items assessed
+                </span>
+                <span className="mt-xxs block text-200 text-muted-foreground">
+                  {attentionCount} need attention · synchronized {syncFreshness}
+                </span>
+              </span>
+            </div>
+            <span className="inline-flex items-center gap-s text-200 font-semibold text-brand-foreground">
+              Review operational findings
+              <ArrowRight className="icon-size-100" aria-hidden="true" />
+            </span>
+          </button>
         </Card>
       </section>
 

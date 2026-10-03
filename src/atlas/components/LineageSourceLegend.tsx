@@ -1,5 +1,3 @@
-import { AlertTriangle } from "lucide-react";
-
 export const PREVIEW_DATA_DASH = "8 5";
 export const PREVIEW_CONTROL_DASH = "10 4 2 4";
 
@@ -74,13 +72,6 @@ export function LineageSourceLegend({
                     dash={PREVIEW_CONTROL_DASH}
                   />
                 )}
-                <li className="flex items-center gap-s">
-                  <AlertTriangle
-                    className="icon-size-200 text-status-warning"
-                    aria-hidden="true"
-                  />
-                  Conflict (review needed)
-                </li>
               </>
             )}
           </>
@@ -99,7 +90,9 @@ export function LineageSourceLegend({
       </ul>
       {mode === "items" && (
         <p className="mt-s border-t border-border pt-s text-muted-foreground">
-          {previewIncluded ? "Only Item Relations API (Beta) lineage is drawn; it is not authoritative." : "Only Atlas snapshot lineage is drawn."}
+          {previewIncluded
+            ? "Only Item Relations API (Beta) lineage is drawn. Line labels use the API relationType."
+            : "Only Atlas snapshot lineage is drawn."}
         </p>
       )}
     </div>

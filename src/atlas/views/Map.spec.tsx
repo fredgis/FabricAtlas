@@ -400,6 +400,9 @@ describe("MapView selection", () => {
     expect(
       document.querySelector('marker[id="atlas-up"]'),
     ).toHaveAttribute("markerWidth", "7");
+    expect(
+      document.querySelector('marker[id="atlas-up"] path'),
+    ).toHaveAttribute("fill", "none");
   });
 
   it("does not reorder disconnected components when impact mode is enabled", () => {
@@ -613,7 +616,7 @@ describe("MapView selection", () => {
       pointerId: 2,
     });
 
-    expect(table.style.left).not.toBe(initialLeft);
+    expect(table.style.left).toBe(initialLeft);
     expect(table.style.top).not.toBe(initialTop);
 
     fireEvent.pointerDown(table, {
@@ -822,9 +825,9 @@ describe("MapView selection", () => {
       pointerId: 4,
     });
 
-    expect(model.style.left).not.toBe(initial.modelLeft);
+    expect(model.style.left).toBe(initial.modelLeft);
     expect(model.style.top).not.toBe(initial.modelTop);
-    expect(lakehouse.style.left).not.toBe(initial.lakehouseLeft);
+    expect(lakehouse.style.left).toBe(initial.lakehouseLeft);
     expect(lakehouse.style.top).not.toBe(initial.lakehouseTop);
 
     fireEvent.click(screen.getByRole("button", { name: "Reset" }));

@@ -386,11 +386,19 @@ export function AssetCatalogView({
     const itemIdsWithAssets = new Set(
       assets.map((asset) => asset.itemFabricId),
     );
-    return items.filter(
-      (item) =>
-        itemIdsWithAssets.has(item.fabricId) ||
-        SCHEMA_CATALOG_ITEM_TYPES.has(item.itemType),
-    );
+    return items
+      .filter(
+        (item) =>
+          itemIdsWithAssets.has(item.fabricId) ||
+          SCHEMA_CATALOG_ITEM_TYPES.has(item.itemType),
+      )
+      .sort(
+        (left, right) =>
+          left.displayName.localeCompare(right.displayName, undefined, {
+            numeric: true,
+            sensitivity: "base",
+          }) || left.fabricId.localeCompare(right.fabricId),
+      );
   }, [assets, items]);
 
   const groups = useMemo(() => {
@@ -414,7 +422,19 @@ export function AssetCatalogView({
     }
     return inventoryItems.flatMap((item) => {
       const group = grouped.get(item.fabricId);
-      return group ? ([[item.fabricId, group]] as const) : [];
+      return group
+        ? ([[item.fabricId, [...group].sort(
+            (left, right) =>
+              left.name.localeCompare(right.name, undefined, {
+                numeric: true,
+                sensitivity: "base",
+              }) ||
+              assetObjectKindLabel(left.kind).localeCompare(
+                assetObjectKindLabel(right.kind),
+              ) ||
+              left.id.localeCompare(right.id),
+          )]] as const)
+        : [];
     });
   }, [filtered, inventoryItems, kind, query]);
 

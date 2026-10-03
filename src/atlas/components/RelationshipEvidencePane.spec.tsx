@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { render, screen, within } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 import {
   createItemRelationsEvidence,
   recordItemRelationsResponse,
@@ -32,51 +32,50 @@ const model = buildLineageEvidence({
     }),
   ]),
 });
-const conflict = model.relationships[0];
+const relationship = model.relationships[0];
 const names = new Map(items.map((item) => [item.fabricId, item.displayName]));
 
 describe("RelationshipEvidencePane", () => {
-  it("follows the mockup structure: facts, per-source cards and callouts", () => {
-    const onReviewConflict = vi.fn();
+  it("shows only the active Preview source without comparing it to Atlas", () => {
     render(
       <RelationshipEvidencePane
-        relationship={conflict}
+        relationship={relationship}
+        sourceMode="preview"
         snapshotSyncedAt={OBSERVED}
         itemNames={names}
-        onReviewConflict={onReviewConflict}
       />,
     );
-    const pane = screen.getByRole("region", { name: "Relationship evidence" });
+    const pane = screen.getByRole("region", { name: "Line evidence" });
 
     expect(within(pane).getByRole("heading", { level: 3, name: "Rental warehouse to Sales model" })).toBeInTheDocument();
     const facts = within(pane).getAllByRole("term").map((term) => term.textContent);
-    expect(facts.slice(0, 2)).toEqual(["Type", "Workspace boundary"]);
+    expect(facts.slice(0, 2)).toEqual(["Relation type", "Workspace boundary"]);
     expect(pane).toHaveTextContent("Same workspace");
     const cards = within(pane).getAllByRole("listitem");
-    expect(cards[0]).toHaveTextContent("Atlas snapshot · Collected");
-    expect(cards[0]).toHaveTextContent("Reports that Sales model uses data from Rental warehouse (reads).");
-    expect(cards[0]).toHaveTextContent("SourceAtlas snapshot syncConfidenceVerified");
-    expect(cards[1]).toHaveTextContent("Item Relations API · Beta");
-    expect(cards[1]).toHaveTextContent("Reports an inverse relation (Sales model → Rental warehouse).");
-    expect(cards[1]).toHaveTextContent("SourceItem Relations API (Beta)ConfidenceObserved");
-    expect(within(pane).getAllByRole("note").map((note) => note.textContent)).toEqual([
-      expect.stringContaining("Direction differs between sources"),
-      expect.stringContaining("Evidence remains separate."),
-    ]);
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toHaveTextContent("Item Relations API · Preview");
+    expect(cards[0]).toHaveTextContent("Sales model → Rental warehouse (Datasource).");
+    expect(cards[0]).toHaveTextContent("SourceFabric Item Relations API");
+    expect(within(pane).getByRole("note")).toHaveTextContent(
+      "This is the Preview API line currently drawn on the graph.",
+    );
     expect(pane.querySelector(".overflow-auto")).toHaveClass("space-y-l");
     expect(pane.querySelector(".overflow-auto")).not.toHaveClass("flex-col");
-
-    fireEvent.click(within(pane).getByRole("button", { name: "Review conflict" }));
-    expect(onReviewConflict).toHaveBeenCalledWith(conflict.id);
   });
 
-  it("omits the review action when no handler is available", () => {
+  it("shows only validated snapshot evidence in Atlas mode", () => {
     render(
-      <RelationshipEvidencePane relationship={conflict} itemNames={names} />,
+      <RelationshipEvidencePane
+        relationship={relationship}
+        sourceMode="atlas"
+        itemNames={names}
+      />,
     );
 
-    expect(screen.queryByRole("button", { name: "Review conflict" })).not.toBeInTheDocument();
+    const [card] = screen.getAllByRole("listitem");
+    expect(card).toHaveTextContent("Atlas snapshot · Validated");
     expect(screen.getByText("Collected with the synchronized snapshot")).toBeInTheDocument();
+    expect(screen.queryByText(/Item Relations API · Preview/)).not.toBeInTheDocument();
   });
 });
 
@@ -89,16 +88,14 @@ describe("LineageSourceLegend", () => {
         .map((item) => item.textContent),
     ).toEqual([
       "Item Relations API (Beta, observed)",
-      "Conflict (review needed)",
       "Upstream path",
     ]);
     expect(screen.getByText("Sources and paths")).toBeVisible();
-    expect(screen.getByText("Only Item Relations API (Beta) lineage is drawn; it is not authoritative.")).toBeVisible();
+    expect(screen.getByText("Only Item Relations API (Beta) lineage is drawn. Line labels use the API relationType.")).toBeVisible();
     expect(screen.queryByText("Atlas snapshot (verified)")).not.toBeInTheDocument();
 
     rerender(<LineageSourceLegend mode="items" previewIncluded={false} />);
     expect(screen.queryByText("Item Relations API (Beta, observed)")).not.toBeInTheDocument();
-    expect(screen.queryByText("Conflict (review needed)")).not.toBeInTheDocument();
     expect(screen.getByText("Only Atlas snapshot lineage is drawn.")).toBeVisible();
   });
 });

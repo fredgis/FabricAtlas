@@ -83,6 +83,16 @@ export function ItemRelationsEvidenceStatus({
     !!state.snapshotId &&
     !!currentSnapshotId &&
     state.snapshotId.toLowerCase() !== currentSnapshotId.toLowerCase();
+  const drawnRelations =
+    graph?.edges.filter(
+      (edge) => edge.semantics.flow !== "visibility" && !edge.selfRelation,
+    ) ?? [];
+  const relationTypes = new Set(
+    drawnRelations.map((edge) => edge.relation.relationType),
+  );
+  const crossWorkspace = drawnRelations.filter(
+    (edge) => edge.crossWorkspace,
+  ).length;
   return (
     <div
       role="status"
@@ -107,17 +117,13 @@ export function ItemRelationsEvidenceStatus({
       {coverage && coverage.stopReasons.length > 0 && (
         <span>Stopped early: {coverage.stopReasons.join(", ")}</span>
       )}
-      <span>{model.counts.agree} agree with Atlas snapshot lineage</span>
-      <span
-        className={
-          model.counts.conflict > 0
-            ? "font-semibold text-status-warning"
-            : undefined
-        }
-      >
-        {model.counts.conflict}{" "}
-        {model.counts.conflict === 1 ? "conflict" : "conflicts"} to review
-      </span>
+      <span>{drawnRelations.length} drawn relations</span>
+      <span>{relationTypes.size} API relation types</span>
+      {crossWorkspace > 0 && (
+        <span className="font-semibold text-foreground">
+          {crossWorkspace} cross-workspace
+        </span>
+      )}
     </div>
   );
 }

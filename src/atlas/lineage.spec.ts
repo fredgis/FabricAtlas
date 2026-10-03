@@ -318,6 +318,31 @@ describe("staged layout", () => {
     );
   });
 
+  it("never places a consumer to the left of its source", () => {
+    const items = [
+      item("source-report", "Report"),
+      item("target-lakehouse", "Lakehouse"),
+      item("cycle-a", "Notebook"),
+      item("cycle-b", "DataPipeline"),
+    ];
+    const layout = buildStagedLayout(items, [
+      {
+        source: "source-report",
+        target: "target-lakehouse",
+        relation: "feeds",
+      },
+      { source: "cycle-a", target: "cycle-b", relation: "orchestrates" },
+      { source: "cycle-b", target: "cycle-a", relation: "orchestrates" },
+    ]);
+
+    expect(layout.positions.get("target-lakehouse")!.x).toBeGreaterThan(
+      layout.positions.get("source-report")!.x,
+    );
+    expect(layout.positions.get("cycle-b")!.x).toBe(
+      layout.positions.get("cycle-a")!.x,
+    );
+  });
+
   it("separates disconnected data products into layout groups", () => {
     const items = [
       item("notebook-a", "Notebook"),

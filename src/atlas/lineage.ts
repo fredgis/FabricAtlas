@@ -790,7 +790,78 @@ export function buildStagedLayout(
       { length: LINEAGE_STAGE_LABELS.length },
       () => [],
     );
-    componentItems.forEach((item) => stages[itemStage(item.itemType)].push(item));
+    const stageById = new Map(
+      componentItems.map((item) => [item.fabricId, itemStage(item.itemType)]),
+    );
+    const componentIds = new Set(component);
+    const componentEdges = edges.filter(
+      (edge) =>
+        componentIds.has(edge.source) &&
+        componentIds.has(edge.target) &&
+        edge.source !== edge.target,
+    );
+    const adjacency = new Map<string, string[]>();
+    for (const edge of componentEdges) {
+      adjacency.set(edge.source, [
+        ...(adjacency.get(edge.source) ?? []),
+        edge.target,
+      ]);
+    }
+    const reaches = (
+      start: string,
+      target: string,
+      visited = new Set<string>(),
+    ): boolean => {
+      if (start === target) return true;
+      if (visited.has(start)) return false;
+      visited.add(start);
+      return (adjacency.get(start) ?? []).some((next) =>
+        reaches(next, target, new Set(visited)),
+      );
+    };
+    const cycleEdges = new Set(
+      componentEdges
+        .filter((edge) => reaches(edge.target, edge.source))
+        .map((edge) => `${edge.source}\u0000${edge.target}`),
+    );
+    const lastStage = LINEAGE_STAGE_LABELS.length - 1;
+    for (
+      let pass = 0;
+      pass < componentItems.length * LINEAGE_STAGE_LABELS.length;
+      pass += 1
+    ) {
+      let changed = false;
+      for (const edge of componentEdges) {
+        const sourceStage = stageById.get(edge.source) ?? 0;
+        const targetStage = stageById.get(edge.target) ?? 0;
+        if (cycleEdges.has(`${edge.source}\u0000${edge.target}`)) {
+          const sharedStage = Math.max(sourceStage, targetStage);
+          if (sourceStage !== sharedStage || targetStage !== sharedStage) {
+            stageById.set(edge.source, sharedStage);
+            stageById.set(edge.target, sharedStage);
+            changed = true;
+          }
+          continue;
+        }
+        if (targetStage <= sourceStage && sourceStage < lastStage) {
+          stageById.set(edge.target, sourceStage + 1);
+          changed = true;
+        } else if (targetStage <= sourceStage) {
+          const adjustedSource = Math.max(0, targetStage - 1);
+          if (adjustedSource < targetStage) {
+            stageById.set(edge.source, adjustedSource);
+          } else {
+            stageById.set(edge.source, 0);
+            stageById.set(edge.target, 1);
+          }
+          changed = true;
+        }
+      }
+      if (!changed) break;
+    }
+    componentItems.forEach((item) =>
+      stages[stageById.get(item.fabricId) ?? itemStage(item.itemType)].push(item),
+    );
     stages.forEach((stage) =>
       stage.sort((a, b) => a.displayName.localeCompare(b.displayName)),
     );

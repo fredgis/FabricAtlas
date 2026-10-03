@@ -3,6 +3,7 @@ import {
   CircleAlert,
   CircleCheck,
   CircleDashed,
+  ChevronDown,
   ClipboardCopy,
   ExternalLink,
   History,
@@ -154,37 +155,43 @@ function SourceLinks({
 function MonitoringSourcesCard({ lastSyncedAt }: { lastSyncedAt?: string }) {
   return (
     <Card className="flex min-w-0 flex-col">
-      <header className="border-b border-border p-l">
+      <header className="border-b border-border px-l py-m">
         <h2 id="monitoring-sources-title" className="text-400 font-semibold leading-400">
           Monitoring sources
         </h2>
         <p className="mt-xxs text-200 leading-200 text-muted-foreground">
-          What Atlas collects and what stays in Fabric. An unavailable source
-          never hides the validated catalog.
+          Collection boundary for this snapshot.
         </p>
       </header>
       <ul aria-labelledby="monitoring-sources-title" className="divide-y divide-border">
         {MONITORING_SOURCES.map((source) => (
-          <li key={source.id} className="flex flex-col gap-s p-l">
-            <div className="flex flex-wrap items-center justify-between gap-s">
-              <h3 className="text-300 font-semibold">{source.label}</h3>
-              <SourceStatus source={source} />
-            </div>
-            <p className="text-200 leading-200 text-muted-foreground">
-              {source.summary}
-              {source.maturity === "preview" && " Preview in Fabric."}
-            </p>
-            <SourceLinks source={source} lastSyncedAt={lastSyncedAt} />
-            <details className="text-200 leading-200">
-              <summary className="inline-flex min-h-[var(--atlas-touch-target)] cursor-pointer items-center font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-0">
-                Prerequisites
+          <li key={source.id}>
+            <details className="group">
+              <summary className="flex min-h-[var(--atlas-touch-target)] cursor-pointer list-none items-center gap-m px-l py-s focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+                <span className="min-w-0 flex-1">
+                  <h3 className="block truncate text-300 font-semibold">
+                    {source.label}
+                  </h3>
+                  <span className="block truncate text-200 text-muted-foreground">
+                    {source.summary}
+                  </span>
+                </span>
+                <SourceStatus source={source} />
+                <ChevronDown
+                  className="icon-size-200 shrink-0 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none"
+                  aria-hidden="true"
+                />
               </summary>
-              <ul className="mt-xs list-disc space-y-xxs pl-l text-muted-foreground">
-                {source.prerequisites.map((prerequisite) => (
-                  <li key={prerequisite}>{prerequisite}</li>
-                ))}
-              </ul>
-              <div className="mt-xs">
+              <div className="space-y-s border-t border-border/60 bg-secondary/40 px-l py-m text-200 leading-200">
+                <SourceLinks source={source} lastSyncedAt={lastSyncedAt} />
+                <div>
+                  <p className="font-semibold text-foreground">Prerequisites</p>
+                  <ul className="mt-xs list-disc space-y-xxs pl-l text-muted-foreground">
+                    {source.prerequisites.map((prerequisite) => (
+                      <li key={prerequisite}>{prerequisite}</li>
+                    ))}
+                  </ul>
+                </div>
                 <NativeLink href={source.documentationUrl}>
                   Microsoft documentation
                 </NativeLink>
@@ -222,108 +229,117 @@ function IncidentRow({
   const hidden = impact.length - preview.length;
   const titleId = `incident-${incident.id}`;
   return (
-    <li className="flex flex-col gap-m p-l">
-      <div className="flex flex-wrap items-start gap-m">
-        {incident.itemType && <TypeGlyph type={incident.itemType} size={28} />}
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-s">
-            <EvidenceChip evidence="observed" />
-            <h3 id={titleId} className="min-w-0 break-words text-300 font-semibold">
-              {incident.itemName}
-            </h3>
-          </div>
-          <p className="mt-xxs text-200 text-muted-foreground">
-            {incident.jobType} run started{" "}
-            <time dateTime={incident.occurredAt} title={exactTime(incident.occurredAt)}>
-              {relativeTime(incident.occurredAt)}
-            </time>
-            {incident.observedAt &&
-              ` · captured ${relativeTime(incident.observedAt)}`}
-            {incident.firstObservedAt &&
-              incident.firstObservedAt !== incident.observedAt &&
-              ` · failing since ${exactTime(incident.firstObservedAt)}`}
-          </p>
-          <p className="mt-xxs text-200 text-muted-foreground">
-            {incident.recorded
-              ? "Stored incident record"
-              : "Derived from the snapshot job history"}
-            {incident.runId && (
-              <>
-                {" · Run "}
-                <span className="font-monospace" title={incident.runId}>
-                  {incident.runId.slice(0, 8)}
-                </span>
-              </>
-            )}
-          </p>
-          {incident.message ? (
-            <p className="mt-xs line-clamp-2 break-words text-200 leading-200 text-foreground" title={incident.message}>
-              {incident.message}
-            </p>
-          ) : (
-            <p className="mt-xs text-200 leading-200 text-muted-foreground">
-              Error detail not collected by Atlas.
-            </p>
-          )}
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-dashed border-lineage-upstream/40 p-m">
-        <div className="flex flex-wrap items-center gap-s">
-          <EvidenceChip evidence="inferred" />
-          <span className="text-200 text-muted-foreground">
-            {impactSummaryText(impact)}
+    <li>
+      <details className="group">
+        <summary className="flex min-h-[var(--atlas-touch-target)] cursor-pointer list-none items-center gap-m px-l py-m focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+          {incident.itemType && <TypeGlyph type={incident.itemType} size={28} />}
+          <span className="min-w-0 flex-1">
+            <span className="flex flex-wrap items-center gap-s">
+              <h3 id={titleId} className="min-w-0 truncate text-300 font-semibold">
+                {incident.itemName}
+              </h3>
+              <EvidenceChip evidence="observed" />
+            </span>
+            <span className="mt-xxs block text-200 text-muted-foreground">
+              {incident.jobType} ·{" "}
+              <time dateTime={incident.occurredAt} title={exactTime(incident.occurredAt)}>
+                {relativeTime(incident.occurredAt)}
+              </time>
+            </span>
           </span>
-        </div>
-        {preview.length > 0 && (
-          <ul
-            aria-label={`Downstream impact of ${incident.itemName}`}
-            className="mt-s flex flex-col gap-xs"
-          >
-            {preview.map((item) => (
-              <li key={item.itemId} className="flex min-w-0 flex-wrap items-center gap-s text-200">
-                {item.itemType && <TypeGlyph type={item.itemType} size={20} />}
-                <span className="min-w-0 truncate font-semibold">
-                  {item.itemName}
-                </span>
-                <span className="shrink-0 text-muted-foreground">
-                  {item.distance === 1 ? "direct consumer" : `${item.distance} hops`}
-                </span>
-                {item.evidence === "observed" ? (
-                  <span className="inline-flex shrink-0 items-center gap-xxs font-semibold text-foreground">
-                    <CircleAlert className="icon-size-100 text-status-failing" aria-hidden="true" />
-                    also failing (observed)
-                  </span>
-                ) : (
-                  <span className="shrink-0 text-muted-foreground">inferred</span>
-                )}
-              </li>
-            ))}
-            {hidden > 0 && (
-              <li className="text-200 text-muted-foreground">
-                and {hidden} more
-              </li>
-            )}
-          </ul>
-        )}
-      </div>
+          <span className="hidden text-right sm:block">
+            <span className="block font-numeric text-300 font-semibold">
+              {impact.length}
+            </span>
+            <span className="text-100 text-muted-foreground">
+              downstream
+            </span>
+          </span>
+          <ChevronDown
+            className="icon-size-200 shrink-0 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none"
+            aria-hidden="true"
+          />
+        </summary>
 
-      <div className="flex flex-wrap gap-s">
-        <button type="button" onClick={() => onShowRuns(incident)} className={BUTTON}>
-          <History className="icon-size-200" aria-hidden="true" />
-          Show this run
-        </button>
-        {onOpenImpact && impact.length > 0 && (
-          <button
-            type="button"
-            onClick={() => onOpenImpact(incident.itemId)}
-            className={BUTTON}
-          >
-            <Waypoints className="icon-size-200" aria-hidden="true" />
-            Open impact in Map &amp; lineage
-          </button>
-        )}
-      </div>
+        <div className="space-y-m border-t border-border/60 bg-secondary/30 px-l py-m">
+          <div className="text-200 text-muted-foreground">
+            <p>
+              {incident.recorded
+                ? "Stored incident record"
+                : "Derived from the snapshot job history"}
+              {incident.runId && (
+                <>
+                  {" · Run "}
+                  <span className="font-monospace" title={incident.runId}>
+                    {incident.runId.slice(0, 8)}
+                  </span>
+                </>
+              )}
+              {incident.observedAt &&
+                ` · captured ${relativeTime(incident.observedAt)}`}
+              {incident.firstObservedAt &&
+                incident.firstObservedAt !== incident.observedAt &&
+                ` · failing since ${exactTime(incident.firstObservedAt)}`}
+            </p>
+            <p className="mt-xs text-foreground">
+              {incident.message || "Error detail not collected by Atlas."}
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-dashed border-lineage-upstream/40 bg-card p-m">
+            <div className="flex flex-wrap items-center gap-s">
+              <EvidenceChip evidence="inferred" />
+              <span className="text-200 text-muted-foreground">
+                {impactSummaryText(impact)}
+              </span>
+            </div>
+            {preview.length > 0 && (
+              <ul
+                aria-label={`Downstream impact of ${incident.itemName}`}
+                className="mt-s grid gap-xs sm:grid-cols-2"
+              >
+                {preview.map((item) => (
+                  <li key={item.itemId} className="flex min-w-0 items-center gap-s text-200">
+                    {item.itemType && <TypeGlyph type={item.itemType} size={20} />}
+                    <span className="min-w-0 flex-1 truncate font-semibold">
+                      {item.itemName}
+                    </span>
+                    <span className="shrink-0 text-muted-foreground">
+                      {item.evidence === "observed"
+                        ? "also failing (observed)"
+                        : item.distance === 1
+                          ? "direct · inferred"
+                          : `${item.distance} hops · inferred`}
+                    </span>
+                  </li>
+                ))}
+                {hidden > 0 && (
+                  <li className="text-200 text-muted-foreground">
+                    and {hidden} more
+                  </li>
+                )}
+              </ul>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-s">
+            <button type="button" onClick={() => onShowRuns(incident)} className={BUTTON}>
+              <History className="icon-size-200" aria-hidden="true" />
+              Show this run
+            </button>
+            {onOpenImpact && impact.length > 0 && (
+              <button
+                type="button"
+                onClick={() => onOpenImpact(incident.itemId)}
+                className={BUTTON}
+              >
+                <Waypoints className="icon-size-200" aria-hidden="true" />
+                Open impact in Map &amp; lineage
+              </button>
+            )}
+          </div>
+        </div>
+      </details>
     </li>
   );
 }
@@ -463,27 +479,32 @@ export function OperationalSignals({
   return (
     <section
       aria-label="Operational signals"
-      className="grid gap-l lg:grid-cols-[minmax(0,1.6fr)_minmax(300px,1fr)]"
+      className="grid gap-l lg:grid-cols-[minmax(0,1.7fr)_minmax(280px,0.8fr)]"
     >
       <Card className="flex min-w-0 flex-col">
-        <header className="flex flex-col gap-s border-b border-border p-l">
+        <header className="flex flex-col gap-s border-b border-border px-l py-m">
           <h2 className="text-400 font-semibold leading-400">
-            Failures and downstream impact
+            Operational evidence
           </h2>
           <p className="text-200 leading-200 text-muted-foreground">
-            Observed failures are the latest recorded run of an item and job
-            type in the synchronized job history. Downstream impact comes from
-            snapshot lineage: it is inferred unless the consumer has its own
-            observed failure.
+            Latest failed runs, with downstream reach from the validated
+            snapshot lineage.
           </p>
-          <div className="flex flex-wrap gap-s" aria-hidden="true">
-            <EvidenceChip evidence="observed" />
-            <EvidenceChip evidence="inferred" />
-          </div>
           <p className="text-200 text-muted-foreground">
             {recordsNote(records, entries.length)}
           </p>
-          <SincePreviousSnapshot />
+          <details className="group rounded-md border border-border bg-secondary/50">
+            <summary className="flex min-h-[var(--atlas-touch-target)] cursor-pointer list-none items-center justify-between gap-m px-m py-s text-200 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+              Changes since the previous snapshot
+              <ChevronDown
+                className="icon-size-200 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none"
+                aria-hidden="true"
+              />
+            </summary>
+            <div className="border-t border-border px-m py-s">
+              <SincePreviousSnapshot />
+            </div>
+          </details>
         </header>
         {entries.length === 0 ? (
           <p className="p-l text-200 leading-200 text-muted-foreground">
