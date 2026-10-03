@@ -755,17 +755,30 @@ export function MapView({
           evidenceModel.previewGraph?.nodes.some((node) => node.id === item.fabricId.toLowerCase() && node.queried))
       : items;
     const candidates = observed.length ? observed : items;
-    if (
+    const filtered =
       typeFilter === "all" &&
       healthFilter === "all" &&
       !query.trim()
-    ) {
-      return candidates;
+        ? candidates
+        : candidates.filter((item) =>
+            matchesItemFilters(item, typeFilter, healthFilter, query),
+          );
+    if (!impactMode || !activeId) {
+      return filtered;
     }
-    return candidates.filter((item) =>
-      matchesItemFilters(item, typeFilter, healthFilter, query),
-    );
-  }, [evidenceModel.previewGraph, graphLineageIndex, healthFilter, items, previewActive, query, typeFilter]);
+    return filtered.filter((item) => connected.has(item.fabricId));
+  }, [
+    activeId,
+    connected,
+    evidenceModel.previewGraph,
+    graphLineageIndex,
+    healthFilter,
+    impactMode,
+    items,
+    previewActive,
+    query,
+    typeFilter,
+  ]);
   const visibleIds = useMemo(
     () => new Set(visibleItems.map((item) => item.fabricId)),
     [visibleItems],
@@ -820,10 +833,17 @@ export function MapView({
   const posOf = (id: string) => drag[id] ?? layout.positions.get(id) ?? { x: 0, y: 0 };
   const previewOverlay = storedPreviewOverlay && {
     ...storedPreviewOverlay,
-    laneNodes: storedPreviewOverlay.laneNodes.map((node) => ({
-      ...node, ...previewLayout.positions.get(node.key),
-      column: Math.round(((previewLayout.positions.get(node.key)?.x ?? 28) - 28) / NODE_COLUMN_GAP),
-    })),
+    laneNodes: storedPreviewOverlay.laneNodes.map((node) => {
+      const point =
+        previewDrag[node.key] ??
+        previewLayout.positions.get(node.key) ??
+        { x: node.x, y: node.y };
+      return {
+        ...node,
+        ...point,
+        column: Math.round((point.x - 28) / NODE_COLUMN_GAP),
+      };
+    }),
   };
   const bounds = useMemo(() => {
     let width = layout.width;
@@ -1029,6 +1049,7 @@ export function MapView({
     const url = new URL(window.location.href);
     url.searchParams.set("lineage", mode);
     if (activeId) url.searchParams.set("item", activeId);
+    else url.searchParams.delete("item");
     if (query) url.searchParams.set("q", query);
     else url.searchParams.delete("q");
     if (typeFilter !== "all") url.searchParams.set("type", typeFilter);
@@ -1100,7 +1121,21 @@ export function MapView({
     };
     setDragId(id);
   };
-  const nodeMove = (event: RPE<HTMLButtonElement>) => {
+  const previewNodeDown = (
+    event: RPE<HTMLDivElement>,
+    key: string,
+  ) => {
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    dragging.current = {
+      id: key,
+      ids: [key],
+      origins: { [key]: posOf(key) },
+      pointer: { x: event.clientX, y: event.clientY },
+      moved: false,
+    };
+    setDragId(key);
+  };
+  const nodeMove = (event: RPE<HTMLElement>) => {
     const current = dragging.current;
     if (!current) return;
     const dx = (event.clientX - current.pointer.x) / zoom;
@@ -1118,7 +1153,7 @@ export function MapView({
       return next;
     });
   };
-  const nodeUp = (event: RPE<HTMLButtonElement>) => {
+  const nodeUp = (event: RPE<HTMLElement>) => {
     event.currentTarget.releasePointerCapture?.(event.pointerId);
     const moved = dragging.current?.moved;
     dragging.current = null;
@@ -1412,17 +1447,24 @@ export function MapView({
   };
 
   const resetGraph = () => {
-    setDrag({});
-    setObjectDrag({});
+    setAtlasDrag({});
+    setPreviewDrag({});
     setZoom(DEFAULT_MAP_ZOOM);
-    setFocusId(activeId);
-    setSelectedItemIds(new Set(activeId ? [activeId] : []));
-    setSelectedObjectIds(
-      new Set(activeObjectId ? [activeObjectId] : []),
-    );
-    window.requestAnimationFrame(() =>
-      mapRef.current?.scrollTo({ top: 0, left: 0, behavior: "smooth" }),
-    );
+    setSelId("");
+    setFocusId("");
+    setSelectedItemIds(new Set());
+    setImpactMode(false);
+    setRelationshipId("");
+    setExpandedKeys([]);
+    setTypeFilter("all");
+    setHealthFilter("all");
+    resetObjectContext(true, "");
+    window.requestAnimationFrame(() => {
+      const viewport = mapRef.current;
+      if (typeof viewport?.scrollTo === "function") {
+        viewport.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+      }
+    });
   };
 
   const copyLink = async () => {
@@ -2350,7 +2392,13 @@ export function MapView({
                       key={node.key}
                       data-preview-node
                       title={`${node.endpoint.displayName} (${node.endpoint.workspaceName ?? "workspace name not reported"})`}
-                      className="absolute z-[3] flex items-center gap-[10px] rounded-lg border border-lineage-upstream/40 bg-card px-[12px] text-left shadow-fabric-2"
+                      onPointerDown={(event) =>
+                        previewNodeDown(event, node.key)
+                      }
+                      onPointerMove={nodeMove}
+                      onPointerUp={nodeUp}
+                      onPointerCancel={nodeUp}
+                      className="absolute z-[3] flex touch-none cursor-ns-resize select-none items-center gap-[10px] rounded-lg border border-lineage-upstream/40 bg-card px-[12px] text-left shadow-fabric-2"
                       style={{
                         left: node.x,
                         top: node.y,
@@ -2381,13 +2429,15 @@ export function MapView({
                           aria-expanded={false}
                           aria-label={`Expand stored relations of ${node.endpoint.displayName} (${node.hiddenNeighbors} hidden)`}
                           title={`Show ${node.hiddenNeighbors} more stored relation${node.hiddenNeighbors === 1 ? "" : "s"}`}
-                          onClick={() =>
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.stopPropagation();
                             setExpandedKeys((current) =>
                               current.includes(node.key) || current.length >= MAX_EXPANSIONS
                                 ? current
                                 : [...current, node.key],
-                            )
-                          }
+                            );
+                          }}
                           className="flex h-[28px] min-w-[28px] shrink-0 items-center justify-center gap-xxs rounded-full border border-lineage-upstream/70 bg-card px-xs text-200 font-semibold text-lineage-upstream hover:bg-lineage-upstream/10"
                         >
                           <Plus className="icon-size-100" aria-hidden="true" />

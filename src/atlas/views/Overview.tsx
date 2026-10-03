@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { lazy, Suspense, useMemo } from "react";
 import type {
   AtlasNavigation,
   Tab,
@@ -26,12 +26,16 @@ import {
   type JobStatus,
 } from "../model";
 import { snapshotCatalogFromData } from "../history";
-import { scorePosture } from "../posture";
+import { scorePosture, type PosturePillar } from "../posture";
 import { workspaceDetailLabel } from "../workspace-display";
 import { summarizeHealth } from "../health-summary";
 import { ScoreMeter } from "../components/ScoreMeter";
-import { scoreBand, scoreStyle } from "../components/score-style";
+import { scoreBand } from "../components/score-style";
 import { PageHeader } from "../components/PageHeader";
+
+const PostureRadar = lazy(() => import("../components/PostureRadar").then(
+  (module) => ({ default: module.PostureRadar }),
+));
 
 const JOB_TONE: Record<JobStatus, string> = {
   completed: "bg-status-healthy",
@@ -39,58 +43,6 @@ const JOB_TONE: Record<JobStatus, string> = {
   running: "bg-primary",
   cancelled: "bg-lineage-neutral",
 };
-
-function ScoreRing({
-  value,
-  label,
-  large = false,
-}: {
-  value: number | null;
-  label: string;
-  large?: boolean;
-}) {
-  const score = value == null ? 0 : Math.max(0, Math.min(100, value));
-  return (
-    <span className="relative inline-flex items-center justify-center" style={scoreStyle(value)}>
-      <svg
-        viewBox="0 0 42 42"
-        className={large ? "icon-size-800" : "icon-size-700"}
-        role="img"
-        aria-label={`${label}: ${value == null ? "not available" : `${value}%`}`}
-      >
-        <circle
-          cx="21"
-          cy="21"
-          r="16"
-          fill="none"
-          stroke="var(--color-muted)"
-          strokeWidth="4"
-        />
-        <circle
-          cx="21"
-          cy="21"
-          r="16"
-          pathLength="100"
-          fill="none"
-          stroke="var(--atlas-score-fill)"
-          strokeWidth="4"
-          strokeLinecap="round"
-          strokeDasharray={`${score} 100`}
-          transform="rotate(-90 21 21)"
-        />
-      </svg>
-      <span
-        className={`atlas-score absolute font-numeric font-semibold ${
-          large ? "text-500" : "text-200"
-        }`}
-        data-score-band={scoreBand(value)}
-        aria-hidden="true"
-      >
-        {value == null ? "N/A" : value}
-      </span>
-    </span>
-  );
-}
 
 export function OverviewView({
   onOpen,
@@ -163,6 +115,24 @@ export function OverviewView({
   const postureAtTarget = posture.pillars.filter(
     (pillar) => pillar.score != null && pillar.score >= pillar.target,
   ).length;
+  const largestGap = targetsAvailable
+    ? posture.pillars
+        .flatMap((pillar) => pillar.score == null || pillar.score >= pillar.target
+          ? []
+          : [{ pillar: pillar.pillar, gap: pillar.target - pillar.score }])
+        .sort((a, b) => b.gap - a.gap)[0]
+    : undefined;
+
+  function openPosture(pillar?: PosturePillar) {
+    onOpen({
+      tab: "governance",
+      focus: {
+        requestId: crypto.randomUUID(),
+        governanceSection: "posture",
+        ...(pillar ? { filters: { pillar } } : {}),
+      },
+    });
+  }
 
   const assetCount = useMemo(
     () =>
@@ -211,21 +181,21 @@ export function OverviewView({
     Boolean,
   );
 
-  const pulse = health.failing
+  const healthStatus = health.failing
     ? {
         label: "Action required",
         className:
-          "border-status-failing/30 bg-status-failing/10 text-status-failing",
+          "border-signal-danger-foreground/30 bg-signal-danger-background text-signal-danger-foreground",
       }
     : health.stale
       ? {
           label: "Freshness review",
           className:
-            "border-status-warning/30 bg-status-warning/10 text-status-warning",
+            "border-signal-warning-foreground/30 bg-signal-warning-background text-signal-warning-foreground",
         }
       : health.unknown
         ? {
-            label: `${health.unknown} health status unknown`,
+            label: "Assessment incomplete",
             className:
               "border-border bg-muted text-muted-foreground",
           }
@@ -233,13 +203,19 @@ export function OverviewView({
           ? {
               label: "Operational",
               className:
-                "border-status-healthy/30 bg-status-healthy/10 text-status-healthy",
+                "border-signal-success-foreground/30 bg-signal-success-background text-signal-success-foreground",
             }
           : {
               label: "Awaiting inventory",
               className:
                 "border-lineage-neutral/30 bg-lineage-neutral/10 text-muted-foreground",
             };
+  const healthSegments = [
+    { label: "Healthy", value: health.healthy, tone: "bg-status-healthy" },
+    { label: "Stale", value: health.stale, tone: "bg-status-warning" },
+    { label: "Failing", value: health.failing, tone: "bg-status-failing" },
+    { label: "Unknown", value: health.unknown, tone: "bg-muted-foreground" },
+  ];
 
   const coverage = [
     {
@@ -369,190 +345,177 @@ export function OverviewView({
         </span>
       </div>
 
-      <section aria-labelledby="workspace-pulse-title">
-        <div className="mb-m flex items-end justify-between gap-l">
-          <div>
-            <h2
-              id="workspace-pulse-title"
-              className="text-400 font-semibold"
-            >
-              Workspace pulse
-            </h2>
-            <p className="mt-xs text-200 text-muted-foreground">
-              {targetsAvailable
-                ? `${postureAtTarget} of ${posture.pillars.length} governance signals meet the current target.`
-                : governancePolicyLoading
-                  ? "Loading governance targets."
-                  : "Governance targets are unavailable; current scores remain visible."}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() =>
-              onOpen({
-                tab: "governance",
-                focus: {
-                  requestId: crypto.randomUUID(),
-                  governanceSection: "posture",
-                },
-              })
-            }
-            className="atlas-control shrink-0 rounded-md px-s text-200 font-semibold text-brand-foreground hover:underline"
-          >
-            Open Governance Center
-          </button>
-        </div>
+      <section aria-labelledby="overview-posture-title">
         {governancePolicyError && (
-          <p role="alert" className="mb-m rounded-lg border border-destructive/30 bg-destructive/10 p-m text-200">
+          <p role="alert" className="mb-m rounded-lg border border-signal-danger-foreground/30 bg-signal-danger-background p-m text-200 text-signal-danger-foreground">
             {governancePolicyError} Open Governance Center to retry. Raw scores remain visible below.
           </p>
         )}
-        <Card className="grid min-w-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.34fr)]">
-          <div className="p-l">
-            <div className="grid grid-cols-2 gap-l sm:grid-cols-3 xl:grid-cols-6">
+        <Card className="grid min-w-0 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+          <div className="min-w-0 p-l">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-l gap-y-xs">
+              <h2 id="overview-posture-title" className="text-400 font-semibold">
+                Governance posture
+              </h2>
+              {targetsAvailable && (
+                <p className="text-200 text-muted-foreground">
+                  <span className="font-numeric font-semibold text-foreground">{postureAtTarget} / {posture.pillars.length}</span>{" "}
+                  pillars at target
+                </p>
+              )}
+            </div>
+            {governancePolicyLoading ? (
+              <p role="status" className="mt-xs text-200 text-muted-foreground">
+                Loading governance targets. Current scores remain visible.
+              </p>
+            ) : (
+              <p className="mt-xs text-200 text-muted-foreground">
+                {!items.length
+                  ? "Sync the workspace to populate governance scores."
+                  : largestGap
+                    ? <>Largest target gap: <span className="capitalize text-foreground">{largestGap.pillar}</span>, {largestGap.gap} {largestGap.gap === 1 ? "point" : "points"} below target.</>
+                    : targetsAvailable
+                      ? "Select a pillar to review its evidence in Governance Center."
+                      : "Targets unavailable. Select a pillar to review its current score."}
+              </p>
+            )}
+            <Suspense fallback={
+              <div role="status" className="atlas-posture-chart flex items-center justify-center text-200 text-muted-foreground">
+                Loading governance radar...
+              </div>
+            }>
+              <PostureRadar
+                pillars={posture.pillars}
+                selectedPillar={largestGap?.pillar ?? "documentation"}
+                targetsAvailable={targetsAvailable}
+                onSelect={openPosture}
+              />
+            </Suspense>
+            <ul aria-label="Governance pillar scores" className="grid grid-cols-2 gap-x-m border-t border-border pt-s sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3">
               {posture.pillars.map((pillar) => {
                 const previous = previousPosture?.pillars.find(
                   (candidate) => candidate.pillar === pillar.pillar,
                 )?.score;
-                const delta =
-                  pillar.score != null && previous != null
-                    ? pillar.score - previous
-                    : null;
+                const delta = pillar.score != null && previous != null
+                  ? pillar.score - previous
+                  : null;
                 return (
-                  <button
-                    key={pillar.pillar}
-                    type="button"
-                    onClick={() =>
-                      onOpen({
-                        tab: "governance",
-                        focus: {
-                          requestId: crypto.randomUUID(),
-                          governanceSection: "posture",
-                          filters: { pillar: pillar.pillar },
-                        },
-                      })
-                    }
-                    className="group flex min-h-[var(--atlas-touch-target)] min-w-0 flex-col items-center gap-s rounded-lg px-s py-m text-center transition-colors hover:bg-accent focus-visible:ring-inset focus-visible:ring-offset-0"
-                    aria-label={`${pillar.pillar}: ${pillar.score == null ? "not available" : `${pillar.score}%`}. ${targetsAvailable ? `Target ${pillar.target}%` : "Target unavailable"}`}
-                  >
-                    <ScoreRing
-                      value={pillar.score}
-                      label={`${pillar.pillar} posture score`}
-                    />
-                    <span className="text-200 font-semibold capitalize">
-                      {pillar.pillar}
-                    </span>
-                    <span className="text-100 text-muted-foreground">
-                      {delta == null
-                        ? targetsAvailable
-                          ? `Target ${pillar.target}%`
-                          : "No target"
-                        : `${delta >= 0 ? "+" : ""}${delta} pts since previous`}
-                    </span>
-                  </button>
+                  <li key={pillar.pillar} className="min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => openPosture(pillar.pillar)}
+                      className="flex min-h-[var(--atlas-touch-target)] w-full min-w-0 flex-col gap-xxs rounded-md px-s py-s text-left hover:bg-accent active:bg-muted focus-visible:ring-inset focus-visible:ring-offset-0"
+                      aria-label={`${pillar.pillar}: ${pillar.score == null ? "not available" : `${pillar.score}%`}. ${targetsAvailable ? `Target ${pillar.target}%` : "Target unavailable"}`}
+                    >
+                      <span className="flex w-full flex-wrap items-baseline justify-between gap-x-s text-200">
+                        <span className="font-semibold capitalize">{pillar.pillar}</span>
+                        <span className="atlas-score font-numeric font-semibold tabular-nums" data-score-band={scoreBand(pillar.score)}>
+                          {pillar.score == null ? "N/A" : `${pillar.score}%`}
+                        </span>
+                      </span>
+                      <span className="text-200 text-muted-foreground">
+                        {targetsAvailable ? `Target ${pillar.target}%` : "Target unavailable"}
+                        {delta != null && <span title="Change since the previous snapshot"> · {delta > 0 ? "+" : ""}{delta} pts</span>}
+                      </span>
+                    </button>
+                  </li>
                 );
               })}
+            </ul>
+            <div className="mt-s border-t border-border pt-s">
+              <button
+                type="button"
+                onClick={() => openPosture()}
+                className="inline-flex min-h-[var(--atlas-touch-target)] items-center gap-s rounded-md px-s text-200 font-semibold text-brand-foreground hover:bg-accent active:bg-muted focus-visible:ring-inset focus-visible:ring-offset-0"
+              >
+                Open Governance Center
+                <ArrowRight className="icon-size-200" aria-hidden="true" />
+              </button>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() =>
-              onOpen({
-                tab: "governance",
-                focus: {
-                  requestId: crypto.randomUUID(),
-                  governanceSection: "findings",
-                  filters: { section: "findings", category: "operations" },
-                },
-              })
-            }
-            className="flex min-w-0 flex-col items-start justify-center gap-m border-t border-border bg-secondary/55 p-l text-left hover:bg-accent lg:border-l lg:border-t-0"
-          >
-            <span className="text-200 font-semibold text-muted-foreground">
-              Operational coverage
-            </span>
-            <div className="flex items-center gap-l">
-              <ScoreRing
-                value={healthPercentage}
-                label="Assessed item health"
-                large
-              />
-              <span className="min-w-0">
-                <span className={cn("inline-flex rounded-md border px-s py-xxs text-200 font-semibold", pulse.className)}>
-                  {pulse.label}
+          <div className="min-w-0 border-t border-border p-l lg:border-l lg:border-t-0">
+            <section aria-labelledby="overview-health-title">
+              <div className="flex flex-wrap items-center justify-between gap-s">
+                <h3 id="overview-health-title" className="text-300 font-semibold">Workspace health</h3>
+                <span className={cn("inline-flex rounded-md border px-s py-xxs text-200 font-semibold", healthStatus.className)}>
+                  {healthStatus.label}
                 </span>
-                <span className="mt-s block text-300 font-semibold">
-                  {health.assessed} of {health.total} items assessed
+              </div>
+              <div className="mt-l flex flex-wrap items-baseline gap-x-s gap-y-xs">
+                <span className="font-numeric text-hero-800 font-semibold leading-hero-800 tabular-nums">
+                  {healthPercentage == null ? "Not assessed" : `${healthPercentage}%`}
                 </span>
-                <span className="mt-xxs block text-200 text-muted-foreground">
-                  {attentionCount} need attention · synchronized {syncFreshness}
-                </span>
-              </span>
-            </div>
-            <span className="inline-flex items-center gap-s text-200 font-semibold text-brand-foreground">
-              Review operational findings
-              <ArrowRight className="icon-size-100" aria-hidden="true" />
-            </span>
-          </button>
-        </Card>
-      </section>
-
-      <section aria-labelledby="priority-signals-title">
-        <div className="mb-m flex items-end justify-between gap-l">
-          <div>
-            <h2 id="priority-signals-title" className="text-400 font-semibold">
-              Priority signals
-            </h2>
-          </div>
-          <span className="hidden text-200 text-muted-foreground sm:block">
-            Collected workspace metadata
-          </span>
-        </div>
-        <Card className="overflow-hidden">
-          <div className="grid sm:grid-cols-2">
-            {riskSignals.map((signal) => {
-              const Icon = signal.icon;
-              return (
-                <button
-                  type="button"
-                  key={signal.label}
-                  onClick={() => onOpen(signal.target)}
-                  aria-label={`${signal.label}: ${signal.value}. ${signal.detail}`}
-                  className="group flex items-center gap-m border-b border-border p-m text-left transition-colors hover:bg-accent sm:odd:border-r"
-                >
-                  <span
-                    className={`flex icon-size-400 shrink-0 items-center justify-center ${signal.tone}`}
+                {healthPercentage != null && <span className="text-200 text-muted-foreground">of assessed items healthy</span>}
+              </div>
+              <p className="mt-xs text-200 text-muted-foreground">
+                {health.total
+                  ? `${health.assessed} of ${health.total} items assessed`
+                  : "Sync the workspace to assess item health."}
+              </p>
+              {health.total > 0 && (
+                <>
+                  <div
+                    role="img"
+                    aria-label={`Item health distribution: ${healthSegments.map((segment) => `${segment.value} ${segment.label.toLowerCase()}`).join(", ")}`}
+                    className="mt-l flex h-m w-full gap-xxs overflow-hidden rounded-sm bg-muted"
                   >
-                    <Icon className="icon-size-200" aria-hidden="true" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-baseline justify-between gap-s">
-                      <span className="truncate text-300 font-semibold">
-                        {signal.label}
-                      </span>
+                    {healthSegments.filter((segment) => segment.value > 0).map((segment) => (
                       <span
-                        className={`font-numeric text-400 font-semibold tabular-nums ${signal.tone}`}
+                        key={segment.label}
+                        aria-hidden="true"
+                        className={segment.tone}
+                        style={{ flexGrow: segment.value, flexBasis: 0 }}
+                      />
+                    ))}
+                  </div>
+                  <dl aria-label="Item health counts" className="mt-m grid grid-cols-2 gap-x-l gap-y-s">
+                    {healthSegments.map((segment) => (
+                      <div key={segment.label} className="flex items-center gap-s text-200">
+                        <dt className="flex flex-1 items-center gap-s text-muted-foreground">
+                          <span aria-hidden="true" className={`h-s w-s shrink-0 rounded-sm ${segment.tone}`} />
+                          {segment.label}
+                        </dt>
+                        <dd className="font-numeric font-semibold tabular-nums">{segment.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </>
+              )}
+            </section>
+            <section aria-labelledby="priority-signals-title" className="mt-xl border-t border-border pt-l">
+              <h3 id="priority-signals-title" className="text-300 font-semibold">Priority signals</h3>
+              <ul className="mt-s divide-y divide-border">
+                {riskSignals.map((signal) => {
+                  const Icon = signal.icon;
+                  return (
+                    <li key={signal.label}>
+                      <button
+                        type="button"
+                        onClick={() => onOpen(signal.target)}
+                        aria-label={`${signal.label}: ${signal.value}. ${signal.detail}`}
+                        className="flex min-h-[var(--atlas-touch-target)] w-full items-center gap-m rounded-md px-s py-m text-left hover:bg-accent active:bg-muted focus-visible:ring-inset focus-visible:ring-offset-0"
                       >
-                        {signal.value}
-                      </span>
-                    </span>
-                    <span className="mt-xs block truncate text-200 text-muted-foreground">
-                      {signal.detail}
-                    </span>
-                  </span>
-                  <ArrowRight
-                    className="icon-size-200 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-xs motion-reduce:transition-none"
-                    aria-hidden="true"
-                  />
-                </button>
-              );
-            })}
+                        <Icon className={`icon-size-200 shrink-0 ${signal.tone}`} aria-hidden="true" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-300 font-semibold">{signal.label}</span>
+                          <span className="mt-xxs block text-200 text-muted-foreground">{signal.detail}</span>
+                        </span>
+                        <span className="font-numeric text-500 font-semibold tabular-nums">{signal.value}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="mt-m text-200 text-muted-foreground">
+                Based on collected workspace metadata.
+              </p>
+            </section>
           </div>
         </Card>
       </section>
 
       <details className="rounded-lg border border-border">
-        <summary className="min-h-[var(--atlas-touch-target)] cursor-pointer px-l py-m text-300 font-semibold hover:bg-accent">Metadata coverage</summary>
+        <summary className="min-h-[var(--atlas-touch-target)] cursor-pointer rounded-lg px-l py-m text-300 font-semibold hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">Metadata coverage</summary>
         <section aria-labelledby="governance-coverage-title" className="p-m">
         <div className="mb-m flex items-end justify-between gap-l">
           <div>

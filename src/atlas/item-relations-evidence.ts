@@ -484,6 +484,7 @@ export const KNOWN_ITEM_RELATION_TYPES = [
   "PushData",
   "Orchestration",
   "CascadeDelete",
+  "Association",
   "WeakAssociation",
   "HiddenInWorkspace",
 ] as const;
@@ -532,6 +533,10 @@ const RELATION_SEMANTICS: Record<
   // item, which matches scanner evidence such as Lakehouse -> SQL endpoint.
   CascadeDelete: {
     flow: "lifecycle",
+    orientation: "dependency-to-dependent",
+  },
+  Association: {
+    flow: "association",
     orientation: "dependency-to-dependent",
   },
   WeakAssociation: {

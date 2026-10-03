@@ -230,6 +230,7 @@ describe("Item Relations direction semantics", () => {
     ["PushData", "data", "dependent-to-dependency"],
     ["Orchestration", "control", "dependent-to-dependency"],
     ["CascadeDelete", "lifecycle", "dependency-to-dependent"],
+    ["Association", "association", "dependency-to-dependent"],
     ["WeakAssociation", "association", "dependency-to-dependent"],
     ["HiddenInWorkspace", "visibility", "dependency-to-dependent"],
   ] as const)("orients %s per its documented family", (type, flow, orientation) => {
@@ -243,8 +244,8 @@ describe("Item Relations direction semantics", () => {
   });
 
   it("keeps unknown relation types visible with unverified direction", () => {
-    expect(describeItemRelation("Association")).toEqual({
-      relationType: "Association",
+    expect(describeItemRelation("FutureRelation")).toEqual({
+      relationType: "FutureRelation",
       flow: "unknown",
       orientation: "dependency-to-dependent",
       directionVerified: false,

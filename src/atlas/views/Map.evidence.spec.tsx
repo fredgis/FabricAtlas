@@ -352,6 +352,82 @@ describe("Map & lineage unified evidence", () => {
     );
   });
 
+  it("moves external Preview nodes vertically without changing their column", async () => {
+    const { container } = renderMap({
+      itemRelationsEnabled: true,
+      loadItemRelationsEvidence: loadEvidence,
+    });
+    fireEvent.click(previewCheckbox());
+    await waitFor(() =>
+      expect(container.querySelectorAll(BETA_EDGES)).toHaveLength(4),
+    );
+    const external = container.querySelector<HTMLElement>("[data-preview-node]")!;
+    const initial = { left: external.style.left, top: external.style.top };
+
+    fireEvent.pointerDown(external, {
+      button: 0,
+      clientX: 100,
+      clientY: 100,
+      pointerId: 11,
+    });
+    fireEvent.pointerMove(external, {
+      clientX: 160,
+      clientY: 145,
+      pointerId: 11,
+    });
+    fireEvent.pointerUp(external, {
+      button: 0,
+      clientX: 160,
+      clientY: 145,
+      pointerId: 11,
+    });
+
+    expect(external.style.left).toBe(initial.left);
+    expect(external.style.top).not.toBe(initial.top);
+  });
+
+  it("hides unrelated Preview components in Impact mode and Reset restores the initial graph", async () => {
+    const { container } = renderMap({
+      itemRelationsEnabled: true,
+      loadItemRelationsEvidence: loadEvidence,
+    });
+    fireEvent.click(previewCheckbox());
+    await waitFor(() =>
+      expect(container.querySelectorAll(BETA_EDGES)).toHaveLength(4),
+    );
+    fireEvent.click(
+      screen.getByLabelText(
+        "AlpineRent Sales Model, Semantic model, healthy",
+      ),
+    );
+    fireEvent.click(screen.getByRole("switch", { name: "Impact mode" }));
+
+    expect(
+      screen.queryByLabelText(/^AlpineRent Daily Load,/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByLabelText(
+        "AlpineRent Sales Model, Semantic model, healthy",
+      ),
+    ).toBeVisible();
+    expect(container.querySelectorAll(BETA_EDGES).length).toBeLessThan(4);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
+
+    expect(screen.getByRole("switch", { name: "Impact mode" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    expect(await screen.findByLabelText(/^AlpineRent Daily Load,/)).toBeVisible();
+    expect(container.querySelectorAll(BETA_EDGES)).toHaveLength(4);
+    expect(document.querySelectorAll("button[aria-pressed='true']")).toHaveLength(0);
+    await waitFor(() => {
+      const url = new URL(window.location.href);
+      expect(url.searchParams.has("item")).toBe(false);
+      expect(url.searchParams.has("impact")).toBe(false);
+    });
+  });
+
   it("opens the active Preview source from the Evidence tab", async () => {
     renderMap({
       itemRelationsEnabled: true,
