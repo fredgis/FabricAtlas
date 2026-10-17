@@ -412,7 +412,7 @@ contracts or a separate product decision.
 | OneLake security and Purview DLP | Portal links and explicit unavailable states | Public read APIs for role membership and restriction evidence |
 | Report visual usage | Not collected | A supported report definition path with sensitivity and permission handling |
 | Shared action plans and notifications | Not implemented | Reviewed team workflow, ownership model and delivery channel |
-| 2.1 maintenance | Version 2.1.2 is the current release line | Patch releases for verified fixes; larger workflows depend on the contracts above |
+| 2.1 maintenance | Version 2.1.3 is the current release line | Patch releases for verified fixes; larger workflows depend on the contracts above |
 
 ## Quickstart
 
