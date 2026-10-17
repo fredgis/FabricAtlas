@@ -22,7 +22,11 @@ import {
   persistComment,
   runFabricSync,
 } from "./backend";
-import { ATLAS_CONFIG, isSyncConfigured } from "./config";
+import {
+  ATLAS_CONFIG,
+  configuredSyncWriters,
+  isSyncConfigured,
+} from "./config";
 import {
   DEPLOYMENT_ID,
   sameDeploymentGeneration,
@@ -308,7 +312,9 @@ export function AtlasProvider({
   const canSync =
     isPreview ||
     (!!currentUser.id &&
-      currentUser.id.trim() === ATLAS_CONFIG.syncAdminSubject.trim());
+      configuredSyncWriters().some(
+        (writer) => writer.subject === currentUser.id.trim(),
+      ));
   const [requiresDeploymentSync, setRequiresDeploymentSync] = useState(
     !isPreview,
   );

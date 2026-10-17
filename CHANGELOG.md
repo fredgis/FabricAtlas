@@ -4,6 +4,47 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-10-17
+
+### Added
+
+- Complete Semantic Model Object Lineage with a fixed table inventory,
+  bounded multi-table field blocks, whole-model search and canonical deep links.
+- Direct and transitive DAX edges for the focused object, with collapsed-table
+  endpoints and explicit verified, inferred, unresolved and omitted evidence.
+- Cross-navigation between Object Lineage, X-Ray, Asset Catalog and global
+  search results.
+- Snapshot persistence for model relationships, static dependencies,
+  calculated-column expressions and expression coverage.
+- Local diagnostics for hydration, synchronization, X-Ray and Object Lineage
+  build timings.
+- Optional break-glass synchronizer identity under the same Rayfin data
+  policies as the primary synchronizer.
+
+### Changed
+
+- Unified X-Ray and schema impact analysis on one Semantic Model dependency
+  index.
+- Replaced the Vega governance radar with a keyboard-accessible SVG.
+- Lazy-loaded application views and built the global search index only when
+  opened.
+- Reused expensive access, governance, coverage and schema derivations per
+  immutable snapshot.
+- Increased hydration cursor pages from 100 to 1,000 rows and started marker
+  and SyncRun reads together.
+- Scoped the initial auth redirect through `RAYFIN_AUTH_REDIRECT_URI`.
+
+### Fixed
+
+- Preserved measure references after `RETURN` and `NOT` in browser and
+  Rayfin Function DAX tokenizers.
+- Prevented omitted expressions from producing an unqualified "No DAX
+  consumers" result.
+- Made object and schema keys independent from the browser locale.
+- Removed preview schema fallback from production lookups.
+- Kept the active Semantic Model selected when Object Lineage is reset.
+- Neutralized CSV cells beginning with a tab or carriage return.
+
 ## [2.0.0] - 2026-10-03
 
 ### Added

@@ -24,7 +24,7 @@ the last validated snapshot in Fabric so everyone sees the same state.
 
 </div>
 
-## Fabric Atlas 2.0 demo
+## Fabric Atlas 2.1 demo
 
 https://github.com/user-attachments/assets/4f34a994-a130-4a74-bce7-d2d2bbab7d65
 
@@ -123,7 +123,7 @@ Fabric Atlas collects that metadata without copying business data.
 
 ## Capabilities
 
-| Area | Included in Fabric Atlas 2.0 |
+| Area | Included in Fabric Atlas 2.1 |
 |---|---|
 | Workspaces and sync | Shared workspace scope, independent validated snapshots, active-workspace switching, staged progress and last-known-good fallback |
 | Catalog and search | Item Catalog, alphabetized Asset Catalog, `Ctrl+K` search, SQL/KQL/semantic/ontology/graph/Data Agent inventory |
@@ -236,14 +236,14 @@ marked as Beta rather than authoritative lineage.
 
 ### Object lineage
 
-Object mode expands a synchronized table into its columns and connected Fabric
-items. The inspector keeps ownership, impact and related metadata visible while
-objects are selected or rearranged. Selecting an object from another Fabric item
-switches the active item and rebuilds the object graph. Deep-lineage tables can
-be expanded or collapsed together. Connected Fabric items are grouped into
-collapsible summary nodes. Hold the left mouse button on the canvas background
-to pan. Item and Preview boxes can be moved freely, and Reset returns the graph
-to its computed source-to-consumer layout.
+Semantic Model Object Lineage starts with the complete table inventory and no
+implicit field focus. Up to eight stable table blocks can be opened at once,
+with whole-model search keeping every synchronized measure and column
+discoverable. Focused objects show verified DAX inputs and consumers, while
+name-matched sources remain explicitly inferred. X-Ray, Asset Catalog and
+global search link to the same table-qualified object. Reset keeps the active
+model and clears only the object view. Other Fabric item types keep their
+verified object graph and connected-item grouping.
 
 ![Fabric Atlas object lineage](docs/screenshots/object-lineage-v2.png)
 
@@ -397,7 +397,7 @@ contracts or a separate product decision.
 | OneLake security and Purview DLP | Portal links and explicit unavailable states | Public read APIs for role membership and restriction evidence |
 | Report visual usage | Not collected | A supported report definition path with sensitivity and permission handling |
 | Shared action plans and notifications | Not implemented | Reviewed team workflow, ownership model and delivery channel |
-| 2.0 maintenance | Version 2.0.0 is the current release line | Patch releases for verified fixes; larger workflows depend on the contracts above |
+| 2.1 maintenance | Version 2.1.0 is the current release line | Patch releases for verified fixes; larger workflows depend on the contracts above |
 
 ## Quickstart
 

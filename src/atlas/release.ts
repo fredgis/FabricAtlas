@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.0.0";
+  "2.1.0";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,37 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.1.0",
+    date: "2026-10-17",
+    title: "Complete Semantic Model object lineage",
+    sections: [
+      {
+        title: "Lineage correctness",
+        items: [
+          "Semantic Model Object Lineage exposes the complete table inventory through bounded multi-table blocks, whole-model search and stable table-qualified object identities.",
+          "Browser and Function DAX parsing now preserve common RETURN and NOT measure references, while X-Ray and impact analysis share one dependency index.",
+          "Calculated-column expressions, expression coverage, model relationships and static dependency evidence survive synchronization and snapshot hydration.",
+        ],
+      },
+      {
+        title: "Navigation and performance",
+        items: [
+          "Object Lineage, X-Ray, Asset Catalog and global search cross-link to the same selected measure or column.",
+          "The governance radar uses an accessible SVG instead of the Vega runtime, and application views load by route with snapshot-derived result caching.",
+          "Local diagnostics report hydration, synchronization and lineage build timings without external telemetry.",
+        ],
+      },
+      {
+        title: "Operations and security",
+        items: [
+          "Snapshot hydration uses larger cursor pages and starts independent marker and SyncRun reads together.",
+          "An optional break-glass synchronizer can publish snapshots through the same database-enforced policy boundary.",
+          "CSV export neutralizes leading tab and carriage-return cells, and deployment redirect configuration is environment-scoped.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.0.0",
     date: "2026-10-03",

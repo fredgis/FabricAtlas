@@ -37,6 +37,7 @@ import {
   buildAccessReviewRows,
   selectAccessByItem,
 } from "../governance";
+import { derivedFromSnapshot } from "../derived";
 import type { SchemaObjectRef } from "../lineage";
 import type { AtlasFocusRequest, AtlasNavigation } from "../navigation";
 import {
@@ -51,9 +52,49 @@ import {
   type AccessLevel,
   type ItemType,
 } from "../model";
+import { xrayObjectKey } from "../semantic-xray";
 
 type AssetKind = AssetObjectKind;
 type Asset = CatalogObject;
+
+function semanticObjectHref(
+  itemId: string,
+  tableName: string,
+  objectName: string,
+  objectKind: "measure" | "column",
+  view: "graph" | "xray",
+): string {
+  const url = new URL(window.location.href);
+  for (const key of [...url.searchParams.keys()]) {
+    if (
+      [
+        "assets.item",
+        "assets.table",
+        "assets.object",
+        "assets.objectId",
+        "assets.objectKind",
+        "assets.q",
+        "assets.kind",
+      ].includes(key)
+    ) {
+      url.searchParams.delete(key);
+    }
+  }
+  const objectKey = xrayObjectKey(objectKind, tableName, objectName);
+  url.searchParams.set("item", itemId);
+  if (view === "xray") {
+    url.searchParams.set("view", "xray");
+    url.searchParams.set("xray.model", itemId);
+    url.searchParams.set("xray.object", objectKey);
+  } else {
+    url.searchParams.set("lineage", "objects");
+    url.searchParams.set("view", "graph");
+    url.searchParams.set("tables", encodeURIComponent(tableName.toLowerCase()));
+    url.searchParams.set("object", objectKey);
+  }
+  url.hash = "#map";
+  return `${url.pathname}${url.search}${url.hash}`;
+}
 
 const KIND_META: Record<
   AssetKind,
@@ -346,9 +387,11 @@ export function AssetCatalogView({
     [principals],
   );
 
-  const assets = useMemo<Asset[]>(
-    () => buildCatalogObjects(data, { includeConfigTables: true }),
-    [data],
+  const assets = derivedFromSnapshot<Asset[]>(
+    data,
+    "catalog-objects-with-config",
+    (snapshot) =>
+      buildCatalogObjects(snapshot, { includeConfigTables: true }),
   );
 
   const initialFocusedAsset =
@@ -463,10 +506,15 @@ export function AssetCatalogView({
     });
   }, [kind, onStateChange, query, selectedAsset]);
 
-  const accessRows = useMemo(() => buildAccessReviewRows(data), [data]);
-  const schemaDependencies = useMemo(
-    () => buildSchemaDependencies(data),
-    [data],
+  const accessRows = derivedFromSnapshot(
+    data,
+    "access-review-rows",
+    buildAccessReviewRows,
+  );
+  const schemaDependencies = derivedFromSnapshot(
+    data,
+    "schema-dependencies",
+    buildSchemaDependencies,
   );
   const schemaLineage = useMemo(
     () => createSchemaLineageIndex(schemaDependencies),
@@ -535,6 +583,17 @@ export function AssetCatalogView({
   const selectedMetadataImpact = selectedAsset?.metadataRef
     ? metadataObjectImpact(data.objectEdges, selectedAsset.metadataRef)
     : undefined;
+  const selectedSemanticObject =
+    selectedItem?.itemType === "SemanticModel" &&
+    selectedObject?.tableName &&
+    (selectedObject.kind === "measure" || selectedObject.kind === "column")
+      ? {
+          itemId: selectedItem.fabricId,
+          tableName: selectedObject.tableName,
+          objectName: selectedObject.name,
+          objectKind: selectedObject.kind,
+        }
+      : undefined;
   const hasActiveFilters = Boolean(query.trim() || kind !== "all");
 
   const resetFilters = () => {
@@ -868,7 +927,7 @@ export function AssetCatalogView({
             >
               <div className="overflow-hidden rounded-xl border border-border bg-card shadow-fabric-2">
                 <div className="border-b border-border bg-secondary px-l py-l">
-                  <div className="flex items-start gap-m">
+                  <div className="flex flex-wrap items-start gap-m">
                     <KindGlyph kind={selectedAsset.kind} />
                     <div className="min-w-0 flex-1">
                       <SectionLabel>
@@ -878,6 +937,36 @@ export function AssetCatalogView({
                         {selectedAsset.name}
                       </h2>
                     </div>
+                    {selectedSemanticObject && (
+                      <>
+                        <a
+                          href={semanticObjectHref(
+                            selectedSemanticObject.itemId,
+                            selectedSemanticObject.tableName,
+                            selectedSemanticObject.objectName,
+                            selectedSemanticObject.objectKind,
+                            "graph",
+                          )}
+                          className="inline-flex items-center gap-s rounded-lg border border-border bg-card px-m py-s text-200 font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
+                        >
+                          <Waypoints className="icon-size-100" aria-hidden="true" />
+                          Object Lineage
+                        </a>
+                        <a
+                          href={semanticObjectHref(
+                            selectedSemanticObject.itemId,
+                            selectedSemanticObject.tableName,
+                            selectedSemanticObject.objectName,
+                            selectedSemanticObject.objectKind,
+                            "xray",
+                          )}
+                          className="inline-flex items-center gap-s rounded-lg border border-border bg-card px-m py-s text-200 font-semibold text-muted-foreground hover:bg-accent hover:text-foreground"
+                        >
+                          <Network className="icon-size-100" aria-hidden="true" />
+                          X-Ray
+                        </a>
+                      </>
+                    )}
                     {(selectedObject || selectedAsset.metadataRef) && (
                       <button
                         type="button"

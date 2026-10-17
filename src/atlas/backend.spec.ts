@@ -151,6 +151,8 @@ describe("Rayfin snapshot persistence", () => {
     browserCollectors.collectBrowserWorkspace.mockReset();
     ATLAS_CONFIG.syncAdminEmail = identity.email;
     ATLAS_CONFIG.syncAdminSubject = identity.id;
+    ATLAS_CONFIG.breakGlassSyncAdminEmail = "";
+    ATLAS_CONFIG.breakGlassSyncAdminSubject = "";
     ATLAS_CONFIG.snapshotRetentionCount = 12;
     ATLAS_CONFIG.previousSyncWriters = [];
     (
@@ -439,6 +441,23 @@ describe("Rayfin snapshot persistence", () => {
       }),
     ).rejects.toThrow(/configured Atlas sync administrator/i);
     expect(mocks.invokeSyncAll).not.toHaveBeenCalled();
+  });
+
+  it("allows the configured break-glass synchronizer to publish", async () => {
+    const breakGlass = {
+      id: "77777777-7777-4777-8777-777777777777",
+      name: "Break glass",
+      email: "break-glass@example.test",
+    };
+    ATLAS_CONFIG.breakGlassSyncAdminSubject = breakGlass.id;
+    ATLAS_CONFIG.breakGlassSyncAdminEmail = breakGlass.email;
+
+    await expect(runFabricSync(false, breakGlass)).resolves.toBeTruthy();
+    expect(mocks.data.Workspace.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        writerEmail: breakGlass.email,
+      }),
+    );
   });
 
   it("stores collected Item Relations evidence only after the snapshot marker", async () => {
@@ -1531,6 +1550,44 @@ describe("Rayfin snapshot persistence", () => {
         .map((row) => String(row.value))
         .join(""),
     ).not.toMatch(/aiInstructions|fewShots|businessValue/);
+  });
+
+  it("persists semantic model evidence in the existing snapshot payload", async () => {
+    const atlas = structuredClone(SAMPLE_DATA);
+    const model = atlas.items.find(
+      (item) => item.itemType === "SemanticModel",
+    )!;
+    atlas.semanticModelEvidence = {
+      [model.fabricId]: {
+        relationships: [],
+        dependencies: [
+          {
+            table: "Sales",
+            object: "Revenue",
+            objectType: "measure",
+            referencedTable: "Sales",
+            referencedObject: "Amount",
+            referencedObjectType: "column",
+            source: "static-qualified-reference",
+          },
+        ],
+        expressionsOmitted: 1,
+      },
+    };
+    mocks.mapSyncToAtlas.mockReturnValue(atlas);
+
+    await runFabricSync(false, identity);
+
+    const evidenceWrites = mocks.data.ConfigEntry.create.mock.calls
+      .map(([row]) => row as Record<string, unknown>)
+      .filter((row) => row.section === "__semantic_model_evidence__");
+    expect(evidenceWrites.length).toBeGreaterThan(0);
+    expect(evidenceWrites.map((row) => String(row.value)).join("")).toContain(
+      "static-qualified-reference",
+    );
+    expect(evidenceWrites.map((row) => String(row.value)).join("")).not.toMatch(
+      /accessToken|password|businessValue/,
+    );
   });
 
   it("falls back to the previous complete manifest during hydration", async () => {

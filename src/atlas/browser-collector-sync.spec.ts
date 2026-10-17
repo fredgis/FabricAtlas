@@ -91,7 +91,25 @@ function harness() {
         { id: REPORT, type: "Report", schema: unsupported("not-applicable"), pages: complete(), definition: complete(), identity: complete() },
       ]),
       schema: { [MODEL]: [table("Sales", "Fabric semantic model definition (TMSL)")] },
-      models: {}, reports: { [REPORT]: { pages: [{ name: "overview", displayName: "Overview", order: 0 }] } },
+      models: {
+        [MODEL]: {
+          tables: [table("Sales", "Fabric semantic model definition (TMSL)")],
+          relationships: [],
+          dependencies: [
+            {
+              table: "Sales",
+              object: "Total",
+              objectType: "measure",
+              referencedTable: "Sales",
+              referencedObject: "Id",
+              referencedObjectType: "column",
+              source: "static-qualified-reference",
+            },
+          ],
+          expressionsOmitted: 1,
+        },
+      },
+      reports: { [REPORT]: { pages: [{ name: "overview", displayName: "Overview", order: 0 }] } },
       itemMetadata: {}, config: [],
     })),
     workspaceCollectItemRelations: fn("relations", (input) => ({
@@ -532,6 +550,15 @@ describe("active browser collector composition", () => {
     expect(raw.items).toEqual(core().items);
     expect(raw.itemMetadata?.[MODEL]?.scannerMatched).toBe(true);
     expect(raw.schema?.[MODEL]?.[0].columns).toEqual(table("Sales", "legacy").columns);
+    expect(raw.semanticModelEvidence?.[MODEL]).toMatchObject({
+      expressionsOmitted: 1,
+      dependencies: [
+        expect.objectContaining({
+          object: "Total",
+          referencedObject: "Id",
+        }),
+      ],
+    });
   });
   it("requests scanner schema only for an unsupported model definition and page fallback only for legacy reports", async () => {
     const h = harness();
