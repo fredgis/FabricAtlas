@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.1.2";
+  "2.1.3";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,21 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.1.3",
+    date: "2026-10-17",
+    title: "Notebook lineage fallback",
+    sections: [
+      {
+        title: "Object Lineage",
+        items: [
+          "Notebooks with resolved literal references keep their detailed object graph.",
+          "Notebooks whose object names are built dynamically now show their verified item-level upstream and downstream lineage instead of an empty canvas.",
+          "The UI states when direct notebook object references were not resolved and never guesses dynamic objects.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.1.2",
     date: "2026-10-17",

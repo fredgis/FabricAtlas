@@ -175,7 +175,9 @@ same bounded identifier parser.
 - Source code, cells, complete SQL statements, secrets and arbitrary URLs are
   never returned or stored.
 - Dynamic identifiers, variables, generated SQL and runtime-only Spark plans
-  remain outside coverage and are not guessed.
+  remain outside coverage and are not guessed. When no direct object is
+  resolved, Object Lineage displays the notebook's verified item-level
+  upstream and downstream dependencies with an explicit limitation message.
 
 ## #33 Cross-workspace expansion
 

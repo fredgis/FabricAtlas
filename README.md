@@ -254,7 +254,9 @@ Notebook Object Lineage shows direct literal table references found in the
 notebook definition, including read and write direction. The collector parses
 the definition in memory and publishes only bounded object names, operations
 and source item IDs. It never stores notebook cells, source code, SQL text,
-credentials or dynamically constructed references.
+credentials or dynamically constructed references. When no direct object name
+can be resolved, Object Lineage shows the notebook's verified item-level
+upstream and downstream dependencies instead of an empty graph.
 
 ![Fabric Atlas object lineage](docs/screenshots/object-lineage-v2.png)
 

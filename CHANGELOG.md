@@ -4,6 +4,17 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.3] - 2026-10-17
+
+### Fixed
+
+- Show verified notebook item-level upstream and downstream dependencies in
+  Object Lineage when no direct static object reference was resolved.
+- Keep detailed notebook object lineage unchanged when literal references are
+  available.
+- State the fallback explicitly instead of presenting an empty object graph or
+  guessing dynamically constructed objects.
+
 ## [2.1.2] - 2026-10-17
 
 ### Added

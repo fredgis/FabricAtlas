@@ -697,6 +697,35 @@ describe("MapView selection", () => {
     expect(screen.getByText(/Verified object metadata is shown/)).toBeVisible();
   });
 
+  it("falls back to item lineage when a notebook has no static object references", () => {
+    const originalObjectEdges = SAMPLE_DATA.objectEdges;
+    SAMPLE_DATA.objectEdges = [];
+    window.history.replaceState(null, "", "/#map");
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+    SAMPLE_DATA.objectEdges = originalObjectEdges;
+
+    fireEvent.click(
+      screen.getByLabelText("02_silver_transform, Notebook, healthy"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "objects" }));
+
+    expect(
+      screen.getByLabelText(/AlpineRent Daily Load, 1 object · collapsed/),
+    ).toBeVisible();
+    expect(
+      screen.getByLabelText(/alpinerent_lakehouse, 1 object · collapsed/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "No direct notebook object references were resolved. Showing verified item-level dependencies.",
+      ),
+    ).toBeVisible();
+  });
+
   it("reveals and selects Semantic Model fields without implicit table focus", async () => {
     window.history.replaceState(null, "", "/#map");
     render(

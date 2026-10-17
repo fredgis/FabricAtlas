@@ -342,17 +342,102 @@ function objectGraph(
   selected: Item | undefined,
   selectedSchema: ModelTableSchema[],
   upstream: Item[],
+  downstream: Item[],
   itemById: Map<string, Item>,
   lineageIndex: LineageIndex,
   tableName: string,
 ): ObjectGraph {
-  if (!selected || selectedSchema.length === 0) {
+  if (!selected) {
     return {
       nodes: [],
       edges: [],
       width: 1080,
       height: 520,
       stageLabels: ["Source objects", "Model tables", "Fields", "Consumers"],
+      verifiedMetadata: false,
+      truncated: false,
+    };
+  }
+  if (selectedSchema.length === 0) {
+    if (selected.itemType !== "Notebook") {
+      return {
+        nodes: [],
+        edges: [],
+        width: 1080,
+        height: 520,
+        stageLabels: ["Source objects", "Model tables", "Fields", "Consumers"],
+        verifiedMetadata: false,
+        truncated: false,
+      };
+    }
+    const maxRows = Math.max(1, upstream.length, downstream.length);
+    const ownerY = 72 + Math.floor((maxRows - 1) / 2) * OBJECT_ROW_GAP;
+    const owner: ObjectNode = {
+      id: `owner:${selected.fabricId}`,
+      label: selected.displayName,
+      subtitle: typeMeta(selected.itemType).label,
+      code: typeMeta(selected.itemType).code,
+      color: typeMeta(selected.itemType).color,
+      itemId: selected.fabricId,
+      kind: "owner",
+      x: 382,
+      y: ownerY,
+    };
+    const sourceNodes = upstream.map(
+      (item, index): ObjectNode => ({
+        id: `source-item:${item.fabricId}`,
+        label: item.displayName,
+        subtitle: typeMeta(item.itemType).label,
+        code: typeMeta(item.itemType).code,
+        color: typeMeta(item.itemType).color,
+        itemId: item.fabricId,
+        kind: "source",
+        x: 24,
+        y: 72 + index * OBJECT_ROW_GAP,
+      }),
+    );
+    const consumerNodes = downstream.map(
+      (item, index): ObjectNode => ({
+        id: `consumer-item:${item.fabricId}`,
+        label: item.displayName,
+        subtitle: typeMeta(item.itemType).label,
+        code: typeMeta(item.itemType).code,
+        color: typeMeta(item.itemType).color,
+        itemId: item.fabricId,
+        kind: "consumer",
+        x: 740,
+        y: 72 + index * OBJECT_ROW_GAP,
+      }),
+    );
+    return {
+      nodes: [...sourceNodes, owner, ...consumerNodes],
+      edges: [
+        ...sourceNodes.map((node) => ({
+          source: node.id,
+          target: owner.id,
+          relation:
+            lineageIndex.incoming
+              .get(selected.fabricId)
+              ?.find((entry) => entry.edge.source === node.itemId)
+              ?.edge.relation ?? "depends on",
+        })),
+        ...consumerNodes.map((node) => ({
+          source: owner.id,
+          target: node.id,
+          relation:
+            lineageIndex.outgoing
+              .get(selected.fabricId)
+              ?.find((entry) => entry.edge.target === node.itemId)
+              ?.edge.relation ?? "depends on",
+        })),
+      ],
+      width: 1080,
+      height: Math.max(520, 148 + maxRows * OBJECT_ROW_GAP),
+      stageLabels: [
+        "Upstream items",
+        "Selected notebook",
+        "Downstream items",
+      ],
       verifiedMetadata: false,
       truncated: false,
     };
@@ -1003,6 +1088,7 @@ export function MapView({
             selected,
             schema,
             upstream,
+            downstream,
             itemById,
             lineageIndex,
             tableName,
@@ -1021,6 +1107,7 @@ export function MapView({
       selectedMetadataEdges,
       tableName,
       upstream,
+      downstream,
     ],
   );
   const objectGroups = useMemo(
@@ -2232,7 +2319,11 @@ export function MapView({
             <div className="sticky left-[16px] top-[12px] z-20 max-w-[500px] rounded-lg border border-border bg-card px-[10px] py-[7px] text-[11px] text-muted-foreground shadow-fabric-4">
               {objects.verifiedMetadata
                 ? "Verified object metadata is shown from the selected item snapshot."
-                : "Stored object inventory. Consumer links are item-level unless a verified object binding was collected."}
+                : selected?.itemType === "Notebook" &&
+                    schema.length === 0 &&
+                    objects.nodes.length > 0
+                  ? "No direct notebook object references were resolved. Showing verified item-level dependencies."
+                  : "Stored object inventory. Consumer links are item-level unless a verified object binding was collected."}
               {objects.truncated
                 ? ` The view is limited to ${MAX_VISIBLE_OBJECT_EDGES} edges. Narrow the source, object or kind filter for the remaining relationships.`
                 : ""}
