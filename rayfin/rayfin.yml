@@ -21,7 +21,10 @@ services:
       enabled: true
       externalEntraExchange: false
     allowedRedirectUris:
-      - ${RAYFIN_AUTH_REDIRECT_URI:-http://localhost:5173}
+      - http://localhost:5173
+      - http://localhost:5174
+      - http://127.0.0.1:5174
+      - https://ultra-thorn-15e7beb79b-centralus.webapp.fabricapps.net
   data:
     enabled: true
     dialect: mssql
@@ -37,3 +40,5 @@ services:
     buildCommand: npm run build
     auth:
       type: application
+  storage:
+    enabled: false
