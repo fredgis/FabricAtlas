@@ -40,6 +40,7 @@ import {
 } from "./browser-collector-sync";
 import { normalizeLineageEdges } from "./lineage";
 import { measureDiagnostic } from "./diagnostics";
+import type { PersistedWorkspaceSyncStatus } from "./workspace-sync";
 import { DEPLOYMENT_ID } from "./release";
 import {
   buildAtlasHistory,
@@ -2543,6 +2544,52 @@ function syncRunsFromRows(rows: Row[], fallbackTime: string): AtlasData["syncRun
         Date.parse(right.startedAt) - Date.parse(left.startedAt),
     )
     .slice(0, 10);
+}
+
+export async function loadWorkspaceSyncStatuses(
+  isPreview: boolean,
+  workspaceIds: readonly string[],
+): Promise<Record<string, PersistedWorkspaceSyncStatus>> {
+  if (isPreview) return {};
+  const ids = [...new Set(workspaceIds.map((id) => workspaceId(id)))];
+  const data = await dataApi();
+  const read = readerFor(data);
+  const entries = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        const [workspaceRows, syncRows] = await Promise.all([
+          readTrustedWorkspaceMarkers(read, id),
+          readTrustedSyncRuns(read, id),
+        ]);
+        const marker = trustedMarkers(workspaceRows, id)[0];
+        const snapshotAt = validDateIso(marker?.syncedAt);
+        const runs = syncRunsFromRows(
+          syncRows,
+          snapshotAt ?? new Date(0).toISOString(),
+        );
+        const lastRun = runs[0];
+        return [
+          id,
+          {
+            snapshotId: realText(marker?.snapshotId),
+            snapshotAt,
+            lastRunStatus: lastRun?.status,
+            lastRunStartedAt: lastRun?.startedAt,
+            lastRunFinishedAt: lastRun?.finishedAt,
+            lastRunError: lastRun?.failureMessage,
+          } satisfies PersistedWorkspaceSyncStatus,
+        ] as const;
+      } catch (error) {
+        console.warn("[atlas] workspace sync status unavailable", id, error);
+        return undefined;
+      }
+    }),
+  );
+  const result: Record<string, PersistedWorkspaceSyncStatus> = {};
+  for (const entry of entries) {
+    if (entry) result[entry[0]] = entry[1];
+  }
+  return result;
 }
 
 /**

@@ -112,7 +112,8 @@ Fabric Atlas collects that metadata without copying business data.
   and DAX dependencies through Semantic X-Ray.
 - Compare validated snapshots, review changes and export impact evidence.
 - Review effective recorded access, run local What-if scenarios and generate
-  departure packs.
+  departure packs that separate ownership, privileged access, identity
+  references and unknown evidence.
 - Track findings, item-family Coverage, Policies & AI and six governance
   posture pillars.
 - Inspect job failures, inferred downstream impact and portal-only monitoring
@@ -125,11 +126,11 @@ Fabric Atlas collects that metadata without copying business data.
 
 | Area | Included in Fabric Atlas 2.1 |
 |---|---|
-| Workspaces and sync | Shared workspace scope, independent validated snapshots, active-workspace switching, staged progress and last-known-good fallback |
-| Catalog and search | Item Catalog, alphabetized Asset Catalog, `Ctrl+K` search, SQL/KQL/semantic/ontology/graph/Data Agent inventory |
+| Workspaces and sync | Shared workspace scope, independent validated snapshots, persisted per-workspace run status, active-workspace switching, staged progress and last-known-good fallback |
+| Catalog and search | Item Catalog, alphabetized Asset Catalog, `Ctrl+K` search, SQL/KQL/semantic/Ontology 2.0/graph/Data Agent inventory |
 | Lineage and impact | Trusted Atlas graph, Item Relations Preview, Evidence, Changes, X-Ray, object lineage and exportable impact reports |
 | Governance | Findings, Radar, snapshot comparison, history, item-family Coverage, posture targets and Policies & AI |
-| Access | Effective recorded access, principal review, personal decisions, What-if simulation and departure packs |
+| Access | Effective recorded access, principal review, personal decisions, What-if simulation and evidence-based departure packs |
 | Operations | Job history, observed incidents, inferred downstream impact, monitoring boundaries, configuration and team notes |
 | Security | Fabric brokered authentication, synchronizer-only publication, metadata-only storage and user-scoped personal state |
 | Extensibility | Typed Rayfin Functions, minimal Python compatibility and an optional read-only local Atlas MCP |
@@ -288,9 +289,11 @@ run finishes or is cancelled.
 
 ### Workspace Hub
 
-Workspace Hub shows the selected synchronization scope, latest validated
-snapshot and manual run history. Scheduling remains visibly disabled until
-Fabric exposes a supported unattended trigger and identity contract.
+Workspace Hub shows persisted status, the latest validated snapshot and manual
+run history for every selected workspace. Failed or unfinished browser runs
+retain the last valid snapshot, and status remains available when another
+workspace is synchronized. Scheduling remains visibly disabled until Fabric
+exposes a supported unattended trigger and identity contract.
 
 ![Fabric Atlas Workspace Hub](docs/screenshots/workspace-hub-v2.png)
 
@@ -397,7 +400,7 @@ contracts or a separate product decision.
 | OneLake security and Purview DLP | Portal links and explicit unavailable states | Public read APIs for role membership and restriction evidence |
 | Report visual usage | Not collected | A supported report definition path with sensitivity and permission handling |
 | Shared action plans and notifications | Not implemented | Reviewed team workflow, ownership model and delivery channel |
-| 2.1 maintenance | Version 2.1.0 is the current release line | Patch releases for verified fixes; larger workflows depend on the contracts above |
+| 2.1 maintenance | Version 2.1.1 is the current release line | Patch releases for verified fixes; larger workflows depend on the contracts above |
 
 ## Quickstart
 

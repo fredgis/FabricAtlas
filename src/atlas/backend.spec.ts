@@ -9,6 +9,7 @@ import {
   loadCommentsFromDb,
   loadFromDb,
   loadHistoryFromDb,
+  loadWorkspaceSyncStatuses,
   persistComment,
   readWithRetry,
   runFabricSync,
@@ -241,6 +242,70 @@ describe("Rayfin snapshot persistence", () => {
     mocks.mapSyncToAtlas
       .mockReset()
       .mockReturnValue(structuredClone(SAMPLE_DATA));
+  });
+
+  it("loads failed and unfinished workspace status without losing the last valid snapshot", async () => {
+    const secondWorkspaceId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const primarySnapshotId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const secondSnapshotId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    mocks.data.Workspace.rows.push(
+      summaryMarker(
+        primarySnapshotId,
+        "2026-10-01T10:00:00.000Z",
+        { fabricId: workspaceId },
+      ),
+      summaryMarker(
+        secondSnapshotId,
+        "2026-10-02T10:00:00.000Z",
+        {
+          fabricId: secondWorkspaceId,
+          displayName: "Second workspace",
+        },
+      ),
+    );
+    mocks.data.SyncRun.rows.push(
+      {
+        id: "unfinished-primary",
+        workspace_id: workspaceId,
+        writerEmail: identity.email,
+        startedAt: "2026-10-03T08:00:00.000Z",
+        status: "running",
+      },
+      {
+        id: "failed-secondary",
+        workspace_id: secondWorkspaceId,
+        writerEmail: identity.email,
+        startedAt: "2026-10-03T09:00:00.000Z",
+        finishedAt: "2026-10-03T09:01:00.000Z",
+        status: "failed",
+        failureMessage: "Fabric returned HTTP 403.",
+      },
+    );
+
+    await expect(
+      loadWorkspaceSyncStatuses(false, [
+        workspaceId,
+        secondWorkspaceId,
+        workspaceId,
+      ]),
+    ).resolves.toEqual({
+      [workspaceId]: {
+        snapshotId: primarySnapshotId,
+        snapshotAt: "2026-10-01T10:00:00.000Z",
+        lastRunStatus: "running",
+        lastRunStartedAt: "2026-10-03T08:00:00.000Z",
+        lastRunFinishedAt: undefined,
+        lastRunError: undefined,
+      },
+      [secondWorkspaceId]: {
+        snapshotId: secondSnapshotId,
+        snapshotAt: "2026-10-02T10:00:00.000Z",
+        lastRunStatus: "failed",
+        lastRunStartedAt: "2026-10-03T09:00:00.000Z",
+        lastRunFinishedAt: "2026-10-03T09:01:00.000Z",
+        lastRunError: "Fabric returned HTTP 403.",
+      },
+    });
   });
 
   it("does not publish a Workspace marker when an individual write fails", async () => {

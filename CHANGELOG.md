@@ -4,6 +4,34 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-10-17
+
+### Added
+
+- Workspace-wide Departure Pack ownership coverage with separate privileged
+  access, identity-reference and ownership-unknown review sections.
+- Ontology 2.0 TMDL projection for entities, keys, scalar and time-series
+  properties, and entity relationships.
+- Persisted Workspace Hub status derived from trusted workspace manifests and
+  SyncRun audit rows for every selected workspace.
+
+### Changed
+
+- Expanded Departure Pack Markdown, reassignment CSV and access CSV exports
+  with evidence categories, limitations and downstream consumers.
+- Kept recorded Owner or Edit access and configured-by or modified-by
+  references separate from documented business ownership.
+- Preserved known workspace status across workspace switches, later sync
+  batches and partial status refreshes.
+
+### Fixed
+
+- Prevented non-active workspace status from reverting to `Not loaded` after
+  the browser synchronization queue changed or cleared.
+- Retained the last valid snapshot beside failed or unfinished run evidence.
+- Preserved the time-series marker when projected Ontology metadata enters the
+  canonical Atlas schema inventory.
+
 ## [2.1.0] - 2026-10-17
 
 ### Added

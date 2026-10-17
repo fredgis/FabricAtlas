@@ -94,6 +94,12 @@ synchronizing.
 | PBIR-Legacy pages | Python `sync_compatibility` | Retained until the supported definition path covers legacy reports |
 | Kusto live metadata | Python `sync_compatibility` | Retained until Rayfin exposes a documented Kusto audience |
 
+Ontology collection accepts both the legacy JSON definition layout and the
+Ontology 2.0 TMDL layout. The TMDL projection keeps bounded entity, property,
+key, time-series and relationship metadata. Supporting model, table, metric,
+namespace, rule and expression parts are recognized but their executable or
+business content is not returned.
+
 Rayfin collector output is not published directly. The browser accepts a
 snapshot only after the complete required contract passes validation.
 

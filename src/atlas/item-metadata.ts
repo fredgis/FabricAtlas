@@ -466,14 +466,28 @@ function parseList<T>(
 
 function parseOntologyProperty(
   value: unknown,
-  timeSeries: boolean,
+  defaultTimeSeries: boolean,
 ): OntologyPropertyMetadata | undefined {
   if (!isRecord(value)) return undefined;
   const name = firstText(value, ["name", "displayName"]);
   const valueType = firstText(value, ["valueType", "dataType", "type"]);
   const id = firstText(value, ["id", "propertyId"]);
-  if (!id || !name || !valueType) return undefined;
-  return { id, name, valueType, timeSeries };
+  const declaredTimeSeries = value.timeSeries;
+  if (
+    !id ||
+    !name ||
+    !valueType ||
+    (declaredTimeSeries !== undefined &&
+      typeof declaredTimeSeries !== "boolean")
+  ) {
+    return undefined;
+  }
+  return {
+    id,
+    name,
+    valueType,
+    timeSeries: declaredTimeSeries ?? defaultTimeSeries,
+  };
 }
 
 function parseOntologyEntity(

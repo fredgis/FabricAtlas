@@ -384,6 +384,219 @@ function decodeJsonPart(part: JsonRecord, state: ProjectionState): JsonRecord {
   return isRecord(value) ? value : invalid();
 }
 
+function decodeTextPart(part: JsonRecord, state: ProjectionState): string {
+  const payload = strictText(part.payload);
+  if (!payload || part.payloadType !== "InlineBase64") invalid();
+  const padding = payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0;
+  const decodedLength = Math.floor(payload.length / 4) * 3 - padding;
+  if (state.decodedBytes + decodedLength > LIMITS.maxDecodedBytes) {
+    throw new DefinitionProjectionError("response-size-exceeded");
+  }
+  if (!isStrictBase64(payload)) invalid();
+  state.decodedBytes += decodedLength;
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true })
+      .decode(decodeBase64(payload))
+      .replace(/^\uFEFF/, "");
+  } catch {
+    invalid();
+  }
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if ((code < 32 && code !== 9 && code !== 10 && code !== 13) || code === 127) {
+      invalid();
+    }
+  }
+  return text;
+}
+
+interface TmdlLine {
+  indent: number;
+  text: string;
+}
+
+function tmdlLines(value: string): TmdlLine[] {
+  return value
+    .split(/\r?\n/)
+    .map((line) => {
+      const prefix = /^[\t ]*/.exec(line)?.[0] ?? "";
+      const spaces = [...prefix].reduce(
+        (count, character) => count + (character === "\t" ? 4 : 1),
+        0,
+      );
+      return {
+        indent: Math.floor(spaces / 4),
+        text: line.trim(),
+      };
+    })
+    .filter((line) => line.text && !line.text.startsWith("///"));
+}
+
+function tmdlIdentifier(value: string): string | undefined {
+  const text = value.trim();
+  if (!text) return undefined;
+  if (!text.startsWith("'")) {
+    return text.includes(" ") ? undefined : boundedText(text);
+  }
+  let result = "";
+  for (let index = 1; index < text.length; index += 1) {
+    if (text[index] !== "'") {
+      result += text[index];
+      continue;
+    }
+    if (text[index + 1] === "'") {
+      result += "'";
+      index += 1;
+      continue;
+    }
+    return text.slice(index + 1).trim()
+      ? undefined
+      : boundedText(result);
+  }
+  return undefined;
+}
+
+function tmdlField(line: string, name: string): string | undefined {
+  const match = new RegExp(`^${name}:\\s*(.+)$`, "i").exec(line);
+  return match ? tmdlIdentifier(match[1]) : undefined;
+}
+
+function tmdlValueType(value: string | undefined): {
+  valueType: string;
+  timeSeries: boolean;
+} {
+  const text = value?.trim() || "Object";
+  const timeSeries = /^TimeSeries<(.+)>$/i.exec(text);
+  return {
+    valueType: boundedText(timeSeries?.[1] ?? text) ?? "Object",
+    timeSeries: !!timeSeries,
+  };
+}
+
+function parseOntologyTmdlEntity(
+  text: string,
+  fallbackName: string,
+  state: ProjectionState,
+): OntologyArtifactMetadata["entities"][number] {
+  const lines = tmdlLines(text);
+  const header = lines.find(
+    (line) => line.indent === 0 && /^entity\s+/i.test(line.text),
+  );
+  const name = tmdlIdentifier(
+    header?.text.replace(/^entity\s+/i, "") ?? fallbackName,
+  ) ?? invalid();
+  const entityLineageTag = lines
+    .filter((line) => line.indent === 1)
+    .map((line) => tmdlField(line.text, "lineageTag"))
+    .find(Boolean);
+  const entityId = requiredIdentifier(entityLineageTag, name);
+  const keyNames = lines
+    .filter((line) => line.indent === 1)
+    .map((line) => tmdlField(line.text, "keyProperty"))
+    .filter((value): value is string => !!value);
+  const properties: OntologyArtifactMetadata["entities"][number]["properties"] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (line.indent !== 1 || !/^property\s+/i.test(line.text)) continue;
+    const propertyName = tmdlIdentifier(
+      line.text.replace(/^property\s+/i, ""),
+    );
+    if (!propertyName) continue;
+    let lineageTag: string | undefined;
+    let dataType: string | undefined;
+    for (let child = index + 1; child < lines.length; child += 1) {
+      if (lines[child].indent <= line.indent) break;
+      if (lines[child].indent !== 2) continue;
+      lineageTag ??= tmdlField(lines[child].text, "lineageTag");
+      dataType ??= tmdlField(lines[child].text, "dataType");
+    }
+    const type = tmdlValueType(dataType);
+    properties.push({
+      id: requiredIdentifier(lineageTag, `${entityId}:${propertyName}`),
+      name: propertyName,
+      valueType: type.valueType,
+      timeSeries: type.timeSeries,
+    });
+  }
+  const dedupedProperties = dedupe(properties, (property) => property.id, state);
+  const propertiesByName = new Map(
+    dedupedProperties.map((property) => [property.name.toLowerCase(), property]),
+  );
+  const keyPropertyIds = keyNames.flatMap((key) => {
+    const property = propertiesByName.get(key.toLowerCase());
+    return property ? [property.id] : [];
+  });
+  const displayNameProperty = lines
+    .filter((line) => line.indent === 1)
+    .map((line) => tmdlField(line.text, "displayNameProperty"))
+    .find(Boolean);
+  const namespace = name.includes("#") ? name.split("#", 1)[0] : "default";
+  return {
+    id: entityId,
+    name,
+    namespace,
+    keyPropertyIds,
+    ...(displayNameProperty &&
+    propertiesByName.has(displayNameProperty.toLowerCase())
+      ? {
+          displayNamePropertyId:
+            propertiesByName.get(displayNameProperty.toLowerCase())!.id,
+        }
+      : {}),
+    properties: dedupedProperties,
+  };
+}
+
+function parseOntologyTmdlRelationships(
+  text: string,
+  entities: readonly OntologyArtifactMetadata["entities"][number][],
+  state: ProjectionState,
+): OntologyArtifactMetadata["relationships"] {
+  const lines = tmdlLines(text);
+  const entityByName = new Map(
+    entities.map((entity) => [entity.name.toLowerCase(), entity]),
+  );
+  const relationships: OntologyArtifactMetadata["relationships"] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (
+      line.indent !== 0 ||
+      !/^entityRelationship\s+/i.test(line.text)
+    ) {
+      continue;
+    }
+    const name = tmdlIdentifier(
+      line.text.replace(/^entityRelationship\s+/i, ""),
+    );
+    if (!name) continue;
+    let lineageTag: string | undefined;
+    let fromEntity: string | undefined;
+    let toEntity: string | undefined;
+    for (let child = index + 1; child < lines.length; child += 1) {
+      if (lines[child].indent <= line.indent) break;
+      if (lines[child].indent !== 1) continue;
+      lineageTag ??= tmdlField(lines[child].text, "lineageTag");
+      fromEntity ??= tmdlField(lines[child].text, "fromEntity");
+      toEntity ??= tmdlField(lines[child].text, "toEntity");
+    }
+    const source = fromEntity
+      ? entityByName.get(fromEntity.toLowerCase())
+      : undefined;
+    const target = toEntity
+      ? entityByName.get(toEntity.toLowerCase())
+      : undefined;
+    if (!source || !target) continue;
+    relationships.push({
+      id: requiredIdentifier(lineageTag, name),
+      name,
+      sourceEntityId: source.id,
+      targetEntityId: target.id,
+    });
+  }
+  return dedupe(relationships, (relationship) => relationship.id, state);
+}
+
 /** Python `_safe_property_records`. */
 function safePropertyRecords(values: unknown): { name: string; id?: string; valueType?: string }[] {
   const result: { name: string; id?: string; valueType?: string }[] = [];
@@ -500,16 +713,33 @@ function projectOntology(response: unknown, state: ProjectionState): OntologyArt
   const bindingParts: [string, string, JsonRecord][] = [];
   const relationshipParts: [string, JsonRecord][] = [];
   const contextualizationParts: [string, string, JsonRecord][] = [];
+  const tmdlEntityParts: [string, string][] = [];
+  const tmdlRelationshipParts: string[] = [];
   for (const part of definitionParts(response)) {
     const path = partPath(part);
     if (path === ".platform" || path === "definition.json") continue;
+    let match = /^entities\/(.+)\.tmdl$/i.exec(path);
+    if (match) {
+      tmdlEntityParts.push([match[1], decodeTextPart(part, state)]);
+      continue;
+    }
+    if (/^entityRelationships\.tmdl$/i.test(path)) {
+      tmdlRelationshipParts.push(decodeTextPart(part, state));
+      continue;
+    }
+    if (
+      /^(database|model|relationships|expressions)\.tmdl$/i.test(path) ||
+      /^(tables|metrics|namespaces|rules)\/.+\.tmdl$/i.test(path)
+    ) {
+      continue;
+    }
     if (
       /^EntityTypes\/[^/]+\/(Documents|ResourceLinks)\/.+\.json$/i.test(path) ||
       /^EntityTypes\/[^/]+\/Overviews\/definition\.json$/i.test(path)
     ) {
       continue;
     }
-    let match = /^EntityTypes\/([^/]+)\/definition\.json$/i.exec(path);
+    match = /^EntityTypes\/([^/]+)\/definition\.json$/i.exec(path);
     if (match) {
       const value = decodeJsonPart(part, state);
       entityParts.push([match[1], value]);
@@ -605,6 +835,31 @@ function projectOntology(response: unknown, state: ProjectionState): OntologyArt
       );
     }
   }
+  for (const [pathName, text] of tmdlEntityParts) {
+    const entity = parseOntologyTmdlEntity(text, pathName, state);
+    entities.push(entity);
+    entityNames.set(entity.id, entity.name);
+    if (!entityPropertyIds.has(entity.id)) {
+      entityPropertyIds.set(
+        entity.id,
+        new Set(entity.properties.map((property) => property.id)),
+      );
+    }
+    facts.add(
+      "Ontology entity types",
+      entity.name,
+      `id ${entity.id} | ${entity.properties.filter((property) => !property.timeSeries).length} properties | ${entity.properties.filter((property) => property.timeSeries).length} time-series properties`,
+    );
+    for (const property of entity.properties) {
+      facts.add(
+        property.timeSeries
+          ? "Ontology time-series properties"
+          : "Ontology properties",
+        `${entity.name}.${property.name}`,
+        property.valueType,
+      );
+    }
+  }
 
   const keyBindings = (raw: unknown, entityId: string) =>
     capList(list(raw).flatMap((binding) => {
@@ -674,6 +929,17 @@ function projectOntology(response: unknown, state: ProjectionState): OntologyArt
     );
     if (sourceId && targetId && entityNames.has(sourceId) && entityNames.has(targetId)) {
       relationships.push({ id: relationshipId, name, sourceEntityId: sourceId, targetEntityId: targetId });
+    }
+  }
+  for (const text of tmdlRelationshipParts) {
+    const projected = parseOntologyTmdlRelationships(text, entities, state);
+    relationships.push(...projected);
+    for (const relationship of projected) {
+      facts.add(
+        "Ontology relationship types",
+        relationship.name,
+        `${nameOrUnknown(entityNames, relationship.sourceEntityId)} -> ${nameOrUnknown(entityNames, relationship.targetEntityId)}`,
+      );
     }
   }
 

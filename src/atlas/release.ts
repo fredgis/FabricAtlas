@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.1.0";
+  "2.1.1";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,35 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.1.1",
+    date: "2026-10-17",
+    title: "Reliable offboarding and workspace evidence",
+    sections: [
+      {
+        title: "Departure Pack",
+        items: [
+          "Workspace-wide ownership coverage now separates documented ownership from items that still require manual review.",
+          "Owner or Edit access and configured-by or modified-by references appear as distinct review evidence without being relabelled as business ownership.",
+          "Markdown, reassignment and access exports retain evidence categories, limitations and downstream consumers.",
+        ],
+      },
+      {
+        title: "Ontology metadata",
+        items: [
+          "Ontology 2.0 TMDL definitions project bounded entity, property, key, time-series and relationship metadata.",
+          "The collector recognizes supporting TMDL parts without returning expressions, rules, source rows or secrets.",
+        ],
+      },
+      {
+        title: "Workspace operations",
+        items: [
+          "Workspace Hub derives every scoped workspace status from persisted manifests and SyncRun evidence instead of the latest browser queue alone.",
+          "Failed and unfinished runs retain the last valid snapshot, and known status survives workspace switches, later batches and partial refreshes.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.1.0",
     date: "2026-10-17",

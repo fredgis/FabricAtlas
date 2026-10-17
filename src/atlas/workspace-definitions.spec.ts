@@ -16,7 +16,10 @@ import {
   type DefinitionItemInput,
   type DefinitionStageEnvelope,
 } from "../../rayfin/functions/src/workspace-definitions";
-import { parseFabricItemMetadata } from "./item-metadata";
+import {
+  parseFabricItemMetadata,
+  projectItemMetadataToSchema,
+} from "./item-metadata";
 import { validateSyncEnrichment, type RawSync } from "./live-sync";
 
 const WS = "11111111-1111-4111-8111-111111111111";
@@ -116,6 +119,72 @@ function ontologyDefinition() {
       targetKeyRefBindings: [{ sourceColumnName: "site_id", targetPropertyId: "s1" }],
     }),
     part("Future/forward-compatible.json", { private: "unknown content" }),
+  ]);
+}
+
+function ontologyV2Definition() {
+  return definition([
+    part(".platform", {
+      metadata: { type: "Ontology", displayName: "Ontology v2 fixture" },
+      config: { version: "2.0" },
+    }),
+    part("database.tmdl", "database\n\tcompatibilityLevel: 1000000\n"),
+    part(
+      "entities/default#Movie.tmdl",
+      [
+        "entity default#Movie",
+        "\tlineageTag: 11111111-1111-4111-8111-111111111111",
+        "\tbackingTable: movies",
+        "\tkeyProperty: MovieId",
+        "",
+        "\tproperty MovieId",
+        "\t\tdataType: string",
+        "\t\tlineageTag: 22222222-2222-4222-8222-222222222222",
+        "",
+        "\t\tbackingConfiguration",
+        "\t\t\tvalueColumn: movies.MovieId",
+        "",
+        "\tproperty Rating",
+        "\t\tdataType: TimeSeries<double>",
+        "\t\tlineageTag: 33333333-3333-4333-8333-333333333333",
+        "",
+        "\t\tbackingConfiguration",
+        "\t\t\ttype: timeSeries",
+        "\t\t\tvalueColumn: movie_ratings.Rating",
+        "\t\t\torderingColumn: movie_ratings.Timestamp",
+        "",
+      ].join("\r\n"),
+    ),
+    part(
+      "entities/default#Genre.tmdl",
+      [
+        "entity default#Genre",
+        "\tlineageTag: 44444444-4444-4444-8444-444444444444",
+        "\tbackingTable: genres",
+        "\tkeyProperty: GenreId",
+        "",
+        "\tproperty GenreId",
+        "\t\tdataType: string",
+        "\t\tlineageTag: 55555555-5555-4555-8555-555555555555",
+        "",
+      ].join("\r\n"),
+    ),
+    part(
+      "entityRelationships.tmdl",
+      [
+        "entityRelationship 'Movie In Genre'",
+        "\tlineageTag: 66666666-6666-4666-8666-666666666666",
+        "\tfromEntity: default#Movie",
+        "\ttoEntity: default#Genre",
+        "",
+        "\tbackingConfiguration",
+        "\t\trelationship: rel_movie_genre",
+        "",
+      ].join("\r\n"),
+    ),
+    part("namespaces/default.tmdl", "namespace default\n\tlineageTag: default\n"),
+    part("model.tmdl", "model Model\n\nref namespace default\n"),
+    part("tables/movies.tmdl", "table movies\n\tcolumn MovieId\n\t\tdataType: string\n"),
   ]);
 }
 
@@ -444,6 +513,103 @@ describe("workspaceCollectDefinitions authorization", () => {
 });
 
 describe("workspaceCollectDefinitions projections", () => {
+  it("projects new-experience Ontology v2 TMDL definitions", () => {
+    const projection = projectDefinition("Ontology", ontologyV2Definition());
+
+    expect(projection.unknownParts).toBe(0);
+    expect(projection.metadata).toEqual({
+      kind: "ontology",
+      entities: [
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          name: "default#Movie",
+          namespace: "default",
+          keyPropertyIds: [
+            "22222222-2222-4222-8222-222222222222",
+          ],
+          properties: [
+            {
+              id: "22222222-2222-4222-8222-222222222222",
+              name: "MovieId",
+              valueType: "string",
+              timeSeries: false,
+            },
+            {
+              id: "33333333-3333-4333-8333-333333333333",
+              name: "Rating",
+              valueType: "double",
+              timeSeries: true,
+            },
+          ],
+        },
+        {
+          id: "44444444-4444-4444-8444-444444444444",
+          name: "default#Genre",
+          namespace: "default",
+          keyPropertyIds: [
+            "55555555-5555-4555-8555-555555555555",
+          ],
+          properties: [
+            {
+              id: "55555555-5555-4555-8555-555555555555",
+              name: "GenreId",
+              valueType: "string",
+              timeSeries: false,
+            },
+          ],
+        },
+      ],
+      relationships: [
+        {
+          id: "66666666-6666-4666-8666-666666666666",
+          name: "Movie In Genre",
+          sourceEntityId: "11111111-1111-4111-8111-111111111111",
+          targetEntityId: "44444444-4444-4444-8444-444444444444",
+        },
+      ],
+      bindings: [],
+      contextualizations: [],
+    });
+    expect(projection.facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          section: "Ontology entity types",
+          label: "default#Movie",
+        }),
+        expect.objectContaining({
+          section: "Ontology relationship types",
+          label: "Movie In Genre",
+        }),
+      ]),
+    );
+    const metadata = parseFabricItemMetadata("Ontology", projection.metadata);
+    expect(metadata).toBeDefined();
+    if (!metadata) throw new Error("Ontology v2 metadata was not accepted.");
+    expect(projectItemMetadataToSchema(metadata)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "default#Movie",
+          objectType: "Ontology entity",
+          columns: expect.arrayContaining([
+            expect.objectContaining({
+              name: "MovieId",
+              dataType: "string",
+            }),
+            expect.objectContaining({
+              name: "Rating",
+              dataType: "double",
+              description: "Time-series property",
+            }),
+          ]),
+        }),
+        expect.objectContaining({
+          name: "Movie In Genre",
+          objectType: "Ontology relationship",
+        }),
+      ]),
+    );
+  });
+
   it("projects a mixed batch into reviewed metadata, config facts and per-item evidence", async () => {
     const { result, fetchImpl, sleep } = collect(routes());
     const envelope = await result;

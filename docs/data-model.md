@@ -186,6 +186,11 @@ attempt.
 `finishedAt?`, `status`, `itemsSynced?`, `durationMs?`, `failureCode?`,
 `failureMessage?`, `triggeredBy?`, `summary?`
 
+Workspace Hub combines the newest trusted `SyncRun` with the newest trusted
+`Workspace` manifest for each selected workspace. A failed or unfinished run
+does not replace the last valid snapshot, and a partial status read does not
+erase the last known workspace state.
+
 ## ItemRelationsEvidenceSnapshot
 
 Non-authoritative Fabric Item Relations API (Beta) evidence, stored per
