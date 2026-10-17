@@ -36,6 +36,7 @@ const ROUTE = {
   [ONTOLOGY]: `${BASE}/ontologies/${ONTOLOGY}/getDefinition`,
   [GRAPH]: `${BASE}/graphModels/${GRAPH}/getDefinition`,
   [AGENT]: `${BASE}/dataAgents/${AGENT}/getDefinition`,
+  [NOTEBOOK]: `${BASE}/notebooks/${NOTEBOOK}/getDefinition`,
 };
 const OPERATION_URL = `https://api.fabric.microsoft.com/v1/operations/${OPERATION}`;
 
@@ -188,6 +189,41 @@ function ontologyV2Definition() {
   ]);
 }
 
+function notebookDefinition() {
+  return definition([
+    part(".platform", {
+      metadata: { type: "Notebook", displayName: "Notebook fixture" },
+      config: { version: "2.0" },
+    }),
+    part(
+      "notebook-content.py",
+      [
+        "# Fabric notebook source",
+        "# METADATA ********************",
+        "# META {",
+        '# META   "kernel_info": { "name": "synapse_pyspark" },',
+        '# META   "dependencies": {',
+        '# META     "lakehouse": {',
+        `# META       "default_lakehouse": "${LAKEHOUSE}",`,
+        '# META       "default_lakehouse_name": "Operations lakehouse",',
+        `# META       "default_lakehouse_workspace_id": "${WS}"`,
+        "# META     }",
+        "# META   }",
+        "# META }",
+        "# CELL ********************",
+        'bronze = spark.read.table("bronze.rentals_raw")',
+        'stations = spark.sql("""SELECT * FROM silver.stations""")',
+        'events = spark.read.format("delta").load("Tables/bronze/events")',
+        'bronze.write.mode("overwrite").saveAsTable("silver.rentals_clean")',
+        'events.write.format("delta").save("Tables/gold/events")',
+        'spark.sql("""MERGE INTO gold.rentals USING silver.rentals_clean ON 1 = 1""")',
+        "dynamic = spark.table(table_name)",
+        'private_value = "password=do-not-return"',
+      ].join("\n"),
+    ),
+  ]);
+}
+
 function graphDefinition() {
   return definition([
     part(".platform", {}),
@@ -317,6 +353,7 @@ function routes(overrides: Routes = {}): Routes {
     ],
     [`${OPERATION_URL}/result`]: () => json(graphDefinition()),
     [ROUTE[AGENT]]: () => json(dataAgentDefinition()),
+    [ROUTE[NOTEBOOK]]: () => json(notebookDefinition()),
     ...overrides,
   };
 }
@@ -610,6 +647,71 @@ describe("workspaceCollectDefinitions projections", () => {
     );
   });
 
+  it("projects notebook object dependencies without returning notebook source", () => {
+    const projection = projectDefinition("Notebook", notebookDefinition());
+
+    expect(projection.unknownParts).toBe(0);
+    expect(projection.references.sourceItemIds).toEqual([LAKEHOUSE]);
+    expect(projection.metadata).toEqual({
+      kind: "notebook",
+      language: "python",
+      defaultLakehouse: {
+        itemId: LAKEHOUSE,
+        workspaceId: WS,
+        displayName: "Operations lakehouse",
+      },
+      objects: [
+        {
+          id: "bronze.events",
+          name: "bronze.events",
+          operation: "read",
+          sourceItemId: LAKEHOUSE,
+          sourceWorkspaceId: WS,
+        },
+        {
+          id: "bronze.rentals_raw",
+          name: "bronze.rentals_raw",
+          operation: "read",
+          sourceItemId: LAKEHOUSE,
+          sourceWorkspaceId: WS,
+        },
+        {
+          id: "gold.events",
+          name: "gold.events",
+          operation: "write",
+          sourceItemId: LAKEHOUSE,
+          sourceWorkspaceId: WS,
+        },
+        {
+          id: "gold.rentals",
+          name: "gold.rentals",
+          operation: "write",
+          sourceItemId: LAKEHOUSE,
+          sourceWorkspaceId: WS,
+        },
+        {
+          id: "silver.rentals_clean",
+          name: "silver.rentals_clean",
+          operation: "read-write",
+          sourceItemId: LAKEHOUSE,
+          sourceWorkspaceId: WS,
+        },
+        {
+          id: "silver.stations",
+          name: "silver.stations",
+          operation: "read",
+          sourceItemId: LAKEHOUSE,
+          sourceWorkspaceId: WS,
+        },
+      ],
+    });
+    const serialized = JSON.stringify(projection);
+    expect(serialized).not.toContain("password=do-not-return");
+    expect(serialized).not.toContain("spark.read");
+    expect(serialized).not.toContain("MERGE INTO");
+    expect(serialized).not.toContain("table_name");
+  });
+
   it("projects a mixed batch into reviewed metadata, config facts and per-item evidence", async () => {
     const { result, fetchImpl, sleep } = collect(routes());
     const envelope = await result;
@@ -620,8 +722,8 @@ describe("workspaceCollectDefinitions projections", () => {
       authoritative: false,
       workspaceId: WS,
       errors: [],
-      sections: { definitions: { status: "complete", code: "partial-unsupported" } },
-      capabilities: { definitionEnrichment: { status: "complete", code: "partial-unsupported" } },
+      sections: { definitions: { status: "complete", code: "forward-compatible-parts-skipped" } },
+      capabilities: { definitionEnrichment: { status: "complete", code: "forward-compatible-parts-skipped" } },
     });
     expect(envelope).not.toHaveProperty("correlationId");
     expect(envelope.items).toEqual([
@@ -645,7 +747,12 @@ describe("workspaceCollectDefinitions projections", () => {
         status: "complete",
         references: { sourceItemIds: [LAKEHOUSE], ontologyItemIds: [], graphModelItemIds: [] },
       },
-      { id: NOTEBOOK, type: "Notebook", status: "unsupported", code: "item-type-unsupported" },
+      {
+        id: NOTEBOOK,
+        type: "Notebook",
+        status: "complete",
+        references: { sourceItemIds: [LAKEHOUSE], ontologyItemIds: [], graphModelItemIds: [] },
+      },
     ]);
 
     expect(envelope.artifactMetadata[ONTOLOGY]).toEqual({
@@ -771,10 +878,18 @@ describe("workspaceCollectDefinitions projections", () => {
         },
       ],
     });
-    for (const [itemId, type] of [[ONTOLOGY, "Ontology"], [GRAPH, "GraphModel"], [AGENT, "DataAgent"]]) {
+    expect(envelope.artifactMetadata[NOTEBOOK]).toMatchObject({
+      kind: "notebook",
+      language: "python",
+      defaultLakehouse: { itemId: LAKEHOUSE, workspaceId: WS },
+      objects: expect.arrayContaining([
+        { id: "bronze.rentals_raw", name: "bronze.rentals_raw", operation: "read", sourceItemId: LAKEHOUSE, sourceWorkspaceId: WS },
+        { id: "gold.rentals", name: "gold.rentals", operation: "write", sourceItemId: LAKEHOUSE, sourceWorkspaceId: WS },
+      ]),
+    });
+    for (const [itemId, type] of [[ONTOLOGY, "Ontology"], [GRAPH, "GraphModel"], [AGENT, "DataAgent"], [NOTEBOOK, "Notebook"]]) {
       expect(parseFabricItemMetadata(type, envelope.artifactMetadata[itemId])).toBeDefined();
     }
-    expect(envelope.artifactMetadata).not.toHaveProperty(NOTEBOOK);
 
     expect(envelope.config).toEqual(expect.arrayContaining([
       { itemId: ONTOLOGY, section: "Metadata capability", label: "Definition enrichment", value: "forward-compatible-parts-skipped" },
@@ -788,8 +903,10 @@ describe("workspaceCollectDefinitions projections", () => {
       { itemId: AGENT, section: "Data agent sources", label: "published:Sales lakehouse", value: `lakehouse_tables | ${LAKEHOUSE}` },
       { itemId: AGENT, section: "Data agent selected elements", label: "published:Sales lakehouse:dbo / sales / notes", value: "lakehouse_tables.column | selected no" },
       { itemId: AGENT, section: "Data agent", label: "State", value: "published" },
+      { itemId: NOTEBOOK, section: "Notebook", label: "Language", value: "python" },
+      { itemId: NOTEBOOK, section: "Notebook dependencies", label: "Default lakehouse", value: "Operations lakehouse" },
+      { itemId: NOTEBOOK, section: "Notebook object references", label: "gold.rentals", value: "write" },
     ]));
-    expect(envelope.config.some((entry) => entry.itemId === NOTEBOOK)).toBe(false);
 
     expect(urls(fetchImpl)).toEqual([
       ROUTE[ONTOLOGY],
@@ -798,9 +915,10 @@ describe("workspaceCollectDefinitions projections", () => {
       OPERATION_URL,
       `${OPERATION_URL}/result`,
       ROUTE[AGENT],
+      ROUTE[NOTEBOOK],
     ]);
     expect(fetchImpl.mock.calls.map(([, init]) => init?.method)).toEqual([
-      "POST", "POST", "GET", "GET", "GET", "POST",
+      "POST", "POST", "GET", "GET", "GET", "POST", "POST",
     ]);
     for (const [, init] of fetchImpl.mock.calls) {
       expect(init).toMatchObject({
@@ -842,7 +960,7 @@ describe("workspaceCollectDefinitions projections", () => {
 });
 
 describe("workspaceCollectDefinitions route allowlist", () => {
-  it.each(["Notebook", "Lakehouse", "FutureFabricThing", "constructor", "toString", "hasOwnProperty"])(
+  it.each(["Lakehouse", "FutureFabricThing", "constructor", "toString", "hasOwnProperty"])(
     "reports %s as unsupported without a request",
     async (type) => {
       const { result, fetchImpl } = collect(routes(), [{ id: NOTEBOOK, type }]);

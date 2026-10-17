@@ -4,6 +4,30 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.2] - 2026-10-17
+
+### Added
+
+- Notebook Object Lineage for direct literal Spark table, Delta table-path and
+  literal SQL references, with read and write direction.
+- Metadata-only Notebook definition projection through Rayfin Functions.
+
+### Changed
+
+- Item-type filters retain the complete connected lineage context of matching
+  items.
+- Impact mode reuses the full graph layout so the selected node and viewport
+  stay fixed.
+- Notebook family coverage now reports partial object and lineage evidence
+  instead of excluding every object by design.
+
+### Fixed
+
+- Closed the governance radar polygon when one or more pillar scores are
+  unavailable; `N/A` remains explicit and plots at zero.
+- Preserved notebook read direction through source-to-consumer lineage
+  normalization.
+
 ## [2.1.1] - 2026-10-17
 
 ### Added

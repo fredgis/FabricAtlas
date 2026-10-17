@@ -14,6 +14,14 @@ capability gap instead of approximating it.
 | Ontology metrics | Deferred | Not present in collected Ontology definitions |
 | Ontology entity inheritance | Deferred | Not present in collected Ontology definitions |
 
+## Item graph filters and Impact mode
+
+The item graph computes one staged source-to-consumer layout for the complete
+selected workspace evidence. Type filters change visibility, not coordinates,
+and include the upstream and downstream context of matching items. Impact mode
+uses the same positions while hiding unrelated components, so entering or
+leaving Impact does not move the selected node or reset the viewport.
+
 ## #34 Lineage time machine
 
 **Changes → Time machine.** `src/atlas/lineage-time-machine.ts` compares two
@@ -150,6 +158,24 @@ Asset Catalog, the schema inspector and X-Ray when rendering reaches a bound.
 Canonical Object Lineage URL state uses `item`, `tables`, `object` and `dax`.
 Legacy `table`, `xray.model` and `xray.object` parameters are read as
 fallbacks, then canonical state is written.
+
+### Notebook Object Lineage
+
+Notebook definitions are read through `workspaceCollectDefinitions`. The
+Function decodes the definition in memory and recognizes direct literal
+references from Spark table APIs, `saveAsTable`, `insertInto`, Delta table
+paths and literal `spark.sql` statements. SQL notebook definitions use the
+same bounded identifier parser.
+
+- Read edges run from the referenced object to the notebook object reference.
+- Write edges run from the notebook object reference to the target object.
+- The default Lakehouse dependency supplies the source item ID when Fabric
+  exposes it in notebook metadata.
+- Repeated read and write references merge into one `read-write` object.
+- Source code, cells, complete SQL statements, secrets and arbitrary URLs are
+  never returned or stored.
+- Dynamic identifiers, variables, generated SQL and runtime-only Spark plans
+  remain outside coverage and are not guessed.
 
 ## #33 Cross-workspace expansion
 

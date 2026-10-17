@@ -774,34 +774,56 @@ export function MapView({
       ),
     [items],
   );
-  const visibleItems = useMemo(() => {
+  const lineageItems = useMemo(() => {
     const observed = previewActive
       ? items.filter((item) =>
           graphLineageIndex.incidentIds.has(item.fabricId) ||
           evidenceModel.previewGraph?.nodes.some((node) => node.id === item.fabricId.toLowerCase() && node.queried))
       : items;
-    const candidates = observed.length ? observed : items;
+    return observed.length ? observed : items;
+  }, [
+    evidenceModel.previewGraph,
+    graphLineageIndex,
+    items,
+    previewActive,
+  ]);
+  const visibleItems = useMemo(() => {
     const filtered =
       typeFilter === "all" &&
       healthFilter === "all" &&
       !query.trim()
-        ? candidates
-        : candidates.filter((item) =>
+        ? lineageItems
+        : lineageItems.filter((item) =>
             matchesItemFilters(item, typeFilter, healthFilter, query),
           );
+    const contextual =
+      typeFilter === "all"
+        ? filtered
+        : (() => {
+            const visible = new Set<string>();
+            for (const item of filtered) {
+              visible.add(item.fabricId);
+              const itemImpact = getLineageImpact(
+                graphLineageIndex,
+                item.fabricId,
+                Number.POSITIVE_INFINITY,
+              );
+              itemImpact.upstream.ids.forEach((id) => visible.add(id));
+              itemImpact.downstream.ids.forEach((id) => visible.add(id));
+            }
+            return lineageItems.filter((item) => visible.has(item.fabricId));
+          })();
     if (!impactMode || !activeId) {
-      return filtered;
+      return contextual;
     }
-    return filtered.filter((item) => connected.has(item.fabricId));
+    return contextual.filter((item) => connected.has(item.fabricId));
   }, [
     activeId,
     connected,
-    evidenceModel.previewGraph,
     graphLineageIndex,
     healthFilter,
     impactMode,
-    items,
-    previewActive,
+    lineageItems,
     query,
     typeFilter,
   ]);
@@ -816,9 +838,20 @@ export function MapView({
       ),
     [graphEdges, visibleIds],
   );
+  const layoutIds = useMemo(
+    () => new Set(lineageItems.map((item) => item.fabricId)),
+    [lineageItems],
+  );
+  const layoutEdges = useMemo(
+    () =>
+      graphEdges.filter(
+        (edge) => layoutIds.has(edge.source) && layoutIds.has(edge.target),
+      ),
+    [graphEdges, layoutIds],
+  );
   const atlasLayout = useMemo(
     () =>
-      buildStagedLayout(visibleItems, visibleEdges, {
+      buildStagedLayout(lineageItems, layoutEdges, {
         nodeWidth: NODE_W,
         nodeHeight: NODE_H,
         columnGap: NODE_COLUMN_GAP,
@@ -826,7 +859,7 @@ export function MapView({
         componentGap: 52,
         focusId: resolvedFocusId,
       }),
-    [resolvedFocusId, visibleEdges, visibleItems],
+    [layoutEdges, lineageItems, resolvedFocusId],
   );
   const storedPreviewOverlay = useMemo(
     () =>
@@ -851,10 +884,10 @@ export function MapView({
     ],
   );
   const previewLayout = useMemo(() => layoutPreviewGraph(
-    visibleItems, storedPreviewOverlay, data.workspace.fabricId,
+    lineageItems, storedPreviewOverlay, data.workspace.fabricId,
     { nodeWidth: NODE_W, nodeHeight: NODE_H, columnGap: NODE_COLUMN_GAP, rowGap: NODE_ROW_GAP },
     evidenceModel,
-  ), [data.workspace.fabricId, evidenceModel, storedPreviewOverlay, visibleItems]);
+  ), [data.workspace.fabricId, evidenceModel, lineageItems, storedPreviewOverlay]);
   const layout = previewActive ? previewLayout : atlasLayout;
   const posOf = (id: string) => drag[id] ?? layout.positions.get(id) ?? { x: 0, y: 0 };
   const previewOverlay = storedPreviewOverlay && {
@@ -2029,7 +2062,10 @@ export function MapView({
           type="button"
           role="switch"
           aria-checked={impactMode}
-          onClick={() => setImpactMode((current) => !current)}
+          onClick={() => {
+            preserveMapViewport();
+            setImpactMode((current) => !current);
+          }}
           className={cn(
             "flex items-center gap-s rounded-lg border px-m font-semibold",
             impactMode

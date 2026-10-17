@@ -149,10 +149,28 @@ export type DataAgentArtifactMetadata = {
   }[];
 };
 
+export type NotebookArtifactMetadata = {
+  kind: "notebook";
+  language?: string;
+  defaultLakehouse?: {
+    itemId: string;
+    workspaceId?: string;
+    displayName?: string;
+  };
+  objects: {
+    id: string;
+    name: string;
+    operation: "read" | "write" | "read-write";
+    sourceItemId?: string;
+    sourceWorkspaceId?: string;
+  }[];
+};
+
 export type DefinitionArtifactMetadata =
   | OntologyArtifactMetadata
   | GraphModelArtifactMetadata
-  | DataAgentArtifactMetadata;
+  | DataAgentArtifactMetadata
+  | NotebookArtifactMetadata;
 
 export type DefinitionFact = { section: string; label: string; value: string };
 
@@ -409,6 +427,350 @@ function decodeTextPart(part: JsonRecord, state: ProjectionState): string {
     }
   }
   return text;
+}
+
+function notebookMetadataRecords(source: string): JsonRecord[] {
+  const records: JsonRecord[] = [];
+  let lines: string[] = [];
+  const flush = () => {
+    if (!lines.length) return;
+    const text = lines.join("\n").trim();
+    lines = [];
+    if (!text.startsWith("{") || !text.endsWith("}")) return;
+    try {
+      const value: unknown = JSON.parse(text);
+      if (isRecord(value)) records.push(value);
+    } catch {
+      // Ignore code comments that resemble metadata but are not valid JSON.
+    }
+  };
+  for (const line of source.split(/\r?\n/)) {
+    const match = /^\s*(?:#|\/\/|--)\s*META\b(?:\s+)?(.*)$/.exec(line);
+    if (match) lines.push(match[1]);
+    else flush();
+  }
+  flush();
+  return records;
+}
+
+function notebookLanguage(path: string, metadata: readonly JsonRecord[]): string | undefined {
+  const extension = /\.([a-z]+)$/i.exec(path)?.[1]?.toLowerCase();
+  const byExtension: Record<string, string> = {
+    py: "python",
+    sql: "sql",
+    scala: "scala",
+    r: "r",
+    ipynb: "python",
+  };
+  if (extension && byExtension[extension]) return byExtension[extension];
+  for (const record of metadata) {
+    const kernel = isRecord(record.kernel_info) ? record.kernel_info : undefined;
+    const language = boundedText(kernel?.name);
+    if (language) return language;
+  }
+  return undefined;
+}
+
+function notebookDefaultLakehouse(
+  metadata: readonly JsonRecord[],
+  state: ProjectionState,
+): NotebookArtifactMetadata["defaultLakehouse"] | undefined {
+  for (const record of metadata) {
+    const dependencies = isRecord(record.dependencies)
+      ? record.dependencies
+      : undefined;
+    const lakehouse = dependencies && isRecord(dependencies.lakehouse)
+      ? dependencies.lakehouse
+      : undefined;
+    if (!lakehouse) continue;
+    const itemId = normalizedId(
+      lakehouse.default_lakehouse ??
+      lakehouse.defaultLakehouse ??
+      lakehouse.itemId,
+    );
+    if (!itemId || !UUID.test(itemId)) continue;
+    const workspaceId = normalizedId(
+      lakehouse.default_lakehouse_workspace_id ??
+      lakehouse.defaultLakehouseWorkspaceId ??
+      lakehouse.workspaceId,
+    );
+    const displayName = boundedText(
+      lakehouse.default_lakehouse_name ??
+      lakehouse.defaultLakehouseName ??
+      lakehouse.displayName,
+    );
+    state.sourceIds.add(itemId);
+    return {
+      itemId,
+      ...(workspaceId && UUID.test(workspaceId) ? { workspaceId } : {}),
+      ...(displayName ? { displayName } : {}),
+    };
+  }
+  return undefined;
+}
+
+const NOTEBOOK_SQL_SEGMENT =
+  "(?:`[^`\\r\\n]{1,128}`|\\[[^\\]\\r\\n]{1,128}\\]|\"[^\"\\r\\n]{1,128}\"|[A-Za-z_][A-Za-z0-9_$@#-]{0,127})";
+const NOTEBOOK_SQL_IDENTIFIER =
+  `${NOTEBOOK_SQL_SEGMENT}(?:\\s*\\.\\s*${NOTEBOOK_SQL_SEGMENT}){0,2}`;
+const NOTEBOOK_SQL_NON_OBJECTS = new Set([
+  "csv",
+  "delta",
+  "json",
+  "orc",
+  "parquet",
+  "values",
+]);
+
+function notebookObjectName(
+  value: string,
+  pathOnly = false,
+): string | undefined {
+  let text = value.trim();
+  const tablePath = /(?:^|\/)Tables\/([^?#]+)/i.exec(
+    text.replace(/\\/g, "/"),
+  );
+  if (tablePath) {
+    text = tablePath[1].replace(/\//g, ".");
+  } else if (pathOnly) {
+    return undefined;
+  }
+  text = text
+    .split(/[?#]/, 1)[0]
+    .split(".")
+    .map((part) =>
+      part
+        .trim()
+        .replace(/^`|`$/g, "")
+        .replace(/^\[|\]$/g, "")
+        .replace(/^"|"$/g, ""),
+    )
+    .filter(Boolean)
+    .join(".");
+  if (
+    !text ||
+    NOTEBOOK_SQL_NON_OBJECTS.has(text.toLowerCase()) ||
+    text.length > LIMITS.maxMetadataText ||
+    !text.split(".").every((part) =>
+      /^[A-Za-z0-9_][A-Za-z0-9_$@# -]{0,127}$/.test(part),
+    )
+  ) {
+    return undefined;
+  }
+  if (isCredentialLikeText(text)) {
+    throw new DefinitionProjectionError("unsafe-content-rejected");
+  }
+  return text;
+}
+
+function notebookSqlReferences(
+  sql: string,
+  add: (name: string, operation: "read" | "write") => void,
+): void {
+  const ctes = new Set<string>();
+  const ctePattern = new RegExp(
+    `(?:\\bWITH|,)\\s+(${NOTEBOOK_SQL_IDENTIFIER})\\s+AS\\s*\\(`,
+    "gi",
+  );
+  for (const match of sql.matchAll(ctePattern)) {
+    const name = notebookObjectName(match[1]);
+    if (name) ctes.add(name.toLowerCase());
+  }
+  const collect = (
+    pattern: RegExp,
+    operation: "read" | "write",
+  ) => {
+    for (const match of sql.matchAll(pattern)) {
+      const name = notebookObjectName(match[1]);
+      if (!name || ctes.has(name.toLowerCase())) continue;
+      add(name, operation);
+    }
+  };
+  collect(
+    new RegExp(`\\b(?:FROM|JOIN|USING)\\s+(${NOTEBOOK_SQL_IDENTIFIER})`, "gi"),
+    "read",
+  );
+  collect(
+    new RegExp(
+      `\\b(?:INSERT\\s+(?:OVERWRITE\\s+)?INTO|MERGE\\s+INTO|UPDATE|DELETE\\s+FROM|CREATE\\s+(?:OR\\s+REPLACE\\s+)?TABLE(?:\\s+IF\\s+NOT\\s+EXISTS)?|REPLACE\\s+TABLE|TRUNCATE\\s+TABLE|DROP\\s+TABLE(?:\\s+IF\\s+EXISTS)?)\\s+(${NOTEBOOK_SQL_IDENTIFIER})`,
+      "gi",
+    ),
+    "write",
+  );
+}
+
+function notebookObjectReferences(
+  source: string,
+  language: string | undefined,
+  defaultLakehouse: NotebookArtifactMetadata["defaultLakehouse"] | undefined,
+  state: ProjectionState,
+): NotebookArtifactMetadata["objects"] {
+  const operations = new Map<
+    string,
+    { name: string; read: boolean; write: boolean }
+  >();
+  const add = (raw: string, operation: "read" | "write", pathOnly = false) => {
+    const name = notebookObjectName(raw, pathOnly);
+    if (!name) return;
+    const key = name.toLowerCase();
+    const existing = operations.get(key) ?? {
+      name,
+      read: false,
+      write: false,
+    };
+    existing[operation] = true;
+    operations.set(key, existing);
+  };
+  const calls = (
+    expression: RegExp,
+    operation: "read" | "write",
+    pathOnly = false,
+  ) => {
+    for (const match of source.matchAll(expression)) {
+      add(match[2], operation, pathOnly);
+    }
+  };
+  calls(
+    /\b(?:spark(?:\.read)?\.table|DeltaTable\.forName)\s*\(\s*(?:spark\s*,\s*)?(["'])([^"'\r\n]{1,512})\1/gi,
+    "read",
+  );
+  calls(
+    /\b(?:saveAsTable|insertInto)\s*\(\s*(["'])([^"'\r\n]{1,512})\1/gi,
+    "write",
+  );
+  calls(
+    /\b(?:DeltaTable\.forPath|load)\s*\(\s*(?:spark\s*,\s*)?(["'])([^"'\r\n]{1,1024})\1/gi,
+    "read",
+    true,
+  );
+  calls(
+    /\bsave\s*\(\s*(["'])([^"'\r\n]{1,1024})\1/gi,
+    "write",
+    true,
+  );
+  for (const match of source.matchAll(
+    /\bspark\.sql\s*\(\s*(?:"""([\s\S]*?)"""|'''([\s\S]*?)''')\s*\)/gi,
+  )) {
+    notebookSqlReferences(match[1] ?? match[2] ?? "", (name, operation) =>
+      add(name, operation),
+    );
+  }
+  for (const match of source.matchAll(
+    /\bspark\.sql\s*\(\s*(["'])([^"'\\]*(?:\\.[^"'\\]*)*)\1\s*\)/gi,
+  )) {
+    notebookSqlReferences(match[2], (name, operation) =>
+      add(name, operation),
+    );
+  }
+  if (language === "sql") {
+    notebookSqlReferences(source, (name, operation) => add(name, operation));
+  }
+  let values = [...operations.values()]
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .map((entry) => ({
+      id: entry.name,
+      name: entry.name,
+      operation:
+        entry.read && entry.write
+          ? ("read-write" as const)
+          : entry.write
+            ? ("write" as const)
+            : ("read" as const),
+      ...(defaultLakehouse
+        ? {
+            sourceItemId: defaultLakehouse.itemId,
+            ...(defaultLakehouse.workspaceId
+              ? { sourceWorkspaceId: defaultLakehouse.workspaceId }
+              : {}),
+          }
+        : {}),
+    }));
+  if (values.length > LIMITS.maxMetadataCollection) {
+    values = values.slice(0, LIMITS.maxMetadataCollection);
+    state.metadataTruncated = true;
+  }
+  return values;
+}
+
+function projectNotebook(
+  response: unknown,
+  state: ProjectionState,
+): NotebookArtifactMetadata {
+  let content:
+    | { path: string; text: string; metadata: JsonRecord[] }
+    | undefined;
+  for (const part of definitionParts(response)) {
+    const path = partPath(part);
+    if (path === ".platform") continue;
+    if (
+      /^notebook-content\.(?:py|sql|scala|r)$/i.test(path) ||
+      /^(?:artifact\.)?content\.ipynb$/i.test(path) ||
+      /^notebook-content\.ipynb$/i.test(path)
+    ) {
+      if (content) invalid();
+      const text = decodeTextPart(part, state);
+      if (/\.ipynb$/i.test(path)) {
+        let notebook: unknown;
+        try {
+          notebook = JSON.parse(text);
+        } catch {
+          invalid();
+        }
+        if (!isRecord(notebook)) invalid();
+        const cells = list(notebook.cells);
+        const source = cells.flatMap((cell) => {
+          if (!isRecord(cell) || cell.cell_type !== "code") return [];
+          if (typeof cell.source === "string") return [cell.source];
+          return Array.isArray(cell.source)
+            ? cell.source.filter((line): line is string => typeof line === "string")
+            : [];
+        }).join("\n");
+        content = {
+          path,
+          text: source,
+          metadata: isRecord(notebook.metadata) ? [notebook.metadata] : [],
+        };
+      } else {
+        content = {
+          path,
+          text,
+          metadata: notebookMetadataRecords(text),
+        };
+      }
+      continue;
+    }
+    state.unknownParts += 1;
+  }
+  if (!content) invalid();
+  const language = notebookLanguage(content.path, content.metadata);
+  const defaultLakehouse = notebookDefaultLakehouse(content.metadata, state);
+  const objects = notebookObjectReferences(
+    content.text,
+    language,
+    defaultLakehouse,
+    state,
+  );
+  if (language) state.facts.add("Notebook", "Language", language);
+  if (defaultLakehouse) {
+    state.facts.add(
+      "Notebook dependencies",
+      "Default lakehouse",
+      defaultLakehouse.displayName ?? defaultLakehouse.itemId,
+    );
+  }
+  for (const object of objects) {
+    state.facts.add(
+      "Notebook object references",
+      object.name,
+      object.operation,
+    );
+  }
+  return {
+    kind: "notebook",
+    ...(language ? { language } : {}),
+    ...(defaultLakehouse ? { defaultLakehouse } : {}),
+    objects,
+  };
 }
 
 interface TmdlLine {
@@ -1476,6 +1838,8 @@ export function projectDefinition(itemType: string, response: unknown): Definiti
         ? projectGraph(response, state)
         : itemType === "DataAgent"
           ? projectDataAgent(response, state)
+          : itemType === "Notebook"
+            ? projectNotebook(response, state)
           : invalid();
   assertSafeMetadata(metadata);
   if (JSON.stringify(metadata).length > LIMITS.maxSerializedMetadata) {

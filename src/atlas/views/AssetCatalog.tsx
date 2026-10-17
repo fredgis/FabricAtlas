@@ -11,6 +11,7 @@ import {
   FilterX,
   Link2,
   Network,
+  NotebookText,
   Search,
   ShieldCheck,
   Sigma,
@@ -243,6 +244,12 @@ const KIND_META: Record<
     icon: Boxes,
     tone: "border-object-source/30 bg-object-source/10 text-object-source",
     selectedTone: "border-object-source/50 bg-object-source/10",
+  },
+  notebookObject: {
+    label: "Notebook object reference",
+    icon: NotebookText,
+    tone: "border-object-table/30 bg-object-table/10 text-object-table",
+    selectedTone: "border-object-table/50 bg-object-table/10",
   },
 };
 

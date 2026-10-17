@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.1.1";
+  "2.1.2";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,34 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.1.2",
+    date: "2026-10-17",
+    title: "Stable lineage and notebook dependencies",
+    sections: [
+      {
+        title: "Lineage interaction",
+        items: [
+          "Item-type filters retain matching items with their connected upstream and downstream context.",
+          "Impact mode keeps the complete layout as its coordinate source, so the selected node and viewport no longer jump.",
+        ],
+      },
+      {
+        title: "Governance posture",
+        items: [
+          "The six radar pillars always form one closed green polygon.",
+          "Unavailable scores remain labelled N/A and are anchored at zero instead of breaking the shape.",
+        ],
+      },
+      {
+        title: "Notebook object lineage",
+        items: [
+          "Rayfin Functions project direct literal notebook table and OneLake table-path references with read and write direction.",
+          "Object Lineage displays the verified references while source code, cells, SQL text, secrets and dynamic expressions remain outside the snapshot.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.1.1",
     date: "2026-10-17",

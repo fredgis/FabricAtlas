@@ -15,9 +15,11 @@ export const POSTURE_LABELS: Record<PosturePillar, string> = {
 
 function coordinate(index: number, radius: number) {
   const angle = (index * Math.PI * 2) / POSTURE_PILLARS.length;
+  const x = Math.sin(angle) * radius;
+  const y = Math.cos(angle) * radius;
   return {
-    x: Math.sin(angle) * radius,
-    y: Math.cos(angle) * radius,
+    x: Math.abs(x) < Number.EPSILON ? 0 : x,
+    y: Math.abs(y) < Number.EPSILON ? 0 : y,
   };
 }
 
@@ -35,6 +37,7 @@ export function postureRadarData(
     const source = pillars.find((entry) => entry.pillar === pillar);
     const score = finiteScore(source?.score);
     const target = targetsAvailable ? finiteScore(source?.target) : null;
+    const plottedScore = score ?? 0;
     return {
       pillar,
       order,
@@ -43,14 +46,11 @@ export function postureRadarData(
       target,
       scoreText: score == null ? "N/A (not assessed)" : `${score}%`,
       targetText: target == null ? "Unavailable" : `${target}%`,
-      ...(score == null
-        ? { x: null, y: null }
-        : coordinate(order, score)),
+      ...coordinate(order, plottedScore),
     };
   });
   const segments = points.flatMap((point, index) => {
     const next = points[(index + 1) % points.length];
-    if (point.score == null || next.score == null) return [];
     return [
       { ...point, segment: index, vertex: 0 },
       { ...next, segment: index, vertex: 1 },
@@ -59,15 +59,7 @@ export function postureRadarData(
   return {
     points,
     segments,
-    outline: points.every(
-      (point) => point.score != null && point.x != null && point.y != null,
-    )
-      ? points.map((point) => ({
-          ...point,
-          x: point.x!,
-          y: point.y!,
-        }))
-      : [],
+    outline: points,
     targets: points.every((point) => point.target != null)
       ? points.map((point) => ({
           ...point,

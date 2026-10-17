@@ -86,11 +86,11 @@ export function PostureRadar({
                   point.segment === start.segment &&
                   point.vertex === 1,
               );
-              if (!end || start.x == null || start.y == null || end.x == null || end.y == null) {
+              if (!end) {
                 return null;
               }
-              const source = radarSvgPoint(start as { x: number; y: number });
-              const target = radarSvgPoint(end as { x: number; y: number });
+              const source = radarSvgPoint(start);
+              const target = radarSvgPoint(end);
               return (
                 <line
                   key={start.segment}
@@ -104,8 +104,7 @@ export function PostureRadar({
               );
             })}
           {data.points.map((point) => {
-            if (point.x == null || point.y == null) return null;
-            const svg = radarSvgPoint(point as { x: number; y: number });
+            const svg = radarSvgPoint(point);
             const selected = point.pillar === selectedPillar;
             return (
               <g key={point.pillar}>
@@ -187,7 +186,7 @@ export function PostureRadar({
             Target
           </span>
         )}
-        <span>0-100 · N/A leaves a gap</span>
+        <span>0-100 · N/A is anchored at 0</span>
       </figcaption>
     </figure>
   );

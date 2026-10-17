@@ -37,7 +37,7 @@ describe("posture radar geometry", () => {
     expect(data.outline).toHaveLength(6);
   });
 
-  it("leaves unknown scores as gaps without turning zero into N/A", () => {
+  it("anchors unknown scores at the centre while keeping the polygon closed", () => {
     const input = pillars.map((pillar) =>
       pillar.pillar === "sensitivity"
         ? { ...pillar, score: null }
@@ -52,15 +52,15 @@ describe("posture radar geometry", () => {
     });
     expect(data.points[2]).toMatchObject({
       score: null,
-      x: null,
-      y: null,
+      x: 0,
+      y: 0,
       scoreText: "N/A (not assessed)",
     });
-    expect(data.outline).toEqual([]);
+    expect(data.outline).toHaveLength(6);
     expect(
       data.segments.some((point) => point.pillar === "sensitivity"),
-    ).toBe(false);
-    expect(data.segments).toHaveLength(8);
+    ).toBe(true);
+    expect(data.segments).toHaveLength(12);
     expect(data.labels[2].labelText).toBe("Sensitivity\nN/A");
     expect(postureRadarData(pillars, false).targets).toEqual([]);
   });

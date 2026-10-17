@@ -403,6 +403,46 @@ describe("MapView selection", () => {
     expect(viewport.scrollTop).toBe(180);
   });
 
+  it("keeps the selected item position and viewport fixed when Impact mode is enabled", async () => {
+    window.history.replaceState(null, "", "/#map");
+    const { container } = render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+    const viewport = container.querySelector<HTMLDivElement>(".atlas-map-grid")!;
+    viewport.scrollLeft = 140;
+    viewport.scrollTop = 180;
+    fireEvent.click(
+      screen.getByLabelText("04_demand_forecast, Notebook, healthy"),
+    );
+    await act(async () => {
+      await new Promise<void>((resolve) =>
+        window.requestAnimationFrame(() => resolve()),
+      );
+    });
+    const selected = screen.getByLabelText(
+      "04_demand_forecast, Notebook, healthy",
+    );
+    const position = { left: selected.style.left, top: selected.style.top };
+
+    fireEvent.click(screen.getByRole("switch", { name: "Impact mode" }));
+    await act(async () => {
+      await new Promise<void>((resolve) =>
+        window.requestAnimationFrame(() => resolve()),
+      );
+    });
+
+    const impacted = screen.getByLabelText(
+      "04_demand_forecast, Notebook, healthy",
+    );
+    expect({ left: impacted.style.left, top: impacted.style.top }).toEqual(
+      position,
+    );
+    expect(viewport.scrollLeft).toBe(140);
+    expect(viewport.scrollTop).toBe(180);
+  });
+
   it("shows only the selected impact subgraph", () => {
     window.history.replaceState(null, "", "/#map");
     const { container } = render(
@@ -563,7 +603,7 @@ describe("MapView selection", () => {
     }
   });
 
-  it("moves selection to a matching item when its type is filtered", () => {
+  it("keeps connected lineage context when selection moves to a filtered item type", () => {
     window.history.replaceState(null, "", "/#map");
     render(
       <AtlasProvider isPreview>
@@ -575,14 +615,86 @@ describe("MapView selection", () => {
       target: { value: "Report" },
     });
     expect(
-      screen.queryByLabelText("AlpineRent Sales Model, Semantic model, healthy"),
-    ).not.toBeInTheDocument();
+      screen.getByLabelText("AlpineRent Sales Model, Semantic model, healthy"),
+    ).toBeVisible();
     expect(
       screen.getByLabelText(`${report.displayName}, Report, ${report.health}`),
     ).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByLabelText("Item details inspector")).toHaveTextContent(
       report.displayName,
     );
+  });
+
+  it("shows every verified notebook object dependency after switching to Object lineage", () => {
+    const notebook = SAMPLE_DATA.items.find(
+      (item) => item.displayName === "02_silver_transform",
+    )!;
+    const lakehouse = SAMPLE_DATA.items.find(
+      (item) => item.itemType === "Lakehouse",
+    )!;
+    const originalObjectEdges = SAMPLE_DATA.objectEdges;
+    SAMPLE_DATA.objectEdges = [
+      {
+        source: {
+          itemId: lakehouse.fabricId,
+          kind: "sourceObject",
+          id: "bronze.rentals_raw",
+          name: "bronze.rentals_raw",
+          tableName: "bronze.rentals_raw",
+        },
+        target: {
+          itemId: notebook.fabricId,
+          kind: "notebookObject",
+          id: "bronze.rentals_raw",
+          name: "bronze.rentals_raw",
+          tableName: "bronze.rentals_raw",
+        },
+        relation: "reads",
+        confidence: "verified",
+      },
+      {
+        source: {
+          itemId: notebook.fabricId,
+          kind: "notebookObject",
+          id: "silver.rentals_clean",
+          name: "silver.rentals_clean",
+          tableName: "silver.rentals_clean",
+        },
+        target: {
+          itemId: lakehouse.fabricId,
+          kind: "sourceObject",
+          id: "silver.rentals_clean",
+          name: "silver.rentals_clean",
+          tableName: "silver.rentals_clean",
+        },
+        relation: "writes",
+        confidence: "verified",
+      },
+    ];
+    window.history.replaceState(null, "", "/#map");
+    render(
+      <AtlasProvider isPreview>
+        <MapView />
+      </AtlasProvider>,
+    );
+    SAMPLE_DATA.objectEdges = originalObjectEdges;
+
+    fireEvent.click(
+      screen.getByLabelText("02_silver_transform, Notebook, healthy"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "objects" }));
+
+    expect(
+      screen.getByLabelText(
+        /bronze\.rentals_raw, Notebook object reference/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByLabelText(
+        /silver\.rentals_clean, Notebook object reference/,
+      ),
+    ).toBeVisible();
+    expect(screen.getByText(/Verified object metadata is shown/)).toBeVisible();
   });
 
   it("reveals and selects Semantic Model fields without implicit table focus", async () => {

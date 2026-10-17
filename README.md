@@ -104,8 +104,8 @@ Fabric workspaces spread operational metadata across many portal pages and APIs.
 Fabric Atlas collects that metadata without copying business data.
 
 - Select and synchronize multiple workspaces without mixing their snapshots.
-- Browse Fabric items and inspect SQL, KQL, semantic, ontology, graph and Data
-  Agent objects in one catalog.
+- Browse Fabric items and inspect SQL, KQL, semantic, ontology, graph, Data
+  Agent and direct notebook object references in one catalog.
 - Search items, objects, principals, jobs, configuration and notes with
   `Ctrl+K`.
 - Trace trusted item and object lineage, raw Item Relations Preview evidence
@@ -128,8 +128,8 @@ Fabric Atlas collects that metadata without copying business data.
 |---|---|
 | Workspaces and sync | Shared workspace scope, independent validated snapshots, persisted per-workspace run status, active-workspace switching, staged progress and last-known-good fallback |
 | Catalog and search | Item Catalog, alphabetized Asset Catalog, `Ctrl+K` search, SQL/KQL/semantic/Ontology 2.0/graph/Data Agent inventory |
-| Lineage and impact | Trusted Atlas graph, Item Relations Preview, Evidence, Changes, X-Ray, object lineage and exportable impact reports |
-| Governance | Findings, Radar, snapshot comparison, history, item-family Coverage, posture targets and Policies & AI |
+| Lineage and impact | Trusted Atlas graph, connected type-filter context, stable Impact mode, Item Relations Preview, Evidence, Changes, X-Ray, notebook and semantic object lineage, and exportable impact reports |
+| Governance | Findings, a closed six-pillar Radar, snapshot comparison, history, item-family Coverage, posture targets and Policies & AI |
 | Access | Effective recorded access, principal review, personal decisions, What-if simulation and evidence-based departure packs |
 | Operations | Job history, observed incidents, inferred downstream impact, monitoring boundaries, configuration and team notes |
 | Security | Fabric brokered authentication, synchronizer-only publication, metadata-only storage and user-scoped personal state |
@@ -200,7 +200,9 @@ metadata snapshot. Counts change when the workspace is synchronized again.
 ### Workspace overview
 
 The overview uses the governance radar as its visual anchor, with current
-health, priority signals, freshness and inventory reach beside it.
+health, priority signals, freshness and inventory reach beside it. All six
+pillars stay connected. An unavailable score remains labelled `N/A` and is
+anchored at zero instead of breaking the polygon.
 
 ![Fabric Atlas workspace overview](docs/screenshots/workspace-overview-v2.png)
 
@@ -222,7 +224,9 @@ additive effective access.
 ### Interactive lineage
 
 The Atlas graph follows verified snapshot relationships from orchestration to
-consumption. Impact mode removes unrelated components while the inspector keeps
+consumption. Item-type filters keep the matching items and their connected
+lineage context. Impact mode removes unrelated components without moving the
+selected node or changing the graph viewport, while the inspector keeps
 upstream, downstream, schema, access and run evidence in view.
 
 ![Fabric Atlas item lineage](docs/screenshots/interactive-lineage-v2.png)
@@ -245,6 +249,12 @@ name-matched sources remain explicitly inferred. X-Ray, Asset Catalog and
 global search link to the same table-qualified object. Reset keeps the active
 model and clears only the object view. Other Fabric item types keep their
 verified object graph and connected-item grouping.
+
+Notebook Object Lineage shows direct literal table references found in the
+notebook definition, including read and write direction. The collector parses
+the definition in memory and publishes only bounded object names, operations
+and source item IDs. It never stores notebook cells, source code, SQL text,
+credentials or dynamically constructed references.
 
 ![Fabric Atlas object lineage](docs/screenshots/object-lineage-v2.png)
 
@@ -400,7 +410,7 @@ contracts or a separate product decision.
 | OneLake security and Purview DLP | Portal links and explicit unavailable states | Public read APIs for role membership and restriction evidence |
 | Report visual usage | Not collected | A supported report definition path with sensitivity and permission handling |
 | Shared action plans and notifications | Not implemented | Reviewed team workflow, ownership model and delivery channel |
-| 2.1 maintenance | Version 2.1.1 is the current release line | Patch releases for verified fixes; larger workflows depend on the contracts above |
+| 2.1 maintenance | Version 2.1.2 is the current release line | Patch releases for verified fixes; larger workflows depend on the contracts above |
 
 ## Quickstart
 

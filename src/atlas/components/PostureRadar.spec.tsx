@@ -54,6 +54,15 @@ describe("PostureRadar", () => {
       screen.getByRole("button", { name: /Lineage: N\/A/ }),
     ).toHaveTextContent("N/A");
     expect(screen.queryByText("Target")).not.toBeInTheDocument();
-    expect(screen.getByText("0-100 · N/A leaves a gap")).toBeInTheDocument();
+    expect(screen.getByText("0-100 · N/A is anchored at 0")).toBeInTheDocument();
+    const chart = screen.getByRole("img", {
+      name: "Six governance posture pillars on a zero to one hundred scale",
+    });
+    expect(
+      chart.querySelector('polygon[fill="var(--color-primary)"]'),
+    ).toBeInTheDocument();
+    expect(
+      chart.querySelectorAll('line[stroke="var(--color-primary)"]'),
+    ).toHaveLength(6);
   });
 });

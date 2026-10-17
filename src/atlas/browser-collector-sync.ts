@@ -48,7 +48,12 @@ export interface BrowserCollectorDependencies {
 }
 const COLLECTOR_BATCH_SIZE = 4;
 const COMPATIBILITY_BATCH_SIZE = 4;
-const DEFINITIONS = new Set(["Ontology", "GraphModel", "DataAgent"]);
+const DEFINITIONS = new Set([
+  "Ontology",
+  "GraphModel",
+  "DataAgent",
+  "Notebook",
+]);
 const SQL = new Set([
   "SQLDatabase",
   "Warehouse",
