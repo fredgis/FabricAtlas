@@ -517,6 +517,23 @@ export function CommandPalette({
                           >
                             {result.subtitle ?? KIND_LABEL[result.kind]}
                           </span>
+                          {result.snippet && (
+                            <span
+                              data-testid="search-description-snippet"
+                              className={cn(
+                                "block truncate text-200 italic",
+                                active
+                                  ? "text-primary-foreground/75"
+                                  : "text-muted-foreground",
+                              )}
+                            >
+                              {result.snippet.before}
+                              <mark className="rounded-sm bg-warning/30 px-[1px] not-italic text-inherit">
+                                {result.snippet.match}
+                              </mark>
+                              {result.snippet.after}
+                            </span>
+                          )}
                         </span>
                       </button>
                       {canOpenXRay && (
