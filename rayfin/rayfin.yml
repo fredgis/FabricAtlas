@@ -12,6 +12,8 @@ secrets:
     description: Scanner service principal credential. Provision only in the deployed Secret Store.
   - name: ATLAS_POWERBI_SCANNER_WORKSPACE_IDS
     description: JSON array of approved workspace UUIDs for the optional scanner adapter.
+  - name: ATLAS_TEAMS_WEBHOOK_URL
+    description: Optional Teams Workflows webhook (https) that receives new critical findings after a sync. Never sent to the browser.
   - name: ATLAS_POWERBI_SCANNER_SETTINGS_CONFIRMED
     description: Set true only after reviewing read-only admin API and detailed metadata scanning settings.
 services:

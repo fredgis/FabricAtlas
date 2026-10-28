@@ -16,6 +16,8 @@
 
 import { parseGovernanceEvidence, type GovernanceEvidence } from "./governance-evidence";
 import { parseGovernanceSummary, summarizeGovernance } from "./domain-governance";
+import { buildGovernanceFindings } from "./governance";
+import { buildNewCriticalCard, invokeTeamsNotify, newCriticalFindings } from "./teams-notify";
 import { ATLAS_CONFIG, configuredSyncWriters } from "./config";
 import {
   invokeSyncAll,
@@ -811,6 +813,29 @@ async function persistItemRelationsCollection(
  * throws: incident evidence is derived and optional, so a missing entity or a
  * failed write must not fail the authoritative synchronization.
  */
+/** One Teams card per sync, only for critical findings absent from the previous snapshot. */
+async function notifyNewCriticalFindings(attempt: SyncAttempt, atlas: AtlasData): Promise<void> {
+  try {
+    const markers = trustedMarkers(
+      await readTrustedWorkspaceMarkers(readerFor(attempt.data), attempt.workspaceId),
+      attempt.workspaceId,
+    );
+    const previous = markers.find((marker) => !sameText(String(marker.snapshotId), attempt.snapshotId));
+    const fresh = newCriticalFindings(buildGovernanceFindings(atlas), previous?.governanceSummaryJson);
+    if (!fresh.length) return;
+    const result = await invokeTeamsNotify(
+      buildNewCriticalCard(atlas, fresh, typeof window === "undefined" ? undefined : window.location.origin),
+    );
+    if (result.status !== "sent" && result.status !== "not-configured") {
+      console.warn("[atlas] Teams notification not delivered", { status: result.status });
+    }
+  } catch (error) {
+    console.warn("[atlas] Teams notification failed", {
+      type: error instanceof Error ? error.name : "unknown",
+    });
+  }
+}
+
 async function persistSnapshotIncidents(
   attempt: SyncAttempt,
   atlas: AtlasData,
@@ -1365,6 +1390,7 @@ async function persistSync(
   }
   reportProgress?.(98, "Recording operational incidents");
   await persistSnapshotIncidents(attempt, atlas, syncedAt);
+  await notifyNewCriticalFindings(attempt, atlas);
   reportProgress?.(99, "Applying snapshot retention");
   try {
     await pruneSnapshots(data, wid, snapshotId, writerEmail);

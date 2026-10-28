@@ -28,6 +28,7 @@ declare module '@microsoft/fabric-user-data-functions' {
     ATLAS_POWERBI_SCANNER_SETTINGS_CONFIRMED: string;
     ATLAS_POWERBI_SCANNER_TENANT_ID: string;
     ATLAS_POWERBI_SCANNER_WORKSPACE_IDS: string;
+    ATLAS_TEAMS_WEBHOOK_URL: string;
   }
 }
 

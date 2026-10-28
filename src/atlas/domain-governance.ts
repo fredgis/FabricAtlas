@@ -43,6 +43,20 @@ export interface GovernanceSummary {
     described: CoverageCount;
     labeled: CoverageCount;
   };
+  /** Short hashes of critical finding ids, used to detect new critical findings between syncs. */
+  critical?: string[];
+}
+
+export const CRITICAL_KEYS_LIMIT = 100;
+
+/** FNV-1a hash (8 hex chars) of a finding id: compact enough for the 4000-char summary column. */
+export function criticalFindingKey(findingId: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < findingId.length; index += 1) {
+    hash ^= findingId.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
 export const NO_DOMAIN_KEY = "unassigned";
@@ -61,7 +75,11 @@ export function summarizeGovernance(
   targets?: Partial<Record<PosturePillar, number>>,
 ): GovernanceSummary {
   const findings = Object.fromEntries(SEVERITIES.map((s) => [s, 0])) as Record<GovernanceSeverity, number>;
-  for (const finding of buildGovernanceFindings(data)) findings[finding.severity] += 1;
+  const critical = new Set<string>();
+  for (const finding of buildGovernanceFindings(data)) {
+    findings[finding.severity] += 1;
+    if (finding.severity === "critical") critical.add(criticalFindingKey(finding.id));
+  }
   const posture = scorePosture(snapshotCatalogFromData(data), targets);
   const pillars = {} as Record<MicrosoftGovernancePillar, number | null>;
   for (const pillar of PILLARS) {
@@ -89,6 +107,7 @@ export function summarizeGovernance(
       described: count(coverage.descriptions.numerator, coverage.descriptions.denominator, total),
       labeled: count(coverage.sensitivity.numerator, coverage.sensitivity.denominator, total),
     },
+    ...(critical.size ? { critical: [...critical].sort().slice(0, CRITICAL_KEYS_LIMIT) } : {}),
   };
 }
 
@@ -137,7 +156,10 @@ export function parseGovernanceSummary(value: unknown): GovernanceSummary | unde
     if (numerator == null || denominator == null || unknown == null || numerator > denominator) return undefined;
     coverage[key] = { numerator, denominator, unknown };
   }
-  return { version: 1, items, findings, pillars, coverage };
+  const critical = Array.isArray(raw.critical)
+    ? raw.critical.filter((key): key is string => typeof key === "string" && /^[0-9a-f]{8}$/.test(key)).slice(0, CRITICAL_KEYS_LIMIT)
+    : undefined;
+  return { version: 1, items, findings, pillars, coverage, ...(critical ? { critical } : {}) };
 }
 
 export interface WorkspaceGovernanceInput {

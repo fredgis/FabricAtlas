@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   VolumeX,
 } from "lucide-react";
+import { TeamsTestButton } from "../components/TeamsTestButton";
 import * as Tabs from "@radix-ui/react-tabs";
 import { lazy, Suspense, useEffect, useId, useMemo, useState } from "react";
 import { SavedViewsMenu } from "../components/SavedViewsMenu";
@@ -2126,6 +2127,7 @@ function FindingsSection({
               <MessageSquareShare className="icon-size-100" aria-hidden="true" />
               Teams card
             </button>
+            <TeamsTestButton workspaceName={data.workspace.displayName} />
           </div>
         </div>
         {findings.length === 0 ? (
