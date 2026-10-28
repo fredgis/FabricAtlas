@@ -23,6 +23,17 @@ import {
   type PosturePillar,
 } from "../posture";
 import { useAtlas } from "../store";
+import {
+  CATALOG_FACETS,
+  CATALOG_FACET_LABELS,
+  applyCatalogFacets,
+  facetSelectionFromFilters,
+  facetSelectionToFilters,
+  hasFacetSelection,
+  resolveItemTags,
+  toggleFacetValue,
+  type CatalogFacetSelection,
+} from "../catalog-facets";
 import { isCatalogLayout, useDisplayPreference } from "../display-preferences";
 import { CatalogTable } from "../components/CatalogTable";
 import { PageHeader } from "../components/PageHeader";
@@ -175,6 +186,13 @@ export function CatalogView({
       ? (focus.filters.posturePillar as PosturePillar)
       : undefined,
   );
+  const [facets, setFacets] = useState<CatalogFacetSelection>(() =>
+    facetSelectionFromFilters(focus?.filters),
+  );
+  const facetContext = useMemo(
+    () => ({ workspace: data.workspace, governanceEvidence: data.governanceEvidence }),
+    [data.workspace, data.governanceEvidence],
+  );
   const postureItemIds = useMemo(
     () =>
       posturePillar
@@ -194,7 +212,7 @@ export function CatalogView({
       return next;
     });
 
-  const visible = useMemo(() => {
+  const baseVisible = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return items.filter(
       (item) =>
@@ -207,6 +225,13 @@ export function CatalogView({
           )),
     );
   }, [items, postureItemIds, selType, query]);
+  const facetResult = useMemo(
+    () => applyCatalogFacets(baseVisible, facets, facetContext),
+    [baseVisible, facets, facetContext],
+  );
+  const visible = facetResult.items;
+  const facetFilters = facetSelectionToFilters(facets);
+  const facetKey = JSON.stringify(facetFilters);
   const searching = Boolean(query.trim());
   const visibleIds = useMemo(() => new Set(visible.map((item) => item.fabricId)), [visible]);
 
@@ -227,15 +252,18 @@ export function CatalogView({
         itemId: detailId ?? undefined,
         query: query.trim() || undefined,
         filters:
-          selType || posturePillar
+          selType || posturePillar || hasFacetSelection(facets)
             ? {
                 ...(selType ? { type: selType } : {}),
                 ...(posturePillar ? { posturePillar } : {}),
+                ...(JSON.parse(facetKey) as Record<string, string[]>),
               }
             : undefined,
       },
     });
-  }, [detailId, onStateChange, posturePillar, query, selType]);
+    // facetKey carries the facet selection as a stable string.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailId, onStateChange, posturePillar, query, selType, facetKey]);
   const drawerRef = useRef<HTMLElement>(null);
   const detail = items.find((item) => item.fabricId === detailId);
   const dCfgSections = useMemo(() => {
@@ -259,7 +287,7 @@ export function CatalogView({
   const dGrants = grants.filter((grant) => grant.itemFabricId === detailId);
   const dJobs = jobs.filter((job) => job.itemFabricId === detailId);
   const hasActiveFilters = Boolean(
-    selType || query.trim() || posturePillar,
+    selType || query.trim() || posturePillar || hasFacetSelection(facets),
   );
 
   const drawerSections = detail
@@ -282,6 +310,7 @@ export function CatalogView({
     setQuery("");
     setSelType(null);
     setPosturePillar(undefined);
+    setFacets({});
   };
 
   const scrollToSection = (sectionKey: string) => {
@@ -322,6 +351,23 @@ export function CatalogView({
             <span className="rounded-md border border-status-warning/30 bg-status-warning/10 px-s py-xxs text-200 font-semibold text-status-warning">
               Posture: {posturePillar}
             </span>
+          )}
+          {CATALOG_FACETS.flatMap((facet) =>
+            (facets[facet] ?? []).map((value) => {
+              const label = facetResult.facets[facet].find((entry) => entry.value === value)?.label ?? value;
+              return (
+                <button
+                  key={`${facet}:${value}`}
+                  type="button"
+                  onClick={() => setFacets((current) => toggleFacetValue(current, facet, value))}
+                  aria-label={`Remove ${CATALOG_FACET_LABELS[facet]} filter ${label}`}
+                  className="inline-flex items-center gap-xxs rounded-md border border-primary/30 bg-primary/10 px-s py-xxs text-200 font-semibold text-primary"
+                >
+                  {CATALOG_FACET_LABELS[facet]}: {label}
+                  <X className="icon-size-100" />
+                </button>
+              );
+            }),
           )}
           {hasActiveFilters && (
             <button
@@ -364,6 +410,39 @@ export function CatalogView({
                 >
                   <X className="icon-size-100" />
                 </button>
+              )}
+            </div>
+            <div className="mt-m flex flex-col gap-s" aria-label="Catalog facets" role="group">
+              {CATALOG_FACETS.map((facet) =>
+                facetResult.facets[facet].length ? (
+                  <fieldset key={facet} className="min-w-0">
+                    <legend className="mb-xxs text-200 font-semibold text-muted-foreground">
+                      {CATALOG_FACET_LABELS[facet]}
+                    </legend>
+                    <div className="flex flex-wrap gap-xs">
+                      {facetResult.facets[facet].map((entry) => {
+                        const pressed = facets[facet]?.includes(entry.value) ?? false;
+                        return (
+                          <button
+                            key={entry.value}
+                            type="button"
+                            aria-pressed={pressed}
+                            onClick={() => setFacets((current) => toggleFacetValue(current, facet, entry.value))}
+                            className={cn(
+                              "inline-flex items-center gap-xxs rounded-md border px-s py-xxs text-200 font-medium",
+                              pressed
+                                ? "border-primary/40 bg-primary/10 text-primary"
+                                : "border-border bg-background text-foreground hover:bg-accent",
+                            )}
+                          >
+                            {entry.label}
+                            <span className="font-numeric text-muted-foreground">{entry.count}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </fieldset>
+                ) : null,
               )}
             </div>
           </div>
@@ -584,13 +663,18 @@ export function CatalogView({
                       </div>
 
                       <div className="flex flex-wrap gap-xs">
-                        {item.tags.length ? (
-                          item.tags.map((tag) => (
+                        {item.tags.length || item.tagIds?.length ? (
+                          resolveItemTags(item, data.governanceEvidence).map((tag) => (
                             <span
-                              key={tag}
-                              className="rounded-md border border-border bg-muted px-s py-xxs text-200 font-medium text-muted-foreground"
+                              key={tag.key}
+                              title={tag.hint}
+                              className="inline-flex items-center gap-xxs rounded-md border border-border bg-muted px-s py-xxs text-200 font-medium text-muted-foreground"
                             >
-                              {tag}
+                              {tag.label}
+                              <span className="text-100 uppercase tracking-wide opacity-80">
+                                {tag.scope === "tenant" ? "Tenant" : tag.scope === "domain" ? tag.domainName ?? "Domain" : "?"}
+                              </span>
+                              <span className="sr-only">({tag.hint})</span>
                             </span>
                           ))
                         ) : (
@@ -771,11 +855,11 @@ export function CatalogView({
                   <DrawerRow
                     label="Tags"
                     value={
-                      detail.tags.length
-                        ? detail.tags.join(", ")
-                        : detail.tagIds?.length
-                          ? `${detail.tagIds.length} tag ID${detail.tagIds.length === 1 ? "" : "s"} collected`
-                          : detail.tagMetadataAvailable === false
+                      detail.tags.length || detail.tagIds?.length
+                        ? resolveItemTags(detail, data.governanceEvidence)
+                            .map((tag) => `${tag.label} (${tag.hint})`)
+                            .join(", ")
+                        : detail.tagMetadataAvailable === false
                             ? "Not collected"
                             : "None"
                     }

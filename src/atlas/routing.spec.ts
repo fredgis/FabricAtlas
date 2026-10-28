@@ -271,6 +271,29 @@ describe("Atlas routing", () => {
     });
   });
 
+  it("round-trips repeated catalog facet values", () => {
+    const url = urlForNavigation(
+      { pathname: "/", search: "?catalog.tag=stale" },
+      {
+        tab: "catalog",
+        focus: {
+          requestId: "ignored",
+          filters: { type: "Report", "facet.tag": ["gold", "rentals kpi"], "facet.endorsement": ["certified"] },
+        },
+      },
+    );
+
+    expect(url).toContain("catalog.tag=gold&catalog.tag=rentals+kpi");
+    expect(url).not.toContain("stale");
+    expect(
+      parseAtlasLocation({ hash: "#catalog", search: url.slice(url.indexOf("?"), url.indexOf("#")) }),
+    ).toMatchObject({
+      focus: {
+        filters: { type: "Report", "facet.tag": ["gold", "rentals kpi"], "facet.endorsement": ["certified"] },
+      },
+    });
+  });
+
   it("opens Map & lineage on an item in focused impact mode", () => {
     const url = urlForNavigation(
       { pathname: "/", search: "?ctid=tenant&jobs.status=failed&item=stale" },

@@ -8,6 +8,7 @@ import type {
 import { isWorkspaceSection } from "./navigation";
 import type { SavedViewFilters } from "./saved-views";
 import { ITEM_TYPES } from "./model";
+import { CATALOG_FACETS, facetSelectionFromFilters, facetSelectionToFilters } from "./catalog-facets";
 import { ASSET_OBJECT_KINDS } from "./catalog-objects";
 import { xrayObjectKey } from "./semantic-xray";
 
@@ -214,12 +215,14 @@ export function parseAtlasLocation(
     };
   }
   if (tab === "catalog") {
-    return {
-      tab,
-      focus: request({
-        itemId: value(params, "catalog.item"),
-        query: value(params, "catalog.q"),
-        filters: filters([
+    const facetFilters = facetSelectionToFilters(
+      facetSelectionFromFilters(
+        Object.fromEntries(
+          CATALOG_FACETS.map((facet) => [`facet.${facet}`, params.getAll(`catalog.${facet}`)]),
+        ),
+      ),
+    );
+    const baseFilters = filters([
           [
             "type",
             allowed(
@@ -232,7 +235,16 @@ export function parseAtlasLocation(
             "posturePillar",
             allowed(params, "catalog.posture", POSTURE_PILLARS),
           ],
-        ]),
+        ]);
+    return {
+      tab,
+      focus: request({
+        itemId: value(params, "catalog.item"),
+        query: value(params, "catalog.q"),
+        filters:
+          baseFilters || Object.keys(facetFilters).length
+            ? { ...baseFilters, ...facetFilters }
+            : undefined,
       }),
     };
   }
@@ -429,6 +441,10 @@ export function urlForNavigation(
     set(params, "catalog.type", filterValue(focus, "type"));
     set(params, "catalog.posture", filterValue(focus, "posturePillar"));
     set(params, "catalog.item", focus?.itemId);
+    const facetSelection = facetSelectionFromFilters(focus?.filters);
+    for (const facet of CATALOG_FACETS) {
+      for (const facetValue of facetSelection[facet] ?? []) params.append(`catalog.${facet}`, facetValue);
+    }
   } else if (navigation.tab === "assets") {
     set(params, "assets.q", focus?.query);
     set(params, "assets.kind", filterValue(focus, "kind"));
