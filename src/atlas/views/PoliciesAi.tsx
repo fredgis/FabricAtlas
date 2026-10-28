@@ -4,7 +4,7 @@ import type { AtlasData } from "../model";
 import type { HistoricalSnapshot } from "../history";
 import type { AtlasNavigation } from "../navigation";
 import {
-  buildAiGovernanceInventory, compareAgentSourceSelections, POLICIES_AI_LIMITATION,
+  buildAiGovernanceInventory, compareAgentSourceSelections, POLICIES_AI_LIMITATION, FABRIC_POLICIES_UNKNOWN, FABRIC_POLICIES_DOCS_URL, isFabricPolicyItem,
   type AiInventoryRow,
 } from "../policies-ai";
 import { isFeatureEnabled } from "../feature-flags";
@@ -33,6 +33,7 @@ export function PoliciesAiSection({
   policyEvidenceLoader?: PolicyEvidenceLoader;
 }) {
   const rows = useMemo(() => buildAiGovernanceInventory(data), [data]);
+  const policyItems = useMemo(() => data.items.filter(isFabricPolicyItem), [data.items]);
   const comparison = useMemo(() => compareAgentSourceSelections(previous, current), [previous, current]);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -90,6 +91,30 @@ export function PoliciesAiSection({
           </div>
         ))}
       </dl>
+      <section aria-labelledby="fabric-policies-heading" data-testid="fabric-policies"
+        className="flex flex-wrap items-start justify-between gap-m rounded-lg border border-border bg-card p-m text-200 leading-300">
+        <div className="min-w-0 flex-1">
+          <h3 id="fabric-policies-heading" className="flex items-center gap-s text-300 font-semibold">
+            <ShieldQuestion className="icon-size-200 shrink-0" aria-hidden="true" />
+            Fabric policies (preview)
+            <span className="rounded bg-secondary px-xs text-100 font-semibold uppercase tracking-wide text-muted-foreground">Enforcement unknown</span>
+          </h3>
+          <p className="mt-xs text-muted-foreground">{FABRIC_POLICIES_UNKNOWN}</p>
+          {policyItems.length ? (
+            <ul aria-label="Policy items in this workspace" className="mt-s flex flex-wrap gap-xs">
+              {policyItems.map((item) => (
+                <li key={item.fabricId} className="rounded border border-border px-xs">{item.displayName}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-xs">No policy item is cataloged in this workspace snapshot.</p>
+          )}
+        </div>
+        <a href={FABRIC_POLICIES_DOCS_URL} target="_blank" rel="noreferrer"
+          className="atlas-control inline-flex items-center rounded-lg border border-border px-m font-semibold hover:bg-accent">
+          About Fabric policies
+        </a>
+      </section>
       <div className="atlas-ai-workbench">
         <Card className="min-w-0 overflow-hidden shadow-none">
           <div className="atlas-toolbar flex flex-wrap items-center justify-between gap-m border-b border-border p-m">

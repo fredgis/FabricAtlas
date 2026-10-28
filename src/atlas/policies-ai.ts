@@ -6,6 +6,14 @@ import {
 
 export const POLICIES_AI_LIMITATION =
   "Collected metadata and configured source selections do not establish AI exposure, AI safety or compliance. Unknown exposure is not the same as not exposed.";
+export const FABRIC_POLICIES_UNKNOWN =
+  "Fabric policies (preview) are stored as policy items and activated per tenant or capacity scope by an admin. Atlas does not read policy rules or activation state in this build, so whether item creation, workspace settings editing or external data sharing is restricted here is Unknown. Review it in the Policies center.";
+export const FABRIC_POLICIES_DOCS_URL = "https://learn.microsoft.com/fabric/governance/fabric-policies-overview";
+
+export function isFabricPolicyItem(item: { itemType: string }): boolean {
+  const type = item.itemType.toLowerCase().replace(/[\s_-]/g, "");
+  return type === "policy" || type === "policyset" || type === "fabricpolicy";
+}
 export const WATCHLIST_BLOCKER =
   "Watchlists (#38) are unavailable: this build has no user-scoped Watchlist entity or persistence service. Personal saved views remain available.";
 export const SYNC_BRIEF_BLOCKER =
