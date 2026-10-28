@@ -31,6 +31,38 @@ export function fabricPortalBase(
   return portalBase.replace(/\/+$/, "");
 }
 
+/**
+ * Microsoft's native governance surfaces. Portal paths can change, so they
+ * live here only. No tenant identifier: the portal resolves the signed-in
+ * tenant, and the Admin monitoring workspace is reached from the admin portal.
+ */
+export const FABRIC_GOVERNANCE_SURFACES = [
+  {
+    id: "onelake-govern",
+    title: "OneLake catalog · Govern",
+    path: "/onelake?experience=fabric-developer",
+    docs: "https://learn.microsoft.com/fabric/governance/onelake-catalog-govern",
+    covers:
+      "Tenant-wide insights from Microsoft: sensitivity, endorsement and description coverage for the data you own or administer.",
+    atlas:
+      "Atlas adds snapshot history, cross-item lineage impact and per-principal access review on the scanned workspaces.",
+  },
+  {
+    id: "admin-monitoring",
+    title: "Admin monitoring workspace",
+    path: "/admin-portal?experience=fabric-developer",
+    docs: "https://learn.microsoft.com/fabric/admin/monitoring-workspace",
+    covers:
+      "Fabric administrators only: activity, adoption and audit reports across the tenant (open Admin monitoring from the admin portal).",
+    atlas:
+      "Atlas stays read-only on workspace metadata; it has no tenant audit log, so usage questions belong there.",
+  },
+] as const;
+
+export function fabricGovernanceSurfaceUrl(path: string, portalBase?: string): string {
+  return `${fabricPortalBase(portalBase)}${path}`;
+}
+
 export function fabricWorkspaceUrl(
   workspaceId: string | undefined,
   portalBase?: string,

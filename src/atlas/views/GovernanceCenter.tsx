@@ -91,7 +91,11 @@ import {
 } from "../finding-priority";
 import { PageHeader } from "../components/PageHeader";
 import { NativeLink } from "../components/NativeLink";
-import { findingFixUrl } from "../fabric-portal";
+import {
+  FABRIC_GOVERNANCE_SURFACES,
+  fabricGovernanceSurfaceUrl,
+  findingFixUrl,
+} from "../fabric-portal";
 import {
   MICROSOFT_PILLAR_DESCRIPTION,
   MICROSOFT_PILLAR_LABEL,
@@ -1204,6 +1208,7 @@ export function GovernanceCenterView({
               }}
             />
           </div>
+          <OpenInFabricCard />
         </div>
       </Tabs.Content>
       <Tabs.Content value="policies-ai" asChild>
@@ -2228,6 +2233,30 @@ function FindingsSection({
         )}
       </Card>
     </div>
+  );
+}
+
+function OpenInFabricCard() {
+  return (
+    <Card className="mt-l p-l">
+      <h2 className="text-400 font-semibold">Open in Fabric</h2>
+      <p className="mt-xxs text-200 text-muted-foreground">
+        Microsoft&apos;s native governance surfaces, and what Atlas adds next to them.
+      </p>
+      <ul className="mt-m grid gap-m md:grid-cols-2">
+        {FABRIC_GOVERNANCE_SURFACES.map((surface) => (
+          <li key={surface.id} className="flex flex-col gap-xs rounded-lg border border-border p-m">
+            <h3 className="text-300 font-semibold">{surface.title}</h3>
+            <p className="text-200 text-muted-foreground">{surface.covers}</p>
+            <p className="text-200">{surface.atlas}</p>
+            <div className="mt-auto flex flex-wrap gap-m pt-xs">
+              <NativeLink href={fabricGovernanceSurfaceUrl(surface.path)}>Open in Fabric</NativeLink>
+              <NativeLink href={surface.docs}>Learn more</NativeLink>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { fabricItemUrl, fabricWorkspaceUrl, findingFixUrl } from "./fabric-portal";
+import {
+  FABRIC_GOVERNANCE_SURFACES,
+  fabricGovernanceSurfaceUrl,
+  fabricItemUrl,
+  fabricWorkspaceUrl,
+  findingFixUrl,
+} from "./fabric-portal";
 import type { AtlasData } from "./model";
 
 const WS = "11111111-2222-4333-8444-555555555555";
@@ -35,5 +41,16 @@ describe("Fabric portal links", () => {
     expect(findingFixUrl({ target: { kind: "workspace" } }, data, PORTAL)).toBe(
       fabricWorkspaceUrl(WS, PORTAL),
     );
+  });
+});
+
+describe("Fabric governance surfaces", () => {
+  it("builds tenant-agnostic links on the configured portal", () => {
+    const urls = FABRIC_GOVERNANCE_SURFACES.map((surface) => fabricGovernanceSurfaceUrl(surface.path, PORTAL));
+    expect(urls).toEqual([
+      "https://portal.example/onelake?experience=fabric-developer",
+      "https://portal.example/admin-portal?experience=fabric-developer",
+    ]);
+    for (const url of urls) expect(url).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/i);
   });
 });
