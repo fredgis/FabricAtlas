@@ -332,11 +332,11 @@ the Fabric portal.
 ### Multi-workspace synchronization
 
 The synchronizer can run one selected workspace while another workspace keeps
-its last validated snapshot. Here FGI-ORACLE is in discovery at 12%, FGI-MAIN
-remains the active catalog, and workspace switching is paused until the browser
-run finishes or is cancelled.
+its last validated snapshot. Here a three-workspace run is in progress with
+FGI-MAIN first at 44%; each workspace keeps its last validated snapshot, and
+workspace switching is paused until the browser run finishes or is cancelled.
 
-![Fabric Atlas synchronizing FGI-ORACLE while FGI-MAIN remains available](docs/screenshots/multi-workspace-sync-v2.png)
+![Fabric Atlas synchronizing FGI-MAIN, the first of three selected workspaces](docs/screenshots/multi-workspace-sync-v2.png)
 
 ### Workspace Hub
 

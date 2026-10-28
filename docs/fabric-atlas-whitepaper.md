@@ -6,11 +6,10 @@ author: "Fabric Atlas project"
 lang: en-GB
 ---
 
-> This paper documents Fabric Atlas 2.6.3. FGI-MAIN and FGI-ORACLE are used
-> as real deployment examples, captured on 3 October 2026 with release 2.0.0.
-> Counts and findings describe those workspaces at that point in time. They are
-> not product defaults, limits or benchmarks. Capabilities added in 2.6 are
-> described in their own section and are not shown in the captured figures.
+> This paper documents Fabric Atlas 2.6.4. FGI-MAIN is used as the real
+> deployment example, captured on 28 October 2026 with release 2.6.4.
+> Counts and findings describe that workspace at that point in time. They are
+> not product defaults, limits or benchmarks.
 
 ## Executive summary
 
@@ -111,19 +110,20 @@ The FGI-MAIN manifest used by the screenshots reports:
 
 | Observed value | Current evidence |
 |---|---:|
-| Fabric items | 79 |
-| Atlas lineage links | 67 |
-| Principals | 2 |
-| Stored access grants | 146 |
-| Evaluated principal-item pairs | 158 |
-| Recent job runs | 28 |
-| Failed recent job runs | 3 |
-| Configuration entries | 1,585 |
+| Fabric items | 90 |
+| Internal objects | 3,069 |
+| Atlas lineage links | 82 |
+| Principals | 3 |
+| Stored access grants | 252 |
+| Evaluated principal-item pairs | 270 |
+| Recent job runs | 14 |
+| Failed recent job runs | 6 |
+| Configuration entries | 1,889 |
 | Shared team notes | 0 |
 
-FGI-MAIN and FGI-ORACLE are selected in the shared Atlas scope. FGI-MAIN is
-the active workspace in the screenshots. FGI-ORACLE remains separately
-addressable and is loaded only when a user switches to it.
+FGI, FGI-MAIN, FGI-ORACLE and MSFlix are selected in the shared Atlas scope.
+FGI-MAIN is the active workspace in the screenshots. The other workspaces
+remain separately addressable and are loaded only when a user switches to them.
 
 ## Workspace orientation
 
@@ -138,14 +138,17 @@ targets.
 
 The screenshot reports:
 
-* 79 Fabric items;
-* 67 lineage links;
-* 80 percent health across the 15 items with assessed health evidence;
+* 90 Fabric items and 3,069 tables, columns and measures;
+* 82 lineage links;
+* 40 percent health across the five items with assessed health evidence;
 * three failing items;
 * no detected external or confidential item signal in the current workspace;
-* 146 indexed access grants.
+* 252 indexed access grants.
 
-Unknown health does not count as failure. Sixty-four items have no assessed
+The Overview also shows the Fabric domain of the workspace and the largest
+posture gap, Sensitivity, 70 points below its target.
+
+Unknown health does not count as failure. Eighty-five items have no assessed
 health status and remain visibly separate from healthy, failing and stale
 states.
 
@@ -169,8 +172,8 @@ configuration and notes.
 ![A real search for asmdb across items, jobs, tables and columns.](fabric-atlas-whitepaper/assets/03-search-asmdb.png){ width=100% }
 
 The `asmdb` search returns the Workload Hub item, related notebooks,
-`asmDBLake`, SQL endpoint metadata, completed notebook runs and synchronized
-schema objects. Search results navigate back into the matching Atlas view.
+`asmDBLake`, SQL endpoint metadata, completed and failed notebook runs and
+synchronized schema objects. Search results navigate back into the matching Atlas view.
 
 OneLake Catalog Preview can extend the same dialog when the deployment enables
 the feature and the API is available. Results outside the selected Atlas scope
@@ -187,7 +190,7 @@ Agent definitions.
 
 ![Alphabetized Asset Catalog with all synchronized object kinds.](fabric-atlas-whitepaper/assets/04-asset-catalog.png){ width=100% }
 
-The captured catalog contains 2,915 objects across 39 Fabric items. It includes
+The captured catalog contains 3,042 objects across 56 Fabric items. It includes
 generic model tables and columns plus SQL-specific, KQL-specific and definition
 objects. Items that support schema collection remain visible even when Fabric
 returns no objects.
@@ -220,8 +223,8 @@ view.
 ![HealthcareOperationsModel in focused Atlas impact mode.](fabric-atlas-whitepaper/assets/06-item-lineage.png){ width=100% }
 
 Impact mode removes unrelated components. The selected
-`HealthcareOperationsModel` keeps its upstream Lakehouse and its downstream
-report and Data Agent in view. The inspector reports the complete upstream and
+`HealthcareOperationsModel` keeps its upstream Lakehouse, the notebooks that
+load it two hops away, and its downstream report and Data Agent in view. The inspector reports the complete upstream and
 downstream path, not only the lines visible in the current viewport.
 
 Users can move Atlas nodes freely. Reset clears selection, focus, impact,
@@ -235,18 +238,17 @@ relationships rather than combining two sources into one graph.
 ![Item Relations Preview with raw relation labels.](fabric-atlas-whitepaper/assets/07-item-relations-preview.png){ width=100% }
 
 Preview keeps the raw Fabric API `relationType` on each line. The captured
-evidence contains 48 drawn relationships, six relation types and one
-cross-workspace relationship. Observed types include:
+evidence contains 48 drawn relationships across 63 items, five relation types
+and one cross-workspace relationship. Observed types include:
 
 * `Association`;
 * `CascadeDelete`;
 * `Datasource`;
-* `PushData`;
 * `Shortcut`;
 * `WeakAssociation`.
 
 The status row also reports incomplete or throttled queries. In this capture,
-100 item queries completed, 58 failed and the collection stopped early after
+100 item queries completed, 80 failed and the collection stopped early after
 throttling. Atlas preserves that boundary instead of presenting the result as a
 complete authoritative graph.
 
@@ -325,6 +327,11 @@ and metadata coverage.
 
 ![Current governance findings.](fabric-atlas-whitepaper/assets/14-governance-findings.png){ width=100% }
 
+The captured action queue holds 110 findings from six rules, grouped by rule
+and ordered by priority: three failing items, six failed jobs, 16 inactive
+items and 83 items without a sensitivity label, plus individual findings such
+as an endorsed but inactive item and a domain without a workspace.
+
 Findings remain visible until the underlying evidence changes. Personal
 acknowledgements and mutes do not hide the finding from other users and do not
 alter its raw score.
@@ -335,6 +342,9 @@ Change Center compares two validated snapshots across item metadata, schema,
 access, sensitivity, lineage and jobs.
 
 ![Snapshot comparison in Change Center.](fabric-atlas-whitepaper/assets/15-governance-changes.png){ width=100% }
+
+The captured comparison reports five changes: three updated items and two
+tenant settings whose enabled state changed between the two snapshots.
 
 Workspace manifests retain compact trend summaries. Older detailed catalogs
 are loaded only when the reviewer selects a comparison, which avoids hydrating
@@ -368,15 +378,22 @@ The current scores are:
 
 | Pillar | Score | Target |
 |---|---:|---:|
-| Documentation | 24% | 70% |
+| Documentation | 26% | 70% |
 | Ownership | 100% | 70% |
 | Sensitivity | 0% | 70% |
 | Access | 100% | 70% |
 | Lineage | 100% | 70% |
-| Operations | 94% | 70% |
+| Operations | 90% | 70% |
 
 Non-applicable evidence is excluded rather than scored as zero. Every pillar
 links back to the items and findings behind the score.
+
+The Posture tab opens with the same pillars rolled up per Fabric domain and
+mapped to the Microsoft Health, Protect and Trust groups. In this capture the
+FGI domain scores 91 percent Health, 49 percent Protect and 74 percent Trust,
+with two of three pillar groups at target. Fabric governance signals beside
+the radar report 2 percent endorsed items and 128 of 182 governance-relevant
+tenant settings enabled.
 
 ### Policies & AI
 
@@ -462,7 +479,7 @@ strongest recorded permission for every reachable principal-item pair.
 
 ![Access Review matrix with evidence coverage.](fabric-atlas-whitepaper/assets/19-access-review.png){ width=100% }
 
-The captured workspace contains two resolved principals and 158 recorded
+The captured workspace contains three resolved principals and 270 recorded
 principal-item pairs. Filters cover level, origin, risk flag and evidence
 coverage. The matrix can be exported as CSV.
 
@@ -507,6 +524,11 @@ downstream blast radius and reassignment evidence for a person or guest.
 
 ![Departure pack for the System Administrator.](fabric-atlas-whitepaper/assets/22-departure-pack.png){ width=100% }
 
+In this capture, six of 90 items have documented ownership evidence for the
+System Administrator, all six solely owned. Two semantic models are flagged as
+urgent orphan risks because each has two downstream consumers, and 84 items
+with direct Owner access are listed for privileged review.
+
 Ownership conclusions require type-specific Fabric metadata. A matching display
 name alone is not accepted as proof. If no eligible successor can be supported
 by the graph and access evidence, the report states that no candidate was
@@ -524,8 +546,8 @@ inferred through stored lineage.
 
 ![Jobs, operational evidence and monitoring boundaries.](fabric-atlas-whitepaper/assets/23-jobs-health.png){ width=100% }
 
-The captured snapshot contains 28 recent runs: 25 successful and three failed,
-with an average duration of 6 minutes and 31 seconds.
+The captured snapshot contains 14 recent runs: eight successful and six failed,
+with an average duration of 3 minutes and 16 seconds.
 
 Monitoring sources are explicit:
 
@@ -543,8 +565,8 @@ Unselected discovery results are never stored.
 
 ![Multi-workspace discovery and shared scope selection.](fabric-atlas-whitepaper/assets/24-workspace-scope.png){ width=100% }
 
-FGI-MAIN and FGI-ORACLE are selected. The dialog also shows unselected
-workspaces returned by discovery. The active workspace cannot be removed until
+FGI, FGI-MAIN, FGI-ORACLE and MSFlix are selected. The dialog also shows
+unselected workspaces returned by discovery. The active workspace cannot be removed until
 the user switches away from it.
 
 Every authenticated app user can read the selected catalog scope. Only the
@@ -557,8 +579,13 @@ Each workspace has an independent synchronization state and manifest.
 ![Synchronization state for the selected workspace scope.](fabric-atlas-whitepaper/assets/25-workspace-sync.png){ width=100% }
 
 The panel shows selected workspaces, snapshot status, manual run history and
-schedule state. FGI-MAIN has a validated snapshot. FGI-ORACLE remains listed
-but is not loaded until selected.
+schedule state. In this capture a multi-workspace run is in progress: FGI-MAIN
+is the first of three workspaces and is 44 percent complete. Each workspace
+keeps its last valid snapshot until its own run publishes a new manifest.
+
+Runs can be full or incremental. The last FGI-MAIN incremental run rescanned 13
+of 90 items and reused 77 in 12 minutes 43 seconds, against 8 minutes 59
+seconds for the preceding full run. A full rescan is forced every seven days.
 
 Scheduled refresh is disabled. Fabric Apps backend Functions do not expose a
 documented timer or unattended trigger, and the collectors need a delegated
@@ -578,7 +605,7 @@ source code remain outside the snapshot.
 ### Team notes
 
 Team notes attach shared operational context to the workspace or a selected
-Fabric item.
+Fabric item. The capture shows the workspace thread before any note is posted.
 
 ![Shared team notes in Workspace Hub.](fabric-atlas-whitepaper/assets/27-team-notes.png){ width=100% }
 
