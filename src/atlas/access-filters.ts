@@ -8,7 +8,7 @@ export const PRINCIPAL_TYPE_LABELS: Record<(typeof PRINCIPAL_TYPE_FILTERS)[numbe
   group: "Group",
   // Fabric reports managed identities with the service principal type.
   servicePrincipal: "Service principal / managed identity",
-  guest: "Guest / external (heuristic)",
+  guest: "Guest (external)",
   unknown: "Unknown",
 };
 

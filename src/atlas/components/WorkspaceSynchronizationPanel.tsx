@@ -43,10 +43,10 @@ import {
 } from "../workspace-sync";
 import { LINK_BUTTON, PRIMARY_BUTTON, SECONDARY_BUTTON } from "./button-styles";
 import { ErrorDetail } from "./ErrorDetail";
+import { NetworkProtectionCard } from "./NetworkProtectionCard";
 import { RowActionsMenu, type RowMenuAction } from "./RowActionsMenu";
 import { SyncRunDetailed } from "./SyncRunStatus";
 import { parseSyncPlanSummary } from "../incremental-sync";
-import { preferredSyncMode, setPreferredSyncMode, type SyncModePreference } from "../sync-mode";
 import { WorkspaceScopeDialog } from "./WorkspaceScopeDialog";
 
 export const LIVE_RUN_ROW_ID = "atlas-live-sync-run";
@@ -239,7 +239,6 @@ function SelectedWorkspacesCard() {
     isPreview,
   } = useAtlas();
   const [scopeOpen, setScopeOpen] = useState(false);
-  const [syncMode, setSyncMode] = useState<SyncModePreference>(preferredSyncMode);
   const [excluded, setExcluded] = useState<ReadonlySet<string>>(new Set());
   const switchHintId = useId();
   const rows = scopeWorkspaceRows({
@@ -307,26 +306,6 @@ function SelectedWorkspacesCard() {
           <span className="text-300 font-semibold text-brand-foreground">
             {selectable ? checkedIds.length : workspaceScopes.length} selected
           </span>
-          {canStart && (
-            <label className="inline-flex items-center gap-xs text-200 font-semibold text-muted-foreground">
-              Mode
-              <select
-                aria-label="Synchronization mode"
-                value={syncMode}
-                disabled={syncing}
-                onChange={(event) => {
-                  const mode = event.target.value as SyncModePreference;
-                  setSyncMode(mode);
-                  setPreferredSyncMode(mode);
-                }}
-                title="Incremental re-enriches only items modified since the last snapshot of this browser; Full re-reads everything."
-                className="atlas-control rounded-lg border border-input bg-card px-s text-foreground"
-              >
-                <option value="incremental">Incremental (modified items)</option>
-                <option value="full">Full rescan</option>
-              </select>
-            </label>
-          )}
           {selectable && (
             <button
               type="button"
@@ -956,9 +935,12 @@ export function WorkspaceSynchronizationPanel() {
   return (
     <div className="flex min-w-0 flex-col gap-l">
       <SyncRunDetailed onViewRun={viewRun} />
-      <div className="grid items-start gap-l xl:grid-cols-[minmax(0,1.85fr)_minmax(0,1fr)]">
+      <div className="grid items-start gap-l xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <div className="flex min-w-0 flex-col gap-l">
+          <NetworkProtectionCard />
+          <ScheduleCard />
+        </div>
         <SelectedWorkspacesCard />
-        <ScheduleCard />
       </div>
       <RecentRunsCard />
     </div>

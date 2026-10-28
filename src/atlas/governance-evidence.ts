@@ -39,6 +39,12 @@ export interface TenantSettingInfo {
 export interface NetworkPolicyInfo {
   inboundPublicAccess?: "Allow" | "Deny";
   outboundPublicAccess?: "Allow" | "Deny";
+  /** Workspace IP firewall rules are configured. */
+  ipFirewall?: boolean;
+  /** Trusted workspace access via workspace identity, with its shortcut count. */
+  trustedWorkspaceAccess?: { enabled: boolean; shortcuts?: number };
+  /** Customer-managed key encryption is on. */
+  customerManagedKey?: boolean;
 }
 
 export interface ExternalShareInfo {
@@ -49,6 +55,7 @@ export interface ExternalShareInfo {
   recipientTenantId?: string;
   createdBy?: string;
   expiresAt?: string;
+  createdAt?: string;
   paths: string[];
 }
 
@@ -61,6 +68,10 @@ export interface OneLakeRoleInfo {
   itemMemberCount: number;
   rowSecurity: boolean;
   columnSecurity: boolean;
+  /** Row-level security predicates (`constraints.rows`). */
+  rowFilters?: { tablePath: string; predicate: string }[];
+  /** Column-level security rules (`constraints.columns`). */
+  columnRules?: { tablePath: string; effect: string; columns: string[] }[];
 }
 
 export interface GovernanceEvidence {
@@ -117,6 +128,18 @@ export function parseGovernanceEvidence(value: unknown): GovernanceEvidence | un
   const policy = network && isRecord(network.policy) ? network.policy : undefined;
   const inbound = access(policy?.inboundPublicAccess);
   const outbound = access(policy?.outboundPublicAccess);
+  const ipFirewall = typeof policy?.ipFirewall === "boolean" ? policy.ipFirewall : undefined;
+  const cmk = typeof policy?.customerManagedKey === "boolean" ? policy.customerManagedKey : undefined;
+  const trustedRaw = policy && isRecord(policy.trustedWorkspaceAccess) ? policy.trustedWorkspaceAccess : undefined;
+  const trusted =
+    trustedRaw && typeof trustedRaw.enabled === "boolean"
+      ? {
+          enabled: trustedRaw.enabled,
+          ...(typeof trustedRaw.shortcuts === "number" && Number.isFinite(trustedRaw.shortcuts)
+            ? { shortcuts: Math.max(0, Math.floor(trustedRaw.shortcuts)) }
+            : {}),
+        }
+      : undefined;
   return {
     collectedAt,
     domains: entries(value.domains, (v) => {
@@ -150,7 +173,7 @@ export function parseGovernanceEvidence(value: unknown): GovernanceEvidence | un
     }),
     network: {
       status: network ? sectionState(network.status) : { status: "failed", code: "invalid-response" },
-      ...(policy ? { policy: { ...(inbound ? { inboundPublicAccess: inbound } : {}), ...(outbound ? { outboundPublicAccess: outbound } : {}) } } : {}),
+      ...(policy ? { policy: { ...(inbound ? { inboundPublicAccess: inbound } : {}), ...(outbound ? { outboundPublicAccess: outbound } : {}), ...(ipFirewall != null ? { ipFirewall } : {}), ...(trusted ? { trustedWorkspaceAccess: trusted } : {}), ...(cmk != null ? { customerManagedKey: cmk } : {}) } } : {}),
     },
     externalShares: entries(value.externalShares, (v) => {
       const itemId = str(v.itemId, 128);
@@ -160,12 +183,14 @@ export function parseGovernanceEvidence(value: unknown): GovernanceEvidence | un
       const recipientTenantId = str(v.recipientTenantId, 128);
       const createdBy = str(v.createdBy, 320);
       const expiresAt = str(v.expiresAt, 64);
+      const createdAt = str(v.createdAt, 64);
       return {
         itemId: itemId.toLowerCase(), shareId, status: str(v.status, 64) ?? "Unknown",
         ...(recipient ? { recipient } : {}),
         ...(recipientTenantId ? { recipientTenantId } : {}),
         ...(createdBy ? { createdBy } : {}),
         ...(expiresAt ? { expiresAt } : {}),
+        ...(createdAt ? { createdAt } : {}),
         paths: strings(v.paths, 20),
       };
     }),
@@ -178,12 +203,34 @@ export function parseGovernanceEvidence(value: unknown): GovernanceEvidence | un
         permissions: strings(v.permissions, 20), paths: strings(v.paths, 50), memberIds: strings(v.memberIds),
         itemMemberCount: typeof v.itemMemberCount === "number" && v.itemMemberCount >= 0 ? Math.floor(v.itemMemberCount) : 0,
         rowSecurity: v.rowSecurity === true, columnSecurity: v.columnSecurity === true,
+        ...roleConstraints(v),
       };
     }),
   };
 }
 
-/** Domain lookup that only answers when the domains section is complete. */
+/**
+ * Adds domain names observed in other synchronized workspaces when the active
+ * snapshot could not name them (for example a snapshot taken before the admin
+ * delegated token). The section status is kept, so completeness is not faked.
+ */
+export function withDomainDirectory(
+  evidence: GovernanceEvidence | undefined,
+  directory: readonly FabricDomainInfo[],
+): GovernanceEvidence | undefined {
+  if (!evidence || !directory.length) return evidence;
+  const known = new Set(evidence.domains.entries.map((domain) => domain.id.toLowerCase()));
+  const missing = directory.filter((domain) => {
+    const id = domain.id.toLowerCase();
+    if (known.has(id)) return false;
+    known.add(id);
+    return true;
+  });
+  if (!missing.length) return evidence;
+  return { ...evidence, domains: { ...evidence.domains, entries: [...evidence.domains.entries, ...missing] } };
+}
+
+/** Domain lookup over every named domain of the evidence. */
 export function domainIndex(evidence: GovernanceEvidence | undefined): Map<string, FabricDomainInfo> {
   const map = new Map<string, FabricDomainInfo>();
   if (!evidence) return map;
@@ -256,4 +303,19 @@ export function itemOneLakeRoles(evidence: GovernanceEvidence | undefined, itemI
   const section = evidence?.oneLakeRoles;
   if (section?.status.status !== "complete") return { known: false, roles: [] };
   return { known: true, roles: section.entries.filter((role) => role.itemId === itemId) };
+}
+
+function roleConstraints(v: Record<string, unknown>): Pick<OneLakeRoleInfo, "rowFilters" | "columnRules"> {
+  const records = (value: unknown) =>
+    (Array.isArray(value) ? value : []).filter((x): x is Record<string, unknown> => !!x && typeof x === "object").slice(0, 20);
+  const rowFilters = records(v.rowFilters).flatMap((r) => {
+    const tablePath = str(r.tablePath, 400);
+    const predicate = str(r.predicate, 1000);
+    return tablePath && predicate ? [{ tablePath, predicate }] : [];
+  });
+  const columnRules = records(v.columnRules).flatMap((r) => {
+    const tablePath = str(r.tablePath, 400);
+    return tablePath ? [{ tablePath, effect: str(r.effect, 32) ?? "Permit", columns: strings(r.columns, 50) }] : [];
+  });
+  return { ...(rowFilters.length ? { rowFilters } : {}), ...(columnRules.length ? { columnRules } : {}) };
 }

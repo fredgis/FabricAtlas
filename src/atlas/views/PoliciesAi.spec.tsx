@@ -25,7 +25,13 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("PoliciesAiSection", () => {
   it("shows Fabric policies enforcement as unknown and lists cataloged policy items", () => {
-    const { unmount } = render(<PoliciesAiSection {...props()} />);
+    const preview = render(<PoliciesAiSection {...props()} />);
+    const sample = screen.getByTestId("fabric-policies");
+    expect(within(sample).getByText(/3 apply to this workspace/)).toBeVisible();
+    expect(within(sample).getByRole("rowheader", { name: "Dataflow Gen2 creation" })).toBeVisible();
+    expect(within(sample).getByRole("link", { name: "Open Policies center" })).toBeVisible();
+    preview.unmount();
+    const { unmount } = render(<PoliciesAiSection {...props()} isPreview={false} />);
     let card = screen.getByTestId("fabric-policies");
     expect(within(card).getByText("Enforcement unknown")).toBeVisible();
     expect(within(card).getByText(FABRIC_POLICIES_UNKNOWN)).toBeVisible();
@@ -34,7 +40,7 @@ describe("PoliciesAiSection", () => {
     unmount();
     const base = props();
     const withPolicy = { ...base.data, items: [...base.data.items, { ...base.data.items[0], fabricId: "pol-1", displayName: "Tenant policy set", itemType: "PolicySet" }] } as AtlasData;
-    render(<PoliciesAiSection {...base} data={withPolicy} />);
+    render(<PoliciesAiSection {...base} isPreview={false} data={withPolicy} />);
     card = screen.getByTestId("fabric-policies");
     expect(within(card).getByRole("list", { name: "Policy items in this workspace" })).toHaveTextContent("Tenant policy set");
   });

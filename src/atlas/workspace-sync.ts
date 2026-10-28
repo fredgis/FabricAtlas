@@ -1,5 +1,6 @@
 import type { SyncRun } from "./model";
 import type { GovernanceSummary } from "./domain-governance";
+import type { FabricDomainInfo } from "./governance-evidence";
 import type { WorkspaceScope } from "./workspace-scope";
 import { SYNC_PHASES, syncPhaseIndex } from "./synchronization-progress";
 
@@ -54,6 +55,8 @@ export interface PersistedWorkspaceSyncStatus {
   snapshotAt?: string;
   displayName?: string;
   fabricDomainId?: string;
+  /** Fabric domains named in this workspace's latest governance evidence. */
+  domains?: FabricDomainInfo[];
   governanceSummary?: GovernanceSummary;
   lastRunStatus?: SyncRun["status"] | "cancelled";
   lastRunStartedAt?: string;

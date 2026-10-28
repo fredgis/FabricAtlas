@@ -72,6 +72,8 @@ import {
   type WorkspaceFocusCapture,
 } from "./atlas/workspace-switch";
 import { WorkspaceSelector } from "./atlas/components/WorkspaceSelector";
+import { DomainFilter } from "./atlas/components/DomainFilterPopover";
+import { SnapshotExportPopover } from "./atlas/components/SnapshotExportPopover";
 import {
   isDisplayDensity,
   useDisplayPreference,
@@ -589,14 +591,15 @@ function App() {
                   id={HEADER_WORKSPACE_SELECT_ID}
                   compact
                   hideWhenSingle
-                  className="hidden max-w-[16rem] md:flex"
+                  className="hidden max-w-[36rem] md:flex"
                 />
                 <span className="hidden shrink-0 xl:inline">
                   · {NAV.find((n) => n.id === tab)?.label}
                 </span>
               </div>
             ) : (
-              <div className="truncate text-[12px] text-muted-foreground sm:text-[13px]">
+              <div className="flex min-w-0 items-center gap-xs truncate text-[12px] text-muted-foreground sm:text-[13px]">
+                <DomainFilter className="hidden md:inline-flex" />
                 <span className="hidden sm:inline">Fabric · </span>
                 <b className="text-foreground">{data.workspace.displayName}</b>
                 <span className="hidden sm:inline">
@@ -626,6 +629,7 @@ function App() {
             >
               <Search className="icon-size-200" />
             </button>
+            {hasData && <SnapshotExportPopover data={data} />}
             <SyncRunCompact
               onOpenDetails={() =>
                 navigate({

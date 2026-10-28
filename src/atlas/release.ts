@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.6.1";
+  "2.6.2";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,23 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.6.2",
+    date: "2026-10-29",
+    title: "Domain posture and mockup alignment",
+    sections: [
+      {
+        title: "Improvements",
+        items: [
+          "Domain posture: Governance Center coverage by domain, domain directory with parent/child rollups and a domain filter showing domain names.",
+          "Workspace domain banner, incremental/full scan mode control and snapshot JSON export.",
+          "My items view, findings explanations, Fabric policies card, network protection card and OneLake role filters aligned with the v2.5/v2.6 mockups.",
+          "Command palette matches descriptions; suggested object descriptions are drafted for findings on undocumented objects.",
+          "Posture radar maps Microsoft Health, Protect and Trust pillars to Fabric signal names.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.6.1",
     date: "2026-10-28",

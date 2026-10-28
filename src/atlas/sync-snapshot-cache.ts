@@ -5,6 +5,8 @@ export interface CachedCollection {
   workspaceId: string;
   generation: number;
   raw: RawSync;
+  /** ISO time of the last full collection; incremental runs keep the previous value. */
+  fullAt?: string;
 }
 
 export interface CollectionCache {

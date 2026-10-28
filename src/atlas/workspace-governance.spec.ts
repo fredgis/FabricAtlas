@@ -93,6 +93,7 @@ describe("workspaceCollectGovernance", () => {
     expect(envelope.oneLakeRoles.entries).toEqual([{
       itemId: LAKE, roleName: "EUReaders", permissions: ["Read"], paths: ["/Tables/orders"],
       memberIds: [USER], itemMemberCount: 1, rowSecurity: true, columnSecurity: false,
+      rowFilters: [{ tablePath: "/Tables/orders", predicate: "region = 'EU'" }],
     }]);
   });
 

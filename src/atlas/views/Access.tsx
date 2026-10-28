@@ -806,6 +806,7 @@ export function AccessReviewDetailPanel({
   noteOverride,
   onNoteChange,
   oneLakeRoles,
+  principals,
 }: {
   row: AccessReviewRow;
   review?: AccessReviewHistory;
@@ -823,6 +824,7 @@ export function AccessReviewDetailPanel({
   noteOverride?: string;
   onNoteChange?: (note: string) => void;
   oneLakeRoles?: ItemOneLakeRoles;
+  principals?: readonly import("../model").Principal[];
 }) {
   const decision = review?.decision;
   const [copied, setCopied] = useState(false);
@@ -987,7 +989,7 @@ export function AccessReviewDetailPanel({
         {oneLakeRoles && (
           <section aria-labelledby="onelake-roles-heading">
             <h3 id="onelake-roles-heading" className="mb-s text-300 font-semibold">OneLake data access roles</h3>
-            <OneLakeRolesList value={oneLakeRoles} />
+            <OneLakeRolesList value={oneLakeRoles} principals={principals} />
           </section>
         )}
 
@@ -1713,8 +1715,14 @@ export function AccessView({
     },
   ];
 
+  const externalShareCount =
+    data.governanceEvidence?.externalShares.status.status === "complete"
+      ? data.governanceEvidence.externalShares.entries.length
+      : 0;
+
   return (
     <div className="atlas-content-frame flex flex-col gap-l p-l sm:p-xxl">
+      <ExternalSharesCard evidence={data.governanceEvidence} items={data.items} />
       <Card className="overflow-hidden border-primary/25">
         <PageHeader title="Access Review" purpose="Review recorded grants or try a local removal scenario."
           className="border-b border-border"
@@ -1764,6 +1772,19 @@ export function AccessView({
             >
               What-if
             </button>
+            {externalShareCount > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const card = document.getElementById("external-shares");
+                  card?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  card?.focus({ preventScroll: true });
+                }}
+                className="atlas-control rounded-md px-l text-300 font-semibold text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+              >
+                External shares ({externalShareCount})
+              </button>
+            )}
           </div>}
         />
         {/* The What-if limits stay as its accessible description; the What-if panel shows them visibly. */}
@@ -1852,28 +1873,7 @@ export function AccessView({
 
             <label className="min-w-0">
               <span className="mb-xs block text-200 font-semibold text-muted-foreground">
-                Risk flag
-              </span>
-              <select
-                value={risk}
-                onChange={(event) =>
-                  setRisk(event.target.value as RiskFilter)
-                }
-                className="atlas-control w-full rounded-lg border border-input bg-card px-m text-300 text-foreground xl:w-auto"
-              >
-                <option value="all">All flags</option>
-                <option value="flagged">Any flag or warning</option>
-                <option value="external">External</option>
-                <option value="broad">Broad</option>
-                <option value="servicePrincipal">Service principal</option>
-                <option value="admin">Admin</option>
-                <option value="resolution">Resolution warning</option>
-              </select>
-            </label>
-
-            <label className="min-w-0">
-              <span className="mb-xs block text-200 font-semibold text-muted-foreground">
-                Principal type
+                User type
               </span>
               <select
                 value={principalType}
@@ -1892,7 +1892,7 @@ export function AccessView({
 
             <label className="min-w-0">
               <span className="mb-xs block text-200 font-semibold text-muted-foreground">
-                Role
+                Workspace role
               </span>
               <select
                 value={role}
@@ -1905,6 +1905,27 @@ export function AccessView({
                     {ROLE_LABELS[entry]}
                   </option>
                 ))}
+              </select>
+            </label>
+
+            <label className="min-w-0">
+              <span className="mb-xs block text-200 font-semibold text-muted-foreground">
+                Risk flag
+              </span>
+              <select
+                value={risk}
+                onChange={(event) =>
+                  setRisk(event.target.value as RiskFilter)
+                }
+                className="atlas-control w-full rounded-lg border border-input bg-card px-m text-300 text-foreground xl:w-auto"
+              >
+                <option value="all">All flags</option>
+                <option value="flagged">Any flag or warning</option>
+                <option value="external">External</option>
+                <option value="broad">Broad</option>
+                <option value="servicePrincipal">Service principal</option>
+                <option value="admin">Admin</option>
+                <option value="resolution">Resolution warning</option>
               </select>
             </label>
 
@@ -2114,6 +2135,7 @@ export function AccessView({
             key={`${selectedRow.id}:${reviewsByRowKey.get(selectedRow.id)?.history[0]?.id ?? "none"}`}
             row={selectedRow}
             review={reviewsByRowKey.get(selectedRow.id)}
+            principals={data.principals}
             oneLakeRoles={
               selectedRow.item.itemType === "Lakehouse"
                 ? itemOneLakeRoles(data.governanceEvidence, selectedRow.itemId)
@@ -2135,7 +2157,6 @@ export function AccessView({
           </AccessEvidenceInspector>
         )}
       </div>
-      <ExternalSharesCard evidence={data.governanceEvidence} items={data.items} />
       <OffboardingDialog
         data={data}
         principalId={offboardingPrincipalId}

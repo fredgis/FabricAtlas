@@ -100,6 +100,11 @@ export function sortByPriority<T extends GovernanceFinding>(
     .map(({ finding }) => finding);
 }
 
+/** P1 ≥ 16 (e.g. high × 2 downstream × certified), P2 ≥ 4, otherwise P3. */
+export function priorityTier(score: number): "P1" | "P2" | "P3" {
+  return score >= 16 ? "P1" : score >= 4 ? "P2" : "P3";
+}
+
 export function formatPriority(priority: FindingPriority): string {
   return `${priority.severityWeight} severity × ${priority.impactFactor} impact (1 + ${Math.min(priority.downstreamCount, IMPACT_CAP)} downstream) × ${priority.endorsementFactor} endorsement = ${priority.score}`;
 }

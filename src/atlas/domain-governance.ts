@@ -42,6 +42,8 @@ export interface GovernanceSummary {
     certified: CoverageCount;
     described: CoverageCount;
     labeled: CoverageCount;
+    /** Items with at least one Fabric tag. */
+    tagged: CoverageCount;
   };
   /** Short hashes of critical finding ids, used to detect new critical findings between syncs. */
   critical?: string[];
@@ -64,7 +66,7 @@ export const UNKNOWN_DOMAIN_KEY = "unknown";
 const SEVERITIES: GovernanceSeverity[] = ["critical", "high", "medium", "low"];
 const PILLARS: MicrosoftGovernancePillar[] = ["health", "protect", "trust"];
 type CoverageKey = keyof GovernanceSummary["coverage"];
-const COVERAGE_KEYS: CoverageKey[] = ["endorsed", "certified", "described", "labeled"];
+const COVERAGE_KEYS: CoverageKey[] = ["endorsed", "certified", "described", "labeled", "tagged"];
 
 function count(numerator: number, denominator: number, total: number): CoverageCount {
   return { numerator, denominator, unknown: Math.max(0, total - denominator) };
@@ -106,6 +108,7 @@ export function summarizeGovernance(
       certified: count(Math.min(certified, endorsementReadable), endorsementReadable, total),
       described: count(coverage.descriptions.numerator, coverage.descriptions.denominator, total),
       labeled: count(coverage.sensitivity.numerator, coverage.sensitivity.denominator, total),
+      tagged: count(data.items.filter((item) => item.tags.length > 0).length, total, total),
     },
     ...(critical.size ? { critical: [...critical].sort().slice(0, CRITICAL_KEYS_LIMIT) } : {}),
   };
@@ -149,7 +152,8 @@ export function parseGovernanceSummary(value: unknown): GovernanceSummary | unde
   }
   const coverage = {} as GovernanceSummary["coverage"];
   for (const key of COVERAGE_KEYS) {
-    const entry = rawCoverage[key];
+    // Summaries persisted before tag coverage existed: every item's tags are unknown.
+    const entry = key === "tagged" && rawCoverage[key] == null ? { numerator: 0, denominator: 0, unknown: items } : rawCoverage[key];
     const numerator = nonNegative(entry?.numerator);
     const denominator = nonNegative(entry?.denominator);
     const unknown = nonNegative(entry?.unknown);
@@ -200,6 +204,7 @@ function emptyCoverage(): GovernanceSummary["coverage"] {
     certified: { numerator: 0, denominator: 0, unknown: 0 },
     described: { numerator: 0, denominator: 0, unknown: 0 },
     labeled: { numerator: 0, denominator: 0, unknown: 0 },
+    tagged: { numerator: 0, denominator: 0, unknown: 0 },
   };
 }
 
@@ -371,4 +376,106 @@ export function workspaceDomainGroups(
 export function findingDomainKey(finding: Pick<GovernanceFinding, "id">, workspaceDomainId: string | undefined): string {
   if (finding.id.startsWith("domain-empty:")) return domainKey(finding.id.slice("domain-empty:".length));
   return domainKey(workspaceDomainId);
+}
+
+/**
+ * Display rows for "Posture by domain": each parent domain aggregates its
+ * sub-domains (roll-up), and sub-domains are listed right under their parent.
+ * Items and findings are summed; pillar scores are item-weighted. Use
+ * `aggregateByDomain` for totals that reconcile without double counting.
+ */
+export interface DomainRollupRow extends DomainGovernanceRow {
+  /** Number of sub-domains rolled into this row. */
+  rolledUp: number;
+  depth: 0 | 1;
+}
+
+/** A domain filter key plus the keys of its sub-domains, so selecting a parent domain includes its children. */
+export function domainScopeKeys(
+  key: string,
+  evidence: { domains: { entries: readonly { id: string; parentDomainId?: string }[] } } | undefined,
+): ReadonlySet<string> {
+  const keys = new Set<string>(key ? [key] : []);
+  for (const domain of evidence?.domains.entries ?? []) {
+    if (key && domain.parentDomainId?.toLowerCase() === key) keys.add(domain.id.toLowerCase());
+  }
+  return keys;
+}
+export function withParentRollups(rows: readonly DomainGovernanceRow[]): DomainRollupRow[] {
+  const byKey = new Map(rows.map((row) => [row.key, row]));
+  const children = new Map<string, DomainGovernanceRow[]>();
+  for (const row of rows) {
+    const parent = row.parentDomainId?.toLowerCase();
+    if (!parent || !byKey.has(parent)) continue;
+    children.set(parent, [...(children.get(parent) ?? []), row]);
+  }
+  const rollup = (row: DomainGovernanceRow): DomainRollupRow => {
+    const kids = (children.get(row.key) ?? []).filter((child) => !child.empty);
+    if (!kids.length) return { ...row, rolledUp: 0, depth: 0 };
+    const all = [row, ...kids].filter((entry) => !entry.empty);
+    const items = all.reduce((sum, entry) => sum + entry.items, 0);
+    const findings = { critical: 0, high: 0, medium: 0, low: 0 } as Record<GovernanceSeverity, number>;
+    for (const entry of all) for (const severity of SEVERITIES) findings[severity] += entry.findings[severity];
+    const pillars = {} as Record<MicrosoftGovernancePillar, number | null>;
+    for (const pillar of PILLARS) {
+      let sum = 0;
+      let weight = 0;
+      for (const entry of all) {
+        const score = entry.pillars[pillar];
+        if (score == null) continue;
+        sum += score * Math.max(1, entry.items);
+        weight += Math.max(1, entry.items);
+      }
+      pillars[pillar] = weight ? Math.round(sum / weight) : null;
+    }
+    const coverage = emptyCoverage();
+    for (const entry of all) {
+      for (const key of COVERAGE_KEYS) {
+        coverage[key].numerator += entry.coverage[key].numerator;
+        coverage[key].denominator += entry.coverage[key].denominator;
+        coverage[key].unknown += entry.coverage[key].unknown;
+      }
+    }
+    return {
+      ...row,
+      workspaces: all.flatMap((entry) => entry.workspaces),
+      workspacesWithoutSummary: all.reduce((sum, entry) => sum + entry.workspacesWithoutSummary, 0),
+      items,
+      findings,
+      pillars,
+      coverage,
+      empty: false,
+      rolledUp: kids.length,
+      depth: 0,
+    };
+  };
+  const blocks: DomainRollupRow[][] = [];
+  for (const row of rows) {
+    const parent = row.parentDomainId?.toLowerCase();
+    if (parent && byKey.has(parent)) continue;
+    blocks.push([rollup(row), ...(children.get(row.key) ?? []).map((child) => ({ ...child, rolledUp: 0, depth: 1 as const }))]);
+  }
+  // Rolled-up parents become non-empty, so re-rank: populated domains, empty domains, unassigned, unknown.
+  const rank = (row: DomainRollupRow) =>
+    row.key === NO_DOMAIN_KEY ? 2 : row.key === UNKNOWN_DOMAIN_KEY ? 3 : row.empty ? 1 : 0;
+  return blocks
+    .map((block, index) => ({ block, index }))
+    .sort((left, right) => rank(left.block[0]!) - rank(right.block[0]!) || left.index - right.index)
+    .flatMap(({ block }) => block);
+}
+
+/** Largest trust-coverage gap weighted by item count, as in the OneLake catalog "Curate first" hint. */
+export function curateFirst(row: DomainGovernanceRow): { label: string; missing: number } | undefined {
+  const candidates: [string, CoverageCount][] = [
+    ["Descriptions", row.coverage.described],
+    ["Tags", row.coverage.tagged],
+    ["Endorsement", row.coverage.endorsed],
+    ["Sensitivity labels", row.coverage.labeled],
+  ];
+  let best: { label: string; missing: number } | undefined;
+  for (const [label, value] of candidates) {
+    const missing = value.denominator - value.numerator;
+    if (missing > 0 && (!best || missing > best.missing)) best = { label, missing };
+  }
+  return best;
 }

@@ -1,8 +1,10 @@
 import * as Dialog from "@radix-ui/react-dialog";
+import * as Popover from "@radix-ui/react-popover";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ChevronDown,
+  Check,
   ChevronRight,
   FilterX,
   Layers,
@@ -38,6 +40,7 @@ import {
   resolveItemTags,
   toggleFacetValue,
   type CatalogFacetSelection,
+  type TagScope,
 } from "../catalog-facets";
 import { isCatalogLayout, useDisplayPreference } from "../display-preferences";
 import { CatalogTable } from "../components/CatalogTable";
@@ -58,6 +61,12 @@ import {
   type Item,
   type ItemType,
 } from "../model";
+
+const TAG_SCOPE_DOT: Record<TagScope, string> = {
+  tenant: "bg-primary",
+  domain: "bg-status-healthy",
+  unknown: "bg-muted-foreground",
+};
 
 const HEALTH_META: Record<
   Health,
@@ -150,17 +159,21 @@ function DrawerSection({
 function RequestAccess({
   item,
   workspace,
+  hasAccess,
 }: {
   item: Item;
   workspace: Parameters<typeof requestAccessLinks>[1];
+  hasAccess: boolean;
 }) {
   const links = requestAccessLinks(item, workspace);
   return (
     <div className="mt-s flex flex-wrap items-center gap-m rounded-lg border border-border bg-secondary/60 px-s py-xs">
-      <span className="text-200 text-muted-foreground">
-        No access recorded for you according to the last snapshot.
-      </span>
       <NativeLink href={links.fabricUrl}>Request access in Fabric</NativeLink>
+      <span className="text-200 text-muted-foreground">
+        {hasAccess
+          ? "Opens the item's access request page in Fabric. Atlas grants nothing."
+          : "No access recorded for you according to the last snapshot. Atlas grants nothing."}
+      </span>
       {links.mailto && (
         <a
           href={links.mailto}
@@ -224,6 +237,14 @@ export function CatalogView({
     () => ({ workspace: data.workspace, governanceEvidence: data.governanceEvidence }),
     [data.workspace, data.governanceEvidence],
   );
+  const workspaceDomainName = useMemo(() => {
+    const evidence = data.governanceEvidence;
+    const names = new Set<string>();
+    for (const item of items) {
+      for (const tag of resolveItemTags(item, evidence)) if (tag.scope === "domain" && tag.domainName) names.add(tag.domainName);
+    }
+    return [...names].sort().join(", ");
+  }, [data.governanceEvidence, items]);
   const postureItemIds = useMemo(
     () =>
       posturePillar
@@ -289,6 +310,7 @@ export function CatalogView({
     [baseVisible, facets, facetContext],
   );
   const visible = facetResult.items;
+  const activeFacetCount = CATALOG_FACETS.filter((facet) => (facets[facet]?.length ?? 0) > 0).length;
   const facetFilters = facetSelectionToFilters(facets);
   const facetKey = JSON.stringify(facetFilters);
   const searching = Boolean(query.trim());
@@ -360,7 +382,7 @@ export function CatalogView({
           ? [{ key: "lineage", label: "Lineage" }]
           : []),
         ...(dGrants.length ? [{ key: "access", label: "Access" }] : []),
-        ...(showOneLakeRoles ? [{ key: "onelake-roles", label: "OneLake roles" }] : []),
+        ...(showOneLakeRoles ? [{ key: "onelake-roles", label: "Security roles" }] : []),
         ...dCfgSections.map(([section]) => ({
           key: `config-${toSectionKey(section)}`,
           label: section,
@@ -496,39 +518,6 @@ export function CatalogView({
                 </ul>
               </section>
             )}
-            <div className="mt-m flex flex-col gap-s" aria-label="Catalog facets" role="group">
-              {CATALOG_FACETS.map((facet) =>
-                facetResult.facets[facet].length ? (
-                  <fieldset key={facet} className="min-w-0">
-                    <legend className="mb-xxs text-200 font-semibold text-muted-foreground">
-                      {CATALOG_FACET_LABELS[facet]}
-                    </legend>
-                    <div className="flex flex-wrap gap-xs">
-                      {facetResult.facets[facet].map((entry) => {
-                        const pressed = facets[facet]?.includes(entry.value) ?? false;
-                        return (
-                          <button
-                            key={entry.value}
-                            type="button"
-                            aria-pressed={pressed}
-                            onClick={() => setFacets((current) => toggleFacetValue(current, facet, entry.value))}
-                            className={cn(
-                              "inline-flex items-center gap-xxs rounded-md border px-s py-xxs text-200 font-medium",
-                              pressed
-                                ? "border-primary/40 bg-primary/10 text-primary"
-                                : "border-border bg-background text-foreground hover:bg-accent",
-                            )}
-                          >
-                            {entry.label}
-                            <span className="font-numeric text-muted-foreground">{entry.count}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </fieldset>
-                ) : null,
-              )}
-            </div>
           </div>
 
           <div className="min-h-0 flex-1 overflow-auto py-s">
@@ -640,9 +629,41 @@ export function CatalogView({
         </aside>
 
         <section aria-label="Catalog items">
+          <div className="mb-m flex flex-wrap items-center gap-xs" aria-label="Catalog facets" role="group">
+            {CATALOG_FACETS.map((facet) => (
+              <FacetDropdown
+                key={facet}
+                label={CATALOG_FACET_LABELS[facet]}
+                options={facetResult.facets[facet]}
+                selected={facets[facet] ?? []}
+                onToggle={(value) => setFacets((current) => toggleFacetValue(current, facet, value))}
+                onClear={() => setFacets((current) => ({ ...current, [facet]: [] }))}
+              />
+            ))}
+            <span className="ml-auto inline-flex items-center gap-s text-200 text-muted-foreground">
+              <span>
+                {activeFacetCount} {activeFacetCount === 1 ? "filter" : "filters"} · {visible.length} of {items.length} items
+              </span>
+              {hasFacetSelection(facets) && (
+                <button
+                  type="button"
+                  onClick={() => setFacets({})}
+                  className="rounded-md px-s py-xxs font-semibold text-primary hover:bg-primary/10"
+                >
+                  Clear
+                </button>
+              )}
+            </span>
+          </div>
           <div className="atlas-toolbar mb-m flex flex-wrap items-center justify-between">
             <div>
-              <h2 className="text-400 font-semibold">Governed items</h2>
+              <h2 className="flex flex-wrap items-center gap-m text-400 font-semibold">
+                Governed items
+                <span className="inline-flex items-center gap-m text-200 font-normal text-muted-foreground" aria-label="Tag scope legend">
+                  <span className="inline-flex items-center gap-xxs"><span className={cn("size-xs rounded-full", TAG_SCOPE_DOT.tenant)} aria-hidden="true" />Tenant tag</span>
+                  <span className="inline-flex items-center gap-xxs"><span className={cn("size-xs rounded-full", TAG_SCOPE_DOT.domain)} aria-hidden="true" />Domain tag{workspaceDomainName ? ` (${workspaceDomainName})` : ""}</span>
+                </span>
+              </h2>
               <p className="text-200 text-muted-foreground">
                 {visible.length} {visible.length === 1 ? "result" : "results"}
               </p>
@@ -754,9 +775,10 @@ export function CatalogView({
                               title={tag.hint}
                               className="inline-flex items-center gap-xxs rounded-md border border-border bg-muted px-s py-xxs text-200 font-medium text-muted-foreground"
                             >
+                              <span className={cn("size-xs shrink-0 rounded-full", TAG_SCOPE_DOT[tag.scope])} aria-hidden="true" />
                               {tag.label}
-                              <span className="text-100 uppercase tracking-wide opacity-80">
-                                {tag.scope === "tenant" ? "Tenant" : tag.scope === "domain" ? tag.domainName ?? "Domain" : "?"}
+                              <span className="text-100 opacity-80">
+                                · {tag.scope === "tenant" ? "Tenant" : tag.scope === "domain" ? `Domain · ${tag.domainName ?? "Unknown"}` : "Scope unknown"}
                               </span>
                               <span className="sr-only">({tag.hint})</span>
                             </span>
@@ -847,9 +869,11 @@ export function CatalogView({
                         </span>
                       )}
                     </div>
-                    {!hasRecordedAccess(data, detail.fabricId, currentUser.email) && (
-                      <RequestAccess item={detail} workspace={data.workspace} />
-                    )}
+                    <RequestAccess
+                      item={detail}
+                      workspace={data.workspace}
+                      hasAccess={hasRecordedAccess(data, detail.fabricId, currentUser.email)}
+                    />
                   </div>
                   <Dialog.Close asChild>
                     <button
@@ -1058,11 +1082,11 @@ export function CatalogView({
                 {showOneLakeRoles && (
                   <DrawerSection
                     icon={ShieldCheck}
-                    title={`OneLake roles${dOneLakeRoles.known ? ` · ${dOneLakeRoles.roles.length}` : ""}`}
+                    title={`OneLake security roles${dOneLakeRoles.known ? ` • ${dOneLakeRoles.roles.length}` : ""}`}
                     sectionKey="onelake-roles"
                   >
                     <div className="p-l">
-                      <OneLakeRolesList value={dOneLakeRoles} />
+                      <OneLakeRolesList value={dOneLakeRoles} principals={data.principals} />
                     </div>
                   </DrawerSection>
                 )}
@@ -1106,5 +1130,79 @@ export function CatalogView({
         )}
       </Dialog.Root>
     </div>
+  );
+}
+
+function FacetDropdown({
+  label,
+  options,
+  selected,
+  onToggle,
+  onClear,
+}: {
+  label: string;
+  options: ReadonlyArray<{ value: string; label: string; count: number }>;
+  selected: readonly string[];
+  onToggle: (value: string) => void;
+  onClear: () => void;
+}) {
+  const current =
+    selected.length === 0
+      ? "All"
+      : selected.length === 1
+        ? (options.find((option) => option.value === selected[0])?.label ?? selected[0])
+        : `${selected.length} selected`;
+  return (
+    <Popover.Root>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          aria-label={`${label} filter: ${current}`}
+          className={cn(
+            "inline-flex items-center gap-xs rounded-md border px-s py-xs text-200",
+            selected.length
+              ? "border-primary/40 bg-primary/10 text-primary"
+              : "border-border bg-card text-foreground hover:bg-accent",
+          )}
+        >
+          <span className="text-muted-foreground">{label}:</span>
+          <span className="max-w-40 truncate font-semibold">{current}</span>
+          <ChevronDown className="icon-size-100" aria-hidden="true" />
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          align="start"
+          sideOffset={4}
+          className="z-50 max-h-80 w-64 overflow-auto rounded-lg border border-border bg-popover p-xs text-popover-foreground shadow-fabric-8"
+        >
+          <button
+            type="button"
+            onClick={onClear}
+            className="flex w-full items-center gap-s rounded-md px-s py-xs text-left text-200 hover:bg-accent"
+          >
+            <Check className={cn("icon-size-100", selected.length ? "invisible" : "")} aria-hidden="true" />
+            <span className="flex-1">All {label.toLowerCase()}</span>
+          </button>
+          {options.map((option) => {
+            const pressed = selected.includes(option.value);
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={pressed}
+                onClick={() => onToggle(option.value)}
+                className="flex w-full items-center gap-s rounded-md px-s py-xs text-left text-200 hover:bg-accent"
+              >
+                <Check className={cn("icon-size-100", pressed ? "" : "invisible")} aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                <span className="font-numeric text-muted-foreground">{option.count}</span>
+              </button>
+            );
+          })}
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }

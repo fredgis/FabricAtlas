@@ -17,12 +17,13 @@ import {
   Search,
   ShieldAlert,
   UserRound,
+  Settings2,
   ShieldCheck,
   VolumeX,
 } from "lucide-react";
 import { TeamsTestButton } from "../components/TeamsTestButton";
 import * as Tabs from "@radix-ui/react-tabs";
-import { lazy, Suspense, useEffect, useId, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { SavedViewsMenu } from "../components/SavedViewsMenu";
 import { TrendChart } from "../components/TrendChart";
 import { GovernanceExceptionControl } from "../components/GovernanceExceptionControl";
@@ -89,6 +90,7 @@ import { groupFindingsByRule } from "../finding-groups";
 import {
   createFindingExplainer,
   formatPriority,
+  priorityTier,
   sortByPriority,
   type FindingExplanation,
 } from "../finding-priority";
@@ -119,20 +121,22 @@ import {
   summarizeMyItems,
   type Ownership,
 } from "../my-items";
-import { buildSnapshotExport } from "../snapshot-export";
 import { downloadText, fileSlug } from "../download";
 import { DomainGovernanceTable } from "../components/DomainGovernanceTable";
+import { DescriptionDraftsPanel } from "../components/DescriptionDraftsPanel";
+import { draftObjectDescriptions } from "../description-drafts";
 import { useDomainFilter } from "../domain-filter";
 import {
   aggregateByDomain,
   domainGovernanceInputs,
   domainKey,
+  domainScopeKeys,
   findingDomainKey,
   NO_DOMAIN_KEY,
   UNKNOWN_DOMAIN_KEY,
   type DomainGovernanceRow,
 } from "../domain-governance";
-import type { AtlasData } from "../model";
+import { relativeTime, type AtlasData } from "../model";
 
 const PostureRadar = lazy(() => import("../components/PostureRadar").then(
   (module) => ({ default: module.PostureRadar }),
@@ -468,10 +472,12 @@ export function GovernanceCenterView({
       ),
     [data, governanceTargets, workspaceSyncStatuses],
   );
-  const [globalDomain] = useDomainFilter();
-  const visibleDomainRows = domainRows.some((row) => row.key === globalDomain)
-    ? domainRows.filter((row) => row.key === globalDomain)
-    : domainRows;
+  const [globalDomain, setGlobalDomain] = useDomainFilter();
+  const visibleDomainRows = domainRows;
+  const findingScope = useMemo(
+    () => domainScopeKeys(findingDomain || globalDomain, data.governanceEvidence),
+    [data.governanceEvidence, findingDomain, globalDomain],
+  );
   const labelName = useMemo(() => {
     const names = new Map<string, string>();
     for (const item of data.items) {
@@ -486,8 +492,8 @@ export function GovernanceCenterView({
         (severity === "all" || finding.severity === severity) &&
         (category === "all" || finding.category === category) &&
         (!findingPillar || finding.category === findingPillar) &&
-        (!findingDomain ||
-          findingDomainKey(finding, data.workspace.fabricDomainId) === findingDomain) &&
+        (findingScope.size === 0 ||
+          findingScope.has(findingDomainKey(finding, data.workspace.fabricDomainId))) &&
         (!mineOnly || inMyScope(findingOwnership(finding, myScope))) &&
         (!query ||
           finding.title.toLowerCase().includes(query) ||
@@ -497,7 +503,7 @@ export function GovernanceCenterView({
   }, [
     category,
     data.workspace.fabricDomainId,
-    findingDomain,
+    findingScope,
     findingPillar,
     findingSearch,
     findings,
@@ -698,6 +704,16 @@ export function GovernanceCenterView({
     );
   }, [changeDomain, changeSearch, snapshotChanges]);
 
+  const tenantDrift = useMemo(
+    () =>
+      history.changes
+        .filter((change) => change.domain === "tenant")
+        .sort((a, b) => b.syncedAt.localeCompare(a.syncedAt)),
+    [history.changes],
+  );
+  const tenantDriftCurrent = tenantDrift.filter(
+    (change) => change.snapshotId === history.current?.snapshotId,
+  ).length;
   const currentChanges =
     history.current == null
       ? 0
@@ -766,6 +782,13 @@ export function GovernanceCenterView({
       detail: "Observed metadata, not an exposure verdict",
       count: buildAiGovernanceInventory(data).length,
       icon: ShieldCheck,
+    },
+    {
+      id: "tenant-settings",
+      label: `Tenant settings (${tenantDrift.length})`,
+      detail: "Tenant setting drift between snapshots",
+      count: tenantDrift.length,
+      icon: Settings2,
     },
   ];
 
@@ -978,8 +1001,20 @@ export function GovernanceCenterView({
     <Tabs.Root value={section} onValueChange={(value) => setSection(value as GovernanceSection)} asChild>
     <div className="atlas-content-frame flex flex-col gap-l p-l sm:p-xxl">
       <Card className="min-w-0 overflow-hidden">
-        <PageHeader title="Governance Center" purpose="Posture, findings and changes in this workspace."
+        <PageHeader
+          title={mineOnly ? "My items" : "Governance Center"}
+          purpose={
+            mineOnly
+              ? "Findings, posture and coverage for the items you own or administer."
+              : "Posture, findings and changes in this workspace."
+          }
           actions={<>
+              <NativeLink href={fabricGovernanceSurfaceUrl(FABRIC_GOVERNANCE_SURFACES[0].path)}>
+                Govern report in Fabric
+              </NativeLink>
+              <NativeLink href={fabricGovernanceSurfaceUrl(FABRIC_GOVERNANCE_SURFACES[1].path)}>
+                Admin monitoring
+              </NativeLink>
               <SavedViewsMenu
                 views={savedViews.filter(
                   (view) => view.section === "governance",
@@ -1004,21 +1039,6 @@ export function GovernanceCenterView({
                   ? `${allRadarEntries.length} new priority alert${allRadarEntries.length === 1 ? "" : "s"}`
                   : "No new priority alert"}
               </span>
-              <button
-                type="button"
-                className="atlas-control inline-flex items-center gap-s rounded-lg border border-border bg-card px-m text-200 font-semibold hover:bg-accent"
-                title="Download the validated snapshot as JSON with a manifest (counts and fingerprint)"
-                onClick={() =>
-                  downloadText(
-                    JSON.stringify(buildSnapshotExport(data, new Date().toISOString()), null, 2),
-                    "application/json",
-                    `atlas-snapshot-${fileSlug(data.workspace.displayName)}.json`,
-                  )
-                }
-              >
-                <Download className="icon-size-100" aria-hidden="true" />
-                Export snapshot
-              </button>
           </>}
         />
 
@@ -1050,10 +1070,9 @@ export function GovernanceCenterView({
           <span className="inline-flex items-center gap-xs">
             <UserRound className="icon-size-100" aria-hidden="true" />
             <span>
-              <strong>My items</strong> · {myItemsSummary.mine} owned by you
+              <strong>Owner: you</strong> • {myItemsSummary.mine} of {myItemsSummary.total} items
               {myItemsSummary.unknown > 0 &&
-                ` · ${myItemsSummary.unknown} with unknown owner (kept visible)`}
-              {" "}· findings, radar and coverage are scoped
+                ` • ${myItemsSummary.unknown} item${myItemsSummary.unknown === 1 ? "" : "s"} with ownership Unknown (shown, not hidden)`}
             </span>
           </span>
           <button
@@ -1061,7 +1080,7 @@ export function GovernanceCenterView({
             className="font-semibold text-brand-foreground hover:underline"
             onClick={() => setMineOnly(false)}
           >
-            Clear
+            Show whole workspace
           </button>
         </div>
       )}
@@ -1094,14 +1113,17 @@ export function GovernanceCenterView({
             onCategory={setCategory}
             onClearPillar={() => setFindingPillar("")}
             domainFilter={
-              findingDomain
+              findingDomain || globalDomain
                 ? {
-                    label: domainRows.find((row) => row.key === findingDomain)?.domain.label ?? findingDomain,
-                    includesWorkspace: domainKey(data.workspace.fabricDomainId) === findingDomain,
+                    label: domainRows.find((row) => row.key === (findingDomain || globalDomain))?.domain.label ?? (findingDomain || globalDomain),
+                    includesWorkspace: findingScope.has(domainKey(data.workspace.fabricDomainId)),
                   }
                 : undefined
             }
-            onClearDomain={() => setFindingDomain("")}
+            onClearDomain={() => {
+              setFindingDomain("");
+              setGlobalDomain("");
+            }}
             onNavigate={(finding) =>
               onNavigate(navigationForFinding(finding))
             }
@@ -1180,15 +1202,32 @@ export function GovernanceCenterView({
             historyLoading={historyLoading}
             syncSections={data.workspace.syncSections}
             snapshot={mineOnly ? { ...data, items: myItems } : data}
+            byDomain={
+              <DomainGovernanceTable
+                rows={visibleDomainRows}
+                mode="coverage"
+                activeKey={globalDomain || undefined}
+                currentKey={domainKey(data.workspace.fabricDomainId)}
+                labelName={labelName}
+                onSelect={(row) => setGlobalDomain(row.key)}
+              />
+            }
           />
-          <div className="mt-l">
-            <DomainGovernanceTable rows={visibleDomainRows} mode="coverage" labelName={labelName} />
-          </div>
         </div>
       </Tabs.Content>
       <Tabs.Content value="posture" asChild>
         <div>
-          <PostureSection
+          <div className="mb-l">
+            <DomainGovernanceTable
+              rows={visibleDomainRows}
+              mode="posture"
+              activeKey={globalDomain || undefined}
+              currentKey={domainKey(data.workspace.fabricDomainId)}
+              target={70}
+              labelName={labelName}
+              onSelect={(row) => setGlobalDomain(row.key)}
+            />
+          </div>          <PostureSection
             current={currentPosture}
             previous={previousPosture}
             scores={postureScores}
@@ -1205,20 +1244,18 @@ export function GovernanceCenterView({
             onNavigate={onNavigate}
             fabricSignals={{ coverage, evidence: data.governanceEvidence, domainRows }}
           />
-          <div className="mt-l">
-            <DomainGovernanceTable
-              rows={visibleDomainRows}
-              mode="posture"
-              activeKey={findingDomain}
-              labelName={labelName}
-              onSelect={(row) => {
-                setFindingDomain(row.key);
-                setSection("findings");
-              }}
-            />
-          </div>
+
           <NetworkCard evidence={data.governanceEvidence} />
           <OpenInFabricCard />
+        </div>
+      </Tabs.Content>
+      <Tabs.Content value="tenant-settings" asChild>
+        <div>
+          <TenantSettingsDrift
+            changes={tenantDrift}
+            sinceLatest={tenantDriftCurrent}
+            loading={historyLoading}
+          />
         </div>
       </Tabs.Content>
       <Tabs.Content value="policies-ai" asChild>
@@ -1992,7 +2029,7 @@ function FindingsSection({
   severity: GovernanceSeverity | "all";
   category: GovernanceCategory | "all";
   pillar: string;
-  data: Pick<AtlasData, "workspace" | "items" | "edges">;
+  data: Pick<AtlasData, "workspace" | "items" | "edges"> & Partial<Pick<AtlasData, "schema">>;
   posture: PostureScore;
   mineOnly: boolean;
   ownershipOf: (finding: GovernanceFinding) => Ownership;
@@ -2267,7 +2304,7 @@ function FindingsSection({
           </div>
         ) : (
           <ul aria-label="Findings by rule" className="divide-y divide-border">
-            {groups.map((group) => {
+            {groups.map((group, groupIndex) => {
               const meta = SEVERITY_META[group.severity];
               const single = group.findings.length === 1 ? group.findings[0] : undefined;
               const open = !single && (Boolean(search) || openRules.has(group.rule));
@@ -2299,19 +2336,29 @@ function FindingsSection({
                         {single ? single.title : `${group.label} · ${group.findings.length} findings`}
                         {single && ownerBadge(single)}
                       </h3>
-                      {single && (
+                      {(single || group.detail) && (
                         <p className="mt-xxs text-200 leading-300 text-muted-foreground">
-                          {single.detail}
+                          {single ? single.detail : group.detail}
                         </p>
                       )}
-                      {single && <FindingWhy explanation={explain(single)} />}
                       <p className="mt-xxs text-200 leading-300 text-foreground">
                         {group.recommendation}
                       </p>
+                      {single && <FindingWhy explanation={explain(single)} defaultOpen={groupIndex === 0} />}
+                      {single?.id.startsWith("missing-object-description") && single.itemId && (
+                        <DescriptionDraftsPanel
+                          drafts={draftObjectDescriptions(data.schema?.[single.itemId] ?? [])}
+                          modelUrl={findingFixUrl(single, data)}
+                        />
+                      )}
                     </div>
                     {single ? (
                       findingActions(single)
                     ) : (
+                      <div className="flex shrink-0 flex-wrap items-center gap-s self-start">
+                      <NativeLink href={findingFixUrl({ target: { kind: "workspace" } }, data)}>
+                        Fix in Fabric
+                      </NativeLink>
                       <button
                         type="button"
                         aria-expanded={open}
@@ -2326,6 +2373,7 @@ function FindingsSection({
                         />
                         {open ? "Hide findings" : `Show ${group.findings.length} findings`}
                       </button>
+                      </div>
                     )}
                   </div>
                   {open && (
@@ -2414,38 +2462,45 @@ function OpenInFabricCard() {
   );
 }
 
-function FindingWhy({ explanation }: { explanation: FindingExplanation }) {
+function FindingWhy({ explanation, defaultOpen = false }: { explanation: FindingExplanation; defaultOpen?: boolean }) {
   const { priority, downstream } = explanation;
+  const tier = priorityTier(priority.score);
   return (
-    <details className="mt-xs text-200">
+    <details className="mt-s text-200" open={defaultOpen}>
       <summary className="cursor-pointer font-semibold text-primary">
-        Why · priority {priority.score}
+        Why · {tier} • score {priority.score}
       </summary>
-      <dl className="mt-xs grid grid-cols-[max-content_1fr] gap-x-m gap-y-xxs rounded-lg border border-border bg-secondary/40 p-s">
-        <dt className="font-semibold">Evidence</dt>
-        <dd className="min-w-0 break-words">
-          {explanation.evidence.length > 0 ? explanation.evidence.join(", ") : "Unknown"}
-          {" · snapshot "}
-          {explanation.snapshotAt ?? "Unknown"}
-        </dd>
-        <dt className="font-semibold">Impact</dt>
-        <dd className="min-w-0">
-          {explanation.subject
-            ? downstream.length === 0
-              ? "No downstream item in recorded lineage."
-              : `${downstream.length} downstream item${downstream.length === 1 ? "" : "s"}: ${downstream
-                  .slice(0, 5)
-                  .map((item) => item.displayName)
-                  .join(", ")}${downstream.length > 5 ? ", …" : ""}`
-            : "Not item-scoped; no lineage impact."}
-        </dd>
-        <dt className="font-semibold">Recommended action</dt>
-        <dd className="min-w-0">{explanation.recommendation}</dd>
-        <dt className="font-semibold">Priority</dt>
-        <dd className="min-w-0">
-          {formatPriority(priority)}
-          {priority.endorsement !== "n/a" && ` (${priority.endorsement})`}
-        </dd>
+      <dl className="mt-xs grid gap-m rounded-lg border border-border bg-secondary/40 p-m md:grid-cols-3">
+        <div className="min-w-0">
+          <dt className="text-100 font-semibold uppercase tracking-wide text-muted-foreground">Evidence</dt>
+          <dd className="mt-xxs min-w-0 break-words">
+            {explanation.evidence.length > 0 ? explanation.evidence.join(", ") : "Unknown"}
+            {explanation.snapshotAt ? ` · snapshot ${relativeTime(explanation.snapshotAt)}` : null}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-100 font-semibold uppercase tracking-wide text-muted-foreground">Impact</dt>
+          <dd className="mt-xxs min-w-0">
+            {explanation.subject
+              ? downstream.length === 0
+                ? "No downstream item in recorded lineage."
+                : `${downstream.length} downstream consumer${downstream.length === 1 ? "" : "s"}: ${downstream
+                    .slice(0, 5)
+                    .map((item) => item.displayName)
+                    .join(", ")}${downstream.length > 5 ? ", …" : ""}`
+              : "Not item-scoped; no lineage impact."}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-100 font-semibold uppercase tracking-wide text-muted-foreground">Priority</dt>
+          <dd className="mt-xxs min-w-0">
+            <span className="font-semibold">{tier} • score {priority.score}</span>
+            <span className="block text-muted-foreground">
+              {formatPriority(priority)}
+              {priority.endorsement !== "n/a" && ` (${priority.endorsement})`}
+            </span>
+          </dd>
+        </div>
       </dl>
     </details>
   );
@@ -2769,7 +2824,9 @@ function CoverageSection({
   historyLoading,
   syncSections,
   snapshot,
+  byDomain,
 }: {
+  byDomain?: ReactNode;
   diagnostics: ReturnType<typeof getCoverageDiagnostics>;
   historyLoading: boolean;
   syncSections?: NonNullable<
@@ -2780,7 +2837,7 @@ function CoverageSection({
   const sectionEntries = Object.entries(syncSections ?? {}).sort(
     ([left], [right]) => left.localeCompare(right),
   );
-  const [view, setView] = useState<"families" | "quality" | "sensitivity">("families");
+  const [view, setView] = useState<"families" | "quality" | "sensitivity" | "domain">("families");
   const missingValues = diagnostics.metrics.some((metric) => metric.state === "no-values");
   const viewTrigger =
     "atlas-control rounded-md px-m text-200 font-semibold text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-inset focus-visible:ring-offset-0 data-[state=active]:bg-card data-[state=active]:text-brand-foreground data-[state=active]:shadow-fabric-2";
@@ -2797,7 +2854,12 @@ function CoverageSection({
         <Tabs.Trigger value="families" className={viewTrigger}>Item families</Tabs.Trigger>
         <Tabs.Trigger value="quality" className={viewTrigger}>Metadata quality</Tabs.Trigger>
         <Tabs.Trigger value="sensitivity" className={viewTrigger}>Sensitivity</Tabs.Trigger>
+        {byDomain && (
+          <Tabs.Trigger value="domain" className={viewTrigger}>By domain</Tabs.Trigger>
+        )}
       </Tabs.List>
+
+      {byDomain && <Tabs.Content value="domain">{byDomain}</Tabs.Content>}
 
       <Tabs.Content value="families" className="flex flex-col gap-l">
       <ItemFamilyCoverageSection data={snapshot} />
@@ -2888,5 +2950,94 @@ function CoverageSection({
         <SensitivityView embedded />
       </Tabs.Content>
     </Tabs.Root>
+  );
+}
+
+
+const EXPOSING_TENANT_SETTING = /share|sharing|guest|external|publish|export/i;
+
+function tenantSettingState(value: unknown): string {
+  if (!value || typeof value !== "object") return "Not present";
+  return (value as { enabled?: boolean }).enabled ? "Enabled" : "Disabled";
+}
+
+function tenantSettingRisk(change: AtlasChange): "High" | "Medium" | "Low" {
+  const enabledNow = (change.after as { enabled?: boolean } | undefined)?.enabled === true;
+  const enabledBefore = (change.before as { enabled?: boolean } | undefined)?.enabled === true;
+  if (enabledNow && !enabledBefore && EXPOSING_TENANT_SETTING.test(change.label)) return "High";
+  if (enabledNow !== enabledBefore) return "Medium";
+  return "Low";
+}
+
+const RISK_TONE: Record<"High" | "Medium" | "Low", string> = {
+  High: "border-status-critical/30 bg-status-critical/10 text-status-critical",
+  Medium: "border-status-warning/30 bg-status-warning/10 text-status-warning",
+  Low: "border-border bg-secondary text-muted-foreground",
+};
+
+function TenantSettingsDrift({
+  changes,
+  sinceLatest,
+  loading,
+}: {
+  changes: AtlasChange[];
+  sinceLatest: number;
+  loading: boolean;
+}) {
+  return (
+    <Card className="overflow-hidden" data-testid="tenant-settings-drift">
+      <div className="border-b border-border bg-secondary/55 p-m">
+        <h3 className="text-400 font-semibold">
+          Tenant settings drift • {sinceLatest} change{sinceLatest === 1 ? "" : "s"} since the previous snapshot
+        </h3>
+        <p className="mt-xs text-200 text-muted-foreground">
+          Read with the Fabric admin API (tenant admin only). Each sync stores a copy; Atlas shows what changed and when.
+        </p>
+      </div>
+      {loading ? (
+        <div className="flex min-h-32 items-center justify-center gap-s text-300 text-muted-foreground">
+          <Clock3 className="icon-size-200 animate-pulse" />
+          Loading validated snapshot history
+        </div>
+      ) : changes.length === 0 ? (
+        <p className="px-m py-l text-300 text-muted-foreground">
+          No tenant setting change recorded. Drift is Unknown until two snapshots both hold tenant settings collected by a Fabric administrator synchronizer.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-300">
+            <thead className="text-100 uppercase tracking-wide text-muted-foreground">
+              <tr className="border-b border-border">
+                <th scope="col" className="px-m py-s font-semibold">Setting</th>
+                <th scope="col" className="px-m py-s font-semibold">Before</th>
+                <th scope="col" className="px-m py-s font-semibold">After</th>
+                <th scope="col" className="px-m py-s font-semibold">Risk</th>
+                <th scope="col" className="px-m py-s font-semibold">Detected</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {changes.map((change) => {
+                const risk = tenantSettingRisk(change);
+                return (
+                  <tr key={change.id}>
+                    <td className="px-m py-s font-semibold">{change.label}</td>
+                    <td className="px-m py-s text-muted-foreground">{tenantSettingState(change.before)}</td>
+                    <td className="px-m py-s">{tenantSettingState(change.after)}</td>
+                    <td className="px-m py-s">
+                      <span className={cn("rounded-md border px-s py-xxs text-200 font-semibold", RISK_TONE[risk])}>
+                        {risk}
+                      </span>
+                    </td>
+                    <td className="px-m py-s text-muted-foreground">
+                      {change.syncedAt ? relativeTime(change.syncedAt) : "Unknown"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
   );
 }

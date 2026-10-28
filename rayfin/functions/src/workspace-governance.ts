@@ -88,6 +88,7 @@ export interface GovernanceExternalShare {
   recipientTenantId?: string;
   createdBy?: string;
   expiresAt?: string;
+  createdAt?: string;
   paths: string[];
 }
 
@@ -100,6 +101,8 @@ export interface GovernanceOneLakeRole {
   itemMemberCount: number;
   rowSecurity: boolean;
   columnSecurity: boolean;
+  rowFilters?: { tablePath: string; predicate: string }[];
+  columnRules?: { tablePath: string; effect: string; columns: string[] }[];
 }
 
 export interface WorkspaceGovernanceEnvelope {
@@ -220,12 +223,14 @@ export function sanitizeExternalShare(value: unknown, itemId: string): Governanc
   const tenant = id(recipient.tenantId);
   const createdBy = text(creator.displayName, 256) ?? text(isRecord(creator.userDetails) ? creator.userDetails.userPrincipalName : undefined, 320);
   const expiresAt = text(value.expirationTimeUtc, 64);
+  const createdAt = text(value.createdDateTimeUtc ?? value.creationTimeUtc ?? value.createdAt, 64);
   return {
     itemId, shareId, status: text(value.status, 64) ?? "Unknown",
     ...(upn ? { recipient: upn } : {}),
     ...(tenant ? { recipientTenantId: tenant } : {}),
     ...(createdBy ? { createdBy } : {}),
     ...(expiresAt ? { expiresAt } : {}),
+    ...(createdAt ? { createdAt } : {}),
     paths: (Array.isArray(value.paths) ? value.paths : []).flatMap((path) => text(path, 400) ?? []).slice(0, 20),
   };
 }
@@ -238,6 +243,8 @@ export function sanitizeOneLakeRole(value: unknown, itemId: string): GovernanceO
   const paths = new Set<string>();
   let rowSecurity = false;
   let columnSecurity = false;
+  const rowFilters: { tablePath: string; predicate: string }[] = [];
+  const columnRules: { tablePath: string; effect: string; columns: string[] }[] = [];
   for (const rule of Array.isArray(value.decisionRules) ? value.decisionRules : []) {
     if (!isRecord(rule)) continue;
     for (const permission of Array.isArray(rule.permission) ? rule.permission : []) {
@@ -252,6 +259,18 @@ export function sanitizeOneLakeRole(value: unknown, itemId: string): GovernanceO
     const constraints = isRecord(rule.constraints) ? rule.constraints : {};
     if (Array.isArray(constraints.rows) && constraints.rows.length) rowSecurity = true;
     if (Array.isArray(constraints.columns) && constraints.columns.length) columnSecurity = true;
+    for (const row of Array.isArray(constraints.rows) ? constraints.rows : []) {
+      if (!isRecord(row)) continue;
+      const tablePath = text(row.tablePath, 400);
+      const predicate = text(row.value, 1000);
+      if (tablePath && predicate) rowFilters.push({ tablePath, predicate });
+    }
+    for (const column of Array.isArray(constraints.columns) ? constraints.columns : []) {
+      if (!isRecord(column)) continue;
+      const tablePath = text(column.tablePath, 400);
+      const columns = (Array.isArray(column.columnNames) ? column.columnNames : []).flatMap((name) => text(name, 256) ?? []).slice(0, 50);
+      if (tablePath) columnRules.push({ tablePath, effect: text(column.columnEffect, 32) ?? "Permit", columns });
+    }
   }
   const members = isRecord(value.members) ? value.members : {};
   const memberIds = (Array.isArray(members.microsoftEntraMembers) ? members.microsoftEntraMembers : [])
@@ -260,6 +279,8 @@ export function sanitizeOneLakeRole(value: unknown, itemId: string): GovernanceO
   return {
     itemId, roleName, permissions: [...permissions].slice(0, 20), paths: [...paths].slice(0, 50),
     memberIds, itemMemberCount, rowSecurity, columnSecurity,
+    ...(rowFilters.length ? { rowFilters: rowFilters.slice(0, 20) } : {}),
+    ...(columnRules.length ? { columnRules: columnRules.slice(0, 20) } : {}),
   };
 }
 

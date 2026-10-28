@@ -12,7 +12,7 @@ import {
 } from "./item-relations-evidence";
 import { sourceProvenanceSnapshot } from "./source-provenance-snapshot";
 import { preferredSyncMode, type SyncModePreference } from "./sync-mode";
-import { applyReusedEnrichment, planIncrementalSync, syncPlanSummary, type SyncPlan } from "./incremental-sync";
+import { applyReusedEnrichment, fullRescanDue, planIncrementalSync, syncPlanSummary, type SyncPlan } from "./incremental-sync";
 import { browserCollectionCache, type CachedCollection, type CollectionCache } from "./sync-snapshot-cache";
 
 type Name = "workspaceCollectCore" | "workspaceCollectDefinitions" | "workspaceCollectItemRelations"
@@ -310,7 +310,8 @@ export async function collectBrowserWorkspace(
   } catch {
     cached = null;
   }
-  const previous: CachedCollection | null = forceFull ? null : cached;
+  const previous: CachedCollection | null =
+    forceFull || !cached || fullRescanDue(cached.fullAt ?? cached.raw.syncedAt) ? null : cached;
   let earlyScanner: RawSync | undefined;
   let plan: SyncPlan;
   const typeOf = (snapshot: RawSync) => new Map<string, string>((snapshot.items ?? []).map((item) => [String(item.id), String(item.type)]));
@@ -645,7 +646,12 @@ export async function collectBrowserWorkspace(
   if (new TextEncoder().encode(JSON.stringify(raw)).byteLength > 26 * 1024 * 1024) fail();
   const fallbackCount = Object.values(sources).filter((entry) => entry.source === "python-compatibility").length;
   try {
-    await cache?.save({ workspaceId, generation, raw });
+    await cache?.save({
+      workspaceId,
+      generation,
+      raw,
+      fullAt: plan.mode === "full" ? raw.syncedAt : (previous?.fullAt ?? previous?.raw.syncedAt),
+    });
   } catch {
     // The cache only speeds up the next run; a failed write simply forces a full sync.
   }

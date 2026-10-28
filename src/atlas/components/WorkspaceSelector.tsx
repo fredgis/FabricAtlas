@@ -1,7 +1,8 @@
 import { useId, useMemo } from "react";
 import { useDomainFilter } from "../domain-filter";
-import { NO_DOMAIN_KEY, UNKNOWN_DOMAIN_KEY, workspaceDomainGroups } from "../domain-governance";
+import { domainScopeKeys, NO_DOMAIN_KEY, UNKNOWN_DOMAIN_KEY, workspaceDomainGroups } from "../domain-governance";
 import { AlertTriangle } from "lucide-react";
+import { DomainFilterPopover } from "./DomainFilterPopover";
 import { useAtlas } from "../store";
 import { cn } from "../ui";
 import { useWorkspaceSwitch } from "../workspace-switch";
@@ -31,7 +32,6 @@ export function WorkspaceSelector({
     data,
   } = useAtlas();
   const [domainFilter, setDomainFilter] = useDomainFilter();
-  const domainSelectId = useId();
   const groups = useMemo(
     () => workspaceDomainGroups(workspaceScopes, workspaceSyncStatuses, data),
     [data, workspaceScopes, workspaceSyncStatuses],
@@ -46,9 +46,10 @@ export function WorkspaceSelector({
   if (hideWhenSingle && single && !showDomains && (compact || !workspaceScopesError)) {
     return null;
   }
-  const activeGroup = showDomains ? groups.find((group) => group.key === domainFilter) : undefined;
+  const domainScope = domainScopeKeys(showDomains ? domainFilter : "", data.governanceEvidence);
+  const scopedGroups = groups.filter((group) => domainScope.has(group.key));
   const scopeName = new Map(workspaceScopes.map((scope) => [scope.id, scope.displayName]));
-  const visibleGroups = activeGroup ? [activeGroup] : groups;
+  const visibleGroups = scopedGroups.length > 0 ? scopedGroups : groups;
   const option = (id: string) => (
     <option key={id} value={id}>
       {scopeName.get(id) ?? id}
@@ -72,33 +73,13 @@ export function WorkspaceSelector({
       )}
     >
       {showDomains && (
-        <>
-          <label
-            htmlFor={domainSelectId}
-            className={compact ? "sr-only" : "text-200 font-semibold text-foreground"}
-          >
-            Fabric domain
-          </label>
-          <select
-            id={domainSelectId}
-            value={activeGroup?.key ?? ""}
-            onChange={(event) => setDomainFilter(event.target.value)}
-            title="Filter workspaces by Fabric domain"
-            className={cn(
-              "min-w-0 rounded-md border border-input bg-card text-foreground",
-              compact
-                ? "mr-xs min-h-[var(--atlas-touch-target)] max-w-[10rem] truncate pl-s pr-xl text-[length:var(--text-300)] md:min-h-[var(--atlas-control-height)]"
-                : "min-h-[var(--atlas-touch-target)] px-m text-[length:var(--text-300)] sm:min-h-[var(--atlas-control-height)]",
-            )}
-          >
-            <option value="">All domains</option>
-            {groups.map((group) => (
-              <option key={group.key} value={group.key}>
-                {group.label} ({group.workspaceIds.length})
-              </option>
-            ))}
-          </select>
-        </>
+        <DomainFilterPopover
+          groups={groups}
+          evidence={data.governanceEvidence}
+          value={showDomains ? domainFilter : ""}
+          onChange={setDomainFilter}
+          compact={compact}
+        />
       )}
       <label
         htmlFor={selectId}
@@ -127,7 +108,7 @@ export function WorkspaceSelector({
             Select a workspace
           </option>
         )}
-        {activeGroup && !activeGroup.workspaceIds.includes(activeWorkspaceId) &&
+        {scopedGroups.length > 0 && !scopedGroups.some((group) => group.workspaceIds.includes(activeWorkspaceId)) &&
           workspaceScopes.some((scope) => scope.id === activeWorkspaceId) &&
           option(activeWorkspaceId)}
         {showDomains

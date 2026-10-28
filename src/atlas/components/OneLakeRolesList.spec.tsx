@@ -11,10 +11,10 @@ describe("OneLake data access roles", () => {
     const value = itemOneLakeRoles(SAMPLE_DATA.governanceEvidence, LAKEHOUSE);
     expect(value.known).toBe(true);
     render(<OneLakeRolesList value={value} />);
-    const restricted = screen.getByText("RegionalAnalysts").closest("li")!;
-    expect(restricted).toHaveTextContent("RLS");
-    expect(restricted).toHaveTextContent("CLS");
-    expect(screen.getByText("DefaultReader").closest("li")).not.toHaveTextContent("RLS");
+    const restricted = screen.getByText("EMEA_Analysts").closest("tr")!;
+    expect(restricted).toHaveTextContent("region = 'EMEA'");
+    expect(restricted).toHaveTextContent("hides 2: customer_email, phone");
+    expect(screen.getByText("DefaultReader").closest("tr")).toHaveTextContent("Workspace viewers");
   });
 
   it("shows Unknown when the roles section was not collected", () => {

@@ -24,6 +24,7 @@ function summary(items: number, overrides: Partial<GovernanceSummary> = {}): Gov
       certified: { numerator: 0, denominator: items, unknown: 0 },
       described: { numerator: 2, denominator: items - 1, unknown: 1 },
       labeled: { numerator: 0, denominator: 0, unknown: items },
+      tagged: { numerator: 1, denominator: items, unknown: 0 },
     },
     ...overrides,
   };

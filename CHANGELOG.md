@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 Release dates use the ISO 8601 format (`YYYY-MM-DD`) and record the day the
 release tag was published.
 
+## [2.6.2] - 2026-10-29
+
+### Added
+
+- Domain posture: Governance Center coverage by domain, domain directory with parent/child rollups and a domain filter showing domain names.
+- Workspace domain banner, incremental/full scan mode control and snapshot JSON export.
+- My items view, findings explanations, Fabric policies card, network protection card and OneLake role filters aligned with the v2.5/v2.6 mockups.
+- Command palette matches descriptions; suggested object descriptions are drafted for findings on undocumented objects.
+- Posture radar maps Microsoft Health, Protect and Trust pillars to Fabric signal names.
+
 ## [2.6.1] - 2026-10-28
 
 ### Fixed

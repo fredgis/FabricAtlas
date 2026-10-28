@@ -536,7 +536,7 @@ describe("OneLake catalog alignment findings", () => {
     });
     const inactive = buildGovernanceFindings(data).filter((f) => f.id.startsWith("item-inactive:"));
     expect(inactive.map((finding) => finding.itemId)).toEqual(["idle"]);
-    expect(inactive[0].title).toContain("No observed activity");
+    expect(inactive[0].title).toBe("Inactive item: idle");
     expect(parseInactiveDays("30")).toBe(30);
     expect(parseInactiveDays("abc")).toBe(90);
     expect(parseInactiveDays("-5")).toBe(90);
@@ -635,6 +635,31 @@ describe("OneLake catalog alignment findings", () => {
     expect(prefixes(atlas({ workspace, items, governanceEvidence: noDefault }))).toEqual(["missing-sensitivity"]);
   });
 
+  it("flags standard labels below the domain default label", () => {
+    const evidence = SAMPLE_DATA.governanceEvidence!;
+    const workspace = { ...atlas().workspace, fabricDomainId: SAMPLE_DATA.workspace.fabricDomainId };
+    const labelId = evidence.domains.entries.find((d) => d.defaultSensitivityLabelId)!.defaultSensitivityLabelId!;
+    const items = [
+      item("source", { sensitivity: "Confidential", sensitivityLabelId: labelId }),
+      item("general", { sensitivity: "General" }),
+      item("custom", { sensitivity: "Team only" }),
+      item("higher", { sensitivity: "Highly Confidential" }),
+    ];
+    const below = buildGovernanceFindings(atlas({ workspace, items, governanceEvidence: evidence })).filter((f) =>
+      f.id.startsWith("domain-default-label-below:"),
+    );
+    expect(below.map((f) => f.itemId)).toEqual(["general"]);
+    expect(below[0].groupDetail).toContain("sets default label Confidential");
+    expect(below[0].recommendation).toBe("Raise the label to Confidential or record a justified exception.");
+
+    const unresolved = items.map((i) => ({ ...i, sensitivityLabelId: undefined }));
+    expect(
+      buildGovernanceFindings(atlas({ workspace, items: unresolved, governanceEvidence: evidence })).some((f) =>
+        f.id.startsWith("domain-default-label-below:"),
+      ),
+    ).toBe(false);
+  });
+
   it("flags a domain as empty only from a complete domain list with a zero count", () => {
     const evidence = SAMPLE_DATA.governanceEvidence!;
     const empty = buildGovernanceFindings(atlas({ governanceEvidence: evidence })).filter((f) =>
@@ -689,7 +714,11 @@ describe("external share finding", () => {
       category: "access",
       target: { kind: "item", itemId: share.itemId },
     });
-    expect(finding.evidenceIds).toEqual([`item:${share.itemId}:external-share:${share.shareId}`]);
+    expect(finding.evidenceIds).toEqual(
+      evidence.externalShares.entries
+        .filter((s) => s.itemId === share.itemId)
+        .map((s) => `item:${share.itemId}:external-share:${s.shareId}`),
+    );
     const general = SAMPLE_DATA.items.map((item) => (item.fabricId === share.itemId ? { ...item, sensitivity: "General" } : item));
     expect(externalShareFindings({ ...SAMPLE_DATA, items: general })).toEqual([]);
   });

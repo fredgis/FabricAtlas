@@ -2630,6 +2630,34 @@ function syncRunsFromRows(rows: Row[], fallbackTime: string): AtlasData["syncRun
     .slice(0, 10);
 }
 
+/** Named Fabric domains from a workspace snapshot's governance evidence; never throws. */
+async function readSnapshotDomains(
+  read: ReadEntity,
+  wid: string,
+  marker: Row,
+): Promise<GovernanceEvidence["domains"]["entries"] | undefined> {
+  const snapshotId = realText(marker.snapshotId);
+  const writerEmail = realText(marker.writerEmail);
+  if (!snapshotId || !writerEmail) return undefined;
+  try {
+    const rows = await read("ConfigEntry", {
+      workspace_id: { eq: wid },
+      snapshotId: { eq: snapshotId },
+      writerEmail: { eq: writerEmail },
+      section: { eq: "__governance_evidence__" },
+    });
+    const evidence = parseGovernanceEvidenceRows(
+      rowsForSnapshot(rows, wid, snapshotId, writerEmail).filter(
+        (row) => String(row.section) === "__governance_evidence__",
+      ),
+    );
+    return evidence?.domains.entries.length ? evidence.domains.entries : undefined;
+  } catch (error) {
+    console.warn("[atlas] domain names unavailable", wid, error);
+    return undefined;
+  }
+}
+
 export async function loadWorkspaceSyncStatuses(
   isPreview: boolean,
   workspaceIds: readonly string[],
@@ -2652,6 +2680,7 @@ export async function loadWorkspaceSyncStatuses(
           snapshotAt ?? new Date(0).toISOString(),
         );
         const lastRun = runs[0];
+        const domains = marker ? await readSnapshotDomains(read, id, marker) : undefined;
         return [
           id,
           {
@@ -2659,6 +2688,7 @@ export async function loadWorkspaceSyncStatuses(
             snapshotAt,
             displayName: realText(marker?.displayName),
             fabricDomainId: realText(marker?.fabricDomainId),
+            ...(domains?.length ? { domains } : {}),
             governanceSummary: parseGovernanceSummary(
               marker?.governanceSummaryJson,
             ),

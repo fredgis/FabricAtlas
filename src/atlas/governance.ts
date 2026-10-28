@@ -79,6 +79,8 @@ export interface GovernanceFinding {
   principalId?: string;
   jobId?: string;
   edgeKey?: string;
+  /** Group summary shared by every finding of the same rule. */
+  groupDetail?: string;
 }
 
 export type CoverageState =
@@ -164,6 +166,28 @@ function meaningful(value: string | undefined): boolean {
 
 function itemHasSensitivity(item: Item): boolean {
   return meaningful(item.sensitivity) || meaningful(item.sensitivityLabelId);
+}
+
+/**
+ * Rank of a standard Microsoft Purview label name. Label priorities are not
+ * collected, so only the well-known default taxonomy is compared; custom
+ * names stay unranked and never raise a finding.
+ */
+export function standardLabelRank(name: string | undefined): number | undefined {
+  const value = name?.trim().toLowerCase() ?? "";
+  if (!value) return undefined;
+  if (/highly confidential|restricted|secret/.test(value)) return 3;
+  if (/confidential/.test(value)) return 2;
+  if (/general|internal/.test(value)) return 1;
+  if (/public|personal|non-business/.test(value)) return 0;
+  return undefined;
+}
+
+/** Label name for a label id, read from items that carry both. */
+function labelNameFromItems(items: readonly Item[], labelId: string): string | undefined {
+  const id = labelId.toLowerCase();
+  return items.find((item) => item.sensitivityLabelId?.toLowerCase() === id && meaningful(item.sensitivity))
+    ?.sensitivity;
 }
 
 function eligibleItems(
@@ -649,6 +673,40 @@ export function buildGovernanceFindings(
     data.workspace.fabricDomainId,
   );
 
+  const defaultLabelName = domainDefault ? labelNameFromItems(data.items, domainDefault.labelId) : undefined;
+  const defaultLabelRank = standardLabelRank(defaultLabelName);
+  const belowDefault =
+    domainDefault && defaultLabelName && defaultLabelRank !== undefined
+      ? data.items.filter((item) => {
+          if (!sensitivityEligibleItems.has(item.fabricId) || !meaningful(item.sensitivity)) return false;
+          const rank = standardLabelRank(item.sensitivity);
+          return rank !== undefined && rank < defaultLabelRank;
+        })
+      : [];
+  if (domainDefault && defaultLabelName && belowDefault.length > 0) {
+    const carried = [...new Set(belowDefault.map((item) => item.sensitivity!))].join(" or ");
+    const names = belowDefault.map((item) => item.displayName);
+    const listed = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0];
+    const groupDetail = `Domain ${domainDefault.domainPath} sets default label ${defaultLabelName}. ${listed} ${names.length > 1 ? "carry" : "carries"} ${carried}.`;
+    for (const item of belowDefault) {
+      findings.push({
+        id: findingId("domain-default-label-below", item.fabricId),
+        severity: "high",
+        category: "metadata",
+        title: `Label below domain default: ${item.displayName}`,
+        detail: `Domain ${domainDefault.domainPath} sets default label ${defaultLabelName}; this item carries ${item.sensitivity}.`,
+        recommendation: `Raise the label to ${defaultLabelName} or record a justified exception.`,
+        evidenceIds: [
+          `item:${item.fabricId}:sensitivity`,
+          `domain:${domainDefault.domainId}:defaultLabel:${domainDefault.labelId}`,
+        ],
+        target: { kind: "item", itemId: item.fabricId },
+        itemId: item.fabricId,
+        groupDetail,
+      });
+    }
+  }
+
   for (const item of data.items) {
     if (item.health === "failing" || item.health === "stale") {
       const failing = item.health === "failing";
@@ -924,10 +982,30 @@ export function publicNetworkFindings(
   data: Pick<AtlasData, "workspace" | "items" | "governanceEvidence">,
 ): GovernanceFinding[] {
   const network = data.governanceEvidence?.network;
-  if (network?.status.status !== "complete" || network.policy?.inboundPublicAccess !== "Allow") return [];
+  if (network?.status.status !== "complete") return [];
+  const findings: GovernanceFinding[] = [];
+  const confidential = data.items.filter((item) => item.sensitivity && CONFIDENTIAL_OR_ABOVE.test(item.sensitivity));
+  if (network.policy?.outboundPublicAccess === "Allow" && confidential.length > 0) {
+    findings.push({
+      id: findingId("workspace-outbound-network", data.workspace.fabricId),
+      severity: "low",
+      category: "access",
+      title: `Outbound access unrestricted with ${confidential.length} Confidential+ item${confidential.length === 1 ? "" : "s"}`,
+      detail:
+        "Outbound access protection is off: notebooks and pipelines in this workspace can reach any endpoint while it holds items labeled Confidential or above.",
+      recommendation:
+        "Review whether the workspace should enable outbound access protection and allow only approved endpoints.",
+      evidenceIds: [
+        `workspace:${data.workspace.fabricId}:network:outbound:Allow`,
+        ...confidential.slice(0, 20).map((item) => `item:${item.fabricId}:sensitivity`),
+      ],
+      target: { kind: "workspace" },
+    });
+  }
+  if (network.policy?.inboundPublicAccess !== "Allow") return findings;
   const sensitive = data.items.filter((item) => item.sensitivity && HIGHLY_CONFIDENTIAL.test(item.sensitivity));
-  if (sensitive.length === 0) return [];
-  return [{
+  if (sensitive.length === 0) return findings;
+  return [...findings, {
     id: findingId("workspace-public-network", data.workspace.fabricId),
     severity: "low",
     category: "access",
@@ -1001,12 +1079,12 @@ function itemInactiveFindings(
     if (days <= thresholdDays) continue;
     findings.push({
       id: findingId("item-inactive", item.fabricId),
-      severity: "low",
-      category: "metadata",
-      title: `No observed activity: ${item.displayName}`,
+      severity: "medium",
+      category: "operations",
+      title: `Inactive item: ${item.displayName}`,
       detail: `No modification, refresh or job run observed on ${item.displayName} for ${days} days (threshold ${thresholdDays}). Read usage is not collected, so the item may still be consumed.`,
       recommendation:
-        "Check with the owner whether the item is still needed; archive or retire it if not.",
+        "Confirm the owner still needs it; archive or delete unused items to reduce capacity cost and catalog noise.",
       evidenceIds: [`item:${item.fabricId}:activity`],
       target: { kind: "item", itemId: item.fabricId },
       itemId: item.fabricId,
