@@ -27,6 +27,7 @@ const RULE_LABEL: Record<string, string> = {
   "certified-missing-description": "Certified without description",
   "certified-missing-sensitivity": "Certified without sensitivity label",
   "endorsed-inactive": "Endorsed but inactive",
+  "item-inactive": "No observed activity",
   "missing-object-description": "Undocumented model objects",
   "domain-default-label-missing": "Unlabeled despite domain default",
   "workspace-no-admin": "Workspace without Admin",

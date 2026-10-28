@@ -3,6 +3,7 @@ import {
   buildAccessReviewRows,
   buildGovernanceFindings,
   getCoverageDiagnostics,
+  parseInactiveDays,
   selectAccessByItem,
   selectAccessByPrincipal,
   summarizeAccessReview,
@@ -516,6 +517,27 @@ describe("OneLake catalog alignment findings", () => {
     const inactive = buildGovernanceFindings(data).filter((f) => f.id.startsWith("endorsed-inactive:"));
     expect(inactive.map((finding) => finding.itemId)).toEqual(["stale"]);
     expect(rules(atlas({ items: data.items }))).not.toContain("endorsed-inactive");
+  });
+
+  it("flags non-endorsed items with no observed activity and keeps missing signals Unknown", () => {
+    const data = atlas({
+      workspace: { ...atlas().workspace, syncedAt: "2026-06-01T00:00:00.000Z" },
+      items: [
+        item("idle", { lastRefresh: "2025-12-01T00:00:00.000Z" }),
+        item("jobbed", { updatedAt: "2025-01-01T00:00:00.000Z" }),
+        item("silent"),
+        item("endorsed", { endorsement: "promoted", updatedAt: "2025-01-01T00:00:00.000Z" }),
+      ],
+      jobs: [
+        { itemFabricId: "jobbed", itemName: "jobbed", jobType: "Pipeline", status: "completed", startedAt: "2026-05-30T00:00:00.000Z", durationSec: 1 },
+      ],
+    });
+    const inactive = buildGovernanceFindings(data).filter((f) => f.id.startsWith("item-inactive:"));
+    expect(inactive.map((finding) => finding.itemId)).toEqual(["idle"]);
+    expect(inactive[0].title).toContain("No observed activity");
+    expect(parseInactiveDays("30")).toBe(30);
+    expect(parseInactiveDays("abc")).toBe(90);
+    expect(parseInactiveDays("-5")).toBe(90);
   });
 
   it("reports undocumented visible objects of endorsed semantic models once per model", () => {

@@ -773,6 +773,7 @@ export function buildGovernanceFindings(
 
   findings.push(
     ...endorsedInactiveFindings(data.items, data.workspace.syncedAt),
+    ...itemInactiveFindings(data.items, data.jobs, data.workspace.syncedAt),
     ...objectDescriptionFindings(data.items, data.schema),
   );
 
@@ -895,6 +896,61 @@ function latestActivity(item: Item): number | undefined {
     .map((value) => (value ? Date.parse(value) : Number.NaN))
     .filter(Number.isFinite);
   return times.length > 0 ? Math.max(...times) : undefined;
+}
+
+/** Days without observed activity before `item-inactive` fires (`VITE_ATLAS_INACTIVE_DAYS`). */
+export const ITEM_INACTIVE_DAYS = parseInactiveDays(
+  import.meta.env?.VITE_ATLAS_INACTIVE_DAYS as string | undefined,
+);
+
+export function parseInactiveDays(value: string | undefined): number {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : ENDORSED_INACTIVE_DAYS;
+}
+
+/**
+ * Any non-endorsed item whose latest modification, refresh or job run is older
+ * than the threshold. Endorsed items are covered by `endorsed-inactive`; items
+ * without any activity signal stay Unknown and produce no finding. Read
+ * telemetry is not collected, so this never claims an item is unused.
+ */
+function itemInactiveFindings(
+  items: readonly Item[],
+  jobs: AtlasData["jobs"],
+  syncedAt: string | undefined,
+  thresholdDays: number = ITEM_INACTIVE_DAYS,
+): GovernanceFinding[] {
+  const reference = syncedAt ? Date.parse(syncedAt) : Number.NaN;
+  if (!Number.isFinite(reference)) return [];
+  const lastJob = new Map<string, number>();
+  for (const job of jobs) {
+    const started = Date.parse(job.startedAt);
+    if (!Number.isFinite(started)) continue;
+    lastJob.set(job.itemFabricId, Math.max(lastJob.get(job.itemFabricId) ?? started, started));
+  }
+  const findings: GovernanceFinding[] = [];
+  for (const item of items) {
+    if (item.endorsement !== "none") continue;
+    const candidates = [latestActivity(item), lastJob.get(item.fabricId)].filter(
+      (value): value is number => value !== undefined,
+    );
+    if (candidates.length === 0) continue;
+    const days = Math.floor((reference - Math.max(...candidates)) / DAY_MS);
+    if (days <= thresholdDays) continue;
+    findings.push({
+      id: findingId("item-inactive", item.fabricId),
+      severity: "low",
+      category: "metadata",
+      title: `No observed activity: ${item.displayName}`,
+      detail: `No modification, refresh or job run observed on ${item.displayName} for ${days} days (threshold ${thresholdDays}). Read usage is not collected, so the item may still be consumed.`,
+      recommendation:
+        "Check with the owner whether the item is still needed; archive or retire it if not.",
+      evidenceIds: [`item:${item.fabricId}:activity`],
+      target: { kind: "item", itemId: item.fabricId },
+      itemId: item.fabricId,
+    });
+  }
+  return findings;
 }
 
 /**
