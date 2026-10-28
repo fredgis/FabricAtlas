@@ -808,6 +808,28 @@ describe("Rayfin snapshot persistence", () => {
     expect(hydrated?.principals[0].workspaceRole).toBe("Admin");
   });
 
+  it("round-trips optional governance evidence through the snapshot", async () => {
+    const atlas = structuredClone(SAMPLE_DATA);
+    atlas.workspace.fabricId = workspaceId;
+    const unsupported = { status: "unsupported" as const, code: "authorization-failed" };
+    atlas.governanceEvidence = {
+      collectedAt: "2026-01-01T00:00:00.000Z",
+      domains: { status: { status: "complete" }, entries: [{ id: "d1", displayName: "Finance" }] },
+      tags: { status: unsupported, entries: [] },
+      tenantSettings: { status: unsupported, entries: [] },
+      network: { status: { status: "complete" }, policy: { inboundPublicAccess: "Deny" } },
+      externalShares: { status: { status: "complete" }, entries: [] },
+      oneLakeRoles: { status: { status: "complete" }, entries: [] },
+    };
+    mocks.mapSyncToAtlas.mockReturnValue(atlas);
+
+    await runFabricSync(false, identity);
+    const hydrated = await loadFromDb(false);
+
+    expect(hydrated?.governanceEvidence).toEqual(atlas.governanceEvidence);
+    expect(hydrated?.config.some((row) => row.section === "__governance_evidence__")).toBe(false);
+  });
+
   it("bounds external metadata before Rayfin writes without breaking references", async () => {
     const atlas = structuredClone(SAMPLE_DATA);
     const item = atlas.items[0];

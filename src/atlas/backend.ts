@@ -14,6 +14,7 @@
 // Every backend call is wired defensively so a missing/misconfigured backend
 // never breaks the UI — see docs/architecture.md for the full flow.
 
+import { parseGovernanceEvidence, type GovernanceEvidence } from "./governance-evidence";
 import { ATLAS_CONFIG, configuredSyncWriters } from "./config";
 import {
   invokeSyncAll,
@@ -1242,6 +1243,25 @@ async function persistSync(
   if (semanticModelEvidenceRows.length) {
     await insertAll("ConfigEntry", semanticModelEvidenceRows);
   }
+  const governanceEvidenceRows: Row[] = [];
+  if (atlas.governanceEvidence) {
+    const chunks = JSON.stringify(atlas.governanceEvidence).match(/[\s\S]{1,1960}/g) ?? [];
+    for (let part = 0; part < chunks.length; part += 1) {
+      governanceEvidenceRows.push({
+        itemFabricId: requiredExactPersistedText(
+          atlas.workspace.fabricId,
+          PERSISTED_TEXT_LIMITS.reference.fabricId,
+          "Governance evidence workspace ID",
+        ),
+        section: "__governance_evidence__",
+        label: "workspace",
+        value: `v1:${String(part + 1).padStart(4, "0")}:${String(chunks.length).padStart(4, "0")}:${chunks[part]}`,
+      });
+    }
+  }
+  if (governanceEvidenceRows.length) {
+    await insertAll("ConfigEntry", governanceEvidenceRows);
+  }
 
   const snapshotSummary = summarizeSnapshot(
     snapshotFromData(atlas, snapshotId, syncedAt.toISOString()),
@@ -1284,7 +1304,8 @@ async function persistSync(
     schemaEntryCount:
       schemaRows.length +
       objectEdgeRows.length +
-      semanticModelEvidenceRows.length,
+      semanticModelEvidenceRows.length +
+      governanceEvidenceRows.length,
     summaryVersion: 1,
     healthyCount: snapshotSummary.healthyCount,
     staleCount: snapshotSummary.staleCount,
@@ -1599,6 +1620,23 @@ function parseObjectEdgeRows(rows: Row[]): MetadataObjectLineageEdge[] {
   return parsed.objectEdges;
 }
 
+function parseGovernanceEvidenceRows(rows: Row[]): GovernanceEvidence | undefined {
+  if (rows.length === 0) return undefined;
+  if (rows.some((row) => String(row.label) !== "workspace")) {
+    throw new Error("snapshot contains malformed governance evidence chunks");
+  }
+  const serialized = parseChunkedValue(
+    rows.map((row) => String(row.value ?? "")),
+    "snapshot contains a malformed governance evidence chunk",
+    "snapshot contains incomplete governance evidence",
+  );
+  try {
+    return parseGovernanceEvidence(JSON.parse(serialized));
+  } catch {
+    throw new Error("snapshot contains invalid governance evidence");
+  }
+}
+
 function parseSemanticModelEvidenceRows(
   rows: Row[],
   itemIds: Set<string>,
@@ -1743,6 +1781,7 @@ interface SnapshotRows {
   schemaRows: Row[];
   objectEdgeRows: Row[];
   semanticModelEvidenceRows: Row[];
+  governanceEvidenceRows: Row[];
   syncRows: Row[];
 }
 
@@ -1983,7 +2022,8 @@ async function readSnapshotRows(
       (row) =>
         String(row.section) !== "__schema__" &&
         String(row.section) !== "__object_edges__" &&
-        String(row.section) !== "__semantic_model_evidence__",
+        String(row.section) !== "__semantic_model_evidence__" &&
+        String(row.section) !== "__governance_evidence__",
     ),
     schemaRows: configRows.filter(
       (row) => String(row.section) === "__schema__",
@@ -1993,6 +2033,9 @@ async function readSnapshotRows(
     ),
     semanticModelEvidenceRows: configRows.filter(
       (row) => String(row.section) === "__semantic_model_evidence__",
+    ),
+    governanceEvidenceRows: configRows.filter(
+      (row) => String(row.section) === "__governance_evidence__",
     ),
     syncRows: rowsForSnapshot(allSyncRows, wid, snapshotId, writerEmail),
   };
@@ -2041,7 +2084,8 @@ function catalogFromRows(
     schemaEntryCount:
       rows.schemaRows.length +
       rows.objectEdgeRows.length +
-      rows.semanticModelEvidenceRows.length,
+      rows.semanticModelEvidenceRows.length +
+      rows.governanceEvidenceRows.length,
   });
 
   const items: Item[] = rows.itemRows.map((row) => {
@@ -2195,6 +2239,7 @@ function catalogFromRows(
     rows.semanticModelEvidenceRows,
     itemIds,
   );
+  const governanceEvidence = parseGovernanceEvidenceRows(rows.governanceEvidenceRows);
   const snapshotId = String(marker.snapshotId);
   const syncedAt = validDateIso(marker.syncedAt) ?? markerTime;
   const workspace: WorkspaceInfo = {
@@ -2221,6 +2266,7 @@ function catalogFromRows(
     semanticModelEvidence,
     itemMetadata,
     objectEdges,
+    ...(governanceEvidence ? { governanceEvidence } : {}),
   };
 }
 
@@ -2324,6 +2370,7 @@ async function deleteSnapshotContent(
         ...rows.schemaRows,
         ...rows.objectEdgeRows,
         ...rows.semanticModelEvidenceRows,
+        ...rows.governanceEvidenceRows,
       ],
     ],
     ["JobRun", rows.jobRows],
@@ -2401,7 +2448,8 @@ async function cleanupOrphanSnapshots(
         rows.regularConfigRows.length +
         rows.schemaRows.length +
         rows.objectEdgeRows.length +
-        rows.semanticModelEvidenceRows.length;
+        rows.semanticModelEvidenceRows.length +
+        rows.governanceEvidenceRows.length;
       if (rowCount === 0) continue;
       await deleteSnapshotContent(
         data,

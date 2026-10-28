@@ -16,6 +16,10 @@ import {
   type WorkspaceCoreEnvelope,
 } from './workspace-collector.js';
 import {
+  workspaceCollectGovernance,
+  type WorkspaceGovernanceEnvelope,
+} from './workspace-governance.js';
+import {
   workspaceCollectDefinitions,
   type DefinitionItemsInput,
   type DefinitionStageEnvelope,
@@ -108,6 +112,20 @@ udf.func(
     correlationId: SyncUuidInput | null = null,
   ): Promise<WorkspaceCoreEnvelope> =>
     workspaceCollectCore(ctx, protocolVersion, workspaceId, correlationId),
+  [],
+);
+
+// Read-only governance evidence (domains, tags, tenant settings, network, external shares, OneLake roles).
+// Every section is optional and degrades to `unsupported` for non-admin callers.
+udf.func(
+  'workspaceCollectGovernance',
+  async (
+    ctx: RayfinContext<AtlasSchema, AudienceType.Fabric>,
+    protocolVersion: 1,
+    workspaceId: SyncUuidInput,
+    correlationId: SyncUuidInput | null = null,
+  ): Promise<WorkspaceGovernanceEnvelope> =>
+    workspaceCollectGovernance(ctx, protocolVersion, workspaceId, correlationId),
   [],
 );
 

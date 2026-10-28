@@ -14,7 +14,7 @@ import { sourceProvenanceSnapshot } from "./source-provenance-snapshot";
 
 type Name = "workspaceCollectCore" | "workspaceCollectDefinitions" | "workspaceCollectItemRelations"
   | "workspaceCollectKqlMetadata" | "workspaceCollectSqlMetadata" | "workspaceCollectPowerBi"
-  | "workspaceCollectSourceProvenance";
+  | "workspaceCollectSourceProvenance" | "workspaceCollectGovernance";
 export type BrowserCollectorClient = {
   functions: { [N in Name]: {
     invoke(input: AppFunctionsSchema[N]["input"], options?: { timeoutMs?: number }): Promise<AppFunctionsSchema[N]["output"]>;
@@ -540,6 +540,13 @@ export async function collectBrowserWorkspace(
   ]) {
     raw.sections![section] ??= { status: "unsupported", code: "not-applicable" };
     raw.capabilities![capability] ??= { ...raw.sections![section] };
+  }
+  try {
+    const governance = await call("workspaceCollectGovernance", { protocolVersion: 1, workspaceId, correlationId });
+    if (governance.authoritative === false && governance.workspaceId === workspaceId) raw.governanceEvidence = governance;
+  } catch {
+    // Governance evidence is optional: without it, domain names, tags and policies stay Unknown.
+    assertSyncActive(signal);
   }
   raw.syncedAt = new Date().toISOString();
   assertSyncActive(signal);

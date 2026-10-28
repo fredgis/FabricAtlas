@@ -4,6 +4,7 @@
 // app is deployed and a live Sync runs, these shapes are replaced by the real
 // workspace read from the Fabric APIs.
 
+import type { GovernanceEvidence } from "./governance-evidence";
 import {
   ITEM_METADATA_SCHEMA_NAME,
   type FabricItemMetadata,
@@ -228,6 +229,8 @@ export interface AtlasData {
   semanticModelEvidence?: Record<string, SemanticModelEvidence>;
   itemMetadata?: Record<string, FabricItemMetadata>;
   objectEdges?: MetadataObjectLineageEdge[];
+  /** Optional read-only governance evidence (v2.6); missing sections are Unknown. */
+  governanceEvidence?: GovernanceEvidence;
 }
 
 // ---------- helpers ----------
@@ -285,6 +288,8 @@ const PL = "10000000-0000-4000-8000-000000000011";
 const EH = "10000000-0000-4000-8000-000000000012";
 const KQL_DEFAULT = "10000000-0000-4000-8000-000000000013";
 const KQL_EVENTS = "10000000-0000-4000-8000-000000000014";
+const DOMAIN_OPS = "20000000-0000-4000-8000-000000000001";
+const DOMAIN_RENTALS = "20000000-0000-4000-8000-000000000002";
 
 // ---------- deep lineage: real semantic-model / gold schema (from TMDL) ----------
 
@@ -478,6 +483,7 @@ export const SAMPLE_DATA: AtlasData = {
     displayName: "AlpineRent Analytics",
     capacity: "F16 · West Europe",
     region: "West Europe",
+    fabricDomainId: DOMAIN_RENTALS,
   },
   items: [
     { fabricId: PL, displayName: "AlpineRent Daily Load", itemType: "DataPipeline", health: "healthy", endorsement: "none", ownerName: OWNER, ownerEmail: OWNER_EMAIL, tags: ["orchestration"], lastRefresh: iso(20), description: "Orchestrates Bronze → Silver → Gold → Forecast." },
@@ -580,4 +586,44 @@ export const SAMPLE_DATA: AtlasData = {
     { id: "s1", startedAt: iso(7), finishedAt: iso(6), status: "completed", itemsSynced: 14, triggeredBy: OWNER, summary: "14 items · 14 lineage edges · 1 principal · 6 jobs" },
   ],
   schema: MODEL_SCHEMA,
+  governanceEvidence: {
+    collectedAt: iso(6),
+    domains: {
+      status: { status: "complete" },
+      entries: [
+        { id: DOMAIN_OPS, displayName: "Operations", description: "Operational data products.", defaultSensitivityLabelId: "20000000-0000-4000-8000-0000000000a1" },
+        { id: DOMAIN_RENTALS, displayName: "Rentals", parentDomainId: DOMAIN_OPS },
+        { id: "20000000-0000-4000-8000-000000000003", displayName: "Finance" },
+      ],
+    },
+    tags: {
+      status: { status: "complete" },
+      entries: [
+        { id: "20000000-0000-4000-8000-000000000011", displayName: "Gold", scope: "tenant" },
+        { id: "20000000-0000-4000-8000-000000000012", displayName: "Rentals KPI", scope: "domain", domainId: DOMAIN_RENTALS },
+      ],
+    },
+    tenantSettings: {
+      status: { status: "complete" },
+      entries: [
+        { settingName: "AllowExternalDataSharingSwitch", title: "External data sharing", enabled: true, group: "Export and sharing settings" },
+        { settingName: "AllowGuestUserToAccessSharedContent", title: "Guest users can access Microsoft Fabric", enabled: true, group: "Export and sharing settings" },
+        { settingName: "PublishToWeb", title: "Publish to web", enabled: false, group: "Export and sharing settings" },
+      ],
+    },
+    network: { status: { status: "complete" }, policy: { inboundPublicAccess: "Allow", outboundPublicAccess: "Allow" } },
+    externalShares: {
+      status: { status: "complete" },
+      entries: [
+        { itemId: LH, shareId: "30000000-0000-4000-8000-000000000001", status: "Active", recipient: "ext-partner@vendor.com", recipientTenantId: "40000000-0000-4000-8000-000000000001", createdBy: OWNER_EMAIL, paths: ["Tables/gold/station_utilization"] },
+      ],
+    },
+    oneLakeRoles: {
+      status: { status: "complete" },
+      entries: [
+        { itemId: LH, roleName: "DefaultReader", permissions: ["Read"], paths: ["*"], memberIds: [], itemMemberCount: 1, rowSecurity: false, columnSecurity: false },
+        { itemId: LH, roleName: "RegionalAnalysts", permissions: ["Read"], paths: ["Tables/gold/station_utilization"], memberIds: ["g-bi"], itemMemberCount: 0, rowSecurity: true, columnSecurity: true },
+      ],
+    },
+  },
 };

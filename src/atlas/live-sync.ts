@@ -3,6 +3,7 @@
 // data model. See the "Why a Fabric User Data Function?" note in the README for
 // why this hop through a server-side function is required.
 
+import { parseGovernanceEvidence } from "./governance-evidence";
 import { ATLAS_CONFIG, getUdfUrl, validateUdfUrl } from "./config";
 import { normalizeLineageEdges } from "./lineage";
 import {
@@ -560,6 +561,7 @@ export interface RawSync {
   semanticModelEvidence?: Record<string, SemanticModelEvidence>;
   objectEdges?: unknown;
   objectLineage?: unknown;
+  governanceEvidence?: unknown;
   enrichmentItemIds?: string[];
   requestedItemIds?: string[];
   completedItemIds?: string[];
@@ -2446,6 +2448,7 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
         index === 0 ||
         JSON.stringify(edge) !== JSON.stringify(values[index - 1]),
     );
+  const governanceEvidence = parseGovernanceEvidence(raw.governanceEvidence);
   const ws = (raw.workspace ?? {}) as Record<string, unknown>;
   const workspace: WorkspaceInfo = {
     fabricId: String(ws.id ?? fallback.fabricId),
@@ -2477,6 +2480,7 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
     semanticModelEvidence,
     itemMetadata,
     objectEdges: allObjectEdges,
+    ...(governanceEvidence ? { governanceEvidence } : {}),
     comments: [],
     syncRuns: [],
   };
