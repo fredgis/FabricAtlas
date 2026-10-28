@@ -225,6 +225,40 @@ describe("authentication and workspace scope", () => {
 });
 
 describe("workspace scope and provenance", () => {
+  it("returns the Fabric domain name and parent in provenance", async () => {
+    const data = currentSnapshot();
+    data.workspace.fabricDomainId = "22222222-2222-4222-8222-222222222222";
+    data.governanceEvidence = {
+      collectedAt: SYNCED_AT,
+      domains: {
+        status: { status: "complete" },
+        entries: [
+          { id: "11111111-1111-4111-8111-111111111111", displayName: "Operations" },
+          {
+            id: "22222222-2222-4222-8222-222222222222",
+            displayName: "Rentals",
+            parentDomainId: "11111111-1111-4111-8111-111111111111",
+          },
+        ],
+      },
+      tags: { status: { status: "complete" }, entries: [] },
+      tenantSettings: { status: { status: "unsupported" }, entries: [] },
+      network: { status: { status: "unsupported" } },
+      externalShares: { status: { status: "unsupported" }, entries: [] },
+      oneLakeRoles: { status: { status: "unsupported" }, entries: [] },
+    };
+    const { runtime: tools } = runtime({ snapshots: { [WORKSPACE_ID]: data } });
+    const value = result(await callAtlasMcpTool("atlas_get_snapshot_provenance", {}, tools));
+    expect(value.fabricDomain).toEqual({
+      status: "named",
+      domainId: "22222222-2222-4222-8222-222222222222",
+      name: "Rentals",
+      path: "Operations › Rentals",
+      parentDomainId: "11111111-1111-4111-8111-111111111111",
+      parentName: "Operations",
+    });
+  });
+
   it("lists the scope and marks the configured fallback", async () => {
     const { runtime: tools } = runtime({
       scope: [scopeEntry(WORKSPACE_ID, "Sales analytics", false)],
@@ -268,6 +302,7 @@ describe("workspace scope and provenance", () => {
       measures: 1,
     });
     expect(value.sections).toContainEqual({ name: "access", status: "failed", code: "FORBIDDEN" });
+    expect(value.fabricDomain).toMatchObject({ status: "not-collected", domainId: null });
     expect(value.recentSynchronizations[1]).toMatchObject({
       status: "failed",
       failureCode: "deadline-exhausted",

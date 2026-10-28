@@ -20,6 +20,7 @@ import {
   Waypoints,
   X,
 } from "lucide-react";
+import { FabricDomainName } from "../components/FabricDomainName";
 import { ImpactReportDialog } from "../components/ImpactReportDialog";
 import { PageHeader } from "../components/PageHeader";
 import { MetadataObjectImpactDialog } from "../components/MetadataObjectImpactDialog";
@@ -1016,6 +1017,15 @@ export function AssetCatalogView({
                     <MetadataCell
                       label="Parent item"
                       value={selectedAsset.itemName}
+                    />
+                    <MetadataCell
+                      label="Fabric domain"
+                      value={
+                        <FabricDomainName
+                          evidence={data.governanceEvidence}
+                          domainId={data.workspace.fabricDomainId}
+                        />
+                      }
                     />
                     <MetadataCell
                       label="Source"

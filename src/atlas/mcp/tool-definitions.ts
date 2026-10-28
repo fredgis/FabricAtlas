@@ -186,7 +186,7 @@ export const ATLAS_MCP_TOOLS: readonly AtlasMcpToolDefinition[] = [
   tool(
     "atlas_get_snapshot_provenance",
     "Get snapshot provenance",
-    "Returns the validated Atlas snapshot used for a workspace: snapshot ID, sync time, collector section status, catalog counts, per item-family coverage and recent synchronization audit records. Read-only.",
+    "Returns the validated Atlas snapshot used for a workspace: snapshot ID, sync time, Fabric domain (name, path and parent when collected), collector section status, catalog counts, per item-family coverage and recent synchronization audit records. Read-only.",
     input({ workspaceId: WORKSPACE_ID }),
   ),
   tool(

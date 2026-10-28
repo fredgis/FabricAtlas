@@ -211,6 +211,34 @@ export type DomainLabel =
   | { kind: "unassigned"; label: string }
   | { kind: "unknown"; label: string };
 
+/** Machine-readable domain reference for MCP outputs and exports. */
+export interface DomainReference {
+  status: "named" | "unknown-name" | "unassigned" | "not-collected";
+  domainId: string | null;
+  name: string | null;
+  path: string | null;
+  parentDomainId: string | null;
+  parentName: string | null;
+}
+
+export function domainReference(evidence: GovernanceEvidence | undefined, domainId: string | undefined): DomainReference {
+  const empty = { domainId: null, name: null, path: null, parentDomainId: null, parentName: null };
+  if (domainId === "unassigned") return { status: "unassigned", ...empty };
+  if (!domainId) return { status: "not-collected", ...empty };
+  const index = domainIndex(evidence);
+  const domain = index.get(domainId.toLowerCase());
+  if (!domain) return { status: "unknown-name", ...empty, domainId };
+  const parent = domain.parentDomainId ? index.get(domain.parentDomainId.toLowerCase()) : undefined;
+  return {
+    status: "named",
+    domainId,
+    name: domain.displayName,
+    path: domainPath(evidence, domainId) ?? domain.displayName,
+    parentDomainId: domain.parentDomainId ?? null,
+    parentName: parent?.displayName ?? null,
+  };
+}
+
 export function domainLabel(evidence: GovernanceEvidence | undefined, domainId: string | undefined): DomainLabel {
   if (domainId === "unassigned") return { kind: "unassigned", label: "No domain" };
   if (!domainId) return { kind: "unknown", label: "Unknown" };

@@ -3,6 +3,7 @@ import { ExternalLink } from "lucide-react";
 import { relativeTime } from "../model";
 import { useAtlas } from "../store";
 import { Card } from "../ui";
+import { FabricDomainName } from "./FabricDomainName";
 import { formatRunStart } from "../workspace-sync";
 
 function portalWorkspaceUrl(workspaceId: string): string {
@@ -77,17 +78,7 @@ export function WorkspaceOverviewPanel() {
               )}
             </Field>
             <Field label="Fabric domain">
-              {workspace.fabricDomainId === "unassigned" ? (
-                <span className="font-normal text-muted-foreground">
-                  No domain assigned
-                </span>
-              ) : workspace.fabricDomainId ? (
-                <span className="font-monospace font-normal">
-                  {workspace.fabricDomainId}
-                </span>
-              ) : (
-                <span className="font-normal text-muted-foreground">Not collected</span>
-              )}
+              <FabricDomainName evidence={data.governanceEvidence} domainId={workspace.fabricDomainId} />
             </Field>
             <Field label="Scope">
               {scope?.persisted

@@ -102,7 +102,7 @@ properties. All limits are fixed in `ATLAS_MCP_LIMITS`.
 | Tool | Inputs | Result |
 | --- | --- | --- |
 | `atlas_list_workspaces` | none | Selected workspaces, whether each is administrator-selected or the configured fallback |
-| `atlas_get_snapshot_provenance` | `workspaceId?` | Counts, section status (up to 40) and the 10 most recent sync audit rows |
+| `atlas_get_snapshot_provenance` | `workspaceId?` | Fabric domain (`status`, name, `Domain › Subdomain` path, parent), counts, section status (up to 40) and the 10 most recent sync audit rows |
 | `atlas_find_catalog_items` | `workspaceId?`, `query` (1–200), `kinds?`, `itemTypes?` (≤10), `limit` (≤25) | Item and object matches with metadata availability flags |
 | `atlas_get_known_impact` | `workspaceId?`, `itemId`, `direction`, `maxDepth` (≤6), `limit` (≤100) | Upstream and downstream items with distances, path edges (≤200) and unbounded reach counts |
 | `atlas_explain_lineage_evidence` | `workspaceId?`, `itemId`, `limit` (≤50) | Relationships touching the item, by source and agreement |

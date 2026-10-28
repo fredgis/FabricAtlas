@@ -23,6 +23,7 @@ import {
   type AtlasChangeDomain,
   type AtlasHistory,
 } from "../history";
+import { domainReference } from "../governance-evidence";
 import { incidentBriefSection } from "../incident-feeds";
 import {
   COVERAGE_DIMENSIONS,
@@ -263,6 +264,7 @@ function snapshotProvenance(data: AtlasData): ToolOutcome {
       : [];
   return {
     result: {
+      fabricDomain: domainReference(data.governanceEvidence, data.workspace.fabricDomainId),
       counts: {
         items: summary.items,
         lineageEdges: summary.lineage,
