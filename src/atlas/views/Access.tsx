@@ -89,6 +89,7 @@ import { derivedFromSnapshot } from "../derived";
 import { useAtlas } from "../store";
 import { itemOneLakeRoles, type ItemOneLakeRoles } from "../governance-evidence";
 import { OneLakeRolesList } from "../components/OneLakeRolesList";
+import { ExternalSharesCard } from "../components/ExternalSharesCard";
 import { PageHeader } from "../components/PageHeader";
 import { Card, PrincipalAvatar, SectionLabel, TypeGlyph, cn } from "../ui";
 
@@ -2134,6 +2135,7 @@ export function AccessView({
           </AccessEvidenceInspector>
         )}
       </div>
+      <ExternalSharesCard evidence={data.governanceEvidence} items={data.items} />
       <OffboardingDialog
         data={data}
         principalId={offboardingPrincipalId}

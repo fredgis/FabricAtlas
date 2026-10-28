@@ -827,6 +827,7 @@ export function buildGovernanceFindings(
   }
 
   findings.push(...publicNetworkFindings(data));
+  findings.push(...externalShareFindings(data));
 
   for (const job of data.jobs) {
     if (job.status !== "failed") continue;
@@ -941,6 +942,38 @@ export function publicNetworkFindings(
     ],
     target: { kind: "workspace" },
   }];
+}
+
+const CONFIDENTIAL_OR_ABOVE = /confidential/i;
+
+/** Active external data shares that expose an item labeled Confidential or above. */
+export function externalShareFindings(
+  data: Pick<AtlasData, "items" | "governanceEvidence">,
+): GovernanceFinding[] {
+  const shares = data.governanceEvidence?.externalShares;
+  if (shares?.status.status !== "complete") return [];
+  const byId = new Map(data.items.map((item) => [item.fabricId, item]));
+  const grouped = new Map<string, typeof shares.entries>();
+  for (const share of shares.entries) {
+    if (!/^active$/i.test(share.status)) continue;
+    const item = byId.get(share.itemId);
+    if (!item?.sensitivity || !CONFIDENTIAL_OR_ABOVE.test(item.sensitivity)) continue;
+    grouped.set(share.itemId, [...(grouped.get(share.itemId) ?? []), share]);
+  }
+  return [...grouped].map(([itemId, list]) => {
+    const item = byId.get(itemId)!;
+    const highly = HIGHLY_CONFIDENTIAL.test(item.sensitivity ?? "");
+    return {
+      id: findingId("external-share-sensitive", itemId),
+      severity: highly ? "high" : "medium",
+      category: "access",
+      title: `${item.displayName} (${item.sensitivity}) is shared externally`,
+      detail: `${list.length} active external data share${list.length === 1 ? "" : "s"} expose this item outside the tenant.`,
+      recommendation: "Confirm the external data share is still required, or revoke it in the item's External data sharing settings.",
+      evidenceIds: list.map((share) => `item:${itemId}:external-share:${share.shareId}`),
+      target: { kind: "item", itemId },
+    } satisfies GovernanceFinding;
+  });
 }
 
 function itemInactiveFindings(

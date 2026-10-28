@@ -29,6 +29,7 @@ const RULE_LABEL: Record<string, string> = {
   "endorsed-inactive": "Endorsed but inactive",
   "item-inactive": "No observed activity",
   "workspace-public-network": "Public network with Highly Confidential data",
+  "external-share-sensitive": "Sensitive item shared externally",
   "missing-object-description": "Undocumented model objects",
   "domain-default-label-missing": "Unlabeled despite domain default",
   "workspace-no-admin": "Workspace without Admin",

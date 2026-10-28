@@ -5,6 +5,7 @@ import {
   getCoverageDiagnostics,
   parseInactiveDays,
   publicNetworkFindings,
+  externalShareFindings,
   selectAccessByItem,
   selectAccessByPrincipal,
   summarizeAccessReview,
@@ -674,5 +675,29 @@ describe("workspace network finding", () => {
     expect(publicNetworkFindings(withNetwork("complete", "Deny"))).toEqual([]);
     expect(publicNetworkFindings(withNetwork("failed", "Allow"))).toEqual([]);
     expect(publicNetworkFindings({ ...SAMPLE_DATA, governanceEvidence: undefined })).toEqual([]);
+  });
+});
+
+describe("external share finding", () => {
+  const evidence = SAMPLE_DATA.governanceEvidence!;
+  const share = evidence.externalShares.entries[0];
+
+  it("flags an active external share on a Confidential-or-above item", () => {
+    const [finding] = externalShareFindings(SAMPLE_DATA);
+    expect(finding).toMatchObject({
+      severity: "high",
+      category: "access",
+      target: { kind: "item", itemId: share.itemId },
+    });
+    expect(finding.evidenceIds).toEqual([`item:${share.itemId}:external-share:${share.shareId}`]);
+    const general = SAMPLE_DATA.items.map((item) => (item.fabricId === share.itemId ? { ...item, sensitivity: "General" } : item));
+    expect(externalShareFindings({ ...SAMPLE_DATA, items: general })).toEqual([]);
+  });
+
+  it("ignores revoked shares and an Unknown section", () => {
+    const revoked = { ...evidence, externalShares: { ...evidence.externalShares, entries: [{ ...share, status: "Revoked" }] } };
+    expect(externalShareFindings({ ...SAMPLE_DATA, governanceEvidence: revoked })).toEqual([]);
+    const failed = { ...evidence, externalShares: { status: { status: "failed" as const }, entries: [share] } };
+    expect(externalShareFindings({ ...SAMPLE_DATA, governanceEvidence: failed })).toEqual([]);
   });
 });
