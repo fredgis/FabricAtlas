@@ -99,6 +99,7 @@ import {
   type AtlasMcpWorkspaceRef,
 } from "./contract";
 import type { AtlasMcpDataSource } from "./data-source";
+import { exportSnapshot, governanceFindings } from "./governance-tools";
 
 // Deterministic evidence tools. Each evaluator reuses the same helpers as the
 // Atlas UI over one validated snapshot and never writes or calls Fabric.
@@ -1434,6 +1435,18 @@ export async function callAtlasMcpTool(
         );
         break;
       }
+      case "atlas_get_governance_findings":
+        outcome = governanceFindings(
+          data,
+          args as AtlasMcpToolArguments["atlas_get_governance_findings"],
+        );
+        break;
+      case "atlas_export_snapshot":
+        outcome = exportSnapshot(
+          data,
+          args as AtlasMcpToolArguments["atlas_export_snapshot"],
+        );
+        break;
     }
     return successEnvelope(tool, retrievedAt, context, outcome);
   } catch (error) {

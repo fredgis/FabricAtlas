@@ -27,6 +27,7 @@ import {
   type AtlasMcpToolName,
 } from "./contract";
 import { callAtlasMcpTool, type AtlasMcpToolRuntime } from "./evidence-tools";
+import { buildSnapshotManifest } from "../snapshot-export";
 
 const NOW = new Date("2026-10-02T09:30:00.000Z");
 
@@ -59,6 +60,8 @@ const SAMPLE_ARGUMENTS: Record<AtlasMcpToolName, Record<string, unknown>> = {
   atlas_get_access_evidence: { itemId: REPORT },
   atlas_get_operational_incidents: {},
   atlas_get_snapshot_changes: {},
+  atlas_get_governance_findings: {},
+  atlas_export_snapshot: { section: "items" },
 };
 
 describe("Atlas MCP envelope", () => {
@@ -694,5 +697,106 @@ describe("snapshot changes", () => {
     });
     const envelope = await callAtlasMcpTool("atlas_get_snapshot_changes", {}, tools);
     expect(envelope.error?.code).toBe("history-unavailable");
+  });
+});
+
+describe("atlas_get_governance_findings", () => {
+  it("returns findings with pillar, domain, evidence, recommendation and Fix in Fabric link", async () => {
+    const { runtime: tools } = runtime();
+    const body = result(await callAtlasMcpTool("atlas_get_governance_findings", {}, tools));
+
+    expect(body.totalFindings).toBe(8);
+    expect(body.findings.map((finding: { severity: string }) => finding.severity)).toEqual([
+      "critical", "critical", "high", "high", "medium", "low", "low", "low",
+    ]);
+    const failing = body.findings.find(
+      (finding: { rule: string }) => finding.rule === "failing-item",
+    );
+    expect(failing).toMatchObject({
+      severity: "critical",
+      category: "operations",
+      pillar: "health",
+      pillarLabel: "Health",
+      target: "item",
+      item: { itemId: NOTEBOOK, itemType: "Notebook" },
+      ownerStatus: "unknown",
+      fixUrl: `https://app.fabric.microsoft.com/groups/${WORKSPACE_ID}/synapsenotebooks/${NOTEBOOK}?experience=power-bi`,
+    });
+    expect(failing.recommendation).toEqual(expect.any(String));
+    expect(failing.evidenceIds.length).toBeGreaterThan(0);
+    expect(JSON.stringify(body)).not.toContain("@contoso.example");
+  });
+
+  it("filters by severity, pillar, rule, item and owner status", async () => {
+    const { runtime: tools } = runtime();
+    const call = async (args: Record<string, unknown>) =>
+      result(await callAtlasMcpTool("atlas_get_governance_findings", args, tools));
+
+    expect((await call({ severities: ["critical"] })).findings).toHaveLength(2);
+    expect(
+      (await call({ pillars: ["protect"] })).findings.every(
+        (finding: { pillar: string }) => finding.pillar === "protect",
+      ),
+    ).toBe(true);
+    expect((await call({ rule: "item-only-access" })).findings).toHaveLength(2);
+    expect((await call({ itemId: REPORT })).findings).toHaveLength(4);
+    expect((await call({ owner: "workspace" })).findings.map((f: { rule: string }) => f.rule)).toEqual([
+      "broken-lineage",
+    ]);
+    expect((await call({ owner: "known" })).findings).toHaveLength(0);
+    expect((await call({ domain: "unassigned" })).findings).toHaveLength(0);
+  });
+
+  it("paginates with offset and nextOffset", async () => {
+    const { runtime: tools } = runtime();
+    const first = await callAtlasMcpTool("atlas_get_governance_findings", { limit: 3 }, tools);
+    const second = await callAtlasMcpTool(
+      "atlas_get_governance_findings",
+      { limit: 3, offset: result(first).nextOffset },
+      tools,
+    );
+    const last = await callAtlasMcpTool("atlas_get_governance_findings", { limit: 3, offset: 6 }, tools);
+
+    expect(result(first).nextOffset).toBe(3);
+    expect(first.coverage).toMatchObject({ returned: 3, total: 8, truncated: true });
+    expect(result(second).findings[0].findingId).not.toBe(result(first).findings[0].findingId);
+    expect(result(last).nextOffset).toBeNull();
+    expect(last.coverage).toMatchObject({ returned: 2, total: 8, truncated: false });
+  });
+
+  it("rejects unknown filters", async () => {
+    const { runtime: tools } = runtime();
+    const envelope = await callAtlasMcpTool(
+      "atlas_get_governance_findings",
+      { pillars: ["security"] },
+      tools,
+    );
+    expect(envelope.error).toMatchObject({ code: "invalid-arguments" });
+  });
+});
+
+describe("atlas_export_snapshot", () => {
+  it("returns the manifest that matches the Governance JSON export", async () => {
+    const { runtime: tools } = runtime();
+    const body = result(await callAtlasMcpTool("atlas_export_snapshot", {}, tools));
+    const expected = buildSnapshotManifest(currentSnapshot());
+
+    expect(body.manifest).toEqual(expected);
+    expect(body.manifest.snapshotId).toBe(SNAPSHOT_ID);
+    expect(body.rows).toEqual([]);
+  });
+
+  it("pages a section and withholds email-like values", async () => {
+    const { runtime: tools } = runtime();
+    const first = await callAtlasMcpTool("atlas_export_snapshot", { section: "items", limit: 2 }, tools);
+    const principals = result(
+      await callAtlasMcpTool("atlas_export_snapshot", { section: "principals" }, tools),
+    );
+
+    expect(result(first).rows).toHaveLength(2);
+    expect(result(first).nextOffset).toBe(2);
+    expect(first.coverage).toMatchObject({ returned: 2, total: 5, truncated: true });
+    expect(JSON.stringify(principals)).not.toContain("@");
+    expect(principals.rows.some((row: { email?: string }) => row.email === "[withheld]")).toBe(true);
   });
 });

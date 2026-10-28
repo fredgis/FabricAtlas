@@ -2,6 +2,27 @@ import { describe, expect, it } from "vitest";
 import { parseAtlasLocation, urlForNavigation } from "./routing";
 
 describe("Atlas routing", () => {
+  it("round-trips the My items governance scope", () => {
+    const url = urlForNavigation(
+      { pathname: "/", search: "" },
+      {
+        tab: "governance",
+        focus: {
+          requestId: "ignored",
+          governanceSection: "findings",
+          filters: { section: "findings", mine: true },
+        },
+      },
+    );
+
+    expect(url).toContain("governance.mine=1");
+    const parsed = parseAtlasLocation({
+      hash: "#governance",
+      search: url.slice(url.indexOf("?"), url.indexOf("#")),
+    });
+    expect(parsed.focus?.filters?.mine).toBe("true");
+  });
+
   it("round-trips the Policies & AI local tab without introducing a new app route", () => {
     const url = urlForNavigation({ pathname: "/", search: "" }, {
       tab: "governance", focus: { requestId: "ignored", governanceSection: "policies-ai",

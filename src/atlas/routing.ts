@@ -306,6 +306,7 @@ export function parseAtlasLocation(
           ["currentSnapshotId", value(params, "governance.current")],
           ["previousSnapshotId", value(params, "governance.baseline")],
           ["fabricDomain", value(params, "governance.fabricDomain")],
+          ["mine", params.get("governance.mine") === "1" ? "true" : undefined],
         ]),
       }),
     };
@@ -450,6 +451,9 @@ export function urlForNavigation(
     set(params, "governance.metric", filterValue(focus, "metric"));
     set(params, "governance.pillar", filterValue(focus, "pillar"));
     set(params, "governance.fabricDomain", filterValue(focus, "fabricDomain"));
+    if (focus?.filters?.mine === true || focus?.filters?.mine === "true") {
+      params.set("governance.mine", "1");
+    }
     set(
       params,
       "governance.current",

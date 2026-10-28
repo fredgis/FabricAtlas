@@ -32,6 +32,7 @@ import {
   Settings2,
   ShieldCheck,
   Sun,
+  UserRound,
   Waypoints,
   X,
 } from "lucide-react";
@@ -43,6 +44,7 @@ import { SyncRunCompact, SyncRunProgressLine } from "./atlas/components/SyncRunS
 import {
   navigationForSearch,
   type AtlasFocusRequest,
+  navigationForSavedView,
   type AtlasNavigation,
   type Tab,
   type WorkspaceSection,
@@ -169,6 +171,15 @@ const NAV_GROUPS: {
 ];
 const NAV = NAV_GROUPS.flatMap((group) => group.items);
 
+// Sidebar shortcut that opens Governance findings scoped to the user's items.
+const MY_ITEMS_SHORTCUT = {
+  group: "Govern",
+  label: "My items",
+  icon: UserRound,
+  navigation: () =>
+    navigationForSavedView("governance", { section: "findings", mine: true }),
+};
+
 function SidebarContent({
   tab,
   data,
@@ -178,7 +189,7 @@ function SidebarContent({
   tab: Tab;
   data: AtlasData;
   mobile?: boolean;
-  onNavigate: (tab: Tab) => void;
+  onNavigate: (target: Tab | AtlasNavigation) => void;
 }) {
   const workspaceDetail = workspaceDetailLabel(data.workspace);
   const { workspaceScopes } = useAtlas();
@@ -237,6 +248,18 @@ function SidebarContent({
                   {label}
                 </button>
               ))}
+              {group.label === MY_ITEMS_SHORTCUT.group && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate(MY_ITEMS_SHORTCUT.navigation())}
+                  onMouseEnter={() => void VIEW_LOADERS.governance?.()}
+                  title="Governance findings, radar and coverage scoped to items you own"
+                  className="relative flex items-center gap-[10px] rounded-md px-[10px] py-[7px] pl-[37px] text-left text-[12px] font-medium text-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  <MY_ITEMS_SHORTCUT.icon size={14} />
+                  {MY_ITEMS_SHORTCUT.label}
+                </button>
+              )}
             </div>
           </div>
         ))}
@@ -510,7 +533,7 @@ function App() {
     return () => window.cancelAnimationFrame(frame);
   }, [activeSnapshotLoaded, activeWorkspaceId]);
 
-  const nav = (t: Tab) => navigate(t);
+  const nav = (target: Tab | AtlasNavigation) => navigate(target);
 
   if (!isPreview && hydrating) return <AtlasBootView />;
   if (!isPreview && (!hasData || requiresDeploymentSync)) {

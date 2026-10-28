@@ -95,8 +95,17 @@ import {
 import {
   buildFindingsExport,
   buildTeamsPostureCard,
-  isFindingOwnedBy,
 } from "../governance-share";
+import {
+  findingOwnership,
+  inMyScope,
+  myItemsScope,
+  myScopedItems,
+  radarEntryOwnership,
+  summarizeMyItems,
+  type Ownership,
+} from "../my-items";
+import { buildSnapshotExport } from "../snapshot-export";
 import { downloadText, fileSlug } from "../download";
 import { DomainGovernanceTable } from "../components/DomainGovernanceTable";
 import { useDomainFilter } from "../domain-filter";
@@ -341,7 +350,9 @@ export function GovernanceCenterView({
       ? (focus.filters.category as GovernanceCategory)
       : "all",
   );
-  const [mineOnly, setMineOnly] = useState(false);
+  const [mineOnly, setMineOnly] = useState(
+    focus?.filters?.mine === true || focus?.filters?.mine === "true",
+  );
   const [findingDomain, setFindingDomain] = useState(
     initialSection === "findings" && typeof focus?.filters?.fabricDomain === "string"
       ? focus.filters.fabricDomain
@@ -407,10 +418,29 @@ export function GovernanceCenterView({
     "governance-findings",
     buildGovernanceFindings,
   );
-  const coverage = derivedFromSnapshot(
+  const allCoverage = derivedFromSnapshot(
     data,
     "coverage-diagnostics",
     getCoverageDiagnostics,
+  );
+  const myScope = useMemo(
+    () => myItemsScope(data.items, data.principals, currentUser.email),
+    [currentUser.email, data.items, data.principals],
+  );
+  const myItemsSummary = useMemo(
+    () => summarizeMyItems(data.items, currentUser.email),
+    [currentUser.email, data.items],
+  );
+  const myItems = useMemo(
+    () => (mineOnly ? myScopedItems(data.items, currentUser.email) : data.items),
+    [currentUser.email, data.items, mineOnly],
+  );
+  const coverage = useMemo(
+    () =>
+      mineOnly
+        ? getCoverageDiagnostics({ items: myItems, schema: data.schema })
+        : allCoverage,
+    [allCoverage, data.schema, mineOnly, myItems],
   );
   const domainRows = useMemo(
     () =>
@@ -440,8 +470,7 @@ export function GovernanceCenterView({
         (!findingPillar || finding.category === findingPillar) &&
         (!findingDomain ||
           findingDomainKey(finding, data.workspace.fabricDomainId) === findingDomain) &&
-        (!mineOnly ||
-          isFindingOwnedBy(finding, data.items, currentUser.email)) &&
+        (!mineOnly || inMyScope(findingOwnership(finding, myScope))) &&
         (!query ||
           finding.title.toLowerCase().includes(query) ||
           finding.detail.toLowerCase().includes(query) ||
@@ -449,14 +478,13 @@ export function GovernanceCenterView({
     );
   }, [
     category,
-    currentUser.email,
-    data.items,
     data.workspace.fabricDomainId,
     findingDomain,
     findingPillar,
     findingSearch,
     findings,
     mineOnly,
+    myScope,
     severity,
   ]);
 
@@ -545,6 +573,7 @@ export function GovernanceCenterView({
   const radarEntries = useMemo(
     () =>
       allRadarEntries.filter((entry) => {
+      if (mineOnly && !inMyScope(radarEntryOwnership(entry, myScope))) return false;
       const acknowledgement = acknowledgementByFinding.get(entry.id);
       return !(
         acknowledgement?.status === "muted" ||
@@ -553,7 +582,7 @@ export function GovernanceCenterView({
             entry.occurrenceSnapshotId)
       );
       }),
-    [acknowledgementByFinding, allRadarEntries],
+    [acknowledgementByFinding, allRadarEntries, mineOnly, myScope],
   );
   const suppressedRadarAcks = findingAcks.filter((acknowledgement) => {
     const entry = allRadarEntries.find(
@@ -741,6 +770,7 @@ export function GovernanceCenterView({
       } else if (section === "posture") {
         filters.pillar = postureMetric;
       }
+      if (mineOnly) filters.mine = true;
       return filters;
     },
     [
@@ -751,6 +781,7 @@ export function GovernanceCenterView({
       findingSearch,
       findingPillar,
       historyMetric,
+      mineOnly,
       postureMetric,
       effectiveCurrentSnapshotId,
       effectivePreviousSnapshotId,
@@ -815,6 +846,7 @@ export function GovernanceCenterView({
     if ((filters.section ?? section) === "posture" && typeof filters.pillar === "string") {
       setPostureMetric(filters.pillar as PosturePillar);
     }
+    setMineOnly(filters.mine === true || filters.mine === "true");
   };
 
   const priorityChanges = (
@@ -954,6 +986,21 @@ export function GovernanceCenterView({
                   ? `${allRadarEntries.length} new priority alert${allRadarEntries.length === 1 ? "" : "s"}`
                   : "No new priority alert"}
               </span>
+              <button
+                type="button"
+                className="atlas-control inline-flex items-center gap-s rounded-lg border border-border bg-card px-m text-200 font-semibold hover:bg-accent"
+                title="Download the validated snapshot as JSON with a manifest (counts and fingerprint)"
+                onClick={() =>
+                  downloadText(
+                    JSON.stringify(buildSnapshotExport(data, new Date().toISOString()), null, 2),
+                    "application/json",
+                    `atlas-snapshot-${fileSlug(data.workspace.displayName)}.json`,
+                  )
+                }
+              >
+                <Download className="icon-size-100" aria-hidden="true" />
+                Export snapshot
+              </button>
           </>}
         />
 
@@ -977,6 +1024,29 @@ export function GovernanceCenterView({
           ))}
         </Tabs.List>
       <div className="p-m sm:p-l">
+      {mineOnly && (
+        <div
+          role="status"
+          className="mb-m flex flex-wrap items-center justify-between gap-s rounded-lg border border-primary/30 bg-primary/5 px-m py-s text-200"
+        >
+          <span className="inline-flex items-center gap-xs">
+            <UserRound className="icon-size-100" aria-hidden="true" />
+            <span>
+              <strong>My items</strong> · {myItemsSummary.mine} owned by you
+              {myItemsSummary.unknown > 0 &&
+                ` · ${myItemsSummary.unknown} with unknown owner (kept visible)`}
+              {" "}· findings, radar and coverage are scoped
+            </span>
+          </span>
+          <button
+            type="button"
+            className="font-semibold text-brand-foreground hover:underline"
+            onClick={() => setMineOnly(false)}
+          >
+            Clear
+          </button>
+        </div>
+      )}
       {historyError && radarFailedSnapshotIds.length === 0 && (
         <div
           role="alert"
@@ -998,6 +1068,7 @@ export function GovernanceCenterView({
             data={data}
             posture={currentPosture}
             mineOnly={mineOnly}
+            ownershipOf={(finding) => findingOwnership(finding, myScope)}
             canFilterMine={Boolean(currentUser.email?.trim())}
             onMineOnly={setMineOnly}
             onSearch={setFindingSearch}
@@ -1090,7 +1161,7 @@ export function GovernanceCenterView({
             diagnostics={coverage}
             historyLoading={historyLoading}
             syncSections={data.workspace.syncSections}
-            snapshot={data}
+            snapshot={mineOnly ? { ...data, items: myItems } : data}
           />
           <div className="mt-l">
             <DomainGovernanceTable rows={visibleDomainRows} mode="coverage" labelName={labelName} />
@@ -1759,6 +1830,7 @@ function FindingsSection({
   data,
   posture,
   mineOnly,
+  ownershipOf,
   canFilterMine,
   onMineOnly,
   onSearch,
@@ -1785,6 +1857,7 @@ function FindingsSection({
   data: Pick<AtlasData, "workspace" | "items">;
   posture: PostureScore;
   mineOnly: boolean;
+  ownershipOf: (finding: GovernanceFinding) => Ownership;
   canFilterMine: boolean;
   onMineOnly: (value: boolean) => void;
   onSearch: (value: string) => void;
@@ -1829,6 +1902,15 @@ function FindingsSection({
       else next.add(rule);
       return next;
     });
+  const ownerBadge = (finding: GovernanceFinding) =>
+    mineOnly && ownershipOf(finding) === "unknown" ? (
+      <span
+        className="ml-xs inline-flex rounded-full border border-status-warning/30 bg-status-warning/10 px-xs text-100 font-semibold text-status-warning"
+        title="Fabric did not expose an owner for this item, so it stays in My items"
+      >
+        Owner unknown
+      </span>
+    ) : null;
   const findingActions = (finding: GovernanceFinding) => (
     <div className="flex flex-wrap items-center gap-s">
       <button
@@ -1920,7 +2002,7 @@ function FindingsSection({
               disabled={!canFilterMine}
               title={
                 canFilterMine
-                  ? "Only findings on items you own"
+                  ? "Scope findings, radar and coverage to items you own (unknown owners stay visible)"
                   : "Your account email is unavailable, so ownership cannot be matched"
               }
               onClick={() => onMineOnly(!mineOnly)}
@@ -2072,6 +2154,7 @@ function FindingsSection({
                       </div>
                       <h3 className="mt-xs text-300 font-semibold">
                         {single ? single.title : `${group.label} · ${group.findings.length} findings`}
+                        {single && ownerBadge(single)}
                       </h3>
                       {single && (
                         <p className="mt-xxs text-200 leading-300 text-muted-foreground">
@@ -2113,7 +2196,10 @@ function FindingsSection({
                           className="flex flex-col gap-s px-m py-s lg:flex-row lg:items-center lg:justify-between"
                         >
                           <div className="min-w-0">
-                            <h4 className="text-300 font-semibold">{finding.title}</h4>
+                            <h4 className="text-300 font-semibold">
+                              {finding.title}
+                              {ownerBadge(finding)}
+                            </h4>
                             <p className="text-200 leading-300 text-muted-foreground">
                               {finding.detail}
                             </p>
