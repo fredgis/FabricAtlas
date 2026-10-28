@@ -50,6 +50,7 @@ import {
   type HistoricalSnapshot,
   type SnapshotSummary,
 } from "../history";
+import type { GovernanceEvidence } from "../governance-evidence";
 import type {
   AtlasFocusRequest,
   AtlasNavigation,
@@ -1210,6 +1211,7 @@ export function GovernanceCenterView({
               }}
             />
           </div>
+          <NetworkCard evidence={data.governanceEvidence} />
           <OpenInFabricCard />
         </div>
       </Tabs.Content>
@@ -2235,6 +2237,32 @@ function FindingsSection({
         )}
       </Card>
     </div>
+  );
+}
+
+function NetworkCard({ evidence }: { evidence?: GovernanceEvidence }) {
+  const network = evidence?.network;
+  const known = network?.status.status === "complete";
+  const value = (state?: "Allow" | "Deny") =>
+    !known || !state ? "Unknown" : state === "Allow" ? "Public access allowed" : "Public access denied";
+  return (
+    <Card className="mt-l p-l">
+      <h2 className="text-400 font-semibold">Workspace network</h2>
+      <p className="mt-xxs text-200 text-muted-foreground">
+        Inbound and outbound communication policy of the workspace.
+        {!known && " Unknown: the policy API was not available to the synchronizer."}
+      </p>
+      <dl className="mt-m grid gap-m sm:grid-cols-2">
+        {([["Inbound", network?.policy?.inboundPublicAccess], ["Outbound", network?.policy?.outboundPublicAccess]] as const).map(
+          ([label, state]) => (
+            <div key={label} className="rounded-lg border border-border p-m">
+              <dt className="text-100 uppercase tracking-wide text-muted-foreground">{label}</dt>
+              <dd className="mt-xxs text-300 font-semibold">{value(state)}</dd>
+            </div>
+          ),
+        )}
+      </dl>
+    </Card>
   );
 }
 

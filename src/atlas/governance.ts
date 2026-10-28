@@ -826,6 +826,8 @@ export function buildGovernanceFindings(
     }
   }
 
+  findings.push(...publicNetworkFindings(data));
+
   for (const job of data.jobs) {
     if (job.status !== "failed") continue;
     const id = searchJobId(
@@ -914,6 +916,33 @@ export function parseInactiveDays(value: string | undefined): number {
  * without any activity signal stay Unknown and produce no finding. Read
  * telemetry is not collected, so this never claims an item is unused.
  */
+const HIGHLY_CONFIDENTIAL = /highly\s+confidential/i;
+
+/** Informational only, and only from a known inbound policy: Unknown never raises it. */
+export function publicNetworkFindings(
+  data: Pick<AtlasData, "workspace" | "items" | "governanceEvidence">,
+): GovernanceFinding[] {
+  const network = data.governanceEvidence?.network;
+  if (network?.status.status !== "complete" || network.policy?.inboundPublicAccess !== "Allow") return [];
+  const sensitive = data.items.filter((item) => item.sensitivity && HIGHLY_CONFIDENTIAL.test(item.sensitivity));
+  if (sensitive.length === 0) return [];
+  return [{
+    id: findingId("workspace-public-network", data.workspace.fabricId),
+    severity: "low",
+    category: "access",
+    title: `Public network access allowed with ${sensitive.length} Highly Confidential item${sensitive.length === 1 ? "" : "s"}`,
+    detail:
+      "The workspace communication policy allows inbound public access while the workspace holds items labeled Highly Confidential.",
+    recommendation:
+      "Review whether the workspace should restrict inbound public access to private links in its network settings.",
+    evidenceIds: [
+      `workspace:${data.workspace.fabricId}:network:inbound:Allow`,
+      ...sensitive.slice(0, 20).map((item) => `item:${item.fabricId}:sensitivity`),
+    ],
+    target: { kind: "workspace" },
+  }];
+}
+
 function itemInactiveFindings(
   items: readonly Item[],
   jobs: AtlasData["jobs"],

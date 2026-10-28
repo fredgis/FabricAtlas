@@ -4,6 +4,7 @@ import {
   buildGovernanceFindings,
   getCoverageDiagnostics,
   parseInactiveDays,
+  publicNetworkFindings,
   selectAccessByItem,
   selectAccessByPrincipal,
   summarizeAccessReview,
@@ -649,5 +650,29 @@ describe("OneLake catalog alignment findings", () => {
       }),
     );
     expect(partial.some((f) => f.id.startsWith("domain-empty:"))).toBe(false);
+  });
+});
+
+describe("workspace network finding", () => {
+  const withNetwork = (status: "complete" | "failed", inbound?: "Allow" | "Deny"): AtlasData => ({
+    ...SAMPLE_DATA,
+    governanceEvidence: {
+      ...SAMPLE_DATA.governanceEvidence!,
+      network: { status: { status }, policy: inbound ? { inboundPublicAccess: inbound } : undefined },
+    },
+  });
+
+  it("flags public inbound access only when Highly Confidential items are present", () => {
+    const [finding] = publicNetworkFindings(withNetwork("complete", "Allow"));
+    expect(finding).toMatchObject({ severity: "low", category: "access", target: { kind: "workspace" } });
+    expect(finding.title).toMatch(/Highly Confidential/);
+    const unlabeled = { ...withNetwork("complete", "Allow"), items: SAMPLE_DATA.items.map((item) => ({ ...item, sensitivity: undefined })) };
+    expect(publicNetworkFindings(unlabeled)).toEqual([]);
+  });
+
+  it("never raises from a denied policy or an Unknown section", () => {
+    expect(publicNetworkFindings(withNetwork("complete", "Deny"))).toEqual([]);
+    expect(publicNetworkFindings(withNetwork("failed", "Allow"))).toEqual([]);
+    expect(publicNetworkFindings({ ...SAMPLE_DATA, governanceEvidence: undefined })).toEqual([]);
   });
 });

@@ -37,6 +37,7 @@ describe("GovernanceCenterView", () => {
     expect(tabs[0]).toHaveTextContent("Posture");
     expect(tabs[0]).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByRole("button", { name: "Select lineage in radar" })).toBeVisible();
+    expect(within(screen.getByRole("heading", { name: "Workspace network" }).parentElement!).getAllByText("Public access allowed")).toHaveLength(2);
     expect(screen.getByText("Latest priority changes").closest("details")).not.toHaveAttribute("open");
     fireEvent.click(screen.getByText("Latest priority changes"));
     expect(
