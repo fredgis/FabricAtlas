@@ -26,9 +26,7 @@ the last validated snapshot in Fabric so everyone sees the same state.
 
 ## Fabric Atlas demo
 
-https://github.com/user-attachments/assets/4f34a994-a130-4a74-bce7-d2d2bbab7d65
-
-[Watch the Full HD demo on YouTube](https://youtu.be/dO5kG5tNpUo)
+https://github.com/user-attachments/assets/ba0162fb-70fc-40f1-9374-fccd87a324f9
 
 ## Whitepaper
 
