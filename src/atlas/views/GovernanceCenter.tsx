@@ -44,6 +44,7 @@ import { derivedFromSnapshot } from "../derived";
 import {
   compareSnapshots,
   snapshotCatalogFromData,
+  tenantSettingsComparable,
   type AtlasChange,
   type AtlasChangeDomain,
   type HistoricalSnapshot,
@@ -188,6 +189,7 @@ const CHANGE_DOMAIN_LABEL: Record<AtlasChangeDomain, string> = {
   sensitivity: "Sensitivity",
   lineage: "Lineage",
   job: "Jobs",
+  tenant: "Tenant settings",
 };
 
 type HistoryMetric =
@@ -2380,6 +2382,20 @@ function ChangesSection({
           </div>
         </div>
       </div>
+      {!loading &&
+        comparisonCurrentSnapshotId !== comparisonPreviousSnapshotId &&
+        !tenantSettingsComparable(
+          loadedSnapshots.find((s) => s.snapshotId === comparisonPreviousSnapshotId),
+          loadedSnapshots.find((s) => s.snapshotId === comparisonCurrentSnapshotId),
+        ) && (
+          <p
+            data-testid="tenant-drift-unknown"
+            className="border-b border-border px-m py-s text-200 text-muted-foreground"
+          >
+            Tenant settings drift: <strong>Unknown</strong> — both snapshots need
+            tenant settings collected by a Fabric administrator synchronizer.
+          </p>
+        )}
 
       <div className="atlas-toolbar flex flex-col gap-s border-b border-border p-m sm:flex-row">
         <label className="relative min-w-0 flex-1">
