@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   aggregateByDomain,
   coverageRatio,
+  domainGovernanceInputs,
+  findingDomainKey,
   NO_DOMAIN_KEY,
   parseGovernanceSummary,
   summarizeGovernance,
@@ -114,5 +116,30 @@ describe("aggregateByDomain", () => {
   it("returns null coverage ratios when nothing was readable", () => {
     expect(coverageRatio({ numerator: 0, denominator: 0, unknown: 5 })).toBeNull();
     expect(coverageRatio({ numerator: 1, denominator: 4, unknown: 0 })).toBe(25);
+  });
+});
+
+describe("domainGovernanceInputs", () => {
+  it("uses persisted summaries for other workspaces and the live summary for the active one", () => {
+    const other = summary(4);
+    const inputs = domainGovernanceInputs(
+      {
+        [SAMPLE_DATA.workspace.fabricId.toUpperCase()]: { snapshotId: "old", governanceSummary: other },
+        "ws-b": { snapshotId: "s2", displayName: "B", fabricDomainId: DOMAIN_RENTALS, governanceSummary: other },
+        "ws-never": { displayName: "Never synchronized" },
+      },
+      SAMPLE_DATA,
+    );
+    expect(inputs.map((input) => input.workspaceId)).toEqual(["ws-b", SAMPLE_DATA.workspace.fabricId]);
+    expect(inputs[0]).toMatchObject({ displayName: "B", domainId: DOMAIN_RENTALS, summary: other });
+    expect(inputs[1]?.summary).toEqual(summarizeGovernance(SAMPLE_DATA));
+  });
+});
+
+describe("findingDomainKey", () => {
+  it("routes domain-level findings to their domain and others to the workspace domain", () => {
+    expect(findingDomainKey({ id: `domain-empty:${DOMAIN_OPS.toUpperCase()}` }, NO_DOMAIN_KEY)).toBe(DOMAIN_OPS.toLowerCase());
+    expect(findingDomainKey({ id: "item-no-owner:x" }, DOMAIN_RENTALS)).toBe(DOMAIN_RENTALS.toLowerCase());
+    expect(findingDomainKey({ id: "item-no-owner:x" }, undefined)).toBe(UNKNOWN_DOMAIN_KEY);
   });
 });

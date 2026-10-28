@@ -201,7 +201,7 @@ export function domainPath(evidence: GovernanceEvidence | undefined, domainId: s
   const index = domainIndex(evidence);
   const domain = index.get(domainId.toLowerCase());
   if (!domain) return undefined;
-  const parent = domain.parentDomainId ? index.get(domain.parentDomainId) : undefined;
+  const parent = domain.parentDomainId ? index.get(domain.parentDomainId.toLowerCase()) : undefined;
   return parent ? `${parent.displayName} › ${domain.displayName}` : domain.displayName;
 }
 

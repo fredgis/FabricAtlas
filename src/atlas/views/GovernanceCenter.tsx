@@ -98,6 +98,13 @@ import {
   isFindingOwnedBy,
 } from "../governance-share";
 import { downloadText, fileSlug } from "../download";
+import { DomainGovernanceTable } from "../components/DomainGovernanceTable";
+import {
+  aggregateByDomain,
+  domainGovernanceInputs,
+  domainKey,
+  findingDomainKey,
+} from "../domain-governance";
 import type { AtlasData } from "../model";
 
 const PostureRadar = lazy(() => import("../components/PostureRadar").then(
@@ -299,6 +306,7 @@ export function GovernanceCenterView({
     saveFindingAcknowledgement,
     removeFindingAcknowledgement,
     governanceTargets,
+    workspaceSyncStatuses,
     governancePolicyLoading,
     governancePolicyError,
     governanceExceptions,
@@ -333,6 +341,11 @@ export function GovernanceCenterView({
       : "all",
   );
   const [mineOnly, setMineOnly] = useState(false);
+  const [findingDomain, setFindingDomain] = useState(
+    initialSection === "findings" && typeof focus?.filters?.fabricDomain === "string"
+      ? focus.filters.fabricDomain
+      : "",
+  );
   const [findingPillar, setFindingPillar] = useState(
     initialSection === "findings" ? findingPillarFilter(focus?.filters?.pillar) : "",
   );
@@ -398,6 +411,21 @@ export function GovernanceCenterView({
     "coverage-diagnostics",
     getCoverageDiagnostics,
   );
+  const domainRows = useMemo(
+    () =>
+      aggregateByDomain(
+        domainGovernanceInputs(workspaceSyncStatuses, data, governanceTargets),
+        data.governanceEvidence,
+      ),
+    [data, governanceTargets, workspaceSyncStatuses],
+  );
+  const labelName = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const item of data.items) {
+      if (item.sensitivityLabelId && item.sensitivity) names.set(item.sensitivityLabelId.toLowerCase(), item.sensitivity);
+    }
+    return (id: string) => names.get(id.toLowerCase());
+  }, [data.items]);
   const filteredFindings = useMemo(() => {
     const query = findingSearch.trim().toLowerCase();
     return findings.filter(
@@ -405,6 +433,8 @@ export function GovernanceCenterView({
         (severity === "all" || finding.severity === severity) &&
         (category === "all" || finding.category === category) &&
         (!findingPillar || finding.category === findingPillar) &&
+        (!findingDomain ||
+          findingDomainKey(finding, data.workspace.fabricDomainId) === findingDomain) &&
         (!mineOnly ||
           isFindingOwnedBy(finding, data.items, currentUser.email)) &&
         (!query ||
@@ -416,6 +446,8 @@ export function GovernanceCenterView({
     category,
     currentUser.email,
     data.items,
+    data.workspace.fabricDomainId,
+    findingDomain,
     findingPillar,
     findingSearch,
     findings,
@@ -693,6 +725,7 @@ export function GovernanceCenterView({
         filters.severity = severity;
         filters.category = category;
         filters.pillar = findingPillar;
+        if (findingDomain) filters.fabricDomain = findingDomain;
       } else if (section === "changes") {
         filters.changeSearch = changeSearch;
         filters.domain = changeDomain;
@@ -709,6 +742,7 @@ export function GovernanceCenterView({
       category,
       changeDomain,
       changeSearch,
+      findingDomain,
       findingSearch,
       findingPillar,
       historyMetric,
@@ -965,6 +999,15 @@ export function GovernanceCenterView({
             onSeverity={setSeverity}
             onCategory={setCategory}
             onClearPillar={() => setFindingPillar("")}
+            domainFilter={
+              findingDomain
+                ? {
+                    label: domainRows.find((row) => row.key === findingDomain)?.domain.label ?? findingDomain,
+                    includesWorkspace: domainKey(data.workspace.fabricDomainId) === findingDomain,
+                  }
+                : undefined
+            }
+            onClearDomain={() => setFindingDomain("")}
             onNavigate={(finding) =>
               onNavigate(navigationForFinding(finding))
             }
@@ -1044,6 +1087,9 @@ export function GovernanceCenterView({
             syncSections={data.workspace.syncSections}
             snapshot={data}
           />
+          <div className="mt-l">
+            <DomainGovernanceTable rows={domainRows} mode="coverage" labelName={labelName} />
+          </div>
         </div>
       </Tabs.Content>
       <Tabs.Content value="posture" asChild>
@@ -1064,6 +1110,18 @@ export function GovernanceCenterView({
             onPillar={setPostureMetric}
             onNavigate={onNavigate}
           />
+          <div className="mt-l">
+            <DomainGovernanceTable
+              rows={domainRows}
+              mode="posture"
+              activeKey={findingDomain}
+              labelName={labelName}
+              onSelect={(row) => {
+                setFindingDomain(row.key);
+                setSection("findings");
+              }}
+            />
+          </div>
         </div>
       </Tabs.Content>
       <Tabs.Content value="policies-ai" asChild>
@@ -1702,6 +1760,8 @@ function FindingsSection({
   onSeverity,
   onCategory,
   onClearPillar,
+  domainFilter,
+  onClearDomain,
   onNavigate,
   onPreset,
   exceptions,
@@ -1726,6 +1786,8 @@ function FindingsSection({
   onSeverity: (value: GovernanceSeverity | "all") => void;
   onCategory: (value: GovernanceCategory | "all") => void;
   onClearPillar: () => void;
+  domainFilter?: { label: string; includesWorkspace: boolean };
+  onClearDomain: () => void;
   onNavigate: (finding: GovernanceFinding) => void;
   onPreset: (value: "all" | "external" | "metadata" | "failures") => void;
   exceptions: ReadonlyMap<string, GovernanceException>;
@@ -1740,7 +1802,7 @@ function FindingsSection({
   onRemoveException: (id: string) => Promise<void>;
 }) {
   const activeFilters =
-    search || severity !== "all" || category !== "all" || pillar || mineOnly;
+    search || severity !== "all" || category !== "all" || pillar || mineOnly || domainFilter;
   const activePreset = pillar || severity !== "all"
     ? undefined
     : !search && category === "all"
@@ -1801,6 +1863,27 @@ function FindingsSection({
             >
               Clear pillar
             </button>
+          </div>
+        )}
+        {domainFilter && (
+          <div className="flex flex-col gap-xs border-b border-border bg-primary/5 px-l py-s">
+            <div className="flex items-center justify-between gap-m">
+              <span className="text-200 font-semibold text-brand-foreground">
+                Domain: {domainFilter.label}
+              </span>
+              <button
+                type="button"
+                onClick={onClearDomain}
+                className="atlas-control rounded-lg px-s text-200 font-semibold text-primary hover:bg-primary/10"
+              >
+                Clear domain
+              </button>
+            </div>
+            {!domainFilter.includesWorkspace && (
+              <span className="text-200 text-muted-foreground">
+                The active workspace is not in this domain. Switch to one of its workspaces to see its item findings.
+              </span>
+            )}
           </div>
         )}
         <div className="atlas-toolbar flex flex-col gap-s border-b border-border bg-secondary/55 p-m">

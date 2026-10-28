@@ -1,6 +1,7 @@
 import {
   buildGovernanceFindings,
   getCoverageDiagnostics,
+  type GovernanceFinding,
   type GovernanceSeverity,
 } from "./governance";
 import {
@@ -11,6 +12,7 @@ import {
 } from "./governance-evidence";
 import { snapshotCatalogFromData } from "./history";
 import type { AtlasData } from "./model";
+import type { PersistedWorkspaceSyncStatus } from "./workspace-sync";
 import {
   microsoftPillarForPosture,
   type MicrosoftGovernancePillar,
@@ -179,7 +181,7 @@ function emptyCoverage(): GovernanceSummary["coverage"] {
   };
 }
 
-function domainKey(domainId: string | undefined): string {
+export function domainKey(domainId: string | undefined): string {
   if (!domainId) return UNKNOWN_DOMAIN_KEY;
   return domainId === NO_DOMAIN_KEY ? NO_DOMAIN_KEY : domainId.toLowerCase();
 }
@@ -244,8 +246,9 @@ export function aggregateByDomain(
   }
   if (evidence?.domains.status.status === "complete") {
     for (const domain of evidence.domains.entries) {
-      if (rows.has(domain.id)) continue;
-      const row = ensure(domain.id, domain.id);
+      const key = domain.id.toLowerCase();
+      if (rows.has(key)) continue;
+      const row = ensure(key, domain.id);
       row.empty = true;
       row.emptyReason =
         domain.workspaceCount == null ? "unknown" : domain.workspaceCount === 0 ? "empty-in-fabric" : "not-synchronized";
@@ -268,4 +271,39 @@ export function aggregateByDomain(
 
 export function coverageRatio(value: CoverageCount): number | null {
   return value.denominator ? Math.round((value.numerator / value.denominator) * 100) : null;
+}
+
+/**
+ * Inputs for the per-domain view: persisted summaries of every synchronized
+ * workspace, with the active workspace replaced by its live summary.
+ */
+export function domainGovernanceInputs(
+  statuses: Readonly<Record<string, PersistedWorkspaceSyncStatus>>,
+  data: AtlasData,
+  targets?: Partial<Record<PosturePillar, number>>,
+): WorkspaceGovernanceInput[] {
+  const activeId = data.workspace.fabricId.toLowerCase();
+  const inputs: WorkspaceGovernanceInput[] = Object.entries(statuses)
+    .filter(([workspaceId, status]) => workspaceId.toLowerCase() !== activeId && status.snapshotId)
+    .map(([workspaceId, status]) => ({
+      workspaceId,
+      ...(status.displayName ? { displayName: status.displayName } : {}),
+      ...(status.fabricDomainId ? { domainId: status.fabricDomainId } : {}),
+      ...(status.governanceSummary ? { summary: status.governanceSummary } : {}),
+    }));
+  if (data.items.length || data.workspace.snapshotId) {
+    inputs.push({
+      workspaceId: data.workspace.fabricId,
+      displayName: data.workspace.displayName,
+      ...(data.workspace.fabricDomainId ? { domainId: data.workspace.fabricDomainId } : {}),
+      summary: summarizeGovernance(data, targets),
+    });
+  }
+  return inputs;
+}
+
+/** Domain key a finding belongs to: its own domain for domain-level rules, else the workspace domain. */
+export function findingDomainKey(finding: Pick<GovernanceFinding, "id">, workspaceDomainId: string | undefined): string {
+  if (finding.id.startsWith("domain-empty:")) return domainKey(finding.id.slice("domain-empty:".length));
+  return domainKey(workspaceDomainId);
 }

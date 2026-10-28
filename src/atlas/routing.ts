@@ -305,6 +305,7 @@ export function parseAtlasLocation(
           ],
           ["currentSnapshotId", value(params, "governance.current")],
           ["previousSnapshotId", value(params, "governance.baseline")],
+          ["fabricDomain", value(params, "governance.fabricDomain")],
         ]),
       }),
     };
@@ -448,6 +449,7 @@ export function urlForNavigation(
     set(params, "governance.domain", filterValue(focus, "domain"));
     set(params, "governance.metric", filterValue(focus, "metric"));
     set(params, "governance.pillar", filterValue(focus, "pillar"));
+    set(params, "governance.fabricDomain", filterValue(focus, "fabricDomain"));
     set(
       params,
       "governance.current",

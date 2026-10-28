@@ -198,6 +198,30 @@ describe("Atlas routing", () => {
     });
   });
 
+  it("round-trips the findings domain focus", () => {
+    const url = urlForNavigation(
+      { pathname: "/", search: "" },
+      {
+        tab: "governance",
+        focus: {
+          requestId: "ignored",
+          governanceSection: "findings",
+          filters: { section: "findings", fabricDomain: "unassigned" },
+        },
+      },
+    );
+
+    expect(url).toContain("governance.fabricDomain=unassigned");
+    expect(
+      parseAtlasLocation({
+        hash: "#governance",
+        search: url.slice(url.indexOf("?"), url.indexOf("#")),
+      }),
+    ).toMatchObject({
+      focus: { governanceSection: "findings", filters: { fabricDomain: "unassigned" } },
+    });
+  });
+
   it("round-trips posture filters", () => {
     const url = urlForNavigation(
       { pathname: "/", search: "" },

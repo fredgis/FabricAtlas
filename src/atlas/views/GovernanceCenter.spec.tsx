@@ -128,6 +128,19 @@ describe("GovernanceCenterView", () => {
     }
   });
 
+  it("aggregates posture by domain and focuses findings on a selected domain", async () => {
+    renderView();
+    const table = (await screen.findByRole("heading", { name: "By domain" })).closest("div.overflow-hidden") as HTMLElement;
+    expect(within(table).getByText("Finance")).toBeInTheDocument();
+    expect(within(table).getByText(/Empty in Fabric/)).toBeInTheDocument();
+    fireEvent.click(within(table).getByRole("button", { name: /Show findings for domain Operations . Rentals/ }));
+    expect(screen.getByRole("tab", { name: /Findings/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText(/^Domain: Operations/)).toBeInTheDocument();
+    expect(screen.queryByText(/Domains without workspace/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear domain" }));
+    expect(screen.queryByText(/^Domain: Operations/)).not.toBeInTheDocument();
+  });
+
   it("supports arrow-key tab navigation", async () => {
     renderView();
     const findings = screen.getByRole("tab", { name: /Findings/ });
