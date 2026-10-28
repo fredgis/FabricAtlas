@@ -47,6 +47,18 @@ import {
 } from "../access-review-evidence";
 import { accessRowsToCsv } from "../access-export";
 import {
+  PRINCIPAL_TYPE_FILTERS,
+  PRINCIPAL_TYPE_LABELS,
+  ROLE_FILTERS,
+  ROLE_LABELS,
+  countPrincipalTypes,
+  matchesAccessFilters,
+  parsePrincipalTypeFilter,
+  parseRoleFilter,
+  type PrincipalTypeFilter,
+  type RoleFilter,
+} from "../access-filters";
+import {
   ACCESS_EVIDENCE_LABEL,
   ACCESS_LAYER_LABEL,
   ACCESS_LEGEND,
@@ -1355,6 +1367,11 @@ export function AccessView({
   const [coverageFilter, setCoverageFilter] = useState<AccessCoverageFilter>(
     () => parseAccessCoverageFilter(initialFilters?.coverage),
   );
+  const [principalType, setPrincipalType] = useState<PrincipalTypeFilter>(() =>
+    parsePrincipalTypeFilter(initialFilters?.principalType),
+  );
+  const [role, setRole] = useState<RoleFilter>(() => parseRoleFilter(initialFilters?.role));
+  const principalTypeCounts = useMemo(() => countPrincipalTypes(rows), [rows]);
   const reviewTriggerRef = useRef<HTMLElement | null>(null);
   const [selectedId, setSelectedId] = useState<string | null | undefined>(
     undefined,
@@ -1445,9 +1462,10 @@ export function AccessView({
           (accessLevel === "all" || row.effectiveAccess === accessLevel) &&
           (origin === "all" || row.origin === origin) &&
           matchesRisk(row, risk) &&
+          matchesAccessFilters(row, principalType, role) &&
           matchesAccessCoverage(row.coverage, coverageFilter),
       ),
-    [accessLevel, coverageFilter, normalizedSearch, origin, risk, rows],
+    [accessLevel, coverageFilter, normalizedSearch, origin, principalType, risk, role, rows],
   );
   const effectiveExpandedPrincipals = useMemo(
     () =>
@@ -1517,10 +1535,14 @@ export function AccessView({
           origin,
           risk,
           coverage: coverageFilter,
+          ...(principalType !== "all" ? { principalType } : {}),
+          ...(role !== "all" ? { role } : {}),
         },
       },
     });
   }, [
+    principalType,
+    role,
     accessLevel,
     coverageFilter,
     mode,
@@ -1536,6 +1558,8 @@ export function AccessView({
     accessLevel !== "all" ||
     origin !== "all" ||
     risk !== "all" ||
+    principalType !== "all" ||
+    role !== "all" ||
     coverageFilter !== "all";
   const flaggedCount = rows.filter(hasRisk).length;
   const reviewsByRowKey = useMemo(
@@ -1636,6 +1660,8 @@ export function AccessView({
     setAccessLevel("all");
     setOrigin("all");
     setRisk("all");
+    setPrincipalType("all");
+    setRole("all");
     setCoverageFilter("all");
   };
 
@@ -1743,6 +1769,14 @@ export function AccessView({
             );
           })}
         </dl>
+        <dl aria-label="Principals by type" className="flex flex-wrap gap-x-l gap-y-xs border-t border-border px-l py-s">
+          {PRINCIPAL_TYPE_FILTERS.map((type) => (
+            <div key={type} className="flex items-baseline gap-xs">
+              <dt className="text-200 text-muted-foreground">{PRINCIPAL_TYPE_LABELS[type]}</dt>
+              <dd className="font-numeric text-200 font-semibold">{principalTypeCounts[type]}</dd>
+            </div>
+          ))}
+        </dl>
       </Card>
 
       <Card className="overflow-hidden">
@@ -1827,6 +1861,43 @@ export function AccessView({
 
             <label className="min-w-0">
               <span className="mb-xs block text-200 font-semibold text-muted-foreground">
+                Principal type
+              </span>
+              <select
+                value={principalType}
+                onChange={(event) => setPrincipalType(parsePrincipalTypeFilter(event.target.value))}
+                title="Guest detection is a heuristic based on the Entra guest type, external flags and #EXT# UPNs."
+                className="atlas-control w-full rounded-lg border border-input bg-card px-m text-300 text-foreground xl:w-auto"
+              >
+                <option value="all">All types</option>
+                {PRINCIPAL_TYPE_FILTERS.map((type) => (
+                  <option key={type} value={type}>
+                    {PRINCIPAL_TYPE_LABELS[type]} ({principalTypeCounts[type]})
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="min-w-0">
+              <span className="mb-xs block text-200 font-semibold text-muted-foreground">
+                Role
+              </span>
+              <select
+                value={role}
+                onChange={(event) => setRole(parseRoleFilter(event.target.value))}
+                className="atlas-control w-full rounded-lg border border-input bg-card px-m text-300 text-foreground xl:w-auto"
+              >
+                <option value="all">All roles</option>
+                {ROLE_FILTERS.map((entry) => (
+                  <option key={entry} value={entry}>
+                    {ROLE_LABELS[entry]}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="min-w-0">
+              <span className="mb-xs block text-200 font-semibold text-muted-foreground">
                 Evidence coverage
               </span>
               <select
@@ -1857,6 +1928,8 @@ export function AccessView({
                   origin,
                   risk,
                   coverage: coverageFilter,
+                  ...(principalType !== "all" ? { principalType } : {}),
+                  ...(role !== "all" ? { role } : {}),
                 }}
                 onCreate={addSavedView}
                 onApply={(view) => {
@@ -1887,6 +1960,8 @@ export function AccessView({
                       : "all",
                   );
                   setCoverageFilter(parseAccessCoverageFilter(view.filters.coverage));
+                  setPrincipalType(parsePrincipalTypeFilter(view.filters.principalType));
+                  setRole(parseRoleFilter(view.filters.role));
                 }}
                 onDelete={removeSavedView}
               />}

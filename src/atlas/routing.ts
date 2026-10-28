@@ -8,6 +8,7 @@ import type {
 import { isWorkspaceSection } from "./navigation";
 import type { SavedViewFilters } from "./saved-views";
 import { ITEM_TYPES } from "./model";
+import { PRINCIPAL_TYPE_FILTERS, ROLE_FILTERS } from "./access-filters";
 import { CATALOG_FACETS, facetSelectionFromFilters, facetSelectionToFilters } from "./catalog-facets";
 import { ASSET_OBJECT_KINDS } from "./catalog-objects";
 import { xrayObjectKey } from "./semantic-xray";
@@ -339,6 +340,8 @@ export function parseAtlasLocation(
           ],
           ["origin", allowed(params, "access.origin", ACCESS_ORIGINS)],
           ["risk", allowed(params, "access.risk", ACCESS_RISKS)],
+          ["principalType", allowed(params, "access.type", new Set(PRINCIPAL_TYPE_FILTERS))],
+          ["role", allowed(params, "access.role", new Set(ROLE_FILTERS))],
         ]),
       }),
     };
@@ -486,6 +489,8 @@ export function urlForNavigation(
     set(params, "access.level", filterValue(focus, "accessLevel"));
     set(params, "access.origin", filterValue(focus, "origin"));
     set(params, "access.risk", filterValue(focus, "risk"));
+    set(params, "access.type", filterValue(focus, "principalType"));
+    set(params, "access.role", filterValue(focus, "role"));
     set(params, "access.item", focus?.itemId);
     set(params, "access.principal", focus?.principalId);
   } else if (navigation.tab === "jobs") {
