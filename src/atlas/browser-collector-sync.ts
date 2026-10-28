@@ -11,6 +11,7 @@ import {
   type ItemRelationsEvidence,
 } from "./item-relations-evidence";
 import { sourceProvenanceSnapshot } from "./source-provenance-snapshot";
+import { planIncrementalSync, syncPlanSummary } from "./incremental-sync";
 
 type Name = "workspaceCollectCore" | "workspaceCollectDefinitions" | "workspaceCollectItemRelations"
   | "workspaceCollectKqlMetadata" | "workspaceCollectSqlMetadata" | "workspaceCollectPowerBi"
@@ -553,5 +554,7 @@ export async function collectBrowserWorkspace(
   validateRawSync(raw, workspaceId);
   if (new TextEncoder().encode(JSON.stringify(raw)).byteLength > 26 * 1024 * 1024) fail();
   const fallbackCount = Object.values(sources).filter((entry) => entry.source === "python-compatibility").length;
-  return { raw, itemRelationsCollection, summary: `Collectors: Rayfin active; exact Python gaps=${fallbackCount}; scheduling=browser` };
+  // The Fabric core item list carries no modification date, so every run re-enriches all items until one is available.
+  const plan = planIncrementalSync({ generation: raw.schemaVersion ?? 0, current: items.map((item) => ({ id: item.id })) });
+  return { raw, itemRelationsCollection, summary: `Collectors: Rayfin active; exact Python gaps=${fallbackCount}; scheduling=browser; ${syncPlanSummary(plan)}` };
 }

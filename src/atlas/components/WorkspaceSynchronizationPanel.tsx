@@ -45,6 +45,7 @@ import { LINK_BUTTON, PRIMARY_BUTTON, SECONDARY_BUTTON } from "./button-styles";
 import { ErrorDetail } from "./ErrorDetail";
 import { RowActionsMenu, type RowMenuAction } from "./RowActionsMenu";
 import { SyncRunDetailed } from "./SyncRunStatus";
+import { parseSyncPlanSummary } from "../incremental-sync";
 import { WorkspaceScopeDialog } from "./WorkspaceScopeDialog";
 
 export const LIVE_RUN_ROW_ID = "atlas-live-sync-run";
@@ -625,13 +626,22 @@ function RunResult({
           Running
         </span>
       );
-    case "completed":
+    case "completed": {
+      const plan = parseSyncPlanSummary(row.summary);
       return (
-        <span className="inline-flex items-center gap-xs font-semibold text-status-healthy">
-          <CircleCheck className="icon-size-200" aria-hidden="true" />
-          Completed
+        <span className="flex min-w-0 flex-col items-start">
+          <span className="inline-flex items-center gap-xs font-semibold text-status-healthy">
+            <CircleCheck className="icon-size-200" aria-hidden="true" />
+            Completed
+          </span>
+          {plan && (
+            <span className="mt-xxs text-200 text-muted-foreground" data-testid="sync-mode">
+              {plan.mode === "incremental" ? "Incremental" : "Full"} · {plan.refreshed} refreshed · {plan.reused} reused
+            </span>
+          )}
         </span>
       );
+    }
     case "failed": {
       const error = row.failureMessage
         ? summarizeError(row.failureMessage)
