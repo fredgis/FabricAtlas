@@ -42,7 +42,7 @@ jobs, configuration and team notes. It never stores workspace business data.
   selection changes.
 - Add focused tests for new state or graph logic.
 - Validate with `npm test`, `npm run lint` and `npm run build`.
-- Deploy with `npx rayfin up --tenant <tenant-id> --workspace <workspace-name>`.
+- Deploy with `npx rayfin up --tenant <tenant-id> --workspace-id <workspace-id>`.
 
 ## Repository layout
 

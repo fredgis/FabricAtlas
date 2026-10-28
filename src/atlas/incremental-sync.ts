@@ -45,19 +45,37 @@ export function planIncrementalSync(input: {
   return { mode: "incremental", refresh, reuse };
 }
 
-/** Copies the previous per-item enrichment for reused items into a fresh core snapshot. */
-export function applyReusedEnrichment(fresh: RawSync, previous: RawSync, reuse: readonly string[]): RawSync {
+/**
+ * Copies the previous per-item enrichment for reused items into a fresh core
+ * snapshot. Config sections listed in `regenerated` are rebuilt by the current
+ * run for every item, so the previous copies are dropped to avoid duplicates.
+ */
+export function applyReusedEnrichment(
+  fresh: RawSync, previous: RawSync, reuse: readonly string[], regenerated: readonly string[] = [],
+): RawSync {
   const ids = new Set(reuse);
+  const skip = new Set(regenerated);
   const pick = <T>(source: Record<string, T> | undefined) =>
     Object.fromEntries(Object.entries(source ?? {}).filter(([id]) => ids.has(id)));
+  const lineageKey = (edge: { source?: string; target?: string; relation?: string }) =>
+    [edge.source, edge.target, edge.relation].join("\u0000");
+  const freshLineage = new Set((fresh.lineage ?? []).map(lineageKey));
   return {
     ...fresh,
     schema: { ...fresh.schema, ...pick(previous.schema) },
     artifactMetadata: { ...fresh.artifactMetadata, ...pick(previous.artifactMetadata) },
+    semanticModelEvidence: { ...fresh.semanticModelEvidence, ...pick(previous.semanticModelEvidence) },
     config: [
       ...(fresh.config ?? []).filter((entry) => !ids.has(String(entry.itemId))),
-      ...(previous.config ?? []).filter((entry) => ids.has(String(entry.itemId))),
+      ...(previous.config ?? []).filter((entry) => ids.has(String(entry.itemId)) && !skip.has(String(entry.section))),
     ],
+    // Provenance edges are owned by their consumer, which is unchanged when reused.
+    lineage: [
+      ...(fresh.lineage ?? []),
+      ...(previous.lineage ?? []).filter((edge) => ids.has(String(edge.target)) && !freshLineage.has(lineageKey(edge))),
+    ],
+    sections: { ...previous.sections, ...fresh.sections },
+    capabilities: { ...previous.capabilities, ...fresh.capabilities },
   };
 }
 

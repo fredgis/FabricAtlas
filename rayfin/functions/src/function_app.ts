@@ -146,8 +146,9 @@ udf.func(
     protocolVersion: 1,
     workspaceId: SyncUuidInput,
     correlationId: SyncUuidInput | null = null,
+    delegatedToken: string | null = null,
   ): Promise<WorkspaceGovernanceEnvelope> =>
-    workspaceCollectGovernance(ctx, protocolVersion, workspaceId, correlationId),
+    workspaceCollectGovernance(ctx, protocolVersion, workspaceId, correlationId, delegatedToken),
   [],
 );
 

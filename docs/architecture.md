@@ -149,7 +149,7 @@ The Python UDF exposes:
 - `sync_all` and `sync_items` for explicit rollback;
 - `ping` for basic validation.
 
-The normal 2.0 path uses `sync_compatibility`. It cannot rediscover the
+The normal path uses `sync_compatibility`. It cannot rediscover the
 workspace or run an unrequested collector.
 
 The UDF keeps its existing execution deadline, retry bounds, payload limits and

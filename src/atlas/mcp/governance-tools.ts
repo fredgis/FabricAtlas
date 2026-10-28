@@ -1,4 +1,5 @@
-import { findingDomainKey } from "../domain-governance";
+import { findingDomainKey, NO_DOMAIN_KEY, UNKNOWN_DOMAIN_KEY } from "../domain-governance";
+import { domainReference } from "../governance-evidence";
 import { findingFixUrl } from "../fabric-portal";
 import { findingRule } from "../finding-groups";
 import {
@@ -106,6 +107,11 @@ export function governanceFindings(
         (left.finding.id < right.finding.id ? -1 : left.finding.id > right.finding.id ? 1 : 0),
     );
   const rows = matches.slice(args.offset, args.offset + args.limit);
+  const domainInfo = (key: string) =>
+    domainReference(
+      data.governanceEvidence,
+      key === NO_DOMAIN_KEY ? "unassigned" : key === UNKNOWN_DOMAIN_KEY ? undefined : key,
+    );
   const unknownOwners = matches.filter((entry) => entry.owner === "unknown").length;
   return {
     result: {
@@ -119,6 +125,9 @@ export function governanceFindings(
           pillar,
           pillarLabel: MICROSOFT_PILLAR_LABEL[pillar],
           domain,
+          domainName: domainInfo(domain).name,
+          domainPath: domainInfo(domain).path,
+          parentDomainName: domainInfo(domain).parentName,
           title: truncateText(finding.title) ?? "",
           detail: truncateText(finding.detail, ATLAS_MCP_LIMITS.findingText) ?? null,
           recommendation:

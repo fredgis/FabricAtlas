@@ -18,6 +18,7 @@ import {
 import { motion } from "framer-motion";
 import type { AtlasFocusRequest, AtlasNavigation } from "../navigation";
 import { snapshotCatalogFromData } from "../history";
+import { buildCatalogObjects } from "../catalog-objects";
 import {
   nonConformingPostureItemIds,
   type PosturePillar,
@@ -242,19 +243,47 @@ export function CatalogView({
       return next;
     });
 
+  const describedObjects = useMemo(
+    () =>
+      buildCatalogObjects(data)
+        .filter((object) => object.description?.trim())
+        .map((object) => ({
+          itemFabricId: object.itemFabricId,
+          path: [object.itemName, object.tableName ?? object.parentName, object.name]
+            .filter((part, index, parts) => part && parts.indexOf(part) === index)
+            .join(" › "),
+          kind: object.kind,
+          text: object.description!.trim(),
+          lower: object.description!.toLowerCase(),
+        })),
+    [data],
+  );
+  const descriptionMatches = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (normalizedQuery.length < 2) return [];
+    const itemMatches = items
+      .filter((item) => item.description?.toLowerCase().includes(normalizedQuery))
+      .map((item) => ({ itemFabricId: item.fabricId, path: item.displayName, kind: "item", text: item.description!.trim() }));
+    return [
+      ...itemMatches,
+      ...describedObjects.filter((object) => object.lower.includes(normalizedQuery)),
+    ];
+  }, [describedObjects, items, query]);
   const baseVisible = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
+    const describedItemIds = new Set(descriptionMatches.map((match) => match.itemFabricId));
     return items.filter(
       (item) =>
         (!selType || item.itemType === selType) &&
         (!postureItemIds || postureItemIds.has(item.fabricId)) &&
         (!normalizedQuery ||
           item.displayName.toLowerCase().includes(normalizedQuery) ||
+          describedItemIds.has(item.fabricId) ||
           item.tags.some((tag) =>
             tag.toLowerCase().includes(normalizedQuery),
           )),
     );
-  }, [items, postureItemIds, selType, query]);
+  }, [items, postureItemIds, selType, query, descriptionMatches]);
   const facetResult = useMemo(
     () => applyCatalogFacets(baseVisible, facets, facetContext),
     [baseVisible, facets, facetContext],
@@ -369,7 +398,7 @@ export function CatalogView({
         {hasActiveFilters && <div className="atlas-toolbar flex flex-wrap items-center border-t border-border bg-secondary px-l py-s">
           <Search className="icon-size-200 text-muted-foreground" />
           <span className="text-200 text-muted-foreground">
-            Search by item name or tag, then narrow the inventory by type.
+            Search by item name, tag or description (items, tables, columns, measures), then narrow by type.
           </span>
           {selType && (
             <span className="rounded-md border border-primary/30 bg-primary/10 px-s py-xxs text-200 font-semibold text-primary">
@@ -432,7 +461,7 @@ export function CatalogView({
                 id="catalog-search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Item name or tag"
+                placeholder="Name, tag or description"
                 className="h-9 w-full rounded-lg border border-input bg-background pl-xxxl pr-xxxl text-300 text-foreground placeholder:text-muted-foreground"
               />
               {query && (
@@ -446,6 +475,27 @@ export function CatalogView({
                 </button>
               )}
             </div>
+            {descriptionMatches.length > 0 && (
+              <section aria-label="Description matches" className="mt-s rounded-lg border border-border bg-background p-s">
+                <p className="mb-xxs text-200 font-semibold text-muted-foreground">
+                  Matches in descriptions · {descriptionMatches.length}
+                </p>
+                <ul className="flex max-h-48 flex-col gap-xxs overflow-auto">
+                  {descriptionMatches.slice(0, 20).map((match, index) => (
+                    <li key={`${match.itemFabricId}:${match.path}:${index}`}>
+                      <button
+                        type="button"
+                        onClick={() => openDetail(match.itemFabricId)}
+                        className="w-full rounded-md px-xs py-xxs text-left hover:bg-accent"
+                      >
+                        <span className="block truncate text-200 font-semibold">{match.path}</span>
+                        <span className="block truncate text-100 text-muted-foreground">{match.text}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
             <div className="mt-m flex flex-col gap-s" aria-label="Catalog facets" role="group">
               {CATALOG_FACETS.map((facet) =>
                 facetResult.facets[facet].length ? (

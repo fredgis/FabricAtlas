@@ -20,10 +20,20 @@ export function FabricDomainName({
     );
   }
   if (domain.kind === "unnamed") {
+    const adminRefused = evidence?.domains.status.code === "authorization-failed";
     return (
-      <span className={cn("font-normal", className)}>
+      <span
+        className={cn("font-normal", className)}
+        title={
+          adminRefused
+            ? "Assigned to this Fabric domain. Its name needs the Fabric admin API (Tenant.Read.All): synchronize as a Fabric administrator."
+            : "Assigned to this Fabric domain. Its name was not collected yet: synchronize again."
+        }
+      >
         <span className="font-monospace">{domain.id}</span>{" "}
-        <span className="text-muted-foreground">(Unknown name)</span>
+        <span className="text-muted-foreground">
+          {adminRefused ? "(Assigned, name needs Fabric admin)" : "(Assigned, unknown name)"}
+        </span>
       </span>
     );
   }

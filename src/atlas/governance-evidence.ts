@@ -243,7 +243,7 @@ export function domainLabel(evidence: GovernanceEvidence | undefined, domainId: 
   if (domainId === "unassigned") return { kind: "unassigned", label: "No domain" };
   if (!domainId) return { kind: "unknown", label: "Unknown" };
   const path = domainPath(evidence, domainId);
-  return path ? { kind: "named", id: domainId, label: path } : { kind: "unnamed", id: domainId, label: `${domainId} (Unknown name)` };
+  return path ? { kind: "named", id: domainId, label: path } : { kind: "unnamed", id: domainId, label: `Unknown name (${domainId.slice(0, 8)}…)` };
 }
 
 export interface ItemOneLakeRoles {

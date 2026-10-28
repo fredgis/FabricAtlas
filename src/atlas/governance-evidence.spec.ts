@@ -51,7 +51,7 @@ describe("domain hierarchy resolution", () => {
   it("keeps the GUID with Unknown name when the admin domain list was denied", () => {
     const denied = evidence([], "failed");
     expect(domainPath(denied, CHILD)).toBeUndefined();
-    expect(domainLabel(denied, CHILD)).toEqual({ kind: "unnamed", id: CHILD, label: `${CHILD} (Unknown name)` });
+    expect(domainLabel(denied, CHILD)).toEqual({ kind: "unnamed", id: CHILD, label: `Unknown name (${CHILD.slice(0, 8)}…)` });
     expect(domainReference(denied, CHILD)).toMatchObject({ status: "unknown-name", domainId: CHILD, name: null });
     expect(domainReference(undefined, MISSING)).toMatchObject({ status: "unknown-name", domainId: MISSING });
   });

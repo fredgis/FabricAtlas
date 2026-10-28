@@ -103,6 +103,7 @@ import {
   MICROSOFT_PILLAR_DESCRIPTION,
   MICROSOFT_PILLAR_LABEL,
   microsoftPillarForFinding,
+  microsoftPillarForPosture,
   type MicrosoftGovernancePillar,
 } from "../ms-pillars";
 import {
@@ -127,6 +128,9 @@ import {
   domainGovernanceInputs,
   domainKey,
   findingDomainKey,
+  NO_DOMAIN_KEY,
+  UNKNOWN_DOMAIN_KEY,
+  type DomainGovernanceRow,
 } from "../domain-governance";
 import type { AtlasData } from "../model";
 
@@ -1199,6 +1203,7 @@ export function GovernanceCenterView({
             onResetTargets={resetGovernanceTargets}
             onPillar={setPostureMetric}
             onNavigate={onNavigate}
+            fabricSignals={{ coverage, evidence: data.governanceEvidence, domainRows }}
           />
           <div className="mt-l">
             <DomainGovernanceTable
@@ -1642,7 +1647,9 @@ function PostureSection({
   onResetTargets,
   onPillar,
   onNavigate,
+  fabricSignals,
 }: {
+  fabricSignals?: FabricSignalsInput;
   current: PostureScore;
   previous?: PostureScore;
   scores: Map<string, PostureScore>;
@@ -1713,6 +1720,7 @@ function PostureSection({
               targetsAvailable={targetsAvailable} onSelect={onPillar} />
           </Suspense>
           <div className="min-w-0 border-t border-border p-m lg:border-l lg:border-t-0">
+          <MicrosoftPillarStrip pillars={current.pillars} />
           <div aria-label="Posture pillar selection" className="grid gap-xs sm:grid-cols-2">
           {current.pillars.map((pillar) => {
             const before = previous?.pillars.find(
@@ -1732,8 +1740,11 @@ function PostureSection({
                   selectedPillar === pillar.pillar ? "border-brand-foreground/40 bg-primary/5" : "border-transparent")}
               >
                 <div className="flex items-center justify-between gap-s">
-                  <span className="text-300 font-semibold">
-                    {POSTURE_LABELS[pillar.pillar]}
+                  <span className="flex flex-col">
+                    <span className="text-300 font-semibold">{POSTURE_LABELS[pillar.pillar]}</span>
+                    <span className="text-100 uppercase tracking-wide text-muted-foreground">
+                      Fabric · {MICROSOFT_PILLAR_LABEL[microsoftPillarForPosture(pillar.pillar)]}
+                    </span>
                   </span>
                   <span className="atlas-score font-numeric text-400 font-semibold" data-score-band={scoreBand(pillar.score)}>
                     {pillar.score == null ? "N/A" : `${pillar.score}%`}
@@ -1773,6 +1784,8 @@ function PostureSection({
           </div>
         </div>
       </Card>
+
+      {fabricSignals && <FabricSignalsCard {...fabricSignals} />}
 
       <details className="rounded-lg border border-border bg-card">
         <summary className="cursor-pointer px-l py-m text-300 font-semibold">Configure governance targets</summary>
@@ -1818,6 +1831,115 @@ function PostureSection({
         )}
       </Card>
     </div>
+  );
+}
+
+const MS_PILLARS: MicrosoftGovernancePillar[] = ["health", "protect", "trust"];
+
+/** OneLake catalog view of the Atlas pillars: mean of the evaluable mapped scores. */
+export function microsoftPillarScores(
+  pillars: PostureScore["pillars"],
+): Record<MicrosoftGovernancePillar, number | null> {
+  const result = {} as Record<MicrosoftGovernancePillar, number | null>;
+  for (const pillar of MS_PILLARS) {
+    const scores = pillars
+      .filter((entry) => microsoftPillarForPosture(entry.pillar) === pillar && entry.score != null)
+      .map((entry) => entry.score as number);
+    result[pillar] = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+  }
+  return result;
+}
+
+function MicrosoftPillarStrip({ pillars }: { pillars: PostureScore["pillars"] }) {
+  const scores = microsoftPillarScores(pillars);
+  return (
+    <div aria-label="OneLake catalog pillars" className="mb-m grid grid-cols-3 gap-xs rounded-md border border-border p-s">
+      {MS_PILLARS.map((pillar) => (
+        <div key={pillar} title={MICROSOFT_PILLAR_DESCRIPTION[pillar]} className="flex flex-col items-start gap-xxs px-s">
+          <span className="text-100 uppercase tracking-wide text-muted-foreground">Fabric · {MICROSOFT_PILLAR_LABEL[pillar]}</span>
+          <span className="atlas-score font-numeric text-400 font-semibold" data-score-band={scoreBand(scores[pillar])}>
+            {scores[pillar] == null ? "N/A" : `${scores[pillar]}%`}
+          </span>
+          <span className="text-100 text-muted-foreground">
+            {pillars.filter((entry) => microsoftPillarForPosture(entry.pillar) === pillar).map((entry) => POSTURE_LABELS[entry.pillar]).join(" · ")}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface FabricSignalsInput {
+  coverage: ReturnType<typeof getCoverageDiagnostics>;
+  evidence?: GovernanceEvidence;
+  domainRows: DomainGovernanceRow[];
+}
+
+function coverageSignal(metric: { numerator: number; denominator: number; percentage: number | null }) {
+  return metric.percentage == null
+    ? { value: "Unknown", detail: "Not readable in this snapshot" }
+    : { value: `${metric.percentage}%`, detail: `${metric.numerator} of ${metric.denominator} items` };
+}
+
+function FabricSignalsCard({ coverage, evidence, domainRows }: FabricSignalsInput) {
+  const assigned = domainRows.filter((row) => row.key !== NO_DOMAIN_KEY && row.key !== UNKNOWN_DOMAIN_KEY && !row.empty);
+  const assignedWorkspaces = assigned.reduce((total, row) => total + row.workspaces.length, 0);
+  const allWorkspaces = domainRows.reduce((total, row) => total + row.workspaces.length, 0);
+  const domainsKnown = evidence?.domains.status.status === "complete";
+  const network = evidence?.network;
+  const policy = network?.policy;
+  const tagsKnown = evidence?.tags.status.status === "complete";
+  const settingsKnown = evidence?.tenantSettings.status.status === "complete";
+  const signals: { label: string; pillar: MicrosoftGovernancePillar; value: string; detail: string }[] = [
+    {
+      label: "Workspaces in a domain",
+      pillar: "trust",
+      value: allWorkspaces ? `${assignedWorkspaces} / ${allWorkspaces}` : "Unknown",
+      detail: domainsKnown ? `${evidence!.domains.entries.length} Fabric domains` : "Domains not collected (Fabric admin consent required)",
+    },
+    { label: "Endorsed items", pillar: "trust", ...coverageSignal(coverage.byId.endorsement) },
+    { label: "Described items", pillar: "trust", ...coverageSignal(coverage.byId.descriptions) },
+    { label: "Sensitivity labels", pillar: "protect", ...coverageSignal(coverage.byId.sensitivity) },
+    {
+      label: "Fabric tags",
+      pillar: "trust",
+      value: tagsKnown ? String(evidence!.tags.entries.length) : "Unknown",
+      detail: tagsKnown
+        ? `${evidence!.tags.entries.filter((tag) => tag.scope === "domain").length} domain-scoped`
+        : "Tags not collected",
+    },
+    {
+      label: "Workspace network policy",
+      pillar: "protect",
+      value: policy?.inboundPublicAccess ? `Inbound ${policy.inboundPublicAccess}` : "Unknown",
+      detail: policy?.outboundPublicAccess ? `Outbound ${policy.outboundPublicAccess}` : network?.status.status === "unsupported" ? "Not supported by this workspace" : "Not collected",
+    },
+    {
+      label: "Fabric tenant settings",
+      pillar: "protect",
+      value: settingsKnown ? `${evidence!.tenantSettings.entries.filter((entry) => entry.enabled).length} / ${evidence!.tenantSettings.entries.length} on` : "Unknown",
+      detail: settingsKnown ? "Governance-relevant settings enabled" : "Requires Fabric admin consent",
+    },
+  ];
+  return (
+    <Card className="p-l">
+      <h3 className="text-400 font-semibold">Fabric governance signals</h3>
+      <p className="mt-xs text-200 text-muted-foreground">
+        Native Fabric controls behind the radar. Unknown means the signal was not collected, never compliant.
+      </p>
+      <div aria-label="Fabric governance signals" className="mt-m grid gap-s sm:grid-cols-2 xl:grid-cols-4">
+        {signals.map((signal) => (
+          <div key={signal.label} className="rounded-md border border-border p-m">
+            <div className="flex items-center justify-between gap-s">
+              <span className="text-200 font-semibold">{signal.label}</span>
+              <FabricPillarBadge pillar={signal.pillar} />
+            </div>
+            <p className="mt-xs font-numeric text-400 font-semibold">{signal.value}</p>
+            <p className="text-200 text-muted-foreground">{signal.detail}</p>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
 

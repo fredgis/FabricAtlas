@@ -120,6 +120,19 @@ const SHARE_ITEM_TYPES = new Set(["Lakehouse", "Warehouse", "KQLDatabase", "SQLD
 const ROLE_ITEM_TYPES = new Set(["Lakehouse"]);
 const AUTHORIZATION_MESSAGE = "Governance collection requires the configured Atlas administrator.";
 const TOKEN_UNAVAILABLE_MESSAGE = "The Fabric application token was unavailable.";
+const DELEGATED_TOKEN_MESSAGE = "The delegated Fabric token is invalid.";
+const JWT = /^[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}$/;
+
+/**
+ * Optional delegated Fabric token from the signed-in Fabric administrator
+ * (Tenant.Read.All). Admin APIs reject the app identity token, so this is the
+ * only way to read domains, tags and tenant settings. Never logged or stored.
+ */
+export function validateDelegatedFabricToken(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string" || value.length > 16_384 || !JWT.test(value)) throw new Error(DELEGATED_TOKEN_MESSAGE);
+  return value;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -250,16 +263,20 @@ export function sanitizeOneLakeRole(value: unknown, itemId: string): GovernanceO
   };
 }
 
-/** Collects optional governance evidence with an application-identity token. */
+/**
+ * Collects optional governance evidence. Admin sections prefer the delegated
+ * administrator token; workspace sections prefer the application token. Each
+ * side falls back to the other token when the first one is not authorized.
+ */
 export async function collectWorkspaceGovernance(
   token: string,
-  request: { workspaceId: string; correlationId: string | null },
+  request: { workspaceId: string; correlationId: string | null; delegatedToken?: string },
   dependencies: CollectGovernanceDependencies = {},
 ): Promise<WorkspaceGovernanceEnvelope> {
   if (typeof token !== "string" || !token || /\s/.test(token)) throw new Error(TOKEN_UNAVAILABLE_MESSAGE);
   const limits: CollectGovernanceLimits = { ...COLLECT_GOVERNANCE_LIMITS, ...dependencies.limits };
   const deadline = new ExecutionDeadline(limits.executionBudgetMs, dependencies.now);
-  const client = new FabricRestClient(token, {
+  const clientFor = (value: string) => new FabricRestClient(value, {
     deadline,
     fetch: dependencies.fetch,
     sleep: dependencies.sleep,
@@ -268,6 +285,24 @@ export async function collectWorkspaceGovernance(
     maxRetryAfterMs: limits.maxRetryAfterMs,
     maxResponseBytes: limits.maxResponseBytes,
   });
+  const appClient = clientFor(token);
+  const delegatedClient = request.delegatedToken ? clientFor(request.delegatedToken) : undefined;
+  const adminClients = delegatedClient ? [delegatedClient, appClient] : [appClient];
+  const workspaceClients = delegatedClient ? [appClient, delegatedClient] : [appClient];
+  const withFallback = async <T>(clients: FabricRestClient[], read: (client: FabricRestClient) => Promise<T>): Promise<T> => {
+    let lastError: unknown;
+    for (const candidate of clients) {
+      try {
+        return await read(candidate);
+      } catch (error) {
+        lastError = error;
+        if (failure(error).code !== "authorization-failed") throw error;
+      }
+    }
+    throw lastError;
+  };
+  let adminClient = adminClients[0];
+  let client = workspaceClients[0];
   const workspacePath = `/v1/workspaces/${request.workspaceId}`;
   const complete: GovernanceSectionStatus = { status: "complete" };
 
@@ -286,7 +321,11 @@ export async function collectWorkspaceGovernance(
   };
 
   try {
-    envelope.domains.entries = sanitizeDomains(await client.getObject("/v1/admin/domains"), limits.maxDomains);
+    envelope.domains.entries = sanitizeDomains(await withFallback(adminClients, async (candidate) => {
+      const payload = await candidate.getObject("/v1/admin/domains");
+      adminClient = candidate;
+      return payload;
+    }), limits.maxDomains);
   } catch (error) {
     envelope.domains.status = failure(error);
   }
@@ -295,7 +334,7 @@ export async function collectWorkspaceGovernance(
     // "not synchronized by Atlas". Lookups are bounded; skipped ones stay unknown.
     for (const domain of envelope.domains.entries.slice(0, limits.maxDomainWorkspaceLookups)) {
       try {
-        const values = await client.list(`/v1/admin/domains/${domain.id}/workspaces`, { maxPages: 5, maxRecords: 5_000 });
+        const values = await adminClient.list(`/v1/admin/domains/${domain.id}/workspaces`, { maxPages: 5, maxRecords: 5_000 });
         domain.workspaceCount = values.length;
       } catch {
         break;
@@ -304,7 +343,8 @@ export async function collectWorkspaceGovernance(
   }
   try {
     envelope.tags.entries = sanitizeTags(
-      await client.list("/v1/admin/tags", { maxPages: limits.maxTagPages, maxRecords: limits.maxTags }),
+      await withFallback(adminClients, (candidate) =>
+        candidate.list("/v1/admin/tags", { maxPages: limits.maxTagPages, maxRecords: limits.maxTags })),
       limits.maxTags,
     );
   } catch (error) {
@@ -312,21 +352,26 @@ export async function collectWorkspaceGovernance(
   }
   try {
     envelope.tenantSettings.entries = sanitizeTenantSettings(
-      await client.getObject("/v1/admin/tenantsettings"),
+      await withFallback(adminClients, (candidate) => candidate.getObject("/v1/admin/tenantsettings")),
       limits.maxTenantSettings,
     );
   } catch (error) {
     envelope.tenantSettings.status = failure(error);
   }
   try {
-    envelope.network.policy = sanitizeNetworkPolicy(await client.getObject(`${workspacePath}/networking/communicationPolicy`));
+    envelope.network.policy = sanitizeNetworkPolicy(await withFallback(workspaceClients, (candidate) =>
+      candidate.getObject(`${workspacePath}/networking/communicationPolicy`)));
   } catch (error) {
     envelope.network.status = failure(error);
   }
 
   let items: { id: string; type: string }[] = [];
   try {
-    items = (await client.list(`${workspacePath}/items`, { maxPages: limits.maxItemPages, maxRecords: limits.maxItems }))
+    items = (await withFallback(workspaceClients, async (candidate) => {
+      const values = await candidate.list(`${workspacePath}/items`, { maxPages: limits.maxItemPages, maxRecords: limits.maxItems });
+      client = candidate;
+      return values;
+    }))
       .flatMap((value) => {
         if (!isRecord(value)) return [];
         const itemId = id(value.id);
@@ -384,9 +429,11 @@ export async function workspaceCollectGovernance(
   protocolVersion: unknown,
   workspaceId: unknown,
   correlationId: unknown,
+  delegatedToken?: unknown,
   dependencies?: CollectGovernanceDependencies,
 ): Promise<WorkspaceGovernanceEnvelope> {
   const request = validateCollectCoreInput(protocolVersion, workspaceId, correlationId);
+  const delegated = validateDelegatedFabricToken(delegatedToken);
   await requireAtlasSynchronizer(ctx.getDataClient(), "governance collection", AUTHORIZATION_MESSAGE);
   let token: string;
   try {
@@ -394,5 +441,5 @@ export async function workspaceCollectGovernance(
   } catch {
     throw new Error(TOKEN_UNAVAILABLE_MESSAGE);
   }
-  return collectWorkspaceGovernance(token, request, dependencies);
+  return collectWorkspaceGovernance(token, { ...request, ...(delegated ? { delegatedToken: delegated } : {}) }, dependencies);
 }

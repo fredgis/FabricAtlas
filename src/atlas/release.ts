@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.6.0";
+  "2.6.1";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,31 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.6.1",
+    date: "2026-10-28",
+    title: "Governance evidence fixes",
+    sections: [
+      {
+        title: "Fixes",
+        items: [
+          "Admin-only sections (domains, tags, tenant settings) now use the signed-in Fabric administrator's token, so domain names, domain posture and tenant drift are collected.",
+          "Synchronization offers an Incremental or Full mode; incremental runs re-enrich only modified items and keep domain names from the previous snapshot.",
+          "The Fabric domain filter appears as soon as a workspace belongs to a domain, and unnamed domains no longer show a full GUID.",
+          "The posture radar shows the Microsoft Health, Protect and Trust pillars and the Fabric signals behind them.",
+          "Catalog search matches item, table, column and measure descriptions and shows the object path.",
+          "MCP governance findings return the domain name, path and parent.",
+          "Security: UDF URLs are validated, governance tokens are acquired separately and webhook payloads are bounded.",
+        ],
+      },
+      {
+        title: "Upgrade",
+        items: [
+          "Run one synchronization as a Fabric administrator to collect domain names and admin-only sections.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.6.0",
     date: "2026-10-28",

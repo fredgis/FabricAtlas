@@ -31,6 +31,9 @@ describe("Teams notification for new critical findings", () => {
     const card = buildNewCriticalCard(SAMPLE_DATA, [finding("a"), finding("b")]);
     expect(card.type).toBe("AdaptiveCard");
     expect(JSON.stringify(card.body)).toContain("2 new critical findings since the previous sync");
+    expect(card.body[2]).toMatchObject({ text: "Open findings: 2 (2 critical)" });
+    expect(JSON.stringify(card.body)).not.toContain("Governance posture");
+    expect(card.body.filter((block) => block.text?.includes("**CRITICAL**"))).toHaveLength(2);
   });
 });
 

@@ -1,6 +1,6 @@
 # Installation and deployment
 
-Fabric Atlas 2.1 is a Rayfin Data App deployed inside Microsoft Fabric.
+Fabric Atlas is a Rayfin Data App deployed inside Microsoft Fabric.
 `rayfin up` publishes the app, applies the MSSQL schema and deploys typed Rayfin
 Functions. A small Python User Data Function remains for documented
 compatibility gaps.
@@ -137,7 +137,7 @@ permissions used by the published UDF:
 - `Tenant.Read.All`
 
 Kusto live metadata requires the delegated Azure Data Explorer audience.
-Rayfin Functions now own SQL catalog collection, so the normal 2.0 path does
+Rayfin Functions now own SQL catalog collection, so the normal path does
 not forward a browser SQL token.
 
 Grant admin consent where required. Keep optional audiences separate so a
@@ -216,7 +216,17 @@ The deployed definition currently contains `definition.json`,
 `function_app.py` and `.platform`. It does not contain a separate
 `requirements.txt` part.
 
-The active 2.0 flow calls `sync_compatibility` only for:
+Python dependencies are pinned in
+`fabric/udf/atlas_sync_functions/requirements.txt` for local tests only. In
+Fabric, the same packages are declared in the User Data Function **Library
+management** pane. To update a dependency:
+
+1. Change the pinned version in `requirements.txt`.
+2. Run the UDF tests locally (`python -m pytest fabric/udf/atlas_sync_functions`).
+3. Apply the same version in the Fabric Library management pane, then publish.
+4. Run a synchronization and check the Monitoring view.
+
+The active flow calls `sync_compatibility` only for:
 
 - Power BI admin scanner evidence;
 - PBIR-Legacy report pages;

@@ -100,17 +100,15 @@ export const TEAMS_CARD_TOP_FINDINGS = 5;
  * findings. Atlas never posts it: the reviewer pastes it into a Teams
  * Workflow or the Adaptive Cards designer, so no webhook secret is stored.
  */
-export function buildTeamsPostureCard(
-  posture: Pick<PostureScore, "global" | "pillars">,
+/** Adaptive Card blocks listing the open findings (count line + top findings). */
+export function buildTeamsFindingBlocks(
   findings: readonly GovernanceFinding[],
   data: ShareData,
-  appUrl?: string,
 ) {
   const top = sortFindingsBySeverity(findings).slice(
     0,
     TEAMS_CARD_TOP_FINDINGS,
   );
-  const score = (value: number | null) => (value == null ? "N/A" : `${value}%`);
   const counts = (["critical", "high", "medium", "low"] as const)
     .map((severity) => ({
       severity,
@@ -119,6 +117,32 @@ export function buildTeamsPostureCard(
     .filter((entry) => entry.count > 0)
     .map((entry) => `${entry.count} ${entry.severity}`)
     .join(" · ");
+  return [
+    {
+      type: "TextBlock",
+      text:
+        findings.length === 0
+          ? "No open finding."
+          : `Open findings: ${findings.length} (${counts})`,
+      weight: "Bolder",
+      wrap: true,
+    },
+    ...top.map((finding) => ({
+      type: "TextBlock",
+      text: `- **${finding.severity.toUpperCase()}** [${finding.title}](${findingFixUrl(finding, data)})`,
+      spacing: "Small",
+      wrap: true,
+    })),
+  ];
+}
+
+export function buildTeamsPostureCard(
+  posture: Pick<PostureScore, "global" | "pillars">,
+  findings: readonly GovernanceFinding[],
+  data: ShareData,
+  appUrl?: string,
+) {
+  const score = (value: number | null) => (value == null ? "N/A" : `${value}%`);
   return {
     type: "AdaptiveCard",
     $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
@@ -149,21 +173,7 @@ export function buildTeamsPostureCard(
           value: score(pillar.score),
         })),
       },
-      {
-        type: "TextBlock",
-        text:
-          findings.length === 0
-            ? "No open finding."
-            : `Open findings: ${findings.length} (${counts})`,
-        weight: "Bolder",
-        wrap: true,
-      },
-      ...top.map((finding) => ({
-        type: "TextBlock",
-        text: `- **${finding.severity.toUpperCase()}** [${finding.title}](${findingFixUrl(finding, data)})`,
-        spacing: "Small",
-        wrap: true,
-      })),
+      ...buildTeamsFindingBlocks(findings, data),
     ],
     ...(appUrl
       ? {

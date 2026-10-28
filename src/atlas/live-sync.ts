@@ -417,6 +417,22 @@ async function acquireOptionalMetadataTokens(
   return tokens;
 }
 
+/**
+ * Delegated Fabric token of the signed-in user for tenant admin APIs (domains,
+ * tags, tenant settings). Returns undefined when the user cannot consent.
+ */
+export async function acquireGovernanceToken(identity: SyncIdentity, signal?: AbortSignal): Promise<string | undefined> {
+  try {
+    const token = await acquireToken(identity, FABRIC_DISCOVERY_SCOPES, "Fabric admin governance", true, signal);
+    assertSyncActive(signal);
+    return token;
+  } catch (error) {
+    assertSyncActive(signal);
+    console.warn("[atlas] delegated governance token unavailable", error instanceof Error ? error.message : String(error));
+    return undefined;
+  }
+}
+
 async function acquireFabricSyncToken(
   identity: SyncIdentity,
   allowPopup = true,
@@ -1699,7 +1715,7 @@ export function createCompatibilityInvoker(
     assertSyncActive(signal);
     const rawUrl = getUdfUrl();
     if (!rawUrl) throw new Error("The required Python compatibility endpoint is not configured. The previous snapshot was preserved.");
-    const url = validateUdfUrl(rawUrl, workspaceId);
+    const url = validateUdfUrl(rawUrl);
     if (!tokens) {
       tokens = {
         fabricToken: await acquireFabricSyncToken(identity, true, signal),
@@ -1742,7 +1758,7 @@ export async function invokeSyncAll(
     );
   }
   const url = retargetSyncFunction(
-    validateUdfUrl(raw, workspaceId),
+    validateUdfUrl(raw),
     "sync_all",
   );
   assertSyncActive(signal);

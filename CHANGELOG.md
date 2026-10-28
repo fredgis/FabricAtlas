@@ -3,6 +3,37 @@
 All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Release dates use the ISO 8601 format (`YYYY-MM-DD`) and record the day the
+release tag was published.
+
+## [2.6.1] - 2026-10-28
+
+### Fixed
+
+- Admin-only governance sections (domains, tags, tenant settings) use the
+  signed-in Fabric administrator's delegated token instead of the app token,
+  so domain names, domain posture and tenant settings drift are collected.
+- Incremental sync is real and selectable: the "Mode" select in Selected
+  workspaces chooses Incremental (default) or Full; incremental runs re-enrich
+  only modified items and carry domain names forward (#76).
+- The global Fabric domain filter appears when every workspace belongs to the
+  same domain; unnamed domains show `Unknown name (xxxxxxxx…)` instead of a
+  full GUID (#61, #64).
+- The posture radar shows Microsoft Health / Protect / Trust pillars and the
+  Fabric signals behind them.
+- Catalog search matches item, table, column and measure descriptions and
+  lists matches with their object path (#82).
+- `atlas_get_governance_findings` returns `domainName`, `domainPath` and
+  `parentDomainName` (#64).
+
+### Security
+
+- UDF URLs are validated, governance tokens are acquired separately and
+  webhook and share payloads are bounded (audit fixes).
+
+### Upgrade
+
+- Run one synchronization as a Fabric administrator to collect domain names.
 
 ## [2.6.0] - 2026-10-28
 

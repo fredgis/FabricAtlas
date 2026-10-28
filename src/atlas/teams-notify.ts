@@ -1,4 +1,4 @@
-import { buildTeamsPostureCard } from "./governance-share";
+import { buildTeamsFindingBlocks } from "./governance-share";
 import { criticalFindingKey, parseGovernanceSummary } from "./domain-governance";
 import type { GovernanceFinding } from "./governance";
 import type { AtlasData } from "./model";
@@ -38,9 +38,10 @@ export function buildNewCriticalCard(
   appUrl?: string,
 ) {
   const workspaceName = data.workspace.displayName;
-  const card = buildTeamsPostureCard({ global: null, pillars: [] }, findings, data, appUrl);
   return {
-    ...card,
+    type: "AdaptiveCard",
+    $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+    version: "1.5",
     body: [
       {
         type: "TextBlock",
@@ -55,8 +56,9 @@ export function buildNewCriticalCard(
         color: "Attention",
         wrap: true,
       },
-      ...card.body.slice(3),
+      ...buildTeamsFindingBlocks(findings, data),
     ],
+    ...(appUrl ? { actions: [{ type: "Action.OpenUrl", title: "Open Fabric Atlas", url: appUrl }] } : {}),
   };
 }
 
@@ -85,6 +87,10 @@ export async function invokeTeamsNotify(card: object): Promise<TeamsNotifyResult
     { protocolVersion: 1, cardJson: JSON.stringify(card) },
     { timeoutMs: 30_000 },
   );
-  if (!result || !(result.status in TEAMS_NOTIFY_STATUS_LABEL)) throw new Error("Invalid Teams notification response.");
+  if (
+    !result ||
+    typeof result.status !== "string" ||
+    !Object.hasOwn(TEAMS_NOTIFY_STATUS_LABEL, result.status)
+  ) throw new Error("Invalid Teams notification response.");
   return result;
 }

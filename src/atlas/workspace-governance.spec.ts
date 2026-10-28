@@ -115,6 +115,34 @@ describe("workspaceCollectGovernance", () => {
     expect(envelope.externalShares.status.status).toBe("complete");
   });
 
+  it("reads admin sections with the delegated administrator token when the app token is refused", async () => {
+    const delegated = "aaaaaaaaaaaa.bbbbbbbbbbbb.cccccccccccc";
+    const seen: string[] = [];
+    const base = fetchFor({
+      [`${API}/v1/admin/domains`]: () => json({ domains: [{ id: DOMAIN, displayName: "Finance" }] }),
+      [`${API}/v1/admin/domains/${DOMAIN}/workspaces`]: () => json({ value: [{ id: WS }] }),
+      [`${API}/v1/admin/tags`]: () => json({ value: [] }),
+      [`${API}/v1/admin/tenantsettings`]: () => json({ tenantSettings: [] }),
+      [`${API}/v1/workspaces/${WS}/items`]: () => json({ value: [] }),
+    });
+    const envelope = await collectWorkspaceGovernance("token", { workspaceId: WS, correlationId: null, delegatedToken: delegated }, {
+      sleep: NO_SLEEP,
+      fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const auth = new Headers(init?.headers).get("authorization") ?? "";
+        const path = new URL(String(input)).pathname;
+        seen.push(`${path}:${auth.endsWith(delegated) ? "delegated" : "app"}`);
+        if (path.startsWith("/v1/admin/") && !auth.endsWith(delegated)) return json({ errorCode: "Forbidden" }, 403);
+        return base(input, init);
+      }) as typeof fetch,
+    });
+    expect(envelope.domains.status).toEqual({ status: "complete" });
+    expect(envelope.domains.entries).toEqual([{ id: DOMAIN, displayName: "Finance", workspaceCount: 1 }]);
+    expect(envelope.tags.status).toEqual({ status: "complete" });
+    expect(envelope.tenantSettings.status).toEqual({ status: "complete" });
+    expect(seen).toContain("/v1/admin/domains:delegated");
+    expect(seen).toContain(`/v1/workspaces/${WS}/items:app`);
+  });
+
   it("counts tenant-wide workspaces per domain and stops at the first failed lookup", async () => {
     const envelope = await collectWorkspaceGovernance("token", { workspaceId: WS, correlationId: null }, {
       sleep: NO_SLEEP,

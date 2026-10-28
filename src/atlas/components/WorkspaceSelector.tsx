@@ -1,6 +1,6 @@
 import { useId, useMemo } from "react";
 import { useDomainFilter } from "../domain-filter";
-import { workspaceDomainGroups } from "../domain-governance";
+import { NO_DOMAIN_KEY, UNKNOWN_DOMAIN_KEY, workspaceDomainGroups } from "../domain-governance";
 import { AlertTriangle } from "lucide-react";
 import { useAtlas } from "../store";
 import { cn } from "../ui";
@@ -41,10 +41,11 @@ export function WorkspaceSelector({
   const hintId = useId();
   const selectId = id ?? generatedId;
   const single = workspaceScopes.length < 2;
-  if (hideWhenSingle && single && (compact || !workspaceScopesError)) {
+  const showDomains =
+    groups.length > 1 || groups.some((group) => group.key !== NO_DOMAIN_KEY && group.key !== UNKNOWN_DOMAIN_KEY);
+  if (hideWhenSingle && single && !showDomains && (compact || !workspaceScopesError)) {
     return null;
   }
-  const showDomains = groups.length > 1;
   const activeGroup = showDomains ? groups.find((group) => group.key === domainFilter) : undefined;
   const scopeName = new Map(workspaceScopes.map((scope) => [scope.id, scope.displayName]));
   const visibleGroups = activeGroup ? [activeGroup] : groups;

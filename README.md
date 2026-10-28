@@ -24,7 +24,7 @@ the last validated snapshot in Fabric so everyone sees the same state.
 
 </div>
 
-## Fabric Atlas 2.1 demo
+## Fabric Atlas demo
 
 https://github.com/user-attachments/assets/4f34a994-a130-4a74-bce7-d2d2bbab7d65
 
@@ -452,7 +452,7 @@ contracts or a separate product decision.
 | Report visual usage | Not collected | A supported report definition path with sensitivity and permission handling |
 | Shared action plans and notifications | Optional Teams webhook for new critical findings; no shared action plans | Reviewed team workflow and ownership model |
 | Generated Power BI posture report (PBIP) | Not implemented; JSON and snapshot export, the Teams card and webhook cover sharing in 2.6 | A reviewed report template fed by the published snapshot |
-| 2.6 release line | Version 2.6.0 is the current release | Patch releases for verified fixes; larger workflows depend on the contracts above |
+| 2.6 release line | Version 2.6.1 is the current release | Patch releases for verified fixes; larger workflows depend on the contracts above |
 
 ## Quickstart
 
@@ -607,6 +607,11 @@ Found a bug, a missing Fabric object type or a useful governance workflow?
 
 Pull requests are welcome. Read
 [the contribution guide](.github/CONTRIBUTING.md) before starting.
+
+The application shell (`src/App.tsx`, `src/main.tsx`, the auth and theme hooks,
+`src/lib/rayfin-client.ts`, `src/services/rayfin-auth.service.ts` and a few
+test helpers) comes from the Microsoft Rayfin Data App template and keeps its
+original Microsoft copyright headers. See [NOTICE](NOTICE).
 
 ## Project links
 
