@@ -23,6 +23,8 @@ import {
   type PosturePillar,
 } from "../posture";
 import { useAtlas } from "../store";
+import { NativeLink } from "../components/NativeLink";
+import { hasRecordedAccess, requestAccessLinks } from "../request-access";
 import {
   CATALOG_FACETS,
   CATALOG_FACET_LABELS,
@@ -139,6 +141,32 @@ function DrawerSection({
       </div>
       {children}
     </section>
+  );
+}
+
+function RequestAccess({
+  item,
+  workspace,
+}: {
+  item: Item;
+  workspace: Parameters<typeof requestAccessLinks>[1];
+}) {
+  const links = requestAccessLinks(item, workspace);
+  return (
+    <div className="mt-s flex flex-wrap items-center gap-m rounded-lg border border-border bg-secondary/60 px-s py-xs">
+      <span className="text-200 text-muted-foreground">
+        No access recorded for you according to the last snapshot.
+      </span>
+      <NativeLink href={links.fabricUrl}>Request access in Fabric</NativeLink>
+      {links.mailto && (
+        <a
+          href={links.mailto}
+          className="text-200 font-semibold text-brand-foreground underline-offset-4 hover:underline"
+        >
+          Email owner
+        </a>
+      )}
+    </div>
   );
 }
 
@@ -763,6 +791,9 @@ export function CatalogView({
                         </span>
                       )}
                     </div>
+                    {!hasRecordedAccess(data, detail.fabricId, currentUser.email) && (
+                      <RequestAccess item={detail} workspace={data.workspace} />
+                    )}
                   </div>
                   <Dialog.Close asChild>
                     <button
