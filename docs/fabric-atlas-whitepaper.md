@@ -6,10 +6,11 @@ author: "Fabric Atlas project"
 lang: en-GB
 ---
 
-> This paper documents Fabric Atlas 2.0.0. FGI-MAIN and FGI-ORACLE are used
-> as real deployment examples, captured on 3 October 2026. Counts and findings
-> describe those workspaces at that point in time. They are not product
-> defaults, limits or benchmarks.
+> This paper documents Fabric Atlas 2.6.0. FGI-MAIN and FGI-ORACLE are used
+> as real deployment examples, captured on 3 October 2026 with release 2.0.0.
+> Counts and findings describe those workspaces at that point in time. They are
+> not product defaults, limits or benchmarks. Capabilities added in 2.6 are
+> described in their own section and are not shown in the captured figures.
 
 ## Executive summary
 
@@ -29,6 +30,13 @@ own core inventory, definitions, Item Relations, SQL metadata, KQL structure,
 source provenance and access-policy evidence. A smaller Python User Data
 Function remains only for documented platform gaps: the Power BI admin
 scanner, PBIR-Legacy report pages, Kusto live metadata and explicit rollback.
+
+Version 2.6 aligns Atlas with the unified governance model of Fabric and the
+OneLake catalog. It adds domain posture, catalog facets, explainable finding
+priority, tenant-setting drift, OneLake data access roles, external-share
+evidence, incremental synchronization, optional Teams notifications and
+reviewed AI description suggestions. Each new signal follows the same rule:
+evidence that cannot be collected stays Unknown.
 
 The browser coordinates those collectors, isolates item failures, validates
 every response and publishes the workspace manifest last. Each selected
@@ -51,14 +59,14 @@ Atlas distinguishes observed facts from derived context:
 | Area | Practical outcome |
 |---|---|
 | Workspace scope | A shared, administrator-selected list of workspaces with independent snapshots and active-workspace switching |
-| Catalog | One searchable inventory of Fabric items with type, ownership, health, labels, tags and context |
+| Catalog | One searchable inventory of Fabric items with type, ownership, health, labels, tags, domain facets, My items scope and Request access links |
 | Asset inventory | Relational, semantic, KQL, ontology, graph and Data Agent objects grouped under their parent item |
 | Search | One command palette for items, objects, people, jobs and notes, with optional OneLake Catalog Preview integration |
 | Lineage | Stable source-to-consumer graphs, object expansion, evidence review and focused impact paths |
 | DAX X-Ray | Direct and transitive measure-to-column and measure-to-measure dependencies |
-| Governance | Findings, changes, history, collection coverage, posture targets and policy context |
-| Access review | Effective recorded access, principal review, local What-if scenarios and departure packs |
-| Operations | Recent jobs, observed failures, inferred downstream reach and explicit monitoring boundaries |
+| Governance | Findings with priority and Why panel, domain posture, tenant-setting drift, changes, history, coverage, posture targets and policy context |
+| Access review | Effective recorded access, principal and role filters, OneLake data access roles, external shares, local What-if scenarios and departure packs |
+| Operations | Recent jobs, observed failures, inferred downstream reach, incremental sync, snapshot export and optional Teams alerts |
 | Collaboration | Shared append-only notes attached to a workspace or Fabric item |
 | MCP | Optional local read-only tools over validated Atlas snapshots |
 
@@ -386,6 +394,64 @@ collector is off or the tenant contract is unavailable, Atlas labels that
 evidence unavailable. Unknown exposure does not mean not exposed, and an
 unknown control is not presented as compliant.
 
+## Governance extensions in 2.6
+
+Version 2.6 closes the quick-win gaps identified against the unified
+governance experience of Fabric and the OneLake catalog. All additional
+evidence comes from one bounded collector, `workspaceCollectGovernance`. Each
+section is optional and degrades to Unknown when an API, permission or tenant
+contract is unavailable.
+
+### Domains and catalog discovery
+
+| Capability | Behaviour |
+|---|---|
+| Domain names and posture | Workspaces show their Fabric domain name. Governance aggregates posture and metadata coverage per domain and can filter every view by domain |
+| Catalog facets | The Catalog filters by type, owner, endorsement, sensitivity label, domain and tag, with a tag scope selector |
+| Search snippets | Workspace search shows a short description excerpt beside each matching item |
+| Request access | Items the signed-in user cannot open link to the Fabric request-access flow instead of a dead end |
+| My items | A personal scope filters catalog and findings to items the signed-in user owns |
+| Snapshot export | Governance › Export snapshot downloads the active validated snapshot with a fingerprinted manifest for offline review |
+
+### Explainable findings
+
+Every finding carries a deterministic priority score: severity weight ×
+impact factor × endorsement factor. The impact factor grows with downstream
+items, capped at ten, and certified or promoted items weigh more. The Why panel
+shows every input, the evidence identifiers, the downstream items and the
+recommendation. Priority orders work; it does not claim business risk.
+
+New rules extend the catalogue:
+
+| Rule | Severity | Trigger |
+|---|---|---|
+| `workspace-no-admin` | Medium | The complete workspace role collection contains no Admin |
+| `domain-default-label-missing` | Medium | An item in a domain with a default sensitivity label has no label |
+| `item-inactive` | Low | A non-endorsed item has no recorded activity for `VITE_ATLAS_INACTIVE_DAYS` days, 90 by default |
+| `workspace-public-network` | Low | Inbound public access is allowed while the workspace holds Highly Confidential items; never raised when network state is Unknown |
+| `external-share-sensitive` | Medium or High | A labelled item is shared with an external principal; High when the label is Highly Confidential |
+
+### Tenant drift and Fabric policies
+
+Atlas stores the tenant settings visible to the collector with each snapshot,
+and Change Center reports settings that were added, removed or changed between
+snapshots. A Fabric policies card
+lists the Fabric governance policies that the preview APIs expose. Enforcement
+is shown as Unknown because no public contract confirms evaluation results.
+Open in Fabric cards link to the matching Govern and Admin portal pages rather
+than reproducing their controls.
+
+### Notifications and AI assistance
+
+Incremental synchronization re-enriches only items whose Fabric modification
+date changed and reuses the others; a missing date, a missing previous snapshot
+or a schema generation change forces a full run. The run records its mode and
+counters. When the `ATLAS_TEAMS_WEBHOOK_URL` secret is set, a Rayfin Function
+posts a card to Teams for Critical findings absent from the previous snapshot. When `ATLAS_AI_*` secrets are set, Atlas can
+suggest descriptions for undocumented items and tables. Only names, schema and
+DAX expressions are sent, capped at 24,000 characters and 50 targets per
+request, and every suggestion requires human review before use.
+
 ## Access review and departure planning
 
 ### Review matrix
@@ -402,7 +468,11 @@ coverage. The matrix can be exported as CSV.
 
 Recorded grants do not prove unrestricted data access. Group membership,
 OneLake security, Purview DLP and Fabric Policies are shown as collected,
-unavailable, unsupported or not evaluated.
+unavailable, unsupported or not evaluated. Since 2.6, filters also cover
+principal type and role, and OneLake data access roles are collected for up
+to 40 Lakehouses with direct members and the presence of row-level or
+column-level security. Constraint text is never stored and groups are not
+expanded.
 
 ### Principal-centred review
 
@@ -796,7 +866,9 @@ Available tools cover:
 * item and object impact;
 * access evidence;
 * incident evidence;
-* snapshot comparison.
+* snapshot comparison;
+* governance findings with priority;
+* validated snapshot export.
 
 The server is disabled by default. Activation requires a dedicated public
 client, delegated `Item.Execute.All`, a reviewed external Entra exchange
@@ -840,9 +912,10 @@ npm run build
 | Durable server execution | Additive commands and checkpoints exist as a fail-closed probe | Distributed claim or transaction primitive plus browser-closure recovery |
 | Python compatibility | Limited to Power BI scanner, PBIR-Legacy pages, Kusto live metadata and rollback | Documented Power BI and Kusto audiences for Rayfin Functions |
 | Atlas MCP | Implemented and disabled by default | Public client, delegated permission, reviewed exchange and live validation |
-| OneLake security and Purview DLP | Portal guidance and explicit unavailable states | Public read APIs for role membership and restriction evidence |
+| OneLake security | Data access roles, direct members and RLS/CLS presence for up to 40 Lakehouses | Group expansion and constraint evaluation APIs |
+| Purview DLP and Fabric policies | Purview shown as unavailable; Fabric policies listed with enforcement Unknown | Public read APIs for policy evaluation results |
 | Report visual usage | Not collected | Supported report definition path with sensitivity and permission handling |
-| Shared actions and notifications | Not implemented | Reviewed ownership model and delivery channel |
+| Shared actions and notifications | Optional Teams alert for new Critical findings; no shared assignments | Reviewed ownership model for shared actions |
 
 ## Conclusion
 
