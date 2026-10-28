@@ -167,6 +167,27 @@ RAYFIN_PUBLIC_ATLAS_PREVIOUS_SYNC_WRITERS=<former-user@example.com>
 RAYFIN_PUBLIC_ATLAS_SENSITIVITY_RANKS='{"<label-id>":3}'
 ```
 
+Build-time option (default 90 days) for the `item-inactive` rule:
+
+```dotenv
+VITE_ATLAS_INACTIVE_DAYS=90
+```
+
+Optional server secrets, stored with `npx rayfin secret set <NAME>` and never
+exposed to the browser. Both features stay disabled until configured:
+
+| Secret | Purpose |
+|---|---|
+| `ATLAS_TEAMS_WEBHOOK_URL` | Teams Workflow webhook that receives new critical findings after a sync |
+| `ATLAS_AI_ENABLED` | Set to `true` to enable AI description suggestions |
+| `ATLAS_AI_ENDPOINT` | Azure OpenAI / Foundry chat completions endpoint |
+| `ATLAS_AI_TENANT_ID`, `ATLAS_AI_CLIENT_ID`, `ATLAS_AI_CLIENT_SECRET` | Entra application used to call the endpoint |
+| `ATLAS_AI_API_KEY` | Alternative to the Entra application when key auth is allowed |
+
+AI suggestions send only item, table, column and measure names, schema and
+DAX expressions, never data values. Prompts are capped at 24,000 characters
+and 50 targets per request; suggestions are reviewed before use.
+
 The configured URL is the published `sync_all` endpoint. Atlas derives the
 `sync_compatibility` and rollback endpoints from the same trusted UDF origin.
 
