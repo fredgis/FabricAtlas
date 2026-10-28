@@ -83,6 +83,12 @@ import { SensitivityView } from "./Sensitivity";
 import { PoliciesAiSection } from "./PoliciesAi";
 import { buildAiGovernanceInventory } from "../policies-ai";
 import { groupFindingsByRule } from "../finding-groups";
+import {
+  createFindingExplainer,
+  formatPriority,
+  sortByPriority,
+  type FindingExplanation,
+} from "../finding-priority";
 import { PageHeader } from "../components/PageHeader";
 import { NativeLink } from "../components/NativeLink";
 import { findingFixUrl } from "../fabric-portal";
@@ -1854,7 +1860,7 @@ function FindingsSection({
   severity: GovernanceSeverity | "all";
   category: GovernanceCategory | "all";
   pillar: string;
-  data: Pick<AtlasData, "workspace" | "items">;
+  data: Pick<AtlasData, "workspace" | "items" | "edges">;
   posture: PostureScore;
   mineOnly: boolean;
   ownershipOf: (finding: GovernanceFinding) => Ownership;
@@ -1892,7 +1898,11 @@ function FindingsSection({
           : search === "failed" && category === "operations"
             ? "failures"
             : undefined;
-  const groups = useMemo(() => groupFindingsByRule(findings), [findings]);
+  const explain = useMemo(() => createFindingExplainer(data), [data]);
+  const groups = useMemo(
+    () => groupFindingsByRule(sortByPriority(findings, explain)),
+    [findings, explain],
+  );
   const [openRules, setOpenRules] = useState<Set<string>>(new Set());
   const listId = useId();
   const toggleRule = (rule: string) =>
@@ -2161,6 +2171,7 @@ function FindingsSection({
                           {single.detail}
                         </p>
                       )}
+                      {single && <FindingWhy explanation={explain(single)} />}
                       <p className="mt-xxs text-200 leading-300 text-foreground">
                         {group.recommendation}
                       </p>
@@ -2203,6 +2214,7 @@ function FindingsSection({
                             <p className="text-200 leading-300 text-muted-foreground">
                               {finding.detail}
                             </p>
+                            <FindingWhy explanation={explain(finding)} />
                           </div>
                           {findingActions(finding)}
                         </li>
@@ -2216,6 +2228,43 @@ function FindingsSection({
         )}
       </Card>
     </div>
+  );
+}
+
+function FindingWhy({ explanation }: { explanation: FindingExplanation }) {
+  const { priority, downstream } = explanation;
+  return (
+    <details className="mt-xs text-200">
+      <summary className="cursor-pointer font-semibold text-primary">
+        Why · priority {priority.score}
+      </summary>
+      <dl className="mt-xs grid grid-cols-[max-content_1fr] gap-x-m gap-y-xxs rounded-lg border border-border bg-secondary/40 p-s">
+        <dt className="font-semibold">Evidence</dt>
+        <dd className="min-w-0 break-words">
+          {explanation.evidence.length > 0 ? explanation.evidence.join(", ") : "Unknown"}
+          {" · snapshot "}
+          {explanation.snapshotAt ?? "Unknown"}
+        </dd>
+        <dt className="font-semibold">Impact</dt>
+        <dd className="min-w-0">
+          {explanation.subject
+            ? downstream.length === 0
+              ? "No downstream item in recorded lineage."
+              : `${downstream.length} downstream item${downstream.length === 1 ? "" : "s"}: ${downstream
+                  .slice(0, 5)
+                  .map((item) => item.displayName)
+                  .join(", ")}${downstream.length > 5 ? ", …" : ""}`
+            : "Not item-scoped; no lineage impact."}
+        </dd>
+        <dt className="font-semibold">Recommended action</dt>
+        <dd className="min-w-0">{explanation.recommendation}</dd>
+        <dt className="font-semibold">Priority</dt>
+        <dd className="min-w-0">
+          {formatPriority(priority)}
+          {priority.endorsement !== "n/a" && ` (${priority.endorsement})`}
+        </dd>
+      </dl>
+    </details>
   );
 }
 
