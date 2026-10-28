@@ -6,6 +6,7 @@ import {
 import type { AtlasSchema } from '../../data/schema.js';
 import { createPingResult, type PingResult } from './ping.js';
 import { teamsNotify, type TeamsCardJsonInput, type TeamsNotifyResult } from './teams-notify.js';
+import { suggestDescriptions, type AiSuggestRequestJson, type AiSuggestResult } from './ai-suggest.js';
 import { SyncOrchestrator } from './sync/orchestrator.js';
 import { safeSyncCall, type SyncResponse, type SyncUuidInput } from './sync/protocol.js';
 import { graphStart, graphContinue, graphStatus, graphCancel } from './sync/graph-functions.js';
@@ -89,6 +90,16 @@ udf.func(
     protocolVersion: 1,
     cardJson: TeamsCardJsonInput,
   ): Promise<TeamsNotifyResult> => teamsNotify(ctx, protocolVersion, cardJson),
+  [],
+);
+
+udf.func(
+  'suggestDescriptions',
+  async (
+    ctx: RayfinContext<AtlasSchema, AudienceType.Fabric>,
+    protocolVersion: 1,
+    requestJson: AiSuggestRequestJson,
+  ): Promise<AiSuggestResult> => suggestDescriptions(ctx, protocolVersion, requestJson),
   [],
 );
 

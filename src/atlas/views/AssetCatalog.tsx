@@ -20,6 +20,7 @@ import {
   Waypoints,
   X,
 } from "lucide-react";
+import { AiSuggestPanel } from "../components/AiSuggestPanel";
 import { FabricDomainName } from "../components/FabricDomainName";
 import { ImpactReportDialog } from "../components/ImpactReportDialog";
 import { PageHeader } from "../components/PageHeader";
@@ -1058,6 +1059,8 @@ export function AssetCatalogView({
                       {selectedAsset.description}
                     </p>
                   )}
+
+                  <AiSuggestPanel asset={selectedAsset} assets={assets} />
 
                   {selectedAsset.expression && (
                     <div className="mt-s overflow-x-auto rounded-lg border border-border bg-muted p-m">
