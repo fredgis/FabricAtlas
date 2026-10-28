@@ -288,6 +288,9 @@ Since 2.2, the action queue aligns with the OneLake catalog governance view:
 | `endorsed-inactive` | Low | Endorsed item whose last recorded run is older than 90 days |
 | `missing-object-description` | Low | Endorsed semantic model with undocumented tables, columns or measures |
 | `workspace-no-domain` | Low | Workspace confirmed without a Fabric domain. Not raised when the domain was not collected |
+| `workspace-no-admin` | Medium | Complete workspace role collection without any Admin. Unknown, not raised, when access collection is incomplete |
+| `domain-empty` | Low | Fabric domain with no workspace tenant-wide (complete admin domain list only) |
+| `domain-default-label-missing` | Medium | Unlabeled item in a domain whose default sensitivity label is known (replaces `missing-sensitivity`). Label priority is not collected, so lower labels are not evaluated |
 
 ![Fabric Atlas Governance Center](docs/screenshots/governance-center-v2.png)
 

@@ -8,6 +8,7 @@ import {
   parseGovernanceSummary,
   summarizeGovernance,
   UNKNOWN_DOMAIN_KEY,
+  workspaceDomainGroups,
   type GovernanceSummary,
 } from "./domain-governance";
 import { DOMAIN_OPS, DOMAIN_RENTALS, SAMPLE_DATA } from "./model";
@@ -133,6 +134,26 @@ describe("domainGovernanceInputs", () => {
     expect(inputs.map((input) => input.workspaceId)).toEqual(["ws-b", SAMPLE_DATA.workspace.fabricId]);
     expect(inputs[0]).toMatchObject({ displayName: "B", domainId: DOMAIN_RENTALS, summary: other });
     expect(inputs[1]?.summary).toEqual(summarizeGovernance(SAMPLE_DATA));
+  });
+});
+
+describe("workspaceDomainGroups", () => {
+  it("groups the workspace scope by domain with explicit Unassigned and not-collected buckets", () => {
+    const active = SAMPLE_DATA.workspace.fabricId;
+    const groups = workspaceDomainGroups(
+      [{ id: "ws-none" }, { id: active }, { id: "ws-old" }, { id: "ws-ops" }],
+      {
+        "ws-none": { fabricDomainId: NO_DOMAIN_KEY },
+        "ws-ops": { fabricDomainId: DOMAIN_OPS.toUpperCase() },
+      },
+      SAMPLE_DATA,
+    );
+    expect(groups.map((group) => [group.label, group.workspaceIds])).toEqual([
+      ["Operations", ["ws-ops"]],
+      ["Operations › Rentals", [active]],
+      ["Unassigned", ["ws-none"]],
+      ["Domain not collected", ["ws-old"]],
+    ]);
   });
 });
 

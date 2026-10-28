@@ -425,6 +425,43 @@ export function workspaceDomainDefaultLabel(
   };
 }
 
+export type WorkspaceAdminStatus =
+  | { status: "identified"; admins: string[] }
+  | { status: "missing" }
+  | { status: "unknown"; reason: string };
+
+/**
+ * Whether the workspace has an identified Admin. "missing" is only reported
+ * from a complete access collection; anything else stays Unknown.
+ */
+export function workspaceAdminStatus(
+  data: Pick<AtlasData, "principals" | "grants" | "workspace">,
+): WorkspaceAdminStatus {
+  const admins = new Set<string>();
+  for (const principal of data.principals) {
+    if (principal.workspaceRole === "Admin") admins.add(principal.displayName || principal.principalId);
+  }
+  for (const grant of data.grants) {
+    if (!grant.itemFabricId && grant.source === "workspaceRole" && grant.roleName === "Admin") {
+      admins.add(grant.principalRef);
+    }
+  }
+  if (admins.size) return { status: "identified", admins: [...admins].sort() };
+  const section = data.workspace.syncSections?.access;
+  if (section?.status !== "complete") {
+    return {
+      status: "unknown",
+      reason: section
+        ? `Access collection is ${section.status}; workspace roles may be incomplete.`
+        : "Access collection status is not recorded in this snapshot.",
+    };
+  }
+  if (!data.principals.length && !data.grants.some((grant) => !grant.itemFabricId)) {
+    return { status: "unknown", reason: "No workspace role assignment was returned." };
+  }
+  return { status: "missing" };
+}
+
 function findingId(rule: string, ...parts: string[]): string {
   return [rule, ...parts.map(stablePart)].join(":");
 }
@@ -738,6 +775,21 @@ export function buildGovernanceFindings(
     ...endorsedInactiveFindings(data.items, data.workspace.syncedAt),
     ...objectDescriptionFindings(data.items, data.schema),
   );
+
+  if (workspaceAdminStatus(data).status === "missing") {
+    findings.push({
+      id: findingId("workspace-no-admin", data.workspace.fabricId),
+      severity: "medium",
+      category: "access",
+      title: "Workspace has no identified Admin",
+      detail:
+        "The complete workspace role collection contains no Admin, so no accountable owner is identified for this workspace.",
+      recommendation:
+        "Assign an accountable person or group as workspace Admin in Fabric.",
+      evidenceIds: [`workspace:${data.workspace.fabricId}:roles:no-admin`],
+      target: { kind: "workspace" },
+    });
+  }
 
   if (data.workspace.fabricDomainId === UNASSIGNED_DOMAIN) {
     findings.push({

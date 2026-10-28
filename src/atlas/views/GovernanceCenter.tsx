@@ -99,6 +99,7 @@ import {
 } from "../governance-share";
 import { downloadText, fileSlug } from "../download";
 import { DomainGovernanceTable } from "../components/DomainGovernanceTable";
+import { useDomainFilter } from "../domain-filter";
 import {
   aggregateByDomain,
   domainGovernanceInputs,
@@ -419,6 +420,10 @@ export function GovernanceCenterView({
       ),
     [data, governanceTargets, workspaceSyncStatuses],
   );
+  const [globalDomain] = useDomainFilter();
+  const visibleDomainRows = domainRows.some((row) => row.key === globalDomain)
+    ? domainRows.filter((row) => row.key === globalDomain)
+    : domainRows;
   const labelName = useMemo(() => {
     const names = new Map<string, string>();
     for (const item of data.items) {
@@ -1088,7 +1093,7 @@ export function GovernanceCenterView({
             snapshot={data}
           />
           <div className="mt-l">
-            <DomainGovernanceTable rows={domainRows} mode="coverage" labelName={labelName} />
+            <DomainGovernanceTable rows={visibleDomainRows} mode="coverage" labelName={labelName} />
           </div>
         </div>
       </Tabs.Content>
@@ -1112,7 +1117,7 @@ export function GovernanceCenterView({
           />
           <div className="mt-l">
             <DomainGovernanceTable
-              rows={domainRows}
+              rows={visibleDomainRows}
               mode="posture"
               activeKey={findingDomain}
               labelName={labelName}

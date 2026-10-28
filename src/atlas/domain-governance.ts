@@ -302,6 +302,49 @@ export function domainGovernanceInputs(
   return inputs;
 }
 
+export interface WorkspaceDomainGroup {
+  key: string;
+  label: string;
+  workspaceIds: string[];
+}
+
+/**
+ * Groups the shared workspace scope by Fabric domain for the global domain
+ * filter. Workspaces without a domain, or whose domain was never collected,
+ * get their own explicit buckets so filtering never hides them.
+ */
+export function workspaceDomainGroups(
+  scopes: readonly { id: string }[],
+  statuses: Readonly<Record<string, PersistedWorkspaceSyncStatus>>,
+  data: Pick<AtlasData, "workspace" | "governanceEvidence">,
+): WorkspaceDomainGroup[] {
+  const activeId = data.workspace.fabricId.toLowerCase();
+  const groups = new Map<string, WorkspaceDomainGroup>();
+  for (const scope of scopes) {
+    const domainId =
+      scope.id.toLowerCase() === activeId
+        ? data.workspace.fabricDomainId
+        : (statuses[scope.id] ?? statuses[scope.id.toLowerCase()])?.fabricDomainId;
+    const key = domainKey(domainId);
+    let group = groups.get(key);
+    if (!group) {
+      const label =
+        key === NO_DOMAIN_KEY
+          ? "Unassigned"
+          : key === UNKNOWN_DOMAIN_KEY
+            ? "Domain not collected"
+            : domainLabel(data.governanceEvidence, domainId).label;
+      group = { key, label, workspaceIds: [] };
+      groups.set(key, group);
+    }
+    group.workspaceIds.push(scope.id);
+  }
+  const order = (key: string) => (key === NO_DOMAIN_KEY ? 1 : key === UNKNOWN_DOMAIN_KEY ? 2 : 0);
+  return [...groups.values()].sort(
+    (left, right) => order(left.key) - order(right.key) || left.label.localeCompare(right.label),
+  );
+}
+
 /** Domain key a finding belongs to: its own domain for domain-level rules, else the workspace domain. */
 export function findingDomainKey(finding: Pick<GovernanceFinding, "id">, workspaceDomainId: string | undefined): string {
   if (finding.id.startsWith("domain-empty:")) return domainKey(finding.id.slice("domain-empty:".length));

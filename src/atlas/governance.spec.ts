@@ -6,6 +6,7 @@ import {
   selectAccessByItem,
   selectAccessByPrincipal,
   summarizeAccessReview,
+  workspaceAdminStatus,
 } from "./governance";
 import { SAMPLE_DATA, type AtlasData, type Item } from "./model";
 import { searchJobId } from "./search";
@@ -554,6 +555,29 @@ describe("OneLake catalog alignment findings", () => {
     expect(
       rules(atlas({ workspace: { ...base, fabricDomainId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" } })),
     ).not.toContain("workspace-no-domain");
+  });
+
+  it("raises workspace-no-admin only from a complete role collection without Admin", () => {
+    const member = { principalId: "u", displayName: "Member", kind: "user" as const, workspaceRole: "Member" as const };
+    const complete = { access: { status: "complete" as const } };
+    const workspace = (syncSections?: AtlasData["workspace"]["syncSections"]) => ({ ...atlas().workspace, syncSections });
+
+    const missing = atlas({ workspace: workspace(complete), principals: [member] });
+    expect(workspaceAdminStatus(missing)).toEqual({ status: "missing" });
+    expect(rules(missing)).toContain("workspace-no-admin");
+
+    const withAdmin = atlas({ workspace: workspace(complete), principals: [member, { ...member, principalId: "a", displayName: "Owner", workspaceRole: "Admin" }] });
+    expect(workspaceAdminStatus(withAdmin)).toEqual({ status: "identified", admins: ["Owner"] });
+    expect(rules(withAdmin)).not.toContain("workspace-no-admin");
+
+    for (const data of [
+      atlas({ principals: [member] }),
+      atlas({ workspace: workspace({ access: { status: "failed", code: "403" } }), principals: [member] }),
+      atlas({ workspace: workspace(complete) }),
+    ]) {
+      expect(workspaceAdminStatus(data).status).toBe("unknown");
+      expect(rules(data)).not.toContain("workspace-no-admin");
+    }
   });
 
   it("reports unlabeled items against the domain default label only when it is known", () => {

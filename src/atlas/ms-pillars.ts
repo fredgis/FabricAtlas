@@ -48,6 +48,7 @@ const CATEGORY_TO_MICROSOFT: Record<
 const PROTECT_RULES = new Set([
   "missing-sensitivity",
   "certified-missing-sensitivity",
+  "domain-default-label-missing",
 ]);
 
 export function microsoftPillarForPosture(

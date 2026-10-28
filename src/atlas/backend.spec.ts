@@ -292,6 +292,7 @@ describe("Rayfin snapshot persistence", () => {
       [workspaceId]: {
         snapshotId: primarySnapshotId,
         snapshotAt: "2026-10-01T10:00:00.000Z",
+        displayName: "Historical",
         lastRunStatus: "running",
         lastRunStartedAt: "2026-10-03T08:00:00.000Z",
         lastRunFinishedAt: undefined,
@@ -300,6 +301,7 @@ describe("Rayfin snapshot persistence", () => {
       [secondWorkspaceId]: {
         snapshotId: secondSnapshotId,
         snapshotAt: "2026-10-02T10:00:00.000Z",
+        displayName: "Second workspace",
         lastRunStatus: "failed",
         lastRunStartedAt: "2026-10-03T09:00:00.000Z",
         lastRunFinishedAt: "2026-10-03T09:01:00.000Z",
