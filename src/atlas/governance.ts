@@ -16,6 +16,7 @@ import { isItemMetadataSchemaEntry } from "./item-metadata";
 import { lineageEdgeKey } from "./lineage";
 import { searchJobId } from "./search";
 import { buildAccessEvidenceCoverage, type AccessEvidenceCoverage } from "./access-coverage";
+import { domainIndex, domainPath, type GovernanceEvidence } from "./governance-evidence";
 
 export type AccessOrigin = "workspace" | "item" | "mixed";
 export type PrincipalResolution = "resolved" | "unresolved" | "ambiguous";
@@ -400,6 +401,30 @@ function grantEvidence(grant: Grant): string {
   ].join(":");
 }
 
+/**
+ * Default sensitivity label that applies to the workspace domain (own default,
+ * otherwise inherited from the parent domain). Undefined unless the admin
+ * domain list was read completely and exposes a default label.
+ */
+export function workspaceDomainDefaultLabel(
+  evidence: GovernanceEvidence | undefined,
+  domainId: string | undefined,
+): { labelId: string; domainId: string; domainPath: string } | undefined {
+  if (!evidence || evidence.domains.status.status !== "complete") return undefined;
+  if (!domainId || domainId === "unassigned") return undefined;
+  const index = domainIndex(evidence);
+  const domain = index.get(domainId.toLowerCase());
+  if (!domain) return undefined;
+  const parent = domain.parentDomainId ? index.get(domain.parentDomainId) : undefined;
+  const source = domain.defaultSensitivityLabelId ? domain : parent?.defaultSensitivityLabelId ? parent : undefined;
+  if (!source?.defaultSensitivityLabelId) return undefined;
+  return {
+    labelId: source.defaultSensitivityLabelId,
+    domainId: source.id,
+    domainPath: domainPath(evidence, domain.id) ?? domain.displayName,
+  };
+}
+
 function findingId(rule: string, ...parts: string[]): string {
   return [rule, ...parts.map(stablePart)].join(":");
 }
@@ -582,6 +607,11 @@ export function buildGovernanceFindings(
     ).map((item) => item.fabricId),
   );
 
+  const domainDefault = workspaceDomainDefaultLabel(
+    data.governanceEvidence,
+    data.workspace.fabricDomainId,
+  );
+
   for (const item of data.items) {
     if (item.health === "failing" || item.health === "stale") {
       const failing = item.health === "failing";
@@ -658,6 +688,28 @@ export function buildGovernanceFindings(
         evidenceIds: [
           `item:${item.fabricId}:endorsement:certified`,
           `item:${item.fabricId}:sensitivity`,
+        ],
+        target: { kind: "item", itemId: item.fabricId },
+        itemId: item.fabricId,
+      });
+    } else if (
+      domainDefault &&
+      sensitivityEligibleItems.has(item.fabricId) &&
+      !itemHasSensitivity(item)
+    ) {
+      // Label priorities are not collected, so only a missing label is
+      // reported against the domain default, never a "lower" label.
+      findings.push({
+        id: findingId("domain-default-label-missing", item.fabricId),
+        severity: "medium",
+        category: "metadata",
+        title: `No label despite domain default: ${item.displayName}`,
+        detail: `Domain ${domainDefault.domainPath} defines a default sensitivity label, but this item carries no label.`,
+        recommendation:
+          "Apply the domain default sensitivity label, or a more restrictive one, in Fabric.",
+        evidenceIds: [
+          `item:${item.fabricId}:sensitivity`,
+          `domain:${domainDefault.domainId}:defaultLabel:${domainDefault.labelId}`,
         ],
         target: { kind: "item", itemId: item.fabricId },
         itemId: item.fabricId,

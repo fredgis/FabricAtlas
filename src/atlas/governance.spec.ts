@@ -556,6 +556,37 @@ describe("OneLake catalog alignment findings", () => {
     ).not.toContain("workspace-no-domain");
   });
 
+  it("reports unlabeled items against the domain default label only when it is known", () => {
+    const evidence = SAMPLE_DATA.governanceEvidence!;
+    const workspace = { ...atlas().workspace, fabricDomainId: SAMPLE_DATA.workspace.fabricDomainId };
+    const items = [item("labeled", { sensitivity: "Confidential" }), item("unlabeled")];
+    const prefixes = (data: AtlasData) =>
+      buildGovernanceFindings(data)
+        .filter((f) => f.itemId === "unlabeled")
+        .map((f) => f.id.split(":")[0]);
+
+    const inherited = buildGovernanceFindings(atlas({ workspace, items, governanceEvidence: evidence }));
+    const finding = inherited.find((f) => f.id.startsWith("domain-default-label-missing:"));
+    expect(finding).toMatchObject({ itemId: "unlabeled", severity: "medium" });
+    expect(finding!.detail).toContain("Operations › Rentals");
+    expect(inherited.some((f) => f.itemId === "labeled" && f.id.startsWith("domain-default"))).toBe(false);
+    expect(prefixes(atlas({ workspace, items, governanceEvidence: evidence }))).not.toContain("missing-sensitivity");
+
+    const denied = {
+      ...evidence,
+      domains: { ...evidence.domains, status: { status: "unsupported" as const, code: "authorization-failed" } },
+    };
+    expect(prefixes(atlas({ workspace, items, governanceEvidence: denied }))).toEqual(["missing-sensitivity"]);
+    const noDefault = {
+      ...evidence,
+      domains: {
+        ...evidence.domains,
+        entries: evidence.domains.entries.map((d) => ({ ...d, defaultSensitivityLabelId: undefined })),
+      },
+    };
+    expect(prefixes(atlas({ workspace, items, governanceEvidence: noDefault }))).toEqual(["missing-sensitivity"]);
+  });
+
   it("flags a domain as empty only from a complete domain list with a zero count", () => {
     const evidence = SAMPLE_DATA.governanceEvidence!;
     const empty = buildGovernanceFindings(atlas({ governanceEvidence: evidence })).filter((f) =>
