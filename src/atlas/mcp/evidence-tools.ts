@@ -23,7 +23,7 @@ import {
   type AtlasChangeDomain,
   type AtlasHistory,
 } from "../history";
-import { domainReference } from "../governance-evidence";
+import { domainReference, itemOneLakeRoles } from "../governance-evidence";
 import { incidentBriefSection } from "../incident-feeds";
 import {
   COVERAGE_DIMENSIONS,
@@ -727,6 +727,22 @@ function policyContext(evidence: AccessEvidenceCoverage, state: PolicyContextSta
   };
 }
 
+function oneLakeRolesEvidence(data: AtlasData, itemId: string) {
+  const value = itemOneLakeRoles(data.governanceEvidence, itemId);
+  return {
+    status: value.known ? "complete" : "unknown",
+    roles: value.roles.map((role) => ({
+      roleName: role.roleName,
+      permissions: role.permissions,
+      paths: role.paths,
+      memberCount: role.memberIds.length,
+      itemMemberCount: role.itemMemberCount,
+      rowLevelSecurity: role.rowSecurity,
+      columnLevelSecurity: role.columnSecurity,
+    })),
+  };
+}
+
 function accessEvidence(
   data: AtlasData,
   args: AtlasMcpToolArguments["atlas_get_access_evidence"],
@@ -789,6 +805,7 @@ function accessEvidence(
         item: itemRef(item),
         assessment: assessment(evidence),
         storedPolicyContext: policyContext(evidence, policy),
+        oneLakeRoles: oneLakeRolesEvidence(data, item.fabricId),
         recordedGrants: page.map(accessRow),
         summary: accessSummary(itemRows),
       },

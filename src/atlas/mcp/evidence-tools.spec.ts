@@ -563,6 +563,7 @@ describe("access evidence", () => {
       }),
     );
     expect(value.summary.recordedGrantPairs).toBe(3);
+    expect(value.oneLakeRoles).toEqual({ status: "unknown", roles: [] });
     expect(JSON.stringify(value)).not.toContain("ana@contoso.example");
     expect(envelope.coverage.status).toBe("partial");
     expect(envelope.limitations).toContain("Atlas MCP cannot grant, change or revoke permissions.");

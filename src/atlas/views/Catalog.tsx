@@ -25,6 +25,8 @@ import {
 import { useAtlas } from "../store";
 import { NativeLink } from "../components/NativeLink";
 import { hasRecordedAccess, requestAccessLinks } from "../request-access";
+import { itemOneLakeRoles } from "../governance-evidence";
+import { OneLakeRolesList } from "../components/OneLakeRolesList";
 import {
   CATALOG_FACETS,
   CATALOG_FACET_LABELS,
@@ -313,6 +315,9 @@ export function CatalogView({
     .map((edge) => items.find((item) => item.fabricId === edge.target))
     .filter(Boolean) as Item[];
   const dGrants = grants.filter((grant) => grant.itemFabricId === detailId);
+  const dOneLakeRoles = itemOneLakeRoles(data.governanceEvidence, detailId ?? "");
+  const showOneLakeRoles =
+    detail?.itemType === "Lakehouse" || dOneLakeRoles.roles.length > 0;
   const dJobs = jobs.filter((job) => job.itemFabricId === detailId);
   const hasActiveFilters = Boolean(
     selType || query.trim() || posturePillar || hasFacetSelection(facets),
@@ -326,6 +331,7 @@ export function CatalogView({
           ? [{ key: "lineage", label: "Lineage" }]
           : []),
         ...(dGrants.length ? [{ key: "access", label: "Access" }] : []),
+        ...(showOneLakeRoles ? [{ key: "onelake-roles", label: "OneLake roles" }] : []),
         ...dCfgSections.map(([section]) => ({
           key: `config-${toSectionKey(section)}`,
           label: section,
@@ -995,6 +1001,18 @@ export function CatalogView({
                           </div>
                         );
                       })}
+                    </div>
+                  </DrawerSection>
+                )}
+
+                {showOneLakeRoles && (
+                  <DrawerSection
+                    icon={ShieldCheck}
+                    title={`OneLake roles${dOneLakeRoles.known ? ` · ${dOneLakeRoles.roles.length}` : ""}`}
+                    sectionKey="onelake-roles"
+                  >
+                    <div className="p-l">
+                      <OneLakeRolesList value={dOneLakeRoles} />
                     </div>
                   </DrawerSection>
                 )}

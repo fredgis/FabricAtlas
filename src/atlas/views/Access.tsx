@@ -87,6 +87,8 @@ import type { AtlasNavigation } from "../navigation";
 import type { SavedViewFilters } from "../saved-views";
 import { derivedFromSnapshot } from "../derived";
 import { useAtlas } from "../store";
+import { itemOneLakeRoles, type ItemOneLakeRoles } from "../governance-evidence";
+import { OneLakeRolesList } from "../components/OneLakeRolesList";
 import { PageHeader } from "../components/PageHeader";
 import { Card, PrincipalAvatar, SectionLabel, TypeGlyph, cn } from "../ui";
 
@@ -802,6 +804,7 @@ export function AccessReviewDetailPanel({
   readOnly = false,
   noteOverride,
   onNoteChange,
+  oneLakeRoles,
 }: {
   row: AccessReviewRow;
   review?: AccessReviewHistory;
@@ -818,6 +821,7 @@ export function AccessReviewDetailPanel({
   readOnly?: boolean;
   noteOverride?: string;
   onNoteChange?: (note: string) => void;
+  oneLakeRoles?: ItemOneLakeRoles;
 }) {
   const decision = review?.decision;
   const [copied, setCopied] = useState(false);
@@ -978,6 +982,13 @@ export function AccessReviewDetailPanel({
             </button>
           )}
         </section>
+
+        {oneLakeRoles && (
+          <section aria-labelledby="onelake-roles-heading">
+            <h3 id="onelake-roles-heading" className="mb-s text-300 font-semibold">OneLake data access roles</h3>
+            <OneLakeRolesList value={oneLakeRoles} />
+          </section>
+        )}
 
         {row.coverage.policyEvidence?.length ? (
           <section aria-labelledby="stored-policy-context-heading">
@@ -2102,6 +2113,11 @@ export function AccessView({
             key={`${selectedRow.id}:${reviewsByRowKey.get(selectedRow.id)?.history[0]?.id ?? "none"}`}
             row={selectedRow}
             review={reviewsByRowKey.get(selectedRow.id)}
+            oneLakeRoles={
+              selectedRow.item.itemType === "Lakehouse"
+                ? itemOneLakeRoles(data.governanceEvidence, selectedRow.itemId)
+                : undefined
+            }
             reviewsLoading={reviewsLoading}
             saving={reviewOperationId === selectedRow.id}
             reviewError={reviewError}

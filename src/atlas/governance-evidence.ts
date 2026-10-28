@@ -245,3 +245,15 @@ export function domainLabel(evidence: GovernanceEvidence | undefined, domainId: 
   const path = domainPath(evidence, domainId);
   return path ? { kind: "named", id: domainId, label: path } : { kind: "unnamed", id: domainId, label: `${domainId} (Unknown name)` };
 }
+
+export interface ItemOneLakeRoles {
+  known: boolean;
+  roles: OneLakeRoleInfo[];
+}
+
+/** OneLake data access roles of one item; `known` is false when the section was not collected. */
+export function itemOneLakeRoles(evidence: GovernanceEvidence | undefined, itemId: string): ItemOneLakeRoles {
+  const section = evidence?.oneLakeRoles;
+  if (section?.status.status !== "complete") return { known: false, roles: [] };
+  return { known: true, roles: section.entries.filter((role) => role.itemId === itemId) };
+}
