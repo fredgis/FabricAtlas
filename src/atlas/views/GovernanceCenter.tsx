@@ -2988,11 +2988,19 @@ function TenantSettingsDrift({
   changes,
   sinceLatest,
   loading,
+  evidence,
 }: {
   changes: AtlasChange[];
   sinceLatest: number;
   loading: boolean;
+  evidence?: AtlasData["governanceEvidence"];
 }) {
+  const baseline = evidence?.tenantSettings;
+  const baselineText = !baseline
+    ? "Tenant settings not collected yet. Run a synchronization."
+    : baseline.status.status === "complete"
+      ? `Baseline captured: ${baseline.entries.length} settings (${baseline.entries.filter((entry) => entry.enabled).length} on). The next synchronization will list any setting that changed.`
+      : `Tenant settings not collected (${baseline.status.code ?? baseline.status.status}). A Fabric administrator must run the synchronization.`;
   return (
     <Card className="overflow-hidden" data-testid="tenant-settings-drift">
       <div className="border-b border-border bg-secondary/55 p-m">
@@ -3002,6 +3010,7 @@ function TenantSettingsDrift({
         <p className="mt-xs text-200 text-muted-foreground">
           Read with the Fabric admin API (tenant admin only). Each sync stores a copy; Atlas shows what changed and when.
         </p>
+                  <p className="mt-xs text-200 font-semibold" data-testid="tenant-settings-baseline">{baselineText}</p>
       </div>
       {loading ? (
         <div className="flex min-h-32 items-center justify-center gap-s text-300 text-muted-foreground">

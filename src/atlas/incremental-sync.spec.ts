@@ -43,6 +43,19 @@ describe("incremental synchronization plan", () => {
     expect([...merged.config!].sort((l, r) => String(l.itemId).localeCompare(String(r.itemId)))).toEqual(full.config);
   });
 
+  it("keeps object-level edges of reused items so catalog object ids stay stable", () => {
+    const edge = (itemId: string, table: string, column: string) => ({
+      source: { itemId, kind: "sourceObject", id: `fabric-object://${itemId}/kql-table/${table}`, name: table, tableName: table },
+      target: { itemId, kind: "sourceField", id: `fabric-object://${itemId}/kql-table/${table}.${column}`, name: column, tableName: table },
+      relation: "contains", confidence: "verified",
+    });
+    const full: RawSync = { items: [{ id: "kql" }, { id: "b" }], objectEdges: [edge("kql", "T", "c1"), edge("b", "U", "c2")] };
+    const fresh: RawSync = { items: full.items, objectEdges: [edge("b", "U", "c2")] };
+    const merged = applyReusedEnrichment(fresh, full, ["kql"]);
+    expect(merged.objectEdges).toEqual([edge("b", "U", "c2"), edge("kql", "T", "c1")]);
+    expect(applyReusedEnrichment({ ...fresh, objectEdges: [] }, full, ["kql"]).objectEdges).toEqual([edge("kql", "T", "c1")]);
+  });
+
   it("round-trips the mode and counters recorded on the SyncRun summary", () => {
     const summary = `14 items · Collectors: Rayfin active; ${syncPlanSummary({ mode: "incremental", refresh: ["a"], reuse: ["b", "c"] })}`;
     expect(parseSyncPlanSummary(summary)).toEqual({ mode: "incremental", refreshed: 1, reused: 2 });

@@ -8,7 +8,12 @@ export interface CachedCollection {
   raw: RawSync;
   /** ISO time of the last full collection; incremental runs keep the previous value. */
   fullAt?: string;
+  /** Cache layout version; entries written by older releases are ignored and force a full run. */
+  format?: number;
 }
+
+/** Bump when reused enrichment changes so stale cached collections cannot seed an incremental run. */
+export const COLLECTION_CACHE_FORMAT = 2;
 
 export interface CollectionCache {
   load(workspaceId: string): Promise<CachedCollection | undefined>;
@@ -50,10 +55,11 @@ export function browserCollectionCache(): CollectionCache | null {
   return {
     async load(workspaceId) {
       const entry = await run("readonly", (store) => store.get(workspaceId)) as CachedCollection | undefined;
-      return entry && entry.workspaceId === workspaceId && entry.raw ? entry : undefined;
+      return entry && entry.workspaceId === workspaceId && entry.raw && entry.format === COLLECTION_CACHE_FORMAT
+        ? entry : undefined;
     },
     async save(entry) {
-      await run("readwrite", (store) => store.put(entry, entry.workspaceId));
+      await run("readwrite", (store) => store.put({ ...entry, format: COLLECTION_CACHE_FORMAT }, entry.workspaceId));
     },
   };
 }

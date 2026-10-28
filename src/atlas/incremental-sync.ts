@@ -1,3 +1,4 @@
+import { parseObjectLineagePayload } from "./item-metadata";
 import type { RawSync } from "./live-sync";
 
 export type SyncPlanMode = "full" | "incremental";
@@ -69,6 +70,14 @@ export function applyReusedEnrichment(
   const lineageKey = (edge: { source?: string; target?: string; relation?: string }) =>
     [edge.source, edge.target, edge.relation].join("\u0000");
   const freshLineage = new Set((fresh.lineage ?? []).map(lineageKey));
+  const objectEdgeKey = (edge: { source: { itemId: string; kind: string; id: string }; target: { itemId: string; kind: string; id: string }; relation: string }) =>
+    [edge.source.itemId, edge.source.kind, edge.source.id, edge.target.itemId, edge.target.kind, edge.target.id, edge.relation].join("\u0000");
+  const freshObjectEdges = parseObjectLineagePayload(fresh.objectEdges ?? fresh.objectLineage)?.objectEdges ?? [];
+  const freshObjectKeys = new Set(freshObjectEdges.map(objectEdgeKey));
+  // Object-level edges (KQL/SQL columns, agent selections, ontology bindings) are produced
+  // by per-item enrichment, so reused items must keep their previous ones.
+  const reusedObjectEdges = (parseObjectLineagePayload(previous.objectEdges ?? previous.objectLineage)?.objectEdges ?? [])
+    .filter((edge) => (ids.has(edge.source.itemId) || ids.has(edge.target.itemId)) && !freshObjectKeys.has(objectEdgeKey(edge)));
   return {
     ...fresh,
     schema: { ...fresh.schema, ...pick(previous.schema) },
@@ -83,6 +92,8 @@ export function applyReusedEnrichment(
       ...(fresh.lineage ?? []),
       ...(previous.lineage ?? []).filter((edge) => ids.has(String(edge.target)) && !freshLineage.has(lineageKey(edge))),
     ],
+    objectEdges: [...freshObjectEdges, ...reusedObjectEdges],
+    objectLineage: undefined,
     sections: { ...previous.sections, ...fresh.sections },
     capabilities: { ...previous.capabilities, ...fresh.capabilities },
   };
