@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.6.3";
+  "2.6.4";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,27 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.6.4",
+    date: "2026-10-30",
+    title: "Reliable incremental sync",
+    sections: [
+      {
+        title: "Improvements",
+        items: [
+          "Workspace Hub: scan mode and synchronization start only from Selected workspaces; the validated snapshot banner keeps the last run summary.",
+          "Governance Center shows the tenant settings baseline captured by the snapshot.",
+        ],
+      },
+      {
+        title: "Fixes",
+        items: [
+          "Incremental runs keep object-level lineage of reused items, so Changes no longer reports false added and removed KQL tables and columns.",
+          "Browser snapshots saved by earlier releases are ignored; the next run is a full scan.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.6.3",
     date: "2026-10-30",

@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 Release dates use the ISO 8601 format (`YYYY-MM-DD`) and record the day the
 release tag was published.
 
+## [2.6.4] - 2026-10-30
+
+### Added
+
+- Governance Center shows the tenant settings baseline captured by the snapshot.
+
+### Changed
+
+- Workspace Hub: scan mode and synchronization start only from Selected workspaces; the validated snapshot banner keeps the last run summary.
+
+### Fixed
+
+- Incremental runs keep object-level lineage (KQL table and column edges) of reused items, so Changes no longer reports hundreds of false added and removed objects.
+- Browser snapshots saved by earlier releases are ignored and the next run is a full scan.
+
 ## [2.6.3] - 2026-10-30
 
 ### Added

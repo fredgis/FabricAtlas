@@ -453,7 +453,7 @@ contracts or a separate product decision.
 | Report visual usage | Not collected | A supported report definition path with sensitivity and permission handling |
 | Shared action plans and notifications | Optional Teams webhook for new critical findings; no shared action plans | Reviewed team workflow and ownership model |
 | Generated Power BI posture report (PBIP) | Not implemented; JSON and snapshot export, the Teams card and webhook cover sharing in 2.6 | A reviewed report template fed by the published snapshot |
-| 2.6 release line | Version 2.6.3 is the current release | Patch releases for verified fixes; larger workflows depend on the contracts above |
+| 2.6 release line | Version 2.6.4 is the current release | Patch releases for verified fixes; larger workflows depend on the contracts above |
 
 ## Quickstart
 

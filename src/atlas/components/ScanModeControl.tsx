@@ -142,51 +142,30 @@ export function IncrementalNotice({
   );
 }
 
-/** Full | Incremental scan mode choice shown next to "Synchronize now" (kept per browser). */
-export function ScanModeControl({
-  runs,
-  disabled,
-  workspaceIds,
-  names,
-  refreshKey,
-}: {
-  runs: readonly SyncRun[];
-  disabled?: boolean;
-  workspaceIds?: readonly string[];
-  names?: Record<string, string>;
-  refreshKey?: unknown;
-}) {
-  const [mode] = useSyncMode();
+/** Latest run statistics shown in the validated snapshot banner; scan controls live in Selected workspaces. */
+export function LastRunSummary({ runs }: { runs: readonly SyncRun[] }) {
   const stats = lastRunStats(runs);
+  if (!stats) return null;
   return (
     <div className="mt-m flex flex-col gap-xs rounded-lg border border-border bg-card p-m">
-      <ScanModeToggle disabled={disabled} />
-      <p className="text-200 leading-200 text-muted-foreground">
-        {mode === "incremental"
-          ? "Incremental mode asks the Scanner API only for items modified since the last validated snapshot and reuses the rest."
-          : "Full mode re-reads every item from Fabric. Use it after a permission or configuration change Fabric does not date."}
+      <p className="text-200 leading-200 text-foreground" data-testid="scan-last-run">
+        <span className="font-semibold">Last run: </span>
+        {stats.plan
+          ? stats.plan.mode === "incremental"
+            ? `${stats.plan.refreshed} of ${stats.items} items rescanned · ${stats.plan.reused} reused`
+            : `full scan of ${stats.items} items`
+          : stats.items != null
+            ? `${stats.items} items synchronized`
+            : "completed"}
+        {stats.durationMs != null && (
+          <span className="text-muted-foreground">
+            {` · Duration ${formatRunDuration(stats.durationMs)}`}
+            {stats.fullDurationMs != null && stats.plan?.mode === "incremental"
+              ? ` (full: ${formatRunDuration(stats.fullDurationMs)})`
+              : ""}
+          </span>
+        )}
       </p>
-      {stats && (
-        <p className="text-200 leading-200 text-foreground" data-testid="scan-last-run">
-          <span className="font-semibold">Last run: </span>
-          {stats.plan
-            ? stats.plan.mode === "incremental"
-              ? `${stats.plan.refreshed} of ${stats.items} items rescanned · ${stats.plan.reused} reused`
-              : `full scan of ${stats.items} items`
-            : stats.items != null
-              ? `${stats.items} items synchronized`
-              : "completed"}
-          {stats.durationMs != null && (
-            <span className="text-muted-foreground">
-              {` · Duration ${formatRunDuration(stats.durationMs)}`}
-              {stats.fullDurationMs != null && stats.plan?.mode === "incremental"
-                ? ` (full: ${formatRunDuration(stats.fullDurationMs)})`
-                : ""}
-            </span>
-          )}
-        </p>
-      )}
-      {workspaceIds && <IncrementalNotice workspaceIds={workspaceIds} names={names} refreshKey={refreshKey} />}
       <p className="text-200 leading-200 text-muted-foreground">
         Full rescan forced every {FULL_RESCAN_INTERVAL_DAYS} days.
       </p>
