@@ -18,6 +18,8 @@ export interface FabricDomainInfo {
   parentDomainId?: string;
   description?: string;
   defaultSensitivityLabelId?: string;
+  /** Workspaces assigned to the domain tenant-wide; undefined when unknown. */
+  workspaceCount?: number;
 }
 
 export interface FabricTagInfo {
@@ -124,8 +126,10 @@ export function parseGovernanceEvidence(value: unknown): GovernanceEvidence | un
       const parentDomainId = str(v.parentDomainId, 128);
       const description = str(v.description);
       const label = str(v.defaultSensitivityLabelId, 128);
+      const workspaceCount = typeof v.workspaceCount === "number" && Number.isSafeInteger(v.workspaceCount) && v.workspaceCount >= 0 ? v.workspaceCount : undefined;
       return {
         id: id.toLowerCase(), displayName,
+        ...(workspaceCount != null ? { workspaceCount } : {}),
         ...(parentDomainId ? { parentDomainId: parentDomainId.toLowerCase() } : {}),
         ...(description ? { description } : {}),
         ...(label ? { defaultSensitivityLabelId: label.toLowerCase() } : {}),

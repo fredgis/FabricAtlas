@@ -115,6 +115,27 @@ describe("workspaceCollectGovernance", () => {
     expect(envelope.externalShares.status.status).toBe("complete");
   });
 
+  it("counts tenant-wide workspaces per domain and stops at the first failed lookup", async () => {
+    const envelope = await collectWorkspaceGovernance("token", { workspaceId: WS, correlationId: null }, {
+      sleep: NO_SLEEP,
+      fetch: fetchFor({
+        [`${API}/v1/admin/domains`]: () => json({ domains: [
+          { id: DOMAIN, displayName: "Finance" },
+          { id: SUB, displayName: "Payables", parentDomainId: DOMAIN },
+          { id: SHARE, displayName: "Later" },
+        ] }),
+        [`${API}/v1/admin/domains/${DOMAIN}/workspaces`]: () => json({ value: [{ id: WS }, { id: LAKE }] }),
+        [`${API}/v1/admin/domains/${SUB}/workspaces`]: () => json({ value: [] }),
+        [`${API}/v1/workspaces/${WS}/items`]: () => json({ value: [] }),
+      }),
+    });
+    const [finance, payables, later] = envelope.domains.entries;
+    expect(finance.workspaceCount).toBe(2);
+    expect(payables.workspaceCount).toBe(0);
+    expect(later.workspaceCount).toBeUndefined();
+    expect(envelope.domains.status).toEqual({ status: "complete" });
+  });
+
   it("flags column security from role constraints", () => {
     const role = sanitizeOneLakeRole({
       name: "NoPII",

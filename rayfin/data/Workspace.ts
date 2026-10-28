@@ -21,6 +21,8 @@ export class Workspace {
   @text({ max: 160, optional: true }) writerEmail?: string;
   @text({ max: 200, optional: true }) deploymentId?: string;
   @text({ max: 4000, optional: true }) syncSectionsJson?: string;
+  /** Versioned per-workspace governance rollup used by the domain views. */
+  @text({ max: 4000, optional: true }) governanceSummaryJson?: string;
   @text({ max: 100 }) fabricId!: string;
   @text({ max: 200 }) displayName!: string;
   @text({ max: 120, optional: true }) capacity?: string;

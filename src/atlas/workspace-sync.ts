@@ -1,4 +1,5 @@
 import type { SyncRun } from "./model";
+import type { GovernanceSummary } from "./domain-governance";
 import type { WorkspaceScope } from "./workspace-scope";
 import { SYNC_PHASES, syncPhaseIndex } from "./synchronization-progress";
 
@@ -51,6 +52,9 @@ export interface WorkspaceSyncEntry {
 export interface PersistedWorkspaceSyncStatus {
   snapshotId?: string;
   snapshotAt?: string;
+  displayName?: string;
+  fabricDomainId?: string;
+  governanceSummary?: GovernanceSummary;
   lastRunStatus?: SyncRun["status"] | "cancelled";
   lastRunStartedAt?: string;
   lastRunFinishedAt?: string;

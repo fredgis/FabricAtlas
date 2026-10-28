@@ -288,8 +288,8 @@ const PL = "10000000-0000-4000-8000-000000000011";
 const EH = "10000000-0000-4000-8000-000000000012";
 const KQL_DEFAULT = "10000000-0000-4000-8000-000000000013";
 const KQL_EVENTS = "10000000-0000-4000-8000-000000000014";
-const DOMAIN_OPS = "20000000-0000-4000-8000-000000000001";
-const DOMAIN_RENTALS = "20000000-0000-4000-8000-000000000002";
+export const DOMAIN_OPS = "20000000-0000-4000-8000-000000000001";
+export const DOMAIN_RENTALS = "20000000-0000-4000-8000-000000000002";
 
 // ---------- deep lineage: real semantic-model / gold schema (from TMDL) ----------
 
@@ -591,9 +591,10 @@ export const SAMPLE_DATA: AtlasData = {
     domains: {
       status: { status: "complete" },
       entries: [
-        { id: DOMAIN_OPS, displayName: "Operations", description: "Operational data products.", defaultSensitivityLabelId: "20000000-0000-4000-8000-0000000000a1" },
-        { id: DOMAIN_RENTALS, displayName: "Rentals", parentDomainId: DOMAIN_OPS },
-        { id: "20000000-0000-4000-8000-000000000003", displayName: "Finance" },
+        { id: DOMAIN_OPS, displayName: "Operations", description: "Operational data products.", defaultSensitivityLabelId: "20000000-0000-4000-8000-0000000000a1", workspaceCount: 3 },
+        { id: DOMAIN_RENTALS, displayName: "Rentals", parentDomainId: DOMAIN_OPS, workspaceCount: 1 },
+        { id: "20000000-0000-4000-8000-000000000003", displayName: "Finance", workspaceCount: 0 },
+        { id: "20000000-0000-4000-8000-000000000004", displayName: "Marketing", workspaceCount: 2 },
       ],
     },
     tags: {

@@ -29,6 +29,7 @@ const RULE_LABEL: Record<string, string> = {
   "endorsed-inactive": "Endorsed but inactive",
   "missing-object-description": "Undocumented model objects",
   "workspace-no-domain": "Workspace without domain",
+  "domain-empty": "Domains without workspace",
   "failed-job": "Failed jobs",
   "broken-lineage": "Broken lineage relationships",
 };

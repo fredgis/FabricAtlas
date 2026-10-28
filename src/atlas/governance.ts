@@ -452,7 +452,7 @@ export function buildGovernanceFindings(
     AtlasData,
     "workspace" | "items" | "principals" | "grants" | "jobs" | "edges"
   > &
-    Partial<Pick<AtlasData, "schema">>,
+    Partial<Pick<AtlasData, "schema" | "governanceEvidence">>,
 ): GovernanceFinding[] {
   const findings: GovernanceFinding[] = [];
   const accessRows = buildAccessReviewRows(data);
@@ -700,6 +700,25 @@ export function buildGovernanceFindings(
       evidenceIds: [`workspace:${data.workspace.fabricId}:domain:unassigned`],
       target: { kind: "workspace" },
     });
+  }
+
+  // Only raised from a complete admin domain list with a known tenant-wide count of zero.
+  if (data.governanceEvidence?.domains.status.status === "complete") {
+    for (const domain of data.governanceEvidence.domains.entries) {
+      if (domain.workspaceCount !== 0) continue;
+      findings.push({
+        id: findingId("domain-empty", domain.id),
+        severity: "low",
+        category: "metadata",
+        title: `Domain ${domain.displayName} has no workspace`,
+        detail:
+          "The Fabric admin API reports no workspace assigned to this domain tenant-wide, so it adds nothing to domain-based discovery.",
+        recommendation:
+          "Assign the workspaces that belong to this business domain, or retire the domain if it is no longer used.",
+        evidenceIds: [`domain:${domain.id}:workspaces:0`],
+        target: { kind: "workspace" },
+      });
+    }
   }
 
   for (const job of data.jobs) {

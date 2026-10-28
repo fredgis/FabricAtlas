@@ -15,6 +15,7 @@
 // never breaks the UI — see docs/architecture.md for the full flow.
 
 import { parseGovernanceEvidence, type GovernanceEvidence } from "./governance-evidence";
+import { parseGovernanceSummary, summarizeGovernance } from "./domain-governance";
 import { ATLAS_CONFIG, configuredSyncWriters } from "./config";
 import {
   invokeSyncAll,
@@ -374,6 +375,7 @@ const ENTITY_FIELDS: Record<string, readonly string[]> = {
     "writerEmail",
     "deploymentId",
     "syncSectionsJson",
+    "governanceSummaryJson",
     "fabricId",
     "displayName",
     "capacity",
@@ -1273,6 +1275,7 @@ async function persistSync(
     syncSectionsJson: atlas.workspace.syncSections
       ? JSON.stringify(atlas.workspace.syncSections)
       : undefined,
+    governanceSummaryJson: JSON.stringify(summarizeGovernance(atlas)),
     fabricId: requiredExactPersistedText(
       atlas.workspace.fabricId,
       PERSISTED_TEXT_LIMITS.reference.fabricId,
@@ -2628,6 +2631,11 @@ export async function loadWorkspaceSyncStatuses(
           {
             snapshotId: realText(marker?.snapshotId),
             snapshotAt,
+            displayName: realText(marker?.displayName),
+            fabricDomainId: realText(marker?.fabricDomainId),
+            governanceSummary: parseGovernanceSummary(
+              marker?.governanceSummaryJson,
+            ),
             lastRunStatus: lastRun?.status,
             lastRunStartedAt: lastRun?.startedAt,
             lastRunFinishedAt: lastRun?.finishedAt,

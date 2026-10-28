@@ -7,7 +7,7 @@ import {
   selectAccessByPrincipal,
   summarizeAccessReview,
 } from "./governance";
-import type { AtlasData, Item } from "./model";
+import { SAMPLE_DATA, type AtlasData, type Item } from "./model";
 import { searchJobId } from "./search";
 
 function item(
@@ -554,5 +554,23 @@ describe("OneLake catalog alignment findings", () => {
     expect(
       rules(atlas({ workspace: { ...base, fabricDomainId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" } })),
     ).not.toContain("workspace-no-domain");
+  });
+
+  it("flags a domain as empty only from a complete domain list with a zero count", () => {
+    const evidence = SAMPLE_DATA.governanceEvidence!;
+    const empty = buildGovernanceFindings(atlas({ governanceEvidence: evidence })).filter((f) =>
+      f.id.startsWith("domain-empty:"),
+    );
+    expect(empty.map((f) => f.title)).toEqual(["Domain Finance has no workspace"]);
+    expect(empty[0]).toMatchObject({ severity: "low", category: "metadata" });
+    const partial = buildGovernanceFindings(
+      atlas({
+        governanceEvidence: {
+          ...evidence,
+          domains: { ...evidence.domains, status: { status: "failed", code: "forbidden" } },
+        },
+      }),
+    );
+    expect(partial.some((f) => f.id.startsWith("domain-empty:"))).toBe(false);
   });
 });

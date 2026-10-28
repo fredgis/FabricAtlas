@@ -24,6 +24,7 @@ export const COLLECT_GOVERNANCE_LIMITS = {
   maxItemPages: 100,
   maxItems: 5_000,
   maxDomains: 1_000,
+  maxDomainWorkspaceLookups: 50,
   maxTags: 2_000,
   maxTagPages: 20,
   maxTenantSettings: 1_000,
@@ -56,6 +57,8 @@ export interface GovernanceDomain {
   parentDomainId?: string;
   description?: string;
   defaultSensitivityLabelId?: string;
+  /** Workspaces assigned in Fabric (admin API); absent when not looked up. */
+  workspaceCount?: number;
 }
 
 export interface GovernanceTag {
@@ -286,6 +289,18 @@ export async function collectWorkspaceGovernance(
     envelope.domains.entries = sanitizeDomains(await client.getObject("/v1/admin/domains"), limits.maxDomains);
   } catch (error) {
     envelope.domains.status = failure(error);
+  }
+  if (envelope.domains.status.status === "complete") {
+    // Tenant-wide assignment counts let the UI tell "empty in Fabric" from
+    // "not synchronized by Atlas". Lookups are bounded; skipped ones stay unknown.
+    for (const domain of envelope.domains.entries.slice(0, limits.maxDomainWorkspaceLookups)) {
+      try {
+        const values = await client.list(`/v1/admin/domains/${domain.id}/workspaces`, { maxPages: 5, maxRecords: 5_000 });
+        domain.workspaceCount = values.length;
+      } catch {
+        break;
+      }
+    }
   }
   try {
     envelope.tags.entries = sanitizeTags(

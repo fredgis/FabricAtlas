@@ -764,6 +764,9 @@ export function snapshotCatalogFromData(data: AtlasData): SnapshotCatalog {
     itemMetadata: data.itemMetadata
       ? structuredClone(data.itemMetadata)
       : undefined,
+    governanceEvidence: data.governanceEvidence
+      ? structuredClone(data.governanceEvidence)
+      : undefined,
     objectEdges: data.objectEdges?.map((edge) => ({
       ...edge,
       source: {
