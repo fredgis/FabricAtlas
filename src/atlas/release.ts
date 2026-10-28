@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.2.0";
+  "2.6.0";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,45 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.6.0",
+    date: "2026-10-28",
+    title: "Unified governance gaps",
+    sections: [
+      {
+        title: "Domains and catalog",
+        items: [
+          "Fabric domain names appear in the overview, catalog and MCP, with per-domain posture, coverage and a global domain filter.",
+          "The catalog adds facets, tag scope chips, description snippets in search and a Request access link.",
+          "My items scopes the app to items you own; snapshot export downloads the current inventory and findings.",
+        ],
+      },
+      {
+        title: "New governance signals",
+        items: [
+          "New rules: workspace without Admin, unlabeled against the domain default label, inactive items of any type, public workspace network access and sensitive external shares.",
+          "Each finding has a Why panel and a deterministic priority score.",
+          "Changes shows tenant settings drift; access review filters by principal type and role and lists OneLake data access roles with RLS/CLS.",
+          "Policies & AI shows Fabric policies (preview) with enforcement Unknown and lists cataloged policy items.",
+        ],
+      },
+      {
+        title: "Operations",
+        items: [
+          "Incremental sync plans only changed workspaces and reports run mode counters.",
+          "Optional Teams webhook (ATLAS_TEAMS_WEBHOOK_URL secret) posts new critical findings.",
+          "Optional AI description suggestions (ATLAS_AI_* secrets, off by default) send names and schema only, never data values.",
+          "Open in Fabric cards link to Govern and Admin monitoring; the MCP server exposes governance findings.",
+        ],
+      },
+      {
+        title: "Upgrade",
+        items: [
+          "Run one guided synchronization per workspace to collect the new evidence and start a new radar baseline.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.2.0",
     date: "2026-10-18",

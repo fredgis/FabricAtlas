@@ -97,7 +97,11 @@ describe("aggregateByDomain", () => {
     expect(reasons["Marketing"]).toBe("not-synchronized");
     const unknownCount = aggregateByDomain([], {
       ...evidence,
-      domains: { ...evidence.domains, entries: evidence.domains.entries.map(({ workspaceCount: _c, ...rest }) => rest) },
+      domains: { ...evidence.domains, entries: evidence.domains.entries.map((entry) => {
+        const rest = { ...entry };
+        delete rest.workspaceCount;
+        return rest;
+      }) },
     });
     expect(unknownCount.every((row) => row.emptyReason === "unknown")).toBe(true);
 

@@ -4,6 +4,36 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-10-28
+
+### Added
+
+- Fabric domain names in the overview, catalog and MCP; per-domain posture and
+  coverage tables; global domain filter (#61, #64-#67).
+- Catalog facets, tag scope chips, description snippets in global search and a
+  Request access link (#68, #69, #74, #82).
+- My items scope and snapshot export; governance findings MCP tool (#60, #72).
+- Finding Why panel and deterministic priority score (#71).
+- Access review principal type and role filters; OneLake data access roles with
+  RLS/CLS (#70, #79).
+- Rules: workspace without Admin (#61), unlabeled against the domain default
+  label (#81), inactive items of any type (`VITE_ATLAS_INACTIVE_DAYS`, default
+  90) (#75), public workspace network access (#78), sensitive external shares
+  (#80).
+- Tenant settings drift in Changes (#77).
+- Open in Fabric cards for Govern and Admin monitoring (#73).
+- Incremental sync planner and run mode counters (#76).
+- Optional Teams webhook for new critical findings (`ATLAS_TEAMS_WEBHOOK_URL`)
+  (#62).
+- Optional AI description suggestions (`ATLAS_AI_*` secrets, off by default;
+  names and schema only, no data values) (#63).
+- Read-only Fabric policies (Policies center, preview) card with enforcement
+  Unknown (#83).
+
+### Upgrade
+
+- Run one guided synchronization per workspace to collect the new evidence.
+
 ## [2.2.0] - 2026-10-18
 
 ### Added
