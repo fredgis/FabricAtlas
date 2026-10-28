@@ -26,6 +26,7 @@ import {
   KeyRound,
   Menu,
   Moon,
+  Plug,
   RefreshCw,
   Rows3,
   Search,
@@ -91,6 +92,7 @@ const accessLoader = () => import("./atlas/views/Access");
 const governanceLoader = () => import("./atlas/views/GovernanceCenter");
 const jobsLoader = () => import("./atlas/views/Jobs");
 const workspaceLoader = () => import("./atlas/views/WorkspaceHub");
+const mcpLoader = () => import("./atlas/views/Mcp");
 const aboutLoader = () => import("./atlas/views/About");
 
 const OverviewView = lazy(() =>
@@ -123,6 +125,9 @@ const WorkspaceHubView = lazy(() =>
     default: module.WorkspaceHubView,
   })),
 );
+const McpView = lazy(() =>
+  mcpLoader().then((module) => ({ default: module.McpView })),
+);
 const AboutView = lazy(() =>
   aboutLoader().then((module) => ({ default: module.AboutView })),
 );
@@ -136,6 +141,7 @@ const VIEW_LOADERS: Partial<Record<Tab, () => Promise<unknown>>> = {
   governance: governanceLoader,
   jobs: jobsLoader,
   workspace: workspaceLoader,
+  mcp: mcpLoader,
   about: aboutLoader,
 };
 
@@ -168,7 +174,10 @@ const NAV_GROUPS: {
   },
   {
     label: "System",
-    items: [{ id: "about", label: "About", icon: Info }],
+    items: [
+      { id: "mcp", label: "MCP", icon: Plug },
+      { id: "about", label: "About", icon: Info },
+    ],
   },
 ];
 const NAV = NAV_GROUPS.flatMap((group) => group.items);
@@ -256,9 +265,9 @@ function SidebarContent({
                   onClick={() => onNavigate(MY_ITEMS_SHORTCUT.navigation())}
                   onMouseEnter={() => void VIEW_LOADERS.governance?.()}
                   title="Governance findings, radar and coverage scoped to items you own"
-                  className="relative flex items-center gap-[10px] rounded-md px-[10px] py-[7px] pl-[37px] text-left text-[12px] font-medium text-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+                  className="relative flex items-center gap-[10px] rounded-md px-[10px] py-[7px] text-left text-[13px] font-medium text-foreground/75 transition-colors hover:bg-accent hover:text-foreground"
                 >
-                  <MY_ITEMS_SHORTCUT.icon size={14} />
+                  <MY_ITEMS_SHORTCUT.icon size={17} />
                   {MY_ITEMS_SHORTCUT.label}
                 </button>
               )}
@@ -775,6 +784,7 @@ function App() {
                   onStateChange={replaceViewState}
                 />
               )}
+              {tab === "mcp" && <McpView />}
               {tab === "about" && <AboutView />}
               </Suspense>
             </motion.div>

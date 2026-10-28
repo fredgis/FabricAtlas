@@ -89,7 +89,7 @@ export function NetworkProtectionCard() {
   ];
 
   return (
-    <Card className="flex min-w-0 flex-col" data-testid="network-protection">
+    <Card className="flex h-full min-w-0 flex-col" data-testid="network-protection">
       <header className="border-b border-border p-l">
         <h2 className="text-400 font-semibold leading-400">
           Network protection • {data.workspace.displayName}

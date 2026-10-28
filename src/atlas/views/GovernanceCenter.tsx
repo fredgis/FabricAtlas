@@ -21,6 +21,7 @@ import {
   ShieldCheck,
   VolumeX,
 } from "lucide-react";
+import { collectionSectionLabel, collectionStatusReason } from "../collection-status-copy";
 import { TeamsTestButton } from "../components/TeamsTestButton";
 import * as Tabs from "@radix-ui/react-tabs";
 import { lazy, Suspense, useEffect, useId, useMemo, useState, type ReactNode } from "react";
@@ -1915,7 +1916,7 @@ interface FabricSignalsInput {
 function coverageSignal(metric: { numerator: number; denominator: number; percentage: number | null }) {
   return metric.percentage == null
     ? { value: "Unknown", detail: "Not readable in this snapshot" }
-    : { value: `${metric.percentage}%`, detail: `${metric.numerator} of ${metric.denominator} items` };
+    : { value: `${Math.round(metric.percentage)}%`, detail: `${metric.numerator} of ${metric.denominator} items` };
 }
 
 function FabricSignalsCard({ coverage, evidence, domainRows }: FabricSignalsInput) {
@@ -2868,17 +2869,20 @@ function CoverageSection({
           <div className="border-b border-border bg-secondary/55 px-l py-m">
             <h2 className="text-400 font-semibold">Collection status</h2>
             <p className="text-200 text-muted-foreground">
-              Authoritative status returned by the latest UDF contract.
+              What the latest sync could read, and why a section is missing.
             </p>
           </div>
           <div className="grid gap-s p-s sm:grid-cols-2 xl:grid-cols-4">
-            {sectionEntries.map(([name, section]) => (
+            {sectionEntries.map(([name, section]) => {
+              const reason = collectionStatusReason(section.status, section.code);
+              return (
               <div
                 key={name}
-                className="flex items-center justify-between gap-m rounded-lg border border-border bg-card px-m py-s"
+                className="flex flex-col gap-xs rounded-lg border border-border bg-card px-m py-s"
               >
-                <span className="truncate text-200 font-semibold capitalize">
-                  {name.replaceAll(/([a-z])([A-Z])/g, "$1 $2")}
+                <div className="flex items-center justify-between gap-m">
+                <span className="truncate text-200 font-semibold">
+                  {collectionSectionLabel(name)}
                 </span>
                 <span
                   className={cn(
@@ -2893,8 +2897,13 @@ function CoverageSection({
                 >
                   {section.status}
                 </span>
+                </div>
+                {reason && (
+                  <p className="text-100 leading-200 text-muted-foreground">{reason}</p>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
       )}

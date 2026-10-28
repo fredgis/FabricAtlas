@@ -7,7 +7,7 @@ import {
 export const POLICIES_AI_LIMITATION =
   "Collected metadata and configured source selections do not establish AI exposure, AI safety or compliance. Unknown exposure is not the same as not exposed.";
 export const FABRIC_POLICIES_UNKNOWN =
-  "Fabric policies (preview) are stored as policy items and activated per tenant or capacity scope by an admin. Atlas does not read policy rules or activation state in this build, so whether item creation, workspace settings editing or external data sharing is restricted here is Unknown. Review it in the Policies center.";
+  "Fabric policies (preview) are stored as policy set items and activated per tenant or capacity scope. The admin scanner and admin APIs that Atlas calls do not return policy rules or activation state, and the policy set APIs are still preview, so Atlas does not query them even with Fabric admin consent. Whether item creation, workspace settings editing or external data sharing is restricted here is therefore Unknown: review it in the OneLake catalog Policies center.";
 export const FABRIC_POLICIES_DOCS_URL = "https://learn.microsoft.com/fabric/governance/fabric-policies-overview";
 
 export function isFabricPolicyItem(item: { itemType: string }): boolean {

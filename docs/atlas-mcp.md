@@ -213,6 +213,8 @@ Revisit this choice if Rayfin adds MCP hosting.
 
 ## 4. Configuration
 
+The app's **System → MCP** page shows these steps and copies a ready-to-use `.vscode/mcp.json`.
+
 All switches default to off:
 
 | Setting | Default | Purpose |

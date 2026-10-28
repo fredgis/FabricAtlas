@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.6.2";
+  "2.6.3";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,30 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.6.3",
+    date: "2026-10-30",
+    title: "Sync mode, MCP page and layout fixes",
+    sections: [
+      {
+        title: "Improvements",
+        items: [
+          "System → MCP page explains how to build and configure the read-only Atlas MCP server and copies a ready mcp.json.",
+          "Full or Incremental is one shared choice for Synchronize now and Sync selected; a notice names the workspaces that must run a full scan and why.",
+          "Collection status uses plain section names and explains each missing section, including schema-enabled Lakehouses.",
+        ],
+      },
+      {
+        title: "Fixes",
+        items: [
+          "Run duration covers the whole synchronization instead of the first stage.",
+          "Workspace Hub: Selected workspaces full width, Recent runs before Schedule, equal-height cards below.",
+          "Header domain chip, sidebar My items alignment and rounded coverage percentages.",
+          "Fabric policies explain why enforcement is unknown without a Fabric administrator sign-in.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.6.2",
     date: "2026-10-29",

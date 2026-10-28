@@ -28,6 +28,7 @@ const TABS = new Set<Tab>([
   "access",
   "jobs",
   "workspace",
+  "mcp",
   "about",
 ]);
 

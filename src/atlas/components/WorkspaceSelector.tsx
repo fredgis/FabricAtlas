@@ -97,10 +97,10 @@ export function WorkspaceSelector({
         disabled={syncing || workspaceScopesLoading || single}
         onChange={(event) => switchWorkspace(event.target.value, selectId)}
         className={cn(
-          "w-full min-w-0 rounded-md border border-input bg-card text-foreground disabled:opacity-70",
+          "min-w-0 rounded-md border border-input bg-card text-foreground disabled:opacity-70",
           compact
-            ? "min-h-[var(--atlas-touch-target)] truncate pl-s pr-xl text-[length:var(--text-300)] font-semibold md:min-h-[var(--atlas-control-height)]"
-            : "min-h-[var(--atlas-touch-target)] px-m text-[length:var(--text-300)] sm:min-h-[var(--atlas-control-height)]",
+            ? "min-w-[9rem] flex-1 min-h-[var(--atlas-touch-target)] truncate pl-s pr-xl text-[length:var(--text-300)] font-semibold md:min-h-[var(--atlas-control-height)]"
+            : "w-full min-h-[var(--atlas-touch-target)] px-m text-[length:var(--text-300)] sm:min-h-[var(--atlas-control-height)]",
         )}
       >
         {!workspaceScopes.some((scope) => scope.id === activeWorkspaceId) && (

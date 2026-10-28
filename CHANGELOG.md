@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 Release dates use the ISO 8601 format (`YYYY-MM-DD`) and record the day the
 release tag was published.
 
+## [2.6.3] - 2026-10-30
+
+### Added
+
+- System → MCP page: how to build and configure the read-only Atlas MCP server, with a ready `mcp.json` to copy.
+- Collection status shows plain section names and the reason for every missing section (token, TDS runtime, schema-enabled Lakehouse, not applicable).
+
+### Fixed
+
+- Full/Incremental is one shared choice for Synchronize now and Sync selected; a notice names the workspaces that must run a full scan (no previous full snapshot in this browser, or 7-day full rescan due).
+- Run duration covers the whole synchronization (it previously stopped at the first stage).
+- Workspace Hub layout: Selected workspaces full width, Recent runs before Schedule, equal-height cards below.
+- Header domain chip no longer squeezed; sidebar My items aligned; coverage percentages rounded.
+- Fabric policies explain why enforcement is unknown without a Fabric administrator sign-in.
+
 ## [2.6.2] - 2026-10-29
 
 ### Added

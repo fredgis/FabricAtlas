@@ -451,7 +451,7 @@ export function SyncRunDetailed({ onViewRun }: { onViewRun?: () => void }) {
         ) : undefined
       }
     >
-      {canStart && <ScanModeControl runs={data.syncRuns} />}
+      {canStart && <ScanModeControl runs={data.syncRuns} workspaceIds={[activeWorkspaceId]} names={{ [activeWorkspaceId]: data.workspace.displayName }} refreshKey={view.lastSyncedAt} />}
       {!canSync && (
         <p className="mt-s text-200 leading-200 text-foreground">{contact}</p>
       )}

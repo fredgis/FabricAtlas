@@ -107,7 +107,7 @@ export function DomainFilterPopover({
           type="button"
           title="Filter the whole app by Fabric domain"
           className={cn(
-            "flex min-w-0 max-w-[18rem] items-center gap-xs rounded-md border border-input bg-card text-[length:var(--text-300)] text-foreground hover:bg-accent",
+            "flex max-w-[18rem] shrink-0 items-center gap-xs rounded-md border border-input bg-card text-[length:var(--text-300)] text-foreground hover:bg-accent",
             compact
               ? "mr-xs min-h-[var(--atlas-touch-target)] px-s md:min-h-[var(--atlas-control-height)]"
               : "min-h-[var(--atlas-touch-target)] px-m sm:min-h-[var(--atlas-control-height)]",
@@ -115,7 +115,7 @@ export function DomainFilterPopover({
         >
           <Layers3 className="icon-size-100 shrink-0 text-brand-foreground" aria-hidden="true" />
           <span className="shrink-0 text-muted-foreground">Domain:</span>
-          <span className="min-w-0 truncate font-semibold">{active?.label ?? "All"}</span>
+          <span className="min-w-0 max-w-[11rem] truncate font-semibold" title={active?.label ?? "All"}>{active?.label ?? "All"}</span>
           <ChevronDown className="icon-size-100 shrink-0" aria-hidden="true" />
         </button>
       </Popover.Trigger>

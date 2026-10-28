@@ -1,3 +1,4 @@
+import { fullRescanDue } from "./incremental-sync";
 import type { RawSync } from "./live-sync";
 
 /** Last complete collection of a workspace, kept in the browser to enable incremental sync. */
@@ -55,4 +56,29 @@ export function browserCollectionCache(): CollectionCache | null {
       await run("readwrite", (store) => store.put(entry, entry.workspaceId));
     },
   };
+}
+
+/**
+ * Why an incremental run can or cannot reuse this browser's snapshot:
+ * "ready" (a full collection younger than the rescan interval is cached),
+ * "no-snapshot" (no full run stored in this browser) or "full-due".
+ */
+export type IncrementalAvailability = "ready" | "no-snapshot" | "full-due";
+
+export async function incrementalAvailability(
+  workspaceIds: readonly string[],
+  cache: CollectionCache | null = browserCollectionCache(),
+  now = Date.now(),
+): Promise<Record<string, IncrementalAvailability>> {
+  const result: Record<string, IncrementalAvailability> = {};
+  for (const id of workspaceIds) {
+    let entry: CachedCollection | undefined;
+    try {
+      entry = await cache?.load(id);
+    } catch {
+      entry = undefined;
+    }
+    result[id] = !entry ? "no-snapshot" : fullRescanDue(entry.fullAt ?? entry.raw.syncedAt, now) ? "full-due" : "ready";
+  }
+  return result;
 }

@@ -88,7 +88,8 @@ single-tenant public client, delegated `Item.Execute.All`, a reviewed
 The signed-in user must belong to the Fabric app audience, and tools can read
 only the administrator-selected Atlas workspace scope. No tool changes Fabric,
 permissions or Atlas data. See [Atlas MCP](docs/atlas-mcp.md) for the remaining
-identity gates, tool contracts and limitations.
+identity gates, tool contracts and limitations. Inside the app, **System → MCP**
+walks through the same setup and copies a ready-to-use `.vscode/mcp.json`.
 
 ## Technical presentation
 
@@ -136,11 +137,11 @@ Fabric Atlas collects that metadata without copying business data.
 | Area | Included in Fabric Atlas 2.6 |
 |---|---|
 | Workspaces and sync | Shared workspace scope, independent validated snapshots, persisted per-workspace run status, active-workspace switching, staged progress and last-known-good fallback |
-| Catalog and search | Item Catalog with facets and tag scope, alphabetized Asset Catalog, `Ctrl+K` search with description snippets, Request access link, SQL/KQL/semantic/Ontology 2.0/graph/Data Agent inventory |
+| Catalog and search | Item Catalog with facets and tag scope, Collection status with the reason for each missing section (for example schema-enabled Lakehouses, whose tables come only from the SQL analytics endpoint), alphabetized Asset Catalog, `Ctrl+K` search with description snippets, Request access link, SQL/KQL/semantic/Ontology 2.0/graph/Data Agent inventory |
 | Lineage and impact | Trusted Atlas graph, connected type-filter context, stable Impact mode, Item Relations Preview, Evidence, Changes, X-Ray, notebook and semantic object lineage, and exportable impact reports |
 | Governance | Findings with Fix in Fabric links, Why panel and priority score, My items, OneLake catalog pillars (Health, Protect, Trust), JSON and snapshot export, Teams Adaptive Card and optional webhook, Fabric domain names, filter and per-domain posture, tenant settings drift, a closed six-pillar Radar, snapshot comparison, history, item-family Coverage, posture targets, Policies & AI, read-only Fabric policies and optional AI description suggestions |
 | Access | Effective recorded access, principal type and role filters, OneLake data access roles (RLS/CLS), sensitive external shares, personal decisions, What-if simulation and evidence-based departure packs |
-| Operations | Job history, observed incidents, inferred downstream impact, incremental sync planning, Open in Fabric cards for Govern and Admin monitoring, configuration and team notes |
+| Operations | Job history, observed incidents, inferred downstream impact, Full or Incremental sync (one shared choice; a notice explains when a full scan is required because this browser holds no previous full snapshot or the 7-day full rescan is due), rescanned/reused counts and real run duration, Open in Fabric cards for Govern and Admin monitoring, configuration and team notes |
 | Security | Fabric brokered authentication, synchronizer-only publication, metadata-only storage and user-scoped personal state |
 | Extensibility | Typed Rayfin Functions, minimal Python compatibility and an optional read-only local Atlas MCP |
 
@@ -452,7 +453,7 @@ contracts or a separate product decision.
 | Report visual usage | Not collected | A supported report definition path with sensitivity and permission handling |
 | Shared action plans and notifications | Optional Teams webhook for new critical findings; no shared action plans | Reviewed team workflow and ownership model |
 | Generated Power BI posture report (PBIP) | Not implemented; JSON and snapshot export, the Teams card and webhook cover sharing in 2.6 | A reviewed report template fed by the published snapshot |
-| 2.6 release line | Version 2.6.2 is the current release | Patch releases for verified fixes; larger workflows depend on the contracts above |
+| 2.6 release line | Version 2.6.3 is the current release | Patch releases for verified fixes; larger workflows depend on the contracts above |
 
 ## Quickstart
 

@@ -1373,11 +1373,13 @@ async function persistSync(
     { ...manifest, id: crypto.randomUUID() },
     signal,
   );
+  // The run lasts until the snapshot is published, not until collection ends.
+  const completedAt = new Date();
   try {
     await updateSyncAttempt(
       attempt,
       "completed",
-      syncedAt,
+      completedAt,
       atlas.items.length,
       syncSummary,
     );
@@ -1409,12 +1411,12 @@ async function persistSync(
       {
         id: attempt.id,
         startedAt: attempt.startedAt.toISOString(),
-        finishedAt: syncedAt.toISOString(),
+        finishedAt: completedAt.toISOString(),
         status: "completed",
         itemsSynced: atlas.items.length,
         durationMs: Math.max(
           0,
-          syncedAt.getTime() - attempt.startedAt.getTime(),
+          completedAt.getTime() - attempt.startedAt.getTime(),
         ),
         triggeredBy: attempt.user.name,
         summary: syncSummary,

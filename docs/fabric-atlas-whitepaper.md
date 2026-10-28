@@ -6,7 +6,7 @@ author: "Fabric Atlas project"
 lang: en-GB
 ---
 
-> This paper documents Fabric Atlas 2.6.2. FGI-MAIN and FGI-ORACLE are used
+> This paper documents Fabric Atlas 2.6.3. FGI-MAIN and FGI-ORACLE are used
 > as real deployment examples, captured on 3 October 2026 with release 2.0.0.
 > Counts and findings describe those workspaces at that point in time. They are
 > not product defaults, limits or benchmarks. Capabilities added in 2.6 are
