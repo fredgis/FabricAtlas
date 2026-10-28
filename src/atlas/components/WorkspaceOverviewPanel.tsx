@@ -76,6 +76,19 @@ export function WorkspaceOverviewPanel() {
                 <span className="font-normal text-muted-foreground">Not reported</span>
               )}
             </Field>
+            <Field label="Fabric domain">
+              {workspace.fabricDomainId === "unassigned" ? (
+                <span className="font-normal text-muted-foreground">
+                  No domain assigned
+                </span>
+              ) : workspace.fabricDomainId ? (
+                <span className="font-monospace font-normal">
+                  {workspace.fabricDomainId}
+                </span>
+              ) : (
+                <span className="font-normal text-muted-foreground">Not collected</span>
+              )}
+            </Field>
             <Field label="Scope">
               {scope?.persisted
                 ? `Saved in the shared scope ${scope.selectedAt ? relativeTime(scope.selectedAt) : ""}`.trim()

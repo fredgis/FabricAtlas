@@ -11,10 +11,12 @@ import {
   GitCompareArrows,
   History,
   Layers3,
+  MessageSquareShare,
   Radar as RadarIcon,
   RotateCcw,
   Search,
   ShieldAlert,
+  UserRound,
   ShieldCheck,
   VolumeX,
 } from "lucide-react";
@@ -82,6 +84,21 @@ import { PoliciesAiSection } from "./PoliciesAi";
 import { buildAiGovernanceInventory } from "../policies-ai";
 import { groupFindingsByRule } from "../finding-groups";
 import { PageHeader } from "../components/PageHeader";
+import { NativeLink } from "../components/NativeLink";
+import { findingFixUrl } from "../fabric-portal";
+import {
+  MICROSOFT_PILLAR_DESCRIPTION,
+  MICROSOFT_PILLAR_LABEL,
+  microsoftPillarForFinding,
+  type MicrosoftGovernancePillar,
+} from "../ms-pillars";
+import {
+  buildFindingsExport,
+  buildTeamsPostureCard,
+  isFindingOwnedBy,
+} from "../governance-share";
+import { downloadText, fileSlug } from "../download";
+import type { AtlasData } from "../model";
 
 const PostureRadar = lazy(() => import("../components/PostureRadar").then(
   (module) => ({ default: module.PostureRadar }),
@@ -263,6 +280,7 @@ export function GovernanceCenterView({
 }) {
   const {
     data,
+    currentUser,
     isPreview,
     history,
     historyLoading,
@@ -314,6 +332,7 @@ export function GovernanceCenterView({
       ? (focus.filters.category as GovernanceCategory)
       : "all",
   );
+  const [mineOnly, setMineOnly] = useState(false);
   const [findingPillar, setFindingPillar] = useState(
     initialSection === "findings" ? findingPillarFilter(focus?.filters?.pillar) : "",
   );
@@ -386,12 +405,23 @@ export function GovernanceCenterView({
         (severity === "all" || finding.severity === severity) &&
         (category === "all" || finding.category === category) &&
         (!findingPillar || finding.category === findingPillar) &&
+        (!mineOnly ||
+          isFindingOwnedBy(finding, data.items, currentUser.email)) &&
         (!query ||
           finding.title.toLowerCase().includes(query) ||
           finding.detail.toLowerCase().includes(query) ||
           finding.recommendation.toLowerCase().includes(query)),
     );
-  }, [category, findingPillar, findingSearch, findings, severity]);
+  }, [
+    category,
+    currentUser.email,
+    data.items,
+    findingPillar,
+    findingSearch,
+    findings,
+    mineOnly,
+    severity,
+  ]);
 
   const historyIsCurrent =
     !data.workspace.snapshotId ||
@@ -926,6 +956,11 @@ export function GovernanceCenterView({
             severity={severity}
             category={category}
             pillar={findingPillar}
+            data={data}
+            posture={currentPosture}
+            mineOnly={mineOnly}
+            canFilterMine={Boolean(currentUser.email?.trim())}
+            onMineOnly={setMineOnly}
             onSearch={setFindingSearch}
             onSeverity={setSeverity}
             onCategory={setCategory}
@@ -941,6 +976,7 @@ export function GovernanceCenterView({
             onRemoveException={removeGovernanceException}
             onPreset={(preset) => {
               setFindingPillar("");
+              if (preset === "all") setMineOnly(false);
               if (preset === "external") {
                 setFindingSearch("external access");
                 setCategory("access");
@@ -1635,6 +1671,21 @@ function PostureSection({
   );
 }
 
+function FabricPillarBadge({
+  pillar,
+}: {
+  pillar: MicrosoftGovernancePillar;
+}) {
+  return (
+    <span
+      title={`OneLake catalog pillar: ${MICROSOFT_PILLAR_DESCRIPTION[pillar]}`}
+      className="rounded-md border border-border bg-card px-s py-xxs text-200 text-muted-foreground"
+    >
+      Fabric · {MICROSOFT_PILLAR_LABEL[pillar]}
+    </span>
+  );
+}
+
 function FindingsSection({
   findings,
   total,
@@ -1642,6 +1693,11 @@ function FindingsSection({
   severity,
   category,
   pillar,
+  data,
+  posture,
+  mineOnly,
+  canFilterMine,
+  onMineOnly,
   onSearch,
   onSeverity,
   onCategory,
@@ -1661,6 +1717,11 @@ function FindingsSection({
   severity: GovernanceSeverity | "all";
   category: GovernanceCategory | "all";
   pillar: string;
+  data: Pick<AtlasData, "workspace" | "items">;
+  posture: PostureScore;
+  mineOnly: boolean;
+  canFilterMine: boolean;
+  onMineOnly: (value: boolean) => void;
   onSearch: (value: string) => void;
   onSeverity: (value: GovernanceSeverity | "all") => void;
   onCategory: (value: GovernanceCategory | "all") => void;
@@ -1679,7 +1740,7 @@ function FindingsSection({
   onRemoveException: (id: string) => Promise<void>;
 }) {
   const activeFilters =
-    search || severity !== "all" || category !== "all" || pillar;
+    search || severity !== "all" || category !== "all" || pillar || mineOnly;
   const activePreset = pillar || severity !== "all"
     ? undefined
     : !search && category === "all"
@@ -1711,6 +1772,7 @@ function FindingsSection({
         Open evidence
         <ArrowRight className="icon-size-100" />
       </button>
+      <NativeLink href={findingFixUrl(finding, data)}>Fix in Fabric</NativeLink>
       <GovernanceExceptionControl
         findingId={finding.id}
         findingTitle={finding.title}
@@ -1764,6 +1826,26 @@ function FindingsSection({
                 {label}
               </button>
             ))}
+            <button
+              type="button"
+              aria-pressed={mineOnly}
+              disabled={!canFilterMine}
+              title={
+                canFilterMine
+                  ? "Only findings on items you own"
+                  : "Your account email is unavailable, so ownership cannot be matched"
+              }
+              onClick={() => onMineOnly(!mineOnly)}
+              className={cn(
+                "atlas-control inline-flex items-center gap-xs rounded-full border px-m text-200 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                mineOnly
+                  ? "border-primary/40 bg-primary/10 text-brand-foreground"
+                  : "border-border bg-card text-muted-foreground hover:bg-accent hover:text-foreground",
+              )}
+            >
+              <UserRound className="icon-size-100" aria-hidden="true" />
+              My items
+            </button>
           </div>
           <div className="flex flex-col gap-s lg:flex-row lg:items-center">
           <label className="relative min-w-0 flex-1">
@@ -1816,13 +1898,45 @@ function FindingsSection({
           )}
           </div>
         </div>
-        <div className="flex items-center justify-between border-b border-border px-l py-m">
+        <div className="flex flex-wrap items-center justify-between gap-m border-b border-border px-l py-m">
           <div>
             <h2 className="text-400 font-semibold">Action queue</h2>
             <p className="text-200 text-muted-foreground">
               {findings.length} of {total} findings · {groups.length}{" "}
               {groups.length === 1 ? "rule" : "rules"}
             </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-s">
+            <button
+              type="button"
+              disabled={findings.length === 0}
+              onClick={() =>
+                downloadText(
+                  `${JSON.stringify(buildFindingsExport(findings, data, new Date().toISOString()), null, 2)}\n`,
+                  "application/json",
+                  `atlas-findings-${fileSlug(data.workspace.displayName)}.json`,
+                )
+              }
+              className="atlas-control inline-flex items-center gap-s rounded-lg border border-border bg-card px-m text-200 font-semibold hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Download className="icon-size-100" aria-hidden="true" />
+              Export JSON
+            </button>
+            <button
+              type="button"
+              title="Download an Adaptive Card to post in Teams through a Workflow"
+              onClick={() =>
+                downloadText(
+                  `${JSON.stringify(buildTeamsPostureCard(posture, findings, data, window.location.origin), null, 2)}\n`,
+                  "application/json",
+                  `atlas-teams-card-${fileSlug(data.workspace.displayName)}.json`,
+                )
+              }
+              className="atlas-control inline-flex items-center gap-s rounded-lg border border-border bg-card px-m text-200 font-semibold hover:bg-accent"
+            >
+              <MessageSquareShare className="icon-size-100" aria-hidden="true" />
+              Teams card
+            </button>
           </div>
         </div>
         {findings.length === 0 ? (
@@ -1861,6 +1975,12 @@ function FindingsSection({
                         <span className="text-200 text-muted-foreground">
                           {CATEGORY_LABEL[group.category]}
                         </span>
+                        <FabricPillarBadge
+                          pillar={microsoftPillarForFinding({
+                            id: group.findings[0].id,
+                            category: group.category,
+                          })}
+                        />
                       </div>
                       <h3 className="mt-xs text-300 font-semibold">
                         {single ? single.title : `${group.label} · ${group.findings.length} findings`}

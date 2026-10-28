@@ -24,6 +24,11 @@ const RULE_LABEL: Record<string, string> = {
   "stale-item": "Stale items",
   "missing-owner": "Missing owner",
   "missing-sensitivity": "Missing sensitivity label",
+  "certified-missing-description": "Certified without description",
+  "certified-missing-sensitivity": "Certified without sensitivity label",
+  "endorsed-inactive": "Endorsed but inactive",
+  "missing-object-description": "Undocumented model objects",
+  "workspace-no-domain": "Workspace without domain",
   "failed-job": "Failed jobs",
   "broken-lineage": "Broken lineage relationships",
 };

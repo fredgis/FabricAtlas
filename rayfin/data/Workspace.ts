@@ -25,6 +25,8 @@ export class Workspace {
   @text({ max: 200 }) displayName!: string;
   @text({ max: 120, optional: true }) capacity?: string;
   @text({ max: 120, optional: true }) region?: string;
+  /** Fabric domain id, or "unassigned" when the workspace has no domain. */
+  @text({ max: 64, optional: true }) fabricDomainId?: string;
   @int({ optional: true }) itemCount?: number;
   @int({ optional: true }) edgeCount?: number;
   @int({ optional: true }) principalCount?: number;

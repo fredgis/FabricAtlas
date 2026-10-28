@@ -116,6 +116,9 @@ Fabric Atlas collects that metadata without copying business data.
   references and unknown evidence.
 - Track findings, item-family Coverage, Policies & AI and six governance
   posture pillars.
+- Act on findings: open the item in Fabric, filter to items you own, see the
+  OneLake catalog pillar (Health, Protect, Trust), export the queue as JSON or
+  download a Teams Adaptive Card.
 - Inspect job failures, inferred downstream impact and portal-only monitoring
   boundaries.
 - Keep configuration and append-only team notes beside the active workspace.
@@ -124,12 +127,12 @@ Fabric Atlas collects that metadata without copying business data.
 
 ## Capabilities
 
-| Area | Included in Fabric Atlas 2.1 |
+| Area | Included in Fabric Atlas 2.2 |
 |---|---|
 | Workspaces and sync | Shared workspace scope, independent validated snapshots, persisted per-workspace run status, active-workspace switching, staged progress and last-known-good fallback |
 | Catalog and search | Item Catalog, alphabetized Asset Catalog, `Ctrl+K` search, SQL/KQL/semantic/Ontology 2.0/graph/Data Agent inventory |
 | Lineage and impact | Trusted Atlas graph, connected type-filter context, stable Impact mode, Item Relations Preview, Evidence, Changes, X-Ray, notebook and semantic object lineage, and exportable impact reports |
-| Governance | Findings, a closed six-pillar Radar, snapshot comparison, history, item-family Coverage, posture targets and Policies & AI |
+| Governance | Findings with Fix in Fabric links, My items, OneLake catalog pillars (Health, Protect, Trust), JSON export, Teams Adaptive Card, Fabric domain coverage, a closed six-pillar Radar, snapshot comparison, history, item-family Coverage, posture targets and Policies & AI |
 | Access | Effective recorded access, principal review, personal decisions, What-if simulation and evidence-based departure packs |
 | Operations | Job history, observed incidents, inferred downstream impact, monitoring boundaries, configuration and team notes |
 | Security | Fabric brokered authentication, synchronizer-only publication, metadata-only storage and user-scoped personal state |
@@ -264,6 +267,27 @@ upstream and downstream dependencies instead of an empty graph.
 
 Governance Radar, findings, snapshot changes, history, coverage, posture and
 Policies & AI evidence are grouped into one governance workspace.
+
+Since 2.2, the action queue aligns with the OneLake catalog governance view:
+
+- **Fix in Fabric** opens the affected item, or its workspace when the item
+  type has no direct portal route.
+- **My items** keeps findings whose recorded owner email matches the signed-in
+  account. It is disabled when the account email is unavailable.
+- Each rule group shows its OneLake catalog pillar: **Health**, **Protect** or
+  **Trust**.
+- **Export JSON** downloads the filtered queue for ticketing tools.
+- **Teams card** downloads an Adaptive Card 1.5 with the posture and the five
+  most severe findings. Post it through a Teams Workflow; Atlas stores no
+  webhook or secret.
+
+| Rule | Severity | Trigger |
+|---|---|---|
+| `certified-missing-description` | Medium | Certified item without a description |
+| `certified-missing-sensitivity` | High | Certified item without a sensitivity label (replaces `missing-sensitivity` for certified items) |
+| `endorsed-inactive` | Low | Endorsed item whose last recorded run is older than 90 days |
+| `missing-object-description` | Low | Endorsed semantic model with undocumented tables, columns or measures |
+| `workspace-no-domain` | Low | Workspace confirmed without a Fabric domain. Not raised when the domain was not collected |
 
 ![Fabric Atlas Governance Center](docs/screenshots/governance-center-v2.png)
 
@@ -412,7 +436,8 @@ contracts or a separate product decision.
 | OneLake security and Purview DLP | Portal links and explicit unavailable states | Public read APIs for role membership and restriction evidence |
 | Report visual usage | Not collected | A supported report definition path with sensitivity and permission handling |
 | Shared action plans and notifications | Not implemented | Reviewed team workflow, ownership model and delivery channel |
-| 2.1 maintenance | Version 2.1.3 is the current release line | Patch releases for verified fixes; larger workflows depend on the contracts above |
+| Generated Power BI posture report (PBIP) | Not implemented; JSON export and the Teams card cover sharing in 2.2 | A reviewed report template fed by the published snapshot |
+| 2.2 release line | Version 2.2.0 is the current release | Patch releases for verified fixes; larger workflows depend on the contracts above |
 
 ## Quickstart
 

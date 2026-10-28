@@ -98,6 +98,20 @@ export function realText(value: unknown): string | undefined {
   return text;
 }
 
+export const UNASSIGNED_FABRIC_DOMAIN = "unassigned";
+
+/**
+ * Reads domain evidence from a collected workspace. Absence is only reported
+ * when the collector explicitly says so; older collectors stay unknown.
+ */
+export function fabricDomainIdFrom(
+  workspace: Record<string, unknown>,
+): string | undefined {
+  const domainId = realText(workspace.domainId);
+  if (domainId) return domainId.slice(0, 64);
+  return workspace.domainAssigned === false ? UNASSIGNED_FABRIC_DOMAIN : undefined;
+}
+
 function accountValues(account: MsalAccount): Set<string> {
   const claims = account.idTokenClaims ?? {};
   const values = [
@@ -2438,6 +2452,7 @@ export function mapSyncToAtlas(raw: RawSync, fallback: WorkspaceInfo): AtlasData
     displayName: String(ws.displayName ?? fallback.displayName),
     capacity: realText(ws.capacityId) ?? fallback.capacity,
     region: realText(ws.capacityRegion) ?? fallback.region,
+    fabricDomainId: fabricDomainIdFrom(ws),
     syncedAt: normalizeFabricTimestamp(raw.syncedAt),
     syncSections: {
       ...(syncSections ?? {}),

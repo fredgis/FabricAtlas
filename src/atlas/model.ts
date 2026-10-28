@@ -99,6 +99,11 @@ export interface WorkspaceInfo {
   displayName: string;
   capacity: string;
   region: string;
+  /**
+   * Fabric domain id. "unassigned" means the collector confirmed the
+   * workspace has no domain; undefined means the domain was not collected.
+   */
+  fabricDomainId?: string;
   deploymentId?: string;
   snapshotId?: string;
   syncedAt?: string;

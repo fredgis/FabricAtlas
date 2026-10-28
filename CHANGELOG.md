@@ -4,6 +4,36 @@ All notable changes to Fabric Atlas are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-10-18
+
+### Added
+
+- Fix in Fabric link on every finding, opening the item or its workspace in
+  the Fabric portal.
+- My items filter in the action queue, matched on the recorded owner email.
+- OneLake catalog pillar badge (Health, Protect, Trust) on each finding group.
+- JSON export of the filtered action queue.
+- Teams Adaptive Card download with the posture and the five most severe
+  findings. No webhook or secret is stored.
+- Governance rules `certified-missing-description`,
+  `certified-missing-sensitivity`, `endorsed-inactive`,
+  `missing-object-description` and `workspace-no-domain`.
+- Fabric domain collection (`domainId`, `domainAssigned`) in the workspace
+  collector, persisted as the optional `Workspace.fabricDomainId` column and
+  shown on the workspace page.
+
+### Changed
+
+- Certified items without a sensitivity label now raise
+  `certified-missing-sensitivity` (high) instead of `missing-sensitivity`.
+- The minor version change starts a new deployment generation: run one guided
+  synchronization per workspace. The radar uses it as a new baseline, so the
+  new rules are not reported as regressions.
+
+### Not included
+
+- The generated Power BI posture report (PBIP) planned in #62 is deferred.
+
 ## [2.1.3] - 2026-10-17
 
 ### Fixed

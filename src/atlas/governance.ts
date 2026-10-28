@@ -451,7 +451,8 @@ export function buildGovernanceFindings(
   data: Pick<
     AtlasData,
     "workspace" | "items" | "principals" | "grants" | "jobs" | "edges"
-  >,
+  > &
+    Partial<Pick<AtlasData, "schema">>,
 ): GovernanceFinding[] {
   const findings: GovernanceFinding[] = [];
   const accessRows = buildAccessReviewRows(data);
@@ -619,6 +620,49 @@ export function buildGovernanceFindings(
     }
 
     if (
+      item.endorsement === "certified" &&
+      !meaningful(item.description)
+    ) {
+      findings.push({
+        id: findingId("certified-missing-description", item.fabricId),
+        severity: "medium",
+        category: "metadata",
+        title: `Certified without description: ${item.displayName}`,
+        detail:
+          "This item is certified, but consumers have no description explaining what it contains or how to use it.",
+        recommendation:
+          "Add a description in the item settings before relying on the certification.",
+        evidenceIds: [
+          `item:${item.fabricId}:endorsement:certified`,
+          `item:${item.fabricId}:description`,
+        ],
+        target: { kind: "item", itemId: item.fabricId },
+        itemId: item.fabricId,
+      });
+    }
+
+    if (
+      sensitivityEligibleItems.has(item.fabricId) &&
+      !itemHasSensitivity(item) &&
+      item.endorsement === "certified"
+    ) {
+      findings.push({
+        id: findingId("certified-missing-sensitivity", item.fabricId),
+        severity: "high",
+        category: "metadata",
+        title: `Certified without sensitivity label: ${item.displayName}`,
+        detail:
+          "This item is certified, so it is likely to be widely reused, but it carries no sensitivity label.",
+        recommendation:
+          "Apply the appropriate sensitivity label before the certified item is shared further.",
+        evidenceIds: [
+          `item:${item.fabricId}:endorsement:certified`,
+          `item:${item.fabricId}:sensitivity`,
+        ],
+        target: { kind: "item", itemId: item.fabricId },
+        itemId: item.fabricId,
+      });
+    } else if (
       sensitivityEligibleItems.has(item.fabricId) &&
       !itemHasSensitivity(item)
     ) {
@@ -636,6 +680,26 @@ export function buildGovernanceFindings(
         itemId: item.fabricId,
       });
     }
+  }
+
+  findings.push(
+    ...endorsedInactiveFindings(data.items, data.workspace.syncedAt),
+    ...objectDescriptionFindings(data.items, data.schema),
+  );
+
+  if (data.workspace.fabricDomainId === UNASSIGNED_DOMAIN) {
+    findings.push({
+      id: findingId("workspace-no-domain", data.workspace.fabricId),
+      severity: "low",
+      category: "metadata",
+      title: "Workspace is not assigned to a domain",
+      detail:
+        "The Fabric workspace API reports no domain for this workspace, so it is missing from domain-based discovery in the OneLake catalog.",
+      recommendation:
+        "Ask a Fabric or domain administrator to assign the workspace to its business domain.",
+      evidenceIds: [`workspace:${data.workspace.fabricId}:domain:unassigned`],
+      target: { kind: "workspace" },
+    });
   }
 
   for (const job of data.jobs) {
@@ -698,6 +762,93 @@ export function buildGovernanceFindings(
 }
 
 export const getGovernanceFindings = buildGovernanceFindings;
+
+const UNASSIGNED_DOMAIN = "unassigned";
+export const ENDORSED_INACTIVE_DAYS = 90;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function latestActivity(item: Item): number | undefined {
+  const times = [item.updatedAt, item.lastRefresh]
+    .map((value) => (value ? Date.parse(value) : Number.NaN))
+    .filter(Number.isFinite);
+  return times.length > 0 ? Math.max(...times) : undefined;
+}
+
+/**
+ * Endorsed items whose recorded activity is older than the threshold. Items
+ * without any activity timestamp are skipped: absence is not evidence.
+ */
+function endorsedInactiveFindings(
+  items: readonly Item[],
+  syncedAt: string | undefined,
+): GovernanceFinding[] {
+  const reference = syncedAt ? Date.parse(syncedAt) : Number.NaN;
+  if (!Number.isFinite(reference)) return [];
+  const findings: GovernanceFinding[] = [];
+  for (const item of items) {
+    if (item.endorsement === "none") continue;
+    const latest = latestActivity(item);
+    if (latest === undefined) continue;
+    const days = Math.floor((reference - latest) / DAY_MS);
+    if (days <= ENDORSED_INACTIVE_DAYS) continue;
+    findings.push({
+      id: findingId("endorsed-inactive", item.fabricId),
+      severity: "low",
+      category: "metadata",
+      title: `Endorsed but inactive: ${item.displayName}`,
+      detail: `${item.displayName} is ${item.endorsement}, but its last recorded update or refresh is ${days} days old.`,
+      recommendation:
+        "Confirm the item is still maintained; refresh it or remove the endorsement.",
+      evidenceIds: [
+        `item:${item.fabricId}:endorsement:${item.endorsement}`,
+        `item:${item.fabricId}:activity`,
+      ],
+      target: { kind: "item", itemId: item.fabricId },
+      itemId: item.fabricId,
+    });
+  }
+  return findings;
+}
+
+/**
+ * Endorsed semantic models whose visible tables, columns or measures have no
+ * description. One finding per model keeps the queue readable.
+ */
+function objectDescriptionFindings(
+  items: readonly Item[],
+  schema: AtlasData["schema"],
+): GovernanceFinding[] {
+  if (!schema) return [];
+  const findings: GovernanceFinding[] = [];
+  for (const item of items) {
+    if (item.itemType !== "SemanticModel" || item.endorsement === "none") {
+      continue;
+    }
+    const tables = (schema[item.fabricId] ?? []).filter(
+      (table) => !isItemMetadataSchemaEntry(table) && table.isHidden !== true,
+    );
+    const objects = tables.flatMap((table) => [
+      table,
+      ...table.columns.filter((column) => column.isHidden !== true),
+      ...table.measures.filter((measure) => measure.isHidden !== true),
+    ]);
+    const missing = objects.filter((object) => !meaningful(object.description));
+    if (objects.length === 0 || missing.length === 0) continue;
+    findings.push({
+      id: findingId("missing-object-description", item.fabricId),
+      severity: "low",
+      category: "metadata",
+      title: `Undocumented model objects: ${item.displayName}`,
+      detail: `${missing.length} of ${objects.length} visible tables, columns and measures in this ${item.endorsement} model have no description.`,
+      recommendation:
+        "Describe the model objects consumers use most so they appear in the OneLake catalog and Copilot answers.",
+      evidenceIds: [`item:${item.fabricId}:schema:descriptions`],
+      target: { kind: "item", itemId: item.fabricId },
+      itemId: item.fabricId,
+    });
+  }
+  return findings;
+}
 
 function coverageMetric(
   id: CoverageMetricId,

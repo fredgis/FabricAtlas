@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.1.3";
+  "2.2.0";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,38 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.2.0",
+    date: "2026-10-18",
+    title: "OneLake catalog alignment",
+    sections: [
+      {
+        title: "Findings to action",
+        items: [
+          "Every finding opens the affected item or workspace in Fabric with Fix in Fabric.",
+          "My items narrows the action queue to items whose recorded owner email matches your account.",
+          "Each finding group shows its OneLake catalog pillar: Health, Protect or Trust.",
+          "Export JSON downloads the filtered action queue with severity, pillar, owner and Fabric link.",
+          "Teams card downloads an Adaptive Card with the posture and the top findings. Atlas stores no webhook.",
+        ],
+      },
+      {
+        title: "New governance rules",
+        items: [
+          "Certified items without a description or a sensitivity label are reported.",
+          "Endorsed items without a run for 90 days and endorsed semantic models with undocumented tables, columns or measures are reported.",
+          "Workspaces confirmed without a Fabric domain are reported; the workspace page shows the domain ID, no domain or not collected.",
+        ],
+      },
+      {
+        title: "Upgrade",
+        items: [
+          "Run one guided synchronization per workspace to collect domains and start a new radar baseline.",
+          "Certified items without a label now use the certified-missing-sensitivity rule instead of missing-sensitivity.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.1.3",
     date: "2026-10-17",

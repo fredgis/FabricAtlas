@@ -478,3 +478,81 @@ describe("coverage diagnostics", () => {
     });
   });
 });
+
+describe("OneLake catalog alignment findings", () => {
+  const rules = (data: AtlasData) =>
+    buildGovernanceFindings(data).map((finding) => finding.id.split(":")[0]);
+
+  it("escalates certified items without description or sensitivity", () => {
+    const data = atlas({
+      items: [
+        item("cert", { endorsement: "certified", sensitivityMetadataAvailable: true }),
+        item("plain", { sensitivityMetadataAvailable: true, description: "Documented" }),
+      ],
+    });
+    const findings = buildGovernanceFindings(data);
+    const certified = findings.filter((finding) => finding.itemId === "cert");
+    expect(certified.map((finding) => finding.id.split(":")[0]).sort()).toEqual([
+      "certified-missing-description",
+      "certified-missing-sensitivity",
+    ]);
+    expect(certified.find((f) => f.id.startsWith("certified-missing-sensitivity"))?.severity).toBe("high");
+    expect(findings.filter((finding) => finding.itemId === "plain").map((f) => f.id.split(":")[0])).toEqual([
+      "missing-sensitivity",
+    ]);
+  });
+
+  it("flags endorsed items inactive beyond the threshold only when activity is recorded", () => {
+    const data = atlas({
+      workspace: { ...atlas().workspace, syncedAt: "2026-06-01T00:00:00.000Z" },
+      items: [
+        item("stale", { endorsement: "promoted", description: "x", lastRefresh: "2026-01-01T00:00:00.000Z" }),
+        item("fresh", { endorsement: "promoted", description: "x", updatedAt: "2026-05-20T00:00:00.000Z" }),
+        item("unknown", { endorsement: "certified", description: "x" }),
+        item("unendorsed", { lastRefresh: "2025-01-01T00:00:00.000Z" }),
+      ],
+    });
+    const inactive = buildGovernanceFindings(data).filter((f) => f.id.startsWith("endorsed-inactive:"));
+    expect(inactive.map((finding) => finding.itemId)).toEqual(["stale"]);
+    expect(rules(atlas({ items: data.items }))).not.toContain("endorsed-inactive");
+  });
+
+  it("reports undocumented visible objects of endorsed semantic models once per model", () => {
+    const model = item("model", { itemType: "SemanticModel", endorsement: "promoted", description: "x" });
+    const data = atlas({
+      items: [model, item("draft", { itemType: "SemanticModel", description: "x" })],
+      schema: {
+        model: [
+          {
+            name: "Sales",
+            description: "Sales facts",
+            columns: [
+              { name: "Amount", dataType: "decimal" },
+              { name: "Key", dataType: "int64", isHidden: true },
+            ],
+            measures: [{ name: "Total", description: "Sum of amount" }],
+          },
+          { name: "Hidden", isHidden: true, columns: [], measures: [] },
+        ],
+        draft: [{ name: "T", columns: [{ name: "c", dataType: "string" }], measures: [] }],
+      },
+    });
+    const findings = buildGovernanceFindings(data).filter((f) =>
+      f.id.startsWith("missing-object-description:"),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ itemId: "model", severity: "low" });
+    expect(findings[0].detail).toContain("1 of 3");
+  });
+
+  it("flags a workspace without domain only when the absence is confirmed", () => {
+    const base = atlas().workspace;
+    expect(rules(atlas({ workspace: { ...base, fabricDomainId: "unassigned" } }))).toContain(
+      "workspace-no-domain",
+    );
+    expect(rules(atlas())).not.toContain("workspace-no-domain");
+    expect(
+      rules(atlas({ workspace: { ...base, fabricDomainId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" } })),
+    ).not.toContain("workspace-no-domain");
+  });
+});

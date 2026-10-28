@@ -83,6 +83,7 @@ const PERSISTED_TEXT_LIMITS = {
     displayName: 200,
     capacity: 120,
     region: 120,
+    fabricDomainId: 64,
   },
   item: {
     displayName: 200,
@@ -376,6 +377,7 @@ const ENTITY_FIELDS: Record<string, readonly string[]> = {
     "displayName",
     "capacity",
     "region",
+    "fabricDomainId",
     "itemCount",
     "edgeCount",
     "principalCount",
@@ -1268,6 +1270,10 @@ async function persistSync(
     region: persistedText(
       atlas.workspace.region,
       PERSISTED_TEXT_LIMITS.workspace.region,
+    ),
+    fabricDomainId: persistedText(
+      atlas.workspace.fabricDomainId,
+      PERSISTED_TEXT_LIMITS.workspace.fabricDomainId,
     ),
     itemCount: atlas.items.length,
     edgeCount: atlas.edges.length,
@@ -2196,6 +2202,7 @@ function catalogFromRows(
     displayName: textOrFallback(marker.displayName, WS_FALLBACK.displayName),
     capacity: textOrFallback(marker.capacity, WS_FALLBACK.capacity),
     region: textOrFallback(marker.region, WS_FALLBACK.region),
+    fabricDomainId: textOrFallback(marker.fabricDomainId, "") || undefined,
     deploymentId: textOrFallback(marker.deploymentId, "") || undefined,
     snapshotId,
     syncedAt,
