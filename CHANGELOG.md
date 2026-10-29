@@ -8,6 +8,20 @@ release tag was published.
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-10-29
+
+### Added
+
+- External lineage page: manual import of OpenLineage files (`.json` or `.ndjson`; RunEvent, JobEvent and DatasetEvent; 20 MB, 50 000 events and 5 000 datasets per file), with per-file status, counts and reject reasons. Re-importing a file with the same name replaces its edges.
+- Link to Fabric: datasets on a OneLake path of the current workspace link automatically by exact path; administrators link the others to a Fabric item or mark them External. Manual links survive re-imports.
+- Map & lineage: External lineage switch with an "External · OpenLineage" lane; impact analysis crosses the Fabric boundary in both directions.
+- Download OpenLineage (External lineage and Map): NDJSON export of the workspace or the map selection, one JobEvent per job and one DatasetEvent per dataset item, with OneLake `abfss://` names and optional linked external edges with column lineage.
+- New Rayfin entities `OpenLineageImport`, `ExternalDataset` and `ExternalLineageEdge`. See [External lineage](docs/external-lineage.md).
+- Named imports: a display name next to the file name; generic Data source type for non-Fabric datasets.
+- Item-level OpenLineage typing in the export: custom `fabricAtlas_item` facet ([schema](docs/openlineage/FabricAtlasItemFacet.json)), `datasetType` for models, `jobType` with `processingType` STREAMING (Eventstream), SERVICE (User data function) or BATCH, plus documentation, ownership and schema facets when known.
+- Link to Fabric searches every catalog item; Impact report lists upstream and downstream external datasets; the Map details panel collapses completely.
+- Two OpenLineage samples in `samples/openlineage/`.
+
 ## [2.6.4] - 2026-10-28
 
 ### Added
@@ -865,7 +879,8 @@ release tag was published.
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.6.4...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.7.0...HEAD
+[2.7.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.0
 [2.6.4]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.6.4
 [2.6.3]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.6.3
 [2.6.2]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.6.2

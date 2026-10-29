@@ -468,6 +468,40 @@ A personal Governance Radar decision for one stable finding or risky change.
 The status is `acked` for one occurrence or `muted` until the record is
 removed.
 
+## OpenLineageImport
+
+One imported OpenLineage file. See [External lineage](external-lineage.md).
+
+`workspace_id`, `fileName`, `fileHash`, `namespace?`, `platform?`,
+`importedById`, `importedByEmail`, `importedAt`, `eventCount`, `datasetCount`,
+`edgeCount`, `toLinkCount`, `status`, `rejectReason?`
+
+The id is stable per workspace and file name, so re-importing the same file
+name replaces the import. Rejected files are kept with zero counts.
+
+## ExternalDataset
+
+A dataset seen in at least one import, with its link to Fabric.
+
+`workspace_id`, `namespace`, `name`, `platform`, `fabricItemId?`,
+`fabricObjectName?`, `state`, `linkedBy?`, `linkedAt?`, `createdById`,
+`createdByEmail`, `lastSeenAt`
+
+`state` is `linked`, `to_link` or `external`; `linkedBy` is `exact_path` for
+automatic links, otherwise the administrator. Manual decisions are kept across
+re-imports. A dataset that no import uses any more is deleted.
+
+## ExternalLineageEdge
+
+One input → output edge through an external job.
+
+`workspace_id`, `importId`, `sourceDatasetId`, `targetDatasetId`,
+`jobNamespace`, `jobName`, `lastRunState?`, `lastRunTime?`, `runId?`,
+`columnLineage?`, `columnTruncated`, `importedById`, `importedByEmail`
+
+External edges are not part of the snapshot; they are merged with snapshot
+edges when the map is read.
+
 ## Snapshot history
 
 History does not require another table. Atlas uses trusted `Workspace`
