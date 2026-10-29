@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildFabricIndex,
   createMemoryRepo,
+  defaultImportLabel,
   deleteImport,
   EXACT_PATH,
   importOpenLineageFile,
@@ -94,8 +95,8 @@ describe('resolveLinks', () => {
 
   it('keeps manual and external decisions, recomputes automatic ones', () => {
     const ds = [
-      { key: 'a', namespace: 'sas://x', name: 'A' },
-      { key: 'b', namespace: 'sas://x', name: 'B' },
+      { key: 'a', namespace: 'source://x', name: 'A' },
+      { key: 'b', namespace: 'source://x', name: 'B' },
       { key: 'c', namespace: NS, name: 'lh_gone/Tables/t' },
       { key: 'd', namespace: NS, name: 'lh_bronze/Tables/t' },
     ];
@@ -131,7 +132,7 @@ describe('persistence', () => {
     const { outcome, state } = await importInto(repo, fileOf(MOCK));
     expect(outcome).toMatchObject({ status: 'accepted', replaced: false });
     expect(state.imports).toHaveLength(1);
-    expect(state.imports[0]).toMatchObject({ fileName: MOCK, status: 'accepted', importedByEmail: actor.email });
+    expect(state.imports[0]).toMatchObject({ fileName: MOCK, label: defaultImportLabel(MOCK), status: 'accepted', importedByEmail: actor.email });
     expect(state.imports[0].edgeCount).toBe(state.edges.length);
     const risk = state.datasets.find((d) => d.name.endsWith('risk_scores'))!;
     expect(risk).toMatchObject({ state: 'linked', fabricItemId: LH_BRONZE, linkedBy: EXACT_PATH });

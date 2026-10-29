@@ -172,6 +172,8 @@ export interface ExternalRepo {
 
 export interface ExternalImport {
   id: string;
+  /** Name given at import time (falls back to the file name). */
+  label: string;
   fileName: string;
   fileHash: string;
   namespace?: string;
@@ -224,8 +226,15 @@ export interface ExternalActor {
 
 export interface ImportFileInput {
   name: string;
+  /** Name shown in Atlas; defaults to the file name without extension. */
+  label?: string;
   size: number;
   text: string;
+}
+
+/** File name without its extension, used when no name is given. */
+export function defaultImportLabel(fileName: string): string {
+  return fileName.trim().replace(/\.(ndjson|jsonl|json)$/i, '') || fileName.trim();
 }
 
 async function sha256Hex(value: string): Promise<string> {
@@ -255,6 +264,7 @@ const LINK_STATES: ReadonlySet<string> = new Set(['linked', 'to_link', 'external
 function importFromRow(r: Row): ExternalImport {
   return {
     id: String(r.id),
+    label: opt(r.label) ?? defaultImportLabel(String(r.fileName ?? '')),
     fileName: String(r.fileName ?? ''),
     fileHash: String(r.fileHash ?? ''),
     namespace: opt(r.namespace),
@@ -390,6 +400,7 @@ export async function importOpenLineageFile(
 
   const importRow: Row = {
     workspace_id: workspaceId,
+    label: (file.label?.trim() || prior?.label || defaultImportLabel(file.name)).slice(0, 120),
     fileName: file.name.slice(0, 260),
     fileHash,
     namespace: parsed.namespace?.slice(0, 400) ?? null,
@@ -599,7 +610,7 @@ interface RayfinEntity {
 }
 
 const FIELDS: Record<ExternalTable, readonly string[]> = {
-  OpenLineageImport: ['id', 'workspace_id', 'fileName', 'fileHash', 'namespace', 'platform', 'importedById', 'importedByEmail', 'importedAt', 'eventCount', 'datasetCount', 'edgeCount', 'toLinkCount', 'status', 'rejectReason'],
+  OpenLineageImport: ['id', 'workspace_id', 'label', 'fileName', 'fileHash', 'namespace', 'platform', 'importedById', 'importedByEmail', 'importedAt', 'eventCount', 'datasetCount', 'edgeCount', 'toLinkCount', 'status', 'rejectReason'],
   ExternalDataset: ['id', 'workspace_id', 'namespace', 'name', 'platform', 'fabricItemId', 'fabricObjectName', 'state', 'linkedBy', 'linkedAt', 'createdById', 'createdByEmail', 'lastSeenAt'],
   ExternalLineageEdge: ['id', 'workspace_id', 'importId', 'sourceDatasetId', 'targetDatasetId', 'jobNamespace', 'jobName', 'lastRunState', 'lastRunTime', 'runId', 'columnLineage', 'columnTruncated', 'importedById', 'importedByEmail'],
 };

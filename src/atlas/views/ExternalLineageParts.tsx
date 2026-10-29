@@ -3,10 +3,10 @@ import { AlertTriangle, Info } from "lucide-react";
 import { cn } from "../ui";
 
 const PLATFORM_STYLE: Record<string, { label: string; color: string }> = {
-  SAS: { label: "SAS", color: "#0a66b1" },
   Databricks: { label: "DB", color: "#e5482f" },
   Oracle: { label: "ORA", color: "#c74634" },
   Snowflake: { label: "SF", color: "#29b5e8" },
+  "Data source": { label: "SRC", color: "#605e5c" },
   Fabric: { label: "FAB", color: "#117865" },
 };
 

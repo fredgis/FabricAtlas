@@ -329,7 +329,7 @@ function Impact({
           ["Reports", impact.reports],
         ].map(([label, value]) => (
           <div key={label} className="rounded-md border border-border p-s text-center">
-            <div className="text-[20px] font-bold leading-none">{value}</div>
+            <div className="font-numeric text-400 font-bold leading-400">{value}</div>
             <div className="mt-xs text-100 text-muted-foreground">{label}</div>
           </div>
         ))}
@@ -418,7 +418,7 @@ function JobPane({
   const targets = [...new Set(edges.map((e) => e.targetDatasetId))].map((id) => byId.get(id)).filter(Boolean) as ExternalDatasetRecord[];
   const target = targets[0];
   const targetItem = target?.fabricItemId ? itemById.get(target.fabricItemId) : undefined;
-  const files = [...new Set(edges.map((e) => lineage.imports.find((i) => i.id === e.importId)?.fileName).filter(Boolean))];
+  const files = [...new Set(edges.map((e) => lineage.imports.find((i) => i.id === e.importId)?.label).filter(Boolean))];
   const columns = edges.flatMap((e) => e.columns.map((c) => ({ ...c, truncated: e.columnTruncated })));
   const sourcePlatform = byId.get(first.sourceDatasetId)?.platform ?? "";
   return (
@@ -499,7 +499,7 @@ function JobPane({
 
 function jobPlatform(namespace: string, fallback: string): string {
   const scheme = /^([a-z][a-z0-9+.-]*):\/\//i.exec(namespace)?.[1]?.toLowerCase();
-  if (scheme === "sas") return "SAS";
+  if (scheme === "source") return "Data source";
   if (scheme === "databricks") return "Databricks";
   return fallback || scheme?.toUpperCase() || "External";
 }

@@ -161,7 +161,7 @@ const NAV_GROUPS: {
     items: [
       { id: "overview", label: "Overview", icon: BarChart3 },
       { id: "map", label: "Map & lineage", icon: Waypoints },
-      { id: "external", label: "External lineage", icon: Globe, badge: "New" },
+      { id: "external", label: "External lineage", icon: Globe },
       { id: "catalog", label: "Catalog", icon: FolderTree },
       { id: "assets", label: "Asset Catalog", icon: Boxes },
     ],

@@ -8,10 +8,10 @@ import { ExternalLineageView } from "./ExternalLineage";
 const EVENT = {
   eventType: "COMPLETE",
   eventTime: "2026-10-28T06:12:00Z",
-  producer: "https://example.com/sas",
+  producer: "https://example.com/source",
   schemaURL: "https://openlineage.io/spec/2-0-2/OpenLineage.json#/definitions/RunEvent",
   run: { runId: "0190a1b2-0000-7000-8000-000000000001" },
-  job: { namespace: "sas://prod", name: "pricing.daily" },
+  job: { namespace: "source://prod", name: "pricing.daily" },
   inputs: [{ namespace: "oracle://crm:1521", name: "CRM.MEMBERS" }],
   outputs: [{ namespace: "postgres://pricing:5432", name: "pricing.daily_rates" }],
 };
@@ -26,9 +26,12 @@ function renderView() {
   );
 }
 
-function upload(name: string, text: string) {
+function upload(name: string, text: string, label?: string) {
   const file = new File([text], name, { type: "application/json" });
   fireEvent.change(screen.getByTestId("external-file-input"), { target: { files: [file] } });
+  const dialog = screen.getByRole("dialog");
+  if (label !== undefined) fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: label } });
+  fireEvent.click(within(dialog).getByRole("button", { name: /^(Import|Replace)$/ }));
 }
 
 afterEach(() => vi.restoreAllMocks());
@@ -37,36 +40,54 @@ describe("ExternalLineageView", () => {
   it("imports an OpenLineage file and lists it with its datasets", async () => {
     renderView();
     expect(await screen.findByText(/No OpenLineage file imported yet/i)).toBeInTheDocument();
-    upload("sas_pricing.ndjson", JSON.stringify(EVENT));
-    await waitFor(() => expect(screen.getByText("sas_pricing.ndjson imported.")).toBeInTheDocument());
+    upload("pricing_source.ndjson", JSON.stringify(EVENT));
+    await waitFor(() => expect(screen.getByText("pricing_source imported.")).toBeInTheDocument());
     const table = screen.getByRole("table");
-    expect(within(table).getByText("sas_pricing.ndjson")).toBeInTheDocument();
-    expect(within(table).getByText("SAS")).toBeInTheDocument();
+    expect(within(table).getByText("pricing_source")).toBeInTheDocument();
+    expect(within(table).getByTitle("Data source")).toBeInTheDocument();
+  });
+
+  it("names the import, keeps the file name, and reuses the name on replace", async () => {
+    renderView();
+    upload("pricing_source.ndjson", JSON.stringify(EVENT), "Pricing nightly");
+    await screen.findByText("Pricing nightly imported.");
+    const table = screen.getByRole("table");
+    expect(within(table).getByText("Pricing nightly")).toBeInTheDocument();
+    expect(within(table).getByText("pricing_source.ndjson")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByTestId("external-file-input"), {
+      target: { files: [new File([JSON.stringify(EVENT)], "pricing_source.ndjson")] },
+    });
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByLabelText("Name")).toHaveValue("Pricing nightly");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
+    await screen.findByText("Pricing nightly replaced.");
+    expect(within(screen.getByRole("table")).getAllByText("Pricing nightly")).toHaveLength(1);
   });
 
   it("records a rejected file without storing edges", async () => {
     renderView();
     upload("export.json", JSON.stringify({ hello: "world" }));
-    await waitFor(() => expect(screen.getByText(/export\.json rejected/)).toBeInTheDocument());
-    expect(within(screen.getByRole("table")).getByText("export.json")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/^export rejected/)).toBeInTheDocument());
+    expect(within(screen.getByRole("table")).getByText("export")).toBeInTheDocument();
   });
 
   it("deletes an accepted import after confirmation", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     renderView();
-    upload("sas_pricing.ndjson", JSON.stringify(EVENT));
-    const del = await screen.findByRole("button", { name: "Delete sas_pricing.ndjson" });
+    upload("pricing_source.ndjson", JSON.stringify(EVENT));
+    const del = await screen.findByRole("button", { name: "Delete pricing_source" });
     fireEvent.click(del);
     await waitFor(() =>
-      expect(screen.getByText("sas_pricing.ndjson deleted · its edges were removed.")).toBeInTheDocument(),
+      expect(screen.getByText("pricing_source deleted · its edges were removed.")).toBeInTheDocument(),
     );
-    expect(screen.queryByRole("button", { name: "Delete sas_pricing.ndjson" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete pricing_source" })).not.toBeInTheDocument();
   });
 
   it("links a dataset by hand, unlinks it, then keeps another one external", async () => {
     renderView();
-    upload("sas_pricing.ndjson", JSON.stringify(EVENT));
-    await screen.findByText("sas_pricing.ndjson imported.");
+    upload("pricing_source.ndjson", JSON.stringify(EVENT));
+    await screen.findByText("pricing_source imported.");
     fireEvent.click(screen.getByRole("tab", { name: /Link to Fabric/ }));
 
     fireEvent.click(screen.getByRole("button", { name: "Link CRM.MEMBERS" }));

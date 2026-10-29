@@ -19,15 +19,15 @@ describe('parseOpenLineage', () => {
     expect(r.status).toBe('accepted');
     expect(r.format).toBe('ndjson');
     expect(r.eventCount).toBe(6);
-    expect(r.namespace).toBe('sas://viya-prod/risk');
-    expect(r.platform).toBe('SAS');
+    expect(r.namespace).toBe('source://acme-prod/risk');
+    expect(r.platform).toBe('Data source');
     expect(r.warnings).toEqual([{ line: 7, message: 'Invalid JSON, line skipped' }]);
 
     const target = datasetKey('abfss://finance-bronze@onelake.dfs.fabric.microsoft.com', 'lh_bronze/Tables/risk_scores');
     const into = r.edges.filter((e) => e.targetKey === target);
     expect(into.map((e) => e.sourceKey).sort()).toEqual([
       'oracle://core-bank:1521|CBS.LOANS',
-      'sas://viya-prod/risk|RISKLIB.MODEL_INPUT',
+      'source://acme-prod/risk|RISKLIB.MODEL_INPUT',
     ]);
     for (const e of into) {
       expect(e.jobName).toBe('risk.score_customers');
@@ -39,7 +39,7 @@ describe('parseOpenLineage', () => {
     expect(cols).toEqual(['CUST_ID->customer_id', 'LGD->lgd', 'PD_12M->pd_12m', 'SEGMENT->risk_segment']);
 
     const platforms = new Set(r.datasets.map((d) => d.platform));
-    expect(platforms).toEqual(new Set(['SAS', 'Oracle', 'Fabric']));
+    expect(platforms).toEqual(new Set(['Data source', 'Oracle', 'Fabric']));
     expect(r.edges.find((e) => e.jobName === 'risk.export_exposure')?.lastRunState).toBe('FAIL');
   });
 
@@ -84,9 +84,9 @@ describe('parseOpenLineage', () => {
       JSON.stringify({
         eventTime: '2026-01-01T00:00:00Z',
         eventType: 'COMPLETE',
-        job: { namespace: 'sas://x', name: 'j' },
-        inputs: [{ namespace: 'sas://x' }, { namespace: 'sas://x', name: 'A' }],
-        outputs: [{ namespace: 'sas://x', name: 'B' }],
+        job: { namespace: 'source://x', name: 'j' },
+        inputs: [{ namespace: 'source://x' }, { namespace: 'source://x', name: 'A' }],
+        outputs: [{ namespace: 'source://x', name: 'B' }],
       }),
     ].join('\n');
     const r = parseOpenLineage(text);
@@ -104,20 +104,20 @@ describe('parseOpenLineage', () => {
         eventTime: time,
         eventType: type,
         run: { runId },
-        job: { namespace: 'SAS://Viya/', name: 'j' },
+        job: { namespace: 'SOURCE://Acme/', name: 'j' },
         inputs: [{ namespace: ns, name: 'A/' }],
-        outputs: [{ namespace: 'sas://viya', name: 'B' }],
+        outputs: [{ namespace: 'source://acme', name: 'B' }],
       });
     const r = parseOpenLineage(
       [
-        ev('2026-01-02T00:00:00Z', 'COMPLETE', 'SAS://VIYA/', 'r2'),
-        ev('2026-01-01T00:00:00Z', 'FAIL', 'sas://viya', 'r1'),
-        ev('2026-01-02T00:00:00Z', 'START', 'sas://viya', 'r3'),
+        ev('2026-01-02T00:00:00Z', 'COMPLETE', 'SOURCE://ACME/', 'r2'),
+        ev('2026-01-01T00:00:00Z', 'FAIL', 'source://acme', 'r1'),
+        ev('2026-01-02T00:00:00Z', 'START', 'source://acme', 'r3'),
       ].join('\n'),
     );
-    expect(r.datasets.map((d) => d.key)).toEqual(['sas://viya|A', 'sas://viya|B']);
+    expect(r.datasets.map((d) => d.key)).toEqual(['source://acme|A', 'source://acme|B']);
     expect(r.edges).toHaveLength(1);
-    expect(r.edges[0]).toMatchObject({ lastRunState: 'COMPLETE', runId: 'r2', jobNamespace: 'sas://viya' });
+    expect(r.edges[0]).toMatchObject({ lastRunState: 'COMPLETE', runId: 'r2', jobNamespace: 'source://acme' });
   });
 
   it('enforces the event and dataset limits', () => {
@@ -140,7 +140,7 @@ describe('file checks and helpers', () => {
   });
 
   it('derives platforms from namespaces', () => {
-    expect(platformOf('sas://viya-prod/risk')).toBe('SAS');
+    expect(platformOf('source://acme-prod/risk')).toBe('Data source');
     expect(platformOf('oracle://core-bank:1521')).toBe('Oracle');
     expect(platformOf('abfss://ws@onelake.dfs.fabric.microsoft.com')).toBe('Fabric');
     expect(platformOf('mssql://x.datawarehouse.fabric.microsoft.com')).toBe('Fabric');

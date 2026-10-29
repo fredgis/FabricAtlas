@@ -30,7 +30,7 @@ export interface ExternalLineageContextValue {
   error?: string;
   busy: boolean;
   reload: () => Promise<void>;
-  importFile: (file: File) => Promise<ImportOutcome>;
+  importFile: (file: File, label?: string) => Promise<ImportOutcome>;
   removeImport: (importId: string) => Promise<void>;
   setDatasetLink: (
     datasetId: string,
@@ -121,13 +121,13 @@ export function ExternalLineageProvider({
   );
 
   const importFile = useCallback(
-    (file: File) =>
+    (file: File, label?: string) =>
       mutate(async () =>
         importOpenLineageFile(
           store,
           workspaceId,
           actor,
-          { name: file.name, size: file.size, text: await file.text() },
+          { name: file.name, label, size: file.size, text: await file.text() },
           buildFabricIndex(data),
           latest.current,
         ),

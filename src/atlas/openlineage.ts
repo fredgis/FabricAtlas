@@ -72,7 +72,7 @@ export interface OlParseResult {
   warnings: OlWarning[];
   /** Most frequent job namespace in the file (shown under the file name). */
   namespace?: string;
-  /** Platform of {@link namespace}, e.g. SAS, Databricks. */
+  /** Platform of {@link namespace}, e.g. Oracle, Databricks. */
   platform?: string;
 }
 
@@ -107,7 +107,7 @@ export function edgeKey(sourceKey: string, targetKey: string, jobNamespace: stri
 }
 
 const SCHEME_PLATFORMS: Record<string, string> = {
-  sas: 'SAS',
+  source: 'Data source',
   oracle: 'Oracle',
   databricks: 'Databricks',
   snowflake: 'Snowflake',

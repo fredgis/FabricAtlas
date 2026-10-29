@@ -9,7 +9,7 @@ const EVENT = {
   eventType: "COMPLETE",
   eventTime: "2026-10-28T06:12:44Z",
   run: { runId: "0198d4f2-…-7c1e" },
-  job: { namespace: "sas://viya-prod/pricing", name: "pricing.score_members" },
+  job: { namespace: "source://pricing-db/pricing", name: "pricing.score_members" },
   inputs: [{ namespace: "oracle://crm-prod:1521", name: "CRM.MEMBERS" }],
   outputs: [
     {

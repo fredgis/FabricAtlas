@@ -20,9 +20,9 @@ const item = (fabricId: string, displayName: string, itemType: ItemType): Item =
 
 const ds = (id: string, extra: Partial<ExternalDatasetRecord> = {}): ExternalDatasetRecord => ({
   id,
-  namespace: 'sas://viya/pricing',
+  namespace: 'source://acme/pricing',
   name: id.toUpperCase(),
-  platform: 'SAS',
+  platform: 'Data source',
   lastSeenAt: '2026-10-29T00:00:00Z',
   state: 'to_link',
   ...extra,
@@ -33,7 +33,7 @@ const edge = (id: string, source: string, target: string, jobName = 'score_membe
   importId: 'imp-1',
   sourceDatasetId: source,
   targetDatasetId: target,
-  jobNamespace: 'sas://viya/pricing',
+  jobNamespace: 'source://acme/pricing',
   jobName,
   columns: [],
   columnTruncated: false,
@@ -94,7 +94,7 @@ describe('buildExternalOverlay', () => {
     expect(x(job)).toBeGreaterThan(x('ext:crm'));
     expect(overlay.edges).toContainEqual(expect.objectContaining({ source: 'ext:crm', target: job }));
     expect(overlay.edges).toContainEqual(expect.objectContaining({ source: job, target: LH }));
-    expect(overlay.platforms).toEqual(['Oracle', 'SAS']);
+    expect(overlay.platforms).toEqual(['Data source', 'Oracle']);
   });
 
   it('drops edges whose exact-linked item is filtered out of the Map', () => {
@@ -124,7 +124,7 @@ describe('externalDownstream', () => {
     expect(externalDownstream(lineage, snapshot, ['missing'], itemById)).toEqual({ items: [], workspaces: 0, reports: 0 });
   });
 
-  it('crosses the boundary both ways: SAS input → Power BI report, report → external inputs', () => {
+  it('crosses the boundary both ways: data source input → Power BI report, report → external inputs', () => {
     const index = createLineageIndex(mergeLineageEdges(snapshot, lineage));
     const down = getLineageImpact(index, 'ext:input');
     expect([...down.downstream.ids]).toEqual(expect.arrayContaining([LH, SM, RPT]));

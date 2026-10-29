@@ -15,7 +15,8 @@ import { Card, cn } from "../ui";
 import { PageHeader } from "../components/PageHeader";
 import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "../components/button-styles";
 import { useExternalLineage } from "../external-lineage-store";
-import { externalCounts, type ExternalImport, type ExternalLineage } from "../external-lineage";
+import { defaultImportLabel, externalCounts, type ExternalImport, type ExternalLineage } from "../external-lineage";
+import { ImportNameDialog } from "./ExternalLineageImportDialog";
 import { OL_LIMITS } from "../openlineage";
 import { useAtlas } from "../store";
 import { ExternalLinkTab } from "./ExternalLineageLink";
@@ -46,23 +47,31 @@ export function ExternalLineageView() {
   const counts = useMemo(() => externalCounts(externalLineage), [externalLineage]);
   const imports = externalLineage.imports;
 
-  async function handleFile(file: File | undefined) {
+  const [pending, setPending] = useState<File>();
+
+  function handleFile(file: File | undefined) {
     if (!file) return;
     if (file.size > OL_LIMITS.maxBytes) {
       setMessage({ tone: "warning", text: `${file.name}: file too large (max 20 MB).` });
       return;
     }
+    setPending(file);
+  }
+
+  async function confirmImport(file: File, label: string) {
+    setPending(undefined);
+    const name = label.trim() || defaultImportLabel(file.name);
     try {
-      const outcome = await importFile(file);
+      const outcome = await importFile(file, name);
       setMessage(
         outcome.status === "accepted"
           ? {
               tone: "info",
-              text: `${file.name} ${outcome.replaced ? "replaced" : "imported"}${
+              text: `${name} ${outcome.replaced ? "replaced" : "imported"}${
                 outcome.warnings ? ` · ${outcome.warnings} line(s) skipped` : ""
               }.`,
             }
-          : { tone: "warning", text: `${file.name} rejected: ${outcome.rejectReason ?? "invalid file"}.` },
+          : { tone: "warning", text: `${name} rejected: ${outcome.rejectReason ?? "invalid file"}.` },
       );
     } catch (e) {
       setMessage({ tone: "warning", text: e instanceof Error ? e.message : String(e) });
@@ -100,8 +109,7 @@ export function ExternalLineageView() {
             purpose={purpose[section]}
             help={
               <>
-                Atlas reads standard OpenLineage files exported by other platforms (SAS, Databricks,
-                Oracle jobs…). Datasets whose namespace is an exact OneLake path link to the Fabric item
+                Atlas reads standard OpenLineage files exported by any external data source. Datasets whose namespace is an exact OneLake path link to the Fabric item
                 automatically; the others are linked by hand. External edges are stored in three tables
                 outside the Fabric snapshot and merged with it when lineage is read.
               </>
@@ -126,7 +134,13 @@ export function ExternalLineageView() {
             accept=".json,.ndjson,.jsonl,application/json"
             className="hidden"
             data-testid="external-file-input"
-            onChange={(e) => void handleFile(e.target.files?.[0])}
+            onChange={(e) => handleFile(e.target.files?.[0])}
+          />
+          <ImportNameDialog
+            file={pending}
+            existing={pending ? imports.find((i) => i.fileName.trim().toLowerCase() === pending.name.trim().toLowerCase()) : undefined}
+            onCancel={() => setPending(undefined)}
+            onConfirm={(label) => pending && void confirmImport(pending, label)}
           />
           <Tabs.List
             aria-label="External lineage sections"
@@ -164,10 +178,10 @@ export function ExternalLineageView() {
             busy={busy}
             counts={counts}
             onBrowse={browse}
-            onDrop={(file) => void handleFile(file)}
+            onDrop={(file) => handleFile(file)}
             onDelete={async (imp) => {
               await removeImport(imp.id);
-              setMessage({ tone: "info", text: `${imp.fileName} deleted · its edges were removed.` });
+              setMessage({ tone: "info", text: `${imp.label} deleted · its edges were removed.` });
             }}
           />
         </Tabs.Content>
@@ -211,7 +225,7 @@ function Kpi({
       </div>
       <div
         className={cn(
-          "mt-xs font-heading text-[28px] font-semibold tabular-nums leading-none",
+          "mt-xs font-numeric text-500 font-bold leading-500 tabular-nums",
           warning && value > 0 && "text-signal-warning-foreground",
         )}
       >
@@ -327,9 +341,9 @@ function ImportsTab({
                         <div className="flex items-center gap-s">
                           <PlatformBadge platform={imp.platform} />
                           <div className="min-w-0">
-                            <div className="truncate font-mono text-200 font-semibold">{imp.fileName}</div>
+                            <div className="truncate text-300 font-semibold">{imp.label}</div>
                             <div className="truncate text-100 text-muted-foreground">
-                              {imp.namespace ?? "—"} · {formatWhen(imp.importedAt)}
+                              <span className="font-mono">{imp.fileName}</span> · {imp.namespace ?? "—"} · {formatWhen(imp.importedAt)}
                             </div>
                           </div>
                         </div>
@@ -359,7 +373,7 @@ function ImportsTab({
                             className={cn(SECONDARY_BUTTON, "px-m")}
                             disabled={busy}
                             onClick={() => void onDelete(imp)}
-                            aria-label={`Delete ${imp.fileName}`}
+                            aria-label={`Delete ${imp.label}`}
                           >
                             Delete
                           </button>
@@ -371,7 +385,7 @@ function ImportsTab({
                               disabled={busy}
                               onClick={onBrowse}
                               title="Import the new version of this file — same file name replaces its edges"
-                              aria-label={`Replace ${imp.fileName}`}
+                              aria-label={`Replace ${imp.label}`}
                             >
                               Replace
                             </button>
@@ -380,9 +394,9 @@ function ImportsTab({
                               className={cn(SECONDARY_BUTTON, "px-s text-muted-foreground")}
                               disabled={busy}
                               onClick={() => {
-                                if (window.confirm(`Delete ${imp.fileName} and its edges?`)) void onDelete(imp);
+                                if (window.confirm(`Delete ${imp.label} and its edges?`)) void onDelete(imp);
                               }}
-                              aria-label={`Delete ${imp.fileName}`}
+                              aria-label={`Delete ${imp.label}`}
                               title="Delete the file and its edges"
                             >
                               ×
@@ -442,8 +456,8 @@ function ImportsTab({
               </div>
             </div>
             <Note>
-              Atlas only reads standard OpenLineage. Getting the file out of SAS or any other platform is up
-              to that platform. Re-importing a file replaces its edges; deleting it removes them.
+              Atlas only reads standard OpenLineage. Getting the file out of the data source is up to that
+              source. Re-importing a file replaces its edges; deleting it removes them.
             </Note>
           </div>
         </Card>
@@ -459,7 +473,7 @@ const ERD: { name: string; color: string; icon: typeof Database; fields: [string
     icon: FileCode2,
     fields: [
       ["ImportId", "pk", "guid"],
-      ["FileName · FileHash", "", "nvarchar"],
+      ["Label · FileName · FileHash", "", "nvarchar"],
       ["ImportedBy", "", "upn"],
       ["ImportedAt", "", "datetime2"],
       ["EventCount", "", "int"],
@@ -493,51 +507,103 @@ const ERD: { name: string; color: string; icon: typeof Database; fields: [string
   },
 ];
 
+const ERD_HEADER = 34;
+const ERD_ROW = 26;
+const ERD_BOX_W = 230;
+const ERD_SNAPSHOT: (typeof ERD)[number] = {
+  name: "Fabric item (snapshot)",
+  color: "#605e5c",
+  icon: Layers,
+  fields: [
+    ["ItemId", "pk", "guid"],
+    ["Item · ItemDependency", "", "read-only"],
+    ["ObjectLineage (columns)", "", "read-only"],
+  ],
+};
+const ERD_BOXES = [
+  { table: ERD[0], x: 0, y: 24 },
+  { table: ERD[2], x: 300, y: 0 },
+  { table: ERD[1], x: 600, y: 24 },
+  { table: ERD_SNAPSHOT, x: 900, y: 48 },
+];
+const ERD_LINKS: { from: [number, number]; to: [number, number]; fromCard: string; toCard: string; label: string; dashed?: boolean }[] = [
+  { from: [0, 0], to: [1, 1], fromCard: "1", toCard: "n", label: "ImportId" },
+  { from: [1, 2], to: [2, 0], fromCard: "n", toCard: "1", label: "Source" },
+  { from: [1, 3], to: [2, 0], fromCard: "n", toCard: "1", label: "Target" },
+  { from: [2, 2], to: [3, 0], fromCard: "n", toCard: "0..1", label: "FabricItemId", dashed: true },
+];
+const ERD_WIDTH = ERD_BOXES[ERD_BOXES.length - 1].x + ERD_BOX_W;
+const ERD_HEIGHT = Math.max(...ERD_BOXES.map((b) => b.y + ERD_HEADER + b.table.fields.length * ERD_ROW)) + 8;
+
+function erdRowY(box: number, row: number): number {
+  return ERD_BOXES[box].y + ERD_HEADER + row * ERD_ROW + ERD_ROW / 2;
+}
+
 function DataModelTab() {
   return (
     <Card className="p-l">
-      <div className="grid items-start gap-l lg:grid-cols-[1fr_1fr_1fr_1.1fr]">
-        {ERD.map(({ name, color, icon: Icon, fields }) => (
-          <div key={name} className="overflow-hidden rounded-lg border border-border bg-card shadow-fabric-2">
-            <div className="flex items-center gap-s px-m py-s text-200 font-semibold text-white" style={{ background: color }}>
-              <Icon className="size-[14px]" aria-hidden="true" />
-              {name}
-            </div>
-            {fields.map(([field, key, type]) => (
-              <div key={field} className="flex justify-between gap-s border-t border-border px-m py-xs text-100">
-                <span className={cn(key && "font-semibold", key === "pk" && "text-brand-foreground")}>
-                  {key ? `${key.toUpperCase()} · ` : ""}
-                  {field}
-                </span>
-                <span className="text-muted-foreground">{type}</span>
+      <div className="overflow-x-auto">
+        <div className="relative" style={{ width: ERD_WIDTH, height: ERD_HEIGHT }} data-testid="external-erd">
+          <svg className="pointer-events-none absolute inset-0" width={ERD_WIDTH} height={ERD_HEIGHT} aria-hidden="true">
+            {ERD_LINKS.map(({ from, to, fromCard, toCard, label, dashed }) => {
+              const x1 = ERD_BOXES[from[0]].x + ERD_BOX_W;
+              const y1 = erdRowY(from[0], from[1]);
+              const x2 = ERD_BOXES[to[0]].x;
+              const y2 = erdRowY(to[0], to[1]);
+              const mid = (x1 + x2) / 2;
+              return (
+                <g key={label} data-testid="erd-relation">
+                  <path
+                    d={`M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`}
+                    fill="none"
+                    stroke="var(--color-muted-foreground)"
+                    strokeWidth={1.4}
+                    strokeDasharray={dashed ? "5 4" : undefined}
+                  />
+                  <circle cx={x1} cy={y1} r={3} fill="var(--color-muted-foreground)" />
+                  <circle cx={x2} cy={y2} r={3} fill="var(--color-muted-foreground)" />
+                  <text x={x1 + 6} y={y1 - 5} fontSize={11} fontWeight={700} fill="var(--color-foreground)">{fromCard}</text>
+                  <text x={x2 - 6} y={y2 - 5} fontSize={11} fontWeight={700} textAnchor="end" fill="var(--color-foreground)">{toCard}</text>
+                  <text x={mid} y={(y1 + y2) / 2 - 6} fontSize={10} textAnchor="middle" fill="var(--color-muted-foreground)">{label}</text>
+                </g>
+              );
+            })}
+          </svg>
+          {ERD_BOXES.map(({ table: { name, color, icon: Icon, fields }, x, y }) => (
+            <div
+              key={name}
+              className={cn(
+                "absolute overflow-hidden rounded-lg border bg-card shadow-fabric-2",
+                name === ERD_SNAPSHOT.name ? "border-dashed border-border" : "border-border",
+              )}
+              style={{ left: x, top: y, width: ERD_BOX_W }}
+            >
+              <div className="flex items-center gap-s px-m text-200 font-semibold text-white" style={{ background: color, height: ERD_HEADER }}>
+                <Icon className="size-[14px]" aria-hidden="true" />
+                {name}
               </div>
-            ))}
-          </div>
-        ))}
-        <div className="overflow-hidden rounded-lg border-[1.5px] border-dashed border-border">
-          <div className="flex items-center gap-s bg-muted px-m py-s text-200 font-semibold">
-            <Layers className="size-[14px]" aria-hidden="true" />
-            Existing snapshot
-          </div>
-          <div className="flex justify-between border-t border-border px-m py-xs text-100">
-            <span>Item · ItemDependency</span>
-            <span className="text-muted-foreground">read-only</span>
-          </div>
-          <div className="flex justify-between border-t border-border px-m py-xs text-100">
-            <span>ObjectLineage (columns)</span>
-            <span className="text-muted-foreground">read-only</span>
-          </div>
-          <div className="border-t border-border px-m py-s text-100 text-muted-foreground">
-            Lineage read = snapshot edges <b>∪</b> ExternalLineageEdge, joined on FabricItemId. Snapshot rebuilds
-            never touch external tables.
-          </div>
+              {fields.map(([field, key, type]) => (
+                <div key={field} className="flex items-center justify-between gap-s border-t border-border px-m text-100" style={{ height: ERD_ROW }}>
+                  <span className={cn("truncate", key && "font-semibold", key === "pk" && "text-brand-foreground")}>
+                    {key ? `${key.toUpperCase()} · ` : ""}
+                    {field}
+                  </span>
+                  <span className="shrink-0 text-muted-foreground">{type}</span>
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       </div>
       <div className="mt-l grid gap-s text-200 text-muted-foreground sm:grid-cols-3">
         <div>OpenLineageImport 1 — n ExternalLineageEdge (ImportId)</div>
         <div>ExternalDataset 1 — n ExternalLineageEdge (Source / Target)</div>
-        <div>ExternalDataset n — 1 Fabric item (FabricItemId, optional)</div>
+        <div>ExternalDataset n — 0..1 Fabric item (FabricItemId, optional)</div>
       </div>
+      <p className="mt-s text-200 text-muted-foreground">
+        Lineage read = snapshot edges <b>∪</b> ExternalLineageEdge, joined on FabricItemId. Snapshot rebuilds never touch
+        external tables.
+      </p>
     </Card>
   );
 }

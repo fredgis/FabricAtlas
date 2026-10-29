@@ -2,8 +2,8 @@
 
 Since 2.6.5, Fabric Atlas can show what happens **outside Fabric** next to the
 Fabric graph. The only exchange format is [OpenLineage](https://openlineage.io).
-Atlas has no connector for SAS, Databricks, dbt, Airflow or any other tool:
-each tool writes OpenLineage, Atlas reads it. In the other direction, Atlas
+Atlas has no connector for any external data source:
+each source writes OpenLineage, Atlas reads it. In the other direction, Atlas
 writes the Fabric lineage as OpenLineage so other tools can read it.
 
 V1 is manual: you import a file, and you download a file. Automatic ingestion
@@ -12,13 +12,15 @@ and Spark runtime events are planned after V1 (#86, #19).
 ## Where
 
 - **External lineage** (sidebar) → **Imports**, **Link to Fabric**, **File format**.
-- **Map & lineage** → **External lineage** switch (shown once a file is imported)
+- **Map & lineage** → **External lineage** switch (disabled until a file is imported)
   and **Download OpenLineage**.
 
 ## Import
 
 1. Export OpenLineage events from the external tool (`.json` or `.ndjson`).
-2. **External lineage → Import OpenLineage file**.
+2. **External lineage → Import OpenLineage file**, then give the import a **name**
+   (defaults to the file name without extension). The name is shown in the imports
+   list and on the map; the file name is kept underneath.
 3. Atlas reads the events, keeps datasets, jobs, input → output edges and
    column lineage, and stores them in the workspace (three Rayfin tables:
    `OpenLineageImport`, `ExternalDataset`, `ExternalLineageEdge`).
@@ -34,8 +36,17 @@ Accepted input:
 | Limits | 20 MB per file, 50 000 events, 5 000 datasets |
 
 A file that contains no OpenLineage event is rejected and listed with the reason.
-Re-importing a file with the same name replaces its edges; manual links are kept. Deleting an
+Re-importing a file with the same file name replaces its edges and keeps its name (editable in the
+dialog); manual links are kept. Deleting an
 import removes its edges and the datasets no other import uses.
+
+### Sample file
+
+[`samples/openlineage/example-data-source.ndjson`](../samples/openlineage/example-data-source.ndjson)
+holds 3 runs from a generic data source (`source://erp-prod/sales`) reading Oracle and
+PostgreSQL tables and writing to a OneLake lakehouse (`Sales-Analytics` workspace,
+`lh_sales` lakehouse). Import it as is to try manual linking, or replace the workspace and
+lakehouse names with yours so the OneLake outputs link automatically.
 
 ## Link to Fabric
 

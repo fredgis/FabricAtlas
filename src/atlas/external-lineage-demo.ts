@@ -11,11 +11,11 @@ import { datasetKey } from './openlineage';
 
 /**
  * Preview-only sample: three imported OpenLineage files around the sample
- * workspace (a SAS file, a Databricks file and a rejected non-OpenLineage file).
+ * workspace (a data source file, a Databricks file and a rejected non-OpenLineage file).
  */
 const PRODUCER = 'https://github.com/OpenLineage/OpenLineage/tree/1.24.0/integration/demo';
 const SCHEMA = 'https://openlineage.io/spec/2-0-2/OpenLineage.json#/definitions/RunEvent';
-const SAS_NS = 'sas://viya-prod/pricing';
+const SOURCE_NS = 'source://pricing-db/pricing';
 const ORACLE_NS = 'oracle://crm-db:1521';
 const DBX_NS = 'databricks://adb-7421';
 const DW_NS = 'mssql://alpinerent-dw.datawarehouse.fabric.microsoft.com';
@@ -62,26 +62,26 @@ function event(
 export function previewOpenLineageFiles(workspaceId: string, now: Date) {
   const lake = oneLake(workspaceId);
   const day = (n: number, h = 6) => new Date(now.getTime() - n * 86_400_000 - h * 3_600_000);
-  const sas = [
-    event(day(0), '0198d4f2-1a0c-7c1e-9a55-3f0c2d1b7c1e', { namespace: SAS_NS, name: 'pricing.score_members' },
+  const source = [
+    event(day(0), '0198d4f2-1a0c-7c1e-9a55-3f0c2d1b7c1e', { namespace: SOURCE_NS, name: 'pricing.score_members' },
       [
         { namespace: ORACLE_NS, name: 'CRM.MEMBERS' },
-        { namespace: SAS_NS, name: 'PRICINGLIB.MEMBER_SCORE_INPUT' },
+        { namespace: SOURCE_NS, name: 'PRICINGLIB.MEMBER_SCORE_INPUT' },
       ],
       [{
         namespace: lake,
         name: 'alpinerent_lakehouse/Tables/gold/member_segments',
         columns: {
-          segment: [{ namespace: SAS_NS, name: 'PRICINGLIB.MEMBER_SCORE_INPUT', field: 'SCORE_BAND' }],
+          segment: [{ namespace: SOURCE_NS, name: 'PRICINGLIB.MEMBER_SCORE_INPUT', field: 'SCORE_BAND' }],
           member_id: [{ namespace: ORACLE_NS, name: 'CRM.MEMBERS', field: 'MEMBER_ID' }],
         },
       }]),
-    event(day(0, 5), '0198d4f2-2b1d-7c1e-9a55-3f0c2d1b7c1f', { namespace: SAS_NS, name: 'pricing.revenue_forecast' },
+    event(day(0, 5), '0198d4f2-2b1d-7c1e-9a55-3f0c2d1b7c1f', { namespace: SOURCE_NS, name: 'pricing.revenue_forecast' },
       [
         { namespace: lake, name: 'alpinerent_lakehouse/Tables/gold/revenue_by_month' },
         { namespace: DW_NS, name: 'alpinerent_dw.dbo.fact_rentals' },
       ],
-      [{ namespace: SAS_NS, name: 'PRICINGLIB.REVENUE_FORECAST' }]),
+      [{ namespace: SOURCE_NS, name: 'PRICINGLIB.REVENUE_FORECAST' }]),
   ];
   const dbx = [
     event(day(7), '0198c0aa-9e11-7d42-8b10-5a7e7f0c1d01', { namespace: DBX_NS, name: 'pricing_lineage.dynamic_prices' },
@@ -98,7 +98,7 @@ export function previewOpenLineageFiles(workspaceId: string, now: Date) {
   return [
     { name: 'export_lineage_v1.json', text: JSON.stringify(notOl, null, 2), at: day(8), by: 'frgisber' },
     { name: 'pricing_lineage.json', text: JSON.stringify(dbx, null, 2), at: day(7), by: 'data-eng' },
-    { name: 'sas_pricing_2026-10-28.ndjson', text: sas.map((e) => JSON.stringify(e)).join('\n'), at: day(0, -3), by: 'frgisber' },
+    { name: 'pricing_source_2026-10-28.ndjson', text: source.map((e) => JSON.stringify(e)).join('\n'), at: day(0, -3), by: 'frgisber' },
   ];
 }
 

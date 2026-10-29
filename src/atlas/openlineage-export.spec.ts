@@ -44,12 +44,12 @@ const external: ExternalLineage = {
   datasets: [
     { id: 'd1', workspaceId: WS, key: 'k1', namespace: 'mssql://erp', name: 'dbo.orders', platform: 'SQL Server', state: 'external' },
     { id: 'd2', workspaceId: WS, key: 'k2', namespace: 'abfss://x@onelake.dfs.fabric.microsoft.com', name: 'sales/Tables/orders', platform: 'Fabric', state: 'linked', fabricItemId: LH, fabricObjectName: 'dbo.orders' },
-    { id: 'd3', workspaceId: WS, key: 'k3', namespace: 'sas://grid', name: 'WORK.A', platform: 'SAS', state: 'external' },
-    { id: 'd4', workspaceId: WS, key: 'k4', namespace: 'sas://grid', name: 'WORK.B', platform: 'SAS', state: 'to_link' },
+    { id: 'd3', workspaceId: WS, key: 'k3', namespace: 'source://grid', name: 'WORK.A', platform: 'Data source', state: 'external' },
+    { id: 'd4', workspaceId: WS, key: 'k4', namespace: 'source://grid', name: 'WORK.B', platform: 'Data source', state: 'to_link' },
   ],
   edges: [
     { id: 'e1', workspaceId: WS, importId: 'i', sourceDatasetId: 'd1', targetDatasetId: 'd2', jobNamespace: 'adf://erp', jobName: 'copy_orders', columns: [{ from: 'id', to: 'order_id', transform: 'IDENTITY' }] },
-    { id: 'e2', workspaceId: WS, importId: 'i', sourceDatasetId: 'd3', targetDatasetId: 'd4', jobNamespace: 'sas://grid', jobName: 'x' },
+    { id: 'e2', workspaceId: WS, importId: 'i', sourceDatasetId: 'd3', targetDatasetId: 'd4', jobNamespace: 'source://grid', jobName: 'x' },
   ],
 } as unknown as ExternalLineage;
 

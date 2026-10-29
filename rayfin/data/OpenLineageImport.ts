@@ -20,6 +20,8 @@ export class OpenLineageImport {
   @uuid() id!: string;
   @uuid() workspace_id!: string;
   @text({ max: 260 }) fileName!: string;
+  /** Name given at import time; defaults to the file name without extension. */
+  @text({ max: 120, optional: true }) label?: string;
   @text({ max: 64 }) fileHash!: string;
   @text({ max: 400, optional: true }) namespace?: string;
   @text({ max: 40, optional: true }) platform?: string;

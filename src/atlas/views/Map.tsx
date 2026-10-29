@@ -2223,9 +2223,13 @@ export function MapView({
               label="Control relations"
               tone="preview"
             />
-            {!previewActive && externalLineage.edges.length > 0 && (
+            {!previewActive && (
               <ToggleSwitch
-                checked={showExternal}
+                checked={showExternal && externalLineage.edges.length > 0}
+                disabled={externalLineage.edges.length === 0}
+                title={externalLineage.edges.length === 0
+                  ? "Import an OpenLineage file in External lineage to show upstream systems here"
+                  : "Show lineage imported from systems outside Fabric"}
                 onChange={(value) => {
                   setShowExternal(value);
                   setAtlasDrag({});
@@ -2434,10 +2438,23 @@ export function MapView({
             >
               {mode === "items" ? (
                 <>
+                  {Array.from({ length: previewActive ? layout.stageCount : LINEAGE_STAGE_LABELS.length }, (_, index) => (
+                    <div
+                      key={`stage-lane-${index}`}
+                      data-testid="map-stage-lane"
+                      className="pointer-events-none absolute rounded-xl border border-dashed border-border bg-background/40"
+                      style={{
+                        left: 28 + externalOffset + index * NODE_COLUMN_GAP - 12,
+                        width: NODE_W + 24,
+                        top: externalLaneTop,
+                        height: Math.max(0, layout.height - externalLaneTop - 14),
+                      }}
+                    />
+                  ))}
                   {layout.groups.map((group) => (
                     <div
                       key={group.id}
-                      className="pointer-events-none absolute left-[14px] right-[14px] rounded-xl border border-border/60 bg-card/30"
+                      className="pointer-events-none absolute left-[14px] right-[14px] rounded-xl border border-dashed border-border/50"
                       style={{
                         top: group.y,
                         height: group.height,
