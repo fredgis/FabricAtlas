@@ -95,6 +95,16 @@ import {
 import { DEFAULT_MAP_ZOOM, stepMapZoom } from "../map-zoom";
 import { LINEAGE_ARROW_TIP, lineageCurve } from "../map-geometry";
 import { useAtlas } from "../store";
+import { useExternalLineage } from "../external-lineage-store";
+import { buildExternalOverlay, EMPTY_EXTERNAL_OVERLAY } from "../map-external";
+import {
+  ExternalBadges,
+  ExternalEdges,
+  ExternalLane,
+  ExternalMapInspector,
+  ExternalNodes,
+  type ExternalSelection,
+} from "./MapExternal";
 import {
   Avatar,
   Card,
@@ -692,6 +702,9 @@ export function MapView({
   const [relationshipId, setRelationshipId] = useState("");
   const [expandedKeys, setExpandedKeys] = useState<string[]>(initialExpandedKeys);
   const previewActive = itemRelationsEnabled && includePreview;
+  const { externalLineage } = useExternalLineage();
+  const [showExternal, setShowExternal] = useState(true);
+  const [externalSel, setExternalSel] = useState<ExternalSelection | null>(null);
   const drag = previewActive ? previewDrag : atlasDrag;
   const setDrag = previewActive ? setPreviewDrag : setAtlasDrag;
   const mode: Mode = previewActive ? "items" : requestedMode;
@@ -973,8 +986,53 @@ export function MapView({
     { nodeWidth: NODE_W, nodeHeight: NODE_H, columnGap: NODE_COLUMN_GAP, rowGap: NODE_ROW_GAP },
     evidenceModel,
   ), [data.workspace.fabricId, evidenceModel, lineageItems, storedPreviewOverlay]);
-  const layout = previewActive ? previewLayout : atlasLayout;
+  const externalActive =
+    showExternal && !previewActive && mode === "items" && externalLineage.edges.length > 0;
+  const externalOverlay = useMemo(
+    () =>
+      externalActive
+        ? buildExternalOverlay(externalLineage, {
+            visibleItemIds: visibleIds,
+            nodeWidth: NODE_W,
+            nodeHeight: NODE_H,
+            columnGap: NODE_COLUMN_GAP,
+            rowGap: NODE_ROW_GAP,
+            top: (atlasLayout.groups[0]?.y ?? 40) + 36,
+          })
+        : EMPTY_EXTERNAL_OVERLAY,
+    [atlasLayout.groups, externalActive, externalLineage, visibleIds],
+  );
+  const externalOffset = externalOverlay.nodes.length ? externalOverlay.width : 0;
+  const externalLaneTop = atlasLayout.groups[0]?.y ?? 40;
+  const shiftedAtlasLayout = useMemo(
+    () =>
+      externalOffset
+        ? {
+            ...atlasLayout,
+            width: atlasLayout.width + externalOffset,
+            height: Math.max(atlasLayout.height, externalOverlay.height + 24),
+            positions: new Map(
+              [...atlasLayout.positions].map(([id, point]) => [
+                id,
+                { x: point.x + externalOffset, y: point.y },
+              ]),
+            ),
+          }
+        : atlasLayout,
+    [atlasLayout, externalOffset, externalOverlay.height],
+  );
+  const externalNodeByKey = useMemo(
+    () => new Map(externalOverlay.nodes.map((node) => [node.key, node])),
+    [externalOverlay.nodes],
+  );
+  const selectExternal = (selection: ExternalSelection) => {
+    preserveMapViewport();
+    setRelationshipId("");
+    setExternalSel(selection);
+  };
+  const layout = previewActive ? previewLayout : shiftedAtlasLayout;
   const posOf = (id: string) => drag[id] ?? layout.positions.get(id) ?? { x: 0, y: 0 };
+  const externalPointOf = (key: string) => externalNodeByKey.get(key) ?? posOf(key);
   const previewOverlay = storedPreviewOverlay && {
     ...storedPreviewOverlay,
     laneNodes: storedPreviewOverlay.laneNodes.map((node) => {
@@ -1362,6 +1420,7 @@ export function MapView({
     }
     resetObjectContext(false, id);
     setRelationshipId("");
+    setExternalSel(null);
     setTab("summary");
   };
 
@@ -1644,6 +1703,7 @@ export function MapView({
     setSelectedItemIds(new Set());
     setImpactMode(false);
     setRelationshipId("");
+    setExternalSel(null);
     setExpandedKeys([]);
     setTypeFilter("all");
     setHealthFilter("all");
@@ -2143,6 +2203,17 @@ export function MapView({
               label="Control relations"
               tone="preview"
             />
+            {!previewActive && externalLineage.edges.length > 0 && (
+              <ToggleSwitch
+                checked={showExternal}
+                onChange={(value) => {
+                  setShowExternal(value);
+                  setAtlasDrag({});
+                  setExternalSel(null);
+                }}
+                label="External lineage"
+              />
+            )}
           </>
         )}
         {mode === "items" && <button
@@ -2344,7 +2415,11 @@ export function MapView({
                     <div
                       key={group.id}
                       className="pointer-events-none absolute left-[14px] right-[14px] rounded-xl border border-border/60 bg-card/30"
-                      style={{ top: group.y, height: group.height }}
+                      style={{
+                        top: group.y,
+                        height: group.height,
+                        left: externalOffset ? 14 + externalOffset : undefined,
+                      }}
                     >
                       <span className="absolute left-[12px] top-[8px] max-w-[280px] truncate rounded-md bg-background/80 px-[7px] py-[2px] text-[9px] font-bold uppercase tracking-[0.1em] text-muted-foreground">
                         {group.label}
@@ -2355,7 +2430,7 @@ export function MapView({
                     className="pointer-events-none absolute inset-x-0 top-[9px] z-[2] grid"
                     style={{
                       gridTemplateColumns: `repeat(${previewActive ? layout.stageCount : LINEAGE_STAGE_LABELS.length}, ${NODE_COLUMN_GAP}px)`,
-                      paddingLeft: 28,
+                      paddingLeft: 28 + externalOffset,
                     }}
                   >
                     {(previewActive
@@ -2521,7 +2596,41 @@ export function MapView({
                         </g>
                       );
                     })}
+                    {externalOffset > 0 && (
+                      <ExternalEdges
+                        overlay={externalOverlay}
+                        pointOf={externalPointOf}
+                        width={NODE_W}
+                        height={NODE_H}
+                        zoom={zoom}
+                        selectedJob={externalSel?.kind === "job" ? externalSel.key : undefined}
+                        onSelect={selectExternal}
+                      />
+                    )}
                   </svg>
+                  {externalOffset > 0 && (
+                    <>
+                      <ExternalLane
+                        overlay={externalOverlay}
+                        top={externalLaneTop}
+                        height={layout.height - externalLaneTop - 14}
+                      />
+                      <ExternalNodes
+                        overlay={externalOverlay}
+                        selection={externalSel}
+                        onSelect={selectExternal}
+                        width={NODE_W}
+                        height={NODE_H}
+                      />
+                      <ExternalBadges
+                        badges={externalOverlay.badges}
+                        pointOf={posOf}
+                        width={NODE_W}
+                        selection={externalSel}
+                        onSelect={selectExternal}
+                      />
+                    </>
+                  )}
                   {activeId && (
                     <section
                       aria-live="polite"
@@ -2998,6 +3107,7 @@ export function MapView({
           {(!previewActive || previewEvidence) && <LineageSourceLegend
             mode={mode}
             previewIncluded={previewActive}
+            external={externalOffset > 0}
             previewControl={
               showControl &&
               (previewOverlay?.edges.some(
@@ -3032,6 +3142,16 @@ export function MapView({
                   />
                 );
               })}
+              {externalOverlay.nodes.map((node) => (
+                <span
+                  key={node.key}
+                  className="absolute h-[5px] w-[13px] rounded-sm border border-dashed border-[#0078d4]"
+                  style={{
+                    left: 7 + (node.x / Math.max(bounds.width, 1)) * 140,
+                    top: 7 + (node.y / Math.max(bounds.height, 1)) * 76,
+                  }}
+                />
+              ))}
               {previewOverlay?.laneNodes.map((node) => (
                 <span
                   key={node.key}
@@ -3091,6 +3211,15 @@ export function MapView({
               snapshotSyncedAt={data.workspace.syncedAt}
               itemNames={itemNames}
               onClose={() => setRelationshipId("")}
+            />
+          ) : externalSel && externalOffset > 0 ? (
+            <ExternalMapInspector
+              selection={externalSel}
+              overlay={externalOverlay}
+              lineage={externalLineage}
+              snapshot={edges}
+              itemById={itemById}
+              onClose={() => setExternalSel(null)}
             />
           ) : (
           <Tabs.Root
