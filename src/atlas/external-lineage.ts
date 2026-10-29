@@ -29,7 +29,7 @@ export interface LinkDecision {
   linkedAt?: string;
 }
 
-const LINKABLE_TYPES: ReadonlySet<ItemType> = new Set<ItemType>([
+export const LINKABLE_TYPES: ReadonlySet<ItemType> = new Set<ItemType>([
   'Lakehouse',
   'Warehouse',
   'SQLDatabase',
@@ -627,4 +627,16 @@ export function createRayfinRepo(): ExternalRepo {
 
 export function externalRepoFor(isPreview: boolean): ExternalRepo {
   return isPreview ? previewExternalRepo : createRayfinRepo();
+}
+
+export function externalCounts(lineage: ExternalLineage) {
+  const datasets = lineage.datasets;
+  const linked = datasets.filter((d) => d.state === "linked").length;
+  const toLink = datasets.filter((d) => d.state === "to_link").length;
+  const external = datasets.filter((d) => d.state === "external").length;
+  const linkedIds = new Set(datasets.filter((d) => d.state === "linked").map((d) => d.id));
+  const crossEdges = lineage.edges.filter(
+    (e) => linkedIds.has(e.sourceDatasetId) !== linkedIds.has(e.targetDatasetId),
+  ).length;
+  return { total: datasets.length, linked, toLink, external, crossEdges };
 }

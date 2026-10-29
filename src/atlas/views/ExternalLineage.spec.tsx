@@ -62,4 +62,38 @@ describe("ExternalLineageView", () => {
     );
     expect(screen.queryByRole("button", { name: "Delete sas_pricing.ndjson" })).not.toBeInTheDocument();
   });
+
+  it("links a dataset by hand, unlinks it, then keeps another one external", async () => {
+    renderView();
+    upload("sas_pricing.ndjson", JSON.stringify(EVENT));
+    await screen.findByText("sas_pricing.ndjson imported.");
+    fireEvent.click(screen.getByRole("tab", { name: /Link to Fabric/ }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Link CRM.MEMBERS" }));
+    const panel = screen.getByRole("region", { name: "Link CRM.MEMBERS" });
+    fireEvent.change(within(panel).getByLabelText("Fabric item"), { target: { value: "alpinerent_dw" } });
+    fireEvent.click(within(panel).getAllByRole("radio")[0]);
+    fireEvent.click(within(panel).getByRole("button", { name: "Link" }));
+    await waitFor(() => expect(screen.getByText(/^Picked by /)).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Unlink CRM.MEMBERS" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Unlink CRM.MEMBERS" }));
+    await waitFor(() => expect(screen.queryByText(/^Picked by /)).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Link pricing.daily_rates" }));
+    const next = screen.getByRole("region", { name: "Link pricing.daily_rates" });
+    fireEvent.click(within(next).getByLabelText(/Not in Fabric/));
+    fireEvent.click(within(next).getByRole("button", { name: "Link" }));
+    await waitFor(() => expect(screen.getByText("Stays outside Fabric")).toBeInTheDocument());
+    expect(screen.getByRole("radio", { name: "External 1" })).toBeInTheDocument();
+  });
+
+  it("documents the accepted OpenLineage format", () => {
+    renderView();
+    fireEvent.click(screen.getByRole("tab", { name: "File format" }));
+    expect(screen.getByText("OpenLineage 2-0-x")).toBeInTheDocument();
+    expect(screen.getByText(/Ignored and never stored/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: ".json (array)" }));
+    expect(screen.getByTestId("openlineage-example").textContent?.startsWith("[")).toBe(true);
+  });
 });
