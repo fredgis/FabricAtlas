@@ -292,6 +292,7 @@ tr.sel td{background:rgba(17,120,101,.06)}
         </div>
       </div>
     </div>
+    <div class="note" style="background:var(--w-bg);color:var(--w-fg);margin:14px 0 0"><span data-i="info" data-s="16"></span><div><b>As built (v2.7.0):</b> the existing Map toolbar is kept: no Item / Cross-platform / Columns segment, an <b>External lineage</b> switch sits next to Control relations and is hidden when nothing is imported or the preview overlay is on. All platforms share one <b>External · OpenLineage</b> lane (platforms listed in its header). The legend keeps <i>Atlas snapshot (verified)</i> and adds <i>OpenLineage (external)</i> and <i>Link point = same dataset</i>. On a Fabric item, Change impact shows a dashed <b>External</b> block with counts and dataset names.</div></div>
   </section>
 
   <!-- ============ SCREEN 4 : FILE FORMAT ============ -->
@@ -341,6 +342,7 @@ tr.sel td{background:rgba(17,120,101,.06)}
     <div class="tabs"><span class="tab">Imports <span class="c">3</span></span><span class="tab">Link to Fabric <span class="c">7</span></span><span class="tab">File format</span><span class="tab on">Data model</span></div>    <div class="card" style="position:relative;height:640px;overflow:hidden" id="erd">
       <svg id="erdedges" style="position:absolute;inset:0;width:100%;height:100%;z-index:1"></svg>
     </div>
+    <div class="note" style="background:var(--w-bg);color:var(--w-fg);margin:14px 0 0"><span data-i="info" data-s="16"></span><div><b>As built (v2.7.0):</b> <span class="mono">ExternalLineageEdge</span> also stores <span class="mono">lastRunState</span>, <span class="mono">lastRunTime</span>, <span class="mono">runId</span>, <span class="mono">columnTruncated</span>; <span class="mono">OpenLineageImport</span> stores <span class="mono">namespace</span>, <span class="mono">platform</span>, dataset/edge/to-link counts and <span class="mono">rejectReason</span>; <span class="mono">ExternalDataset</span> stores <span class="mono">platform</span>, <span class="mono">fabricObjectName</span>, <span class="mono">linkedAt</span>, <span class="mono">lastSeenAt</span>. Ids are Rayfin uuids derived from sha-256 of the keys shown.</div></div>
   </section>
 
   </div>
