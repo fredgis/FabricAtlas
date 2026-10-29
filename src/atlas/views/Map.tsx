@@ -96,7 +96,8 @@ import { DEFAULT_MAP_ZOOM, stepMapZoom } from "../map-zoom";
 import { LINEAGE_ARROW_TIP, lineageCurve } from "../map-geometry";
 import { useAtlas } from "../store";
 import { useExternalLineage } from "../external-lineage-store";
-import { buildExternalOverlay, EMPTY_EXTERNAL_OVERLAY } from "../map-external";
+import { buildExternalOverlay, EMPTY_EXTERNAL_OVERLAY, externalDatasetsIn } from "../map-external";
+import { mergeLineageEdges } from "../external-lineage";
 import {
   ExternalBadges,
   ExternalEdges,
@@ -759,6 +760,16 @@ export function MapView({
   );
   const graphEdges = previewActive ? previewGraphEdges : edges;
   const graphLineageIndex = useMemo(() => createLineageIndex(graphEdges), [graphEdges]);
+  const externalActive =
+    showExternal && !previewActive && mode === "items" && externalLineage.edges.length > 0;
+  // Impact crosses the link points; drawing and layout keep the Fabric-only index.
+  const impactLineageIndex = useMemo(
+    () =>
+      externalActive
+        ? createLineageIndex(mergeLineageEdges(graphEdges, externalLineage))
+        : graphLineageIndex,
+    [externalActive, externalLineage, graphEdges, graphLineageIndex],
+  );
   const relationshipCount = useMemo(
     () =>
       evidenceModel.relationships.filter(
@@ -829,11 +840,21 @@ export function MapView({
   const impact = useMemo(
     () =>
       getLineageImpact(
-        graphLineageIndex,
+        impactLineageIndex,
         activeId,
         impactMode ? Number.POSITIVE_INFINITY : 1,
       ),
-    [activeId, graphLineageIndex, impactMode],
+    [activeId, impactLineageIndex, impactMode],
+  );
+  const externalImpact = useMemo(
+    () =>
+      externalActive
+        ? {
+            upstream: externalDatasetsIn(impact.upstream.ids, externalLineage),
+            downstream: externalDatasetsIn(impact.downstream.ids, externalLineage),
+          }
+        : { upstream: [], downstream: [] },
+    [externalActive, externalLineage, impact],
   );
   const upstream = useMemo(
     () =>
@@ -986,8 +1007,6 @@ export function MapView({
     { nodeWidth: NODE_W, nodeHeight: NODE_H, columnGap: NODE_COLUMN_GAP, rowGap: NODE_ROW_GAP },
     evidenceModel,
   ), [data.workspace.fabricId, evidenceModel, lineageItems, storedPreviewOverlay]);
-  const externalActive =
-    showExternal && !previewActive && mode === "items" && externalLineage.edges.length > 0;
   const externalOverlay = useMemo(
     () =>
       externalActive
@@ -3363,6 +3382,24 @@ export function MapView({
                           </Card>
                         ))}
                       </div>
+                      {externalImpact.upstream.length + externalImpact.downstream.length > 0 && (
+                        <div
+                          data-testid="impact-external"
+                          className="mt-[7px] rounded-lg border border-dashed border-[#0078d4]/50 bg-[#0078d4]/5 px-[9px] py-[7px] text-[11px]"
+                        >
+                          <div className="flex items-center gap-s font-semibold text-[#0078d4]">
+                            <span className="rounded-sm border border-[#0078d4]/40 px-[4px] text-[9.5px] uppercase tracking-wide">
+                              External
+                            </span>
+                            OpenLineage · {externalImpact.upstream.length} upstream · {externalImpact.downstream.length} downstream
+                          </div>
+                          <div className="mt-[4px] break-words text-muted-foreground">
+                            {[...externalImpact.upstream, ...externalImpact.downstream]
+                              .map((d) => `${d.name} (${d.platform})`)
+                              .join(", ")}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     {previewEvidence && (
                       <div>

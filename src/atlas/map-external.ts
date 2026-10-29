@@ -219,6 +219,21 @@ export function buildExternalOverlay(
   };
 }
 
+/** External datasets (not linked to Fabric) among the ids reached by an impact traversal. */
+export function externalDatasetsIn(ids: Iterable<string>, lineage: ExternalLineage): ExternalDatasetRecord[] {
+  const byNode = new Map(
+    lineage.datasets
+      .filter((d) => externalNodeId(d).startsWith(EXTERNAL_NODE_PREFIX))
+      .map((d) => [externalNodeId(d), d]),
+  );
+  const out: ExternalDatasetRecord[] = [];
+  for (const id of ids) {
+    const ds = byNode.get(id);
+    if (ds) out.push(ds);
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export interface ExternalImpact {
   items: Item[];
   workspaces: number;

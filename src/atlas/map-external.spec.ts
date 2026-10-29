@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { EXACT_PATH, type ExternalDatasetRecord, type ExternalEdgeRecord, type ExternalLineage } from './external-lineage';
-import { buildExternalOverlay, EMPTY_EXTERNAL_OVERLAY, externalDownstream, jobKeyOf } from './map-external';
+import { EXACT_PATH, mergeLineageEdges, type ExternalDatasetRecord, type ExternalEdgeRecord, type ExternalLineage } from './external-lineage';
+import { createLineageIndex, getLineageImpact } from './lineage';
+import { buildExternalOverlay, EMPTY_EXTERNAL_OVERLAY, externalDatasetsIn, externalDownstream, jobKeyOf } from './map-external';
 import type { Edge, Item, ItemType } from './model';
 
 const LH = 'lh-1';
@@ -121,5 +122,14 @@ describe('externalDownstream', () => {
 
   it('returns nothing for a dataset without a path into Fabric', () => {
     expect(externalDownstream(lineage, snapshot, ['missing'], itemById)).toEqual({ items: [], workspaces: 0, reports: 0 });
+  });
+
+  it('crosses the boundary both ways: SAS input → Power BI report, report → external inputs', () => {
+    const index = createLineageIndex(mergeLineageEdges(snapshot, lineage));
+    const down = getLineageImpact(index, 'ext:input');
+    expect([...down.downstream.ids]).toEqual(expect.arrayContaining([LH, SM, RPT]));
+    const up = getLineageImpact(index, RPT);
+    expect(externalDatasetsIn(up.upstream.ids, lineage).map((d) => d.id)).toEqual(['crm', 'input']);
+    expect(externalDatasetsIn(getLineageImpact(createLineageIndex(snapshot), RPT).upstream.ids, lineage)).toEqual([]);
   });
 });
