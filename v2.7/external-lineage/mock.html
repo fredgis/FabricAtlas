@@ -170,7 +170,7 @@ tr.sel td{background:rgba(17,120,101,.06)}
   <section class="scr" data-s="1">
     <div class="ph"><div><h1>External lineage <span class="help">?</span></h1>
       <div class="obj">Import OpenLineage files from other platforms and link their datasets to Fabric items. Manual, on demand — no automation in v1.</div></div>
-      <div class="toolbar"><span class="btn primary" id="imp"><span data-i="upload" data-s="16"></span>Import OpenLineage file</span></div></div>
+      <div class="toolbar"><span class="btn" id="dl"><span data-i="download" data-s="16"></span>Download OpenLineage</span><span class="btn primary" id="imp"><span data-i="upload" data-s="16"></span>Import OpenLineage file</span></div></div>
     <div class="tabs"><span class="tab on">Imports <span class="c">3</span></span><span class="tab">Link to Fabric <span class="c">7</span></span><span class="tab">File format</span><span class="tab">Data model</span></div>
 
     <div class="grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
@@ -244,7 +244,7 @@ tr.sel td{background:rgba(17,120,101,.06)}
   <section class="scr" data-s="3">
     <div class="ph"><div><h1>Map &amp; lineage <span class="help">?</span></h1>
       <div class="obj">Item lineage across workspaces — now including external platforms reported through OpenLineage.</div></div>
-      <div class="toolbar"><span class="chip" style="background:#fff;border-color:rgba(0,120,212,.4);color:var(--ext)"><span class="toggle" style="background:var(--ext)"></span><b>External lineage</b></span><span class="seg"><span>Item</span><span class="on">Cross-platform</span><span>Columns</span></span><span class="btn"><span data-i="target" data-s="16"></span>Impact analysis</span></div></div>
+      <div class="toolbar"><span class="chip" style="background:#fff;border-color:rgba(0,120,212,.4);color:var(--ext)"><span class="toggle" style="background:var(--ext)"></span><b>External lineage</b></span><span class="seg"><span>Item</span><span class="on">Cross-platform</span><span>Columns</span></span><span class="btn"><span data-i="target" data-s="16"></span>Impact analysis</span><span class="btn"><span data-i="download" data-s="16"></span>Download OpenLineage</span></div></div>
     <div class="tabs"><span class="tab">Map</span><span class="tab on">Lineage</span><span class="tab">Evidence</span></div>
     <div class="mapwrap">
       <div class="map" id="map">
@@ -328,7 +328,7 @@ tr.sel td{background:rgba(17,120,101,.06)}
             <tr><td class="mono s12">eventType · eventTime · runId</td><td class="s12">Last run shown on the edge</td></tr>
           </table>
           <div class="note" style="background:var(--w-bg);color:var(--w-fg);margin-top:14px"><span data-i="alert" data-s="16"></span><div>Ignored and never stored: SQL text, source code, data samples, credentials and any other facet.</div></div>
-          <div class="note" style="background:var(--i-bg);color:var(--i-fg);margin-top:10px"><span data-i="info" data-s="16"></span><div>Later versions: automatic ingestion, Spark runtime events (#86) and OpenLineage export (#19).</div></div>
+          <div class="note" style="background:var(--i-bg);color:var(--i-fg);margin-top:10px"><span data-i="info" data-s="16"></span><div>Export: <b>Download OpenLineage</b> writes the Fabric lineage as an NDJSON file (one COMPLETE RunEvent per job, OneLake <span class="mono">abfss://</span> dataset names) that any OpenLineage tool can read. Later versions: automatic ingestion and Spark runtime events (#86).</div></div>
         </div>
       </div>
     </div>
@@ -346,6 +346,19 @@ tr.sel td{background:rgba(17,120,101,.06)}
   </div>
 </main>
 </div>
+
+  <!-- ============ DOWNLOAD DIALOG (s1 + s3) ============ -->
+  <div id="dlg" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.32);z-index:50;align-items:center;justify-content:center">
+    <div class="card" style="width:460px;padding:20px;box-shadow:0 12px 40px rgba(0,0,0,.25)">
+      <div class="card-h" style="padding:0 0 12px"><span data-i="download" data-s="16"></span><h3>Download OpenLineage</h3></div>
+      <div class="s12" style="color:var(--muted-fg);margin-bottom:14px">Writes the Fabric lineage as standard OpenLineage events (NDJSON). No data, SQL or credentials — only item, table and job names.</div>
+      <div class="s12" style="font-weight:600;margin-bottom:6px">Scope</div>
+      <label style="display:flex;gap:8px;align-items:center;padding:8px 10px;border:2px solid var(--primary);border-radius:6px;margin-bottom:6px"><span style="width:14px;height:14px;border-radius:50%;border:4px solid var(--primary)"></span>Current workspace <span class="s12" style="margin-left:auto;color:var(--muted-fg)">14 items · 22 edges</span></label>
+      <label style="display:flex;gap:8px;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:12px"><span style="width:14px;height:14px;border-radius:50%;border:1px solid var(--input)"></span>Selection on the map <span class="s12" style="margin-left:auto;color:var(--muted-fg)">focused item + neighbours</span></label>
+      <label style="display:flex;gap:8px;align-items:center;margin-bottom:16px"><input type="checkbox" checked> Include linked external datasets <span class="s12" style="color:var(--muted-fg)">(25)</span></label>
+      <div style="display:flex;gap:8px;justify-content:flex-end"><span class="btn" id="dlc">Cancel</span><span class="btn primary" id="dlo"><span data-i="download" data-s="16"></span>Download .ndjson</span></div>
+    </div>
+  </div>
 
 <script>
 const P={
@@ -448,6 +461,8 @@ document.querySelectorAll('.btn').forEach(b=>{const t=b.textContent.trim();
   if(t==='Link'&&b.classList.contains('primary'))b.onclick=()=>{b.textContent='✓ Linked';b.style.background='#0e700e'};
   if(t==='Link'&&b.classList.contains('sm'))b.onclick=e=>{e.stopPropagation();b.closest('tr').click()};
   if(t==='Import OpenLineage file')b.onclick=()=>{const d=document.getElementById('drop');d.style.borderColor='var(--primary)';d.style.background='var(--i-bg)';d.animate([{transform:'scale(1)'},{transform:'scale(1.02)'},{transform:'scale(1)'}],{duration:300})};
+  if(t==='Download OpenLineage')b.onclick=()=>{document.getElementById('dlg').style.display='flex'};
+  if(t==='Cancel'||t==='Download .ndjson')b.onclick=()=>{document.getElementById('dlg').style.display='none'};
   if(t==='Impact analysis')b.onclick=()=>document.querySelectorAll('.node:not(.ext)').forEach(n=>n.style.outline=n.classList.contains('focus')?'':'2px solid rgba(17,120,101,.35)');});
 /* imported files -> link */
 if(s===1)document.querySelectorAll('[data-s="1"] table')[0].querySelectorAll('tr').forEach((r,i)=>{if(i)r.onclick=()=>go(2)});
@@ -478,6 +493,8 @@ if(s===3){
     const ext=n.classList.contains('ext');const pill=document.querySelector('.panel .ext-pill');pill.textContent=ext?'OpenLineage · external':'Fabric item';
     pill.style.borderColor=ext?'var(--ext)':'var(--primary)';pill.style.color=ext?'var(--ext)':'var(--primary)'}});
 }
+
+if(new URLSearchParams(location.search).get('dlg'))document.getElementById('dlg').style.display='flex';
 
 if(s===5){
   const T=[
