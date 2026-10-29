@@ -60,8 +60,13 @@ export function ExternalLinkTab() {
 
   const candidates = useMemo<Candidate[]>(() => {
     const out: Candidate[] = [];
-    for (const item of data.items) {
-      if (!LINKABLE_TYPES.has(item.itemType)) continue;
+    // Data stores first, then every other item (Eventstream, Notebook, Report…) so any item can be picked.
+    const ordered = [...data.items].sort(
+      (a, b) =>
+        Number(!LINKABLE_TYPES.has(a.itemType)) - Number(!LINKABLE_TYPES.has(b.itemType)) ||
+        a.displayName.localeCompare(b.displayName),
+    );
+    for (const item of ordered) {
       out.push({ key: item.fabricId, item, label: item.displayName, detail: `${workspaceName} · ${item.itemType}` });
       for (const table of data.schema?.[item.fabricId] ?? []) {
         out.push({
@@ -267,7 +272,9 @@ function LinkPanel({
   const [choice, setChoice] = useState<string>(dataset.state === "external" ? KEEP_EXTERNAL : "");
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = q ? candidates.filter((c) => c.label.toLowerCase().includes(q)) : candidates;
+    const list = q
+      ? candidates.filter((c) => c.label.toLowerCase().includes(q) || c.detail.toLowerCase().includes(q))
+      : candidates;
     return list.slice(0, 8);
   }, [candidates, query]);
 

@@ -415,6 +415,33 @@ export const OL_PRODUCER = 'https://github.com/fredgis/FabricAtlas/v2.7';
 export const OL_SPEC_URL = 'https://openlineage.io/spec/2-0-2/OpenLineage.json';
 const JOB_TYPE_FACET_URL = 'https://openlineage.io/spec/facets/2-0-3/JobTypeJobFacet.json#/$defs/JobTypeJobFacet';
 const COLUMN_FACET_URL = 'https://openlineage.io/spec/facets/1-2-0/ColumnLineageDatasetFacet.json#/$defs/ColumnLineageDatasetFacet';
+const facetUrl = (version: string, name: string) => `https://openlineage.io/spec/facets/${version}/${name}.json#/$defs/${name}`;
+const DOC_DATASET_FACET_URL = facetUrl('1-0-1', 'DocumentationDatasetFacet');
+const OWNER_DATASET_FACET_URL = facetUrl('1-0-1', 'OwnershipDatasetFacet');
+const SCHEMA_DATASET_FACET_URL = facetUrl('1-1-1', 'SchemaDatasetFacet');
+const DOC_JOB_FACET_URL = facetUrl('1-0-1', 'DocumentationJobFacet');
+const OWNER_JOB_FACET_URL = facetUrl('1-0-1', 'OwnershipJobFacet');
+const DATASET_TYPE_FACET_URL = facetUrl('1-0-0', 'DatasetTypeDatasetFacet');
+/** Custom facet keeping the exact Fabric item type; OpenLineage requires a prefix on custom facets. */
+export const FABRIC_ITEM_FACET = 'fabricAtlas_item';
+const FABRIC_ITEM_FACET_URL =
+  'https://raw.githubusercontent.com/fredgis/FabricAtlas/main/docs/openlineage/FabricAtlasItemFacet.json#/$defs/FabricAtlasItemFacet';
+
+/** OpenLineage `jobType` / `processingType` for each Fabric job item. */
+const JOB_KIND: Partial<Record<ItemType, { jobType: string; processingType: 'BATCH' | 'STREAMING' | 'SERVICE' }>> = {
+  Notebook: { jobType: 'NOTEBOOK', processingType: 'BATCH' },
+  DataPipeline: { jobType: 'DAG', processingType: 'BATCH' },
+  Dataflow: { jobType: 'DATAFLOW', processingType: 'BATCH' },
+  Eventstream: { jobType: 'EVENTSTREAM', processingType: 'STREAMING' },
+  UserDataFunction: { jobType: 'FUNCTION', processingType: 'SERVICE' },
+};
+
+/** Generic OpenLineage `datasetType` of a Fabric item; containers (Lakehouse, Warehouse…) have none. */
+const ITEM_DATASET_TYPE: Partial<Record<ItemType, { datasetType: string; subType: string }>> = {
+  SemanticModel: { datasetType: 'MODEL', subType: 'SEMANTIC_MODEL' },
+  GraphModel: { datasetType: 'MODEL', subType: 'GRAPH' },
+  Ontology: { datasetType: 'MODEL', subType: 'ONTOLOGY' },
+};
 
 /** Fabric items that run work; every other item is exported as a dataset. */
 export const JOB_ITEM_TYPES: ReadonlySet<ItemType> = new Set<ItemType>([
@@ -469,7 +496,7 @@ function slug(s: string): string {
 
 /** Writes the Fabric graph (plus linked external edges on demand) as OpenLineage NDJSON. Pure. */
 export function exportOpenLineage(
-  data: Pick<AtlasData, 'workspace' | 'items' | 'edges'>,
+  data: Pick<AtlasData, 'workspace' | 'items' | 'edges' | 'objectEdges' | 'schema'>,
   opts: OlExportOptions = {},
 ): OlExportResult {
   const eventTime = opts.eventTime ?? new Date().toISOString();
@@ -482,32 +509,56 @@ export function exportOpenLineage(
   const lines: string[] = [];
   const datasetsSeen = new Set<string>();
   const jobsSeen = new Set<string>();
+  // Fabric item (and table) behind each exported dataset, used for the dataset facets.
+  const datasetSource = new Map<string, { item: Item; table?: string }>();
   const trackDataset = (d: OlDatasetRef) => datasetsSeen.add(`${d.namespace}|${d.name}`);
+  const itemRef = (i: Item, table?: string): OlDatasetRef => {
+    const d = ref(i, table);
+    const key = `${d.namespace}|${d.name}`;
+    if (!datasetSource.has(key)) datasetSource.set(key, { item: i, ...(table ? { table } : {}) });
+    return d;
+  };
+  const owner = (i: Item) => i.ownerEmail || i.ownerName;
+  const fabricItemFacet = (i: Item) => ({
+    _producer: OL_PRODUCER,
+    _schemaURL: FABRIC_ITEM_FACET_URL,
+    platform: 'MICROSOFT_FABRIC',
+    itemType: i.itemType,
+    itemId: i.fabricId,
+    ...(data.workspace.fabricId ? { workspaceId: data.workspace.fabricId } : {}),
+  });
 
   const jobEvent = (
-    job: { namespace: string; name: string; type?: string; integration?: string },
+    job: { namespace: string; name: string; type?: string; integration?: string; item?: Item },
     inputs: OlDatasetRef[],
     outputs: OlDatasetRef[],
   ) => {
     inputs.forEach(trackDataset);
     outputs.forEach(trackDataset);
     jobsSeen.add(`${job.namespace}|${job.name}`);
-    const facets = job.type
-      ? {
-          jobType: {
-            _producer: OL_PRODUCER,
-            _schemaURL: JOB_TYPE_FACET_URL,
-            processingType: 'BATCH',
-            integration: job.integration ?? 'FABRIC',
-            jobType: job.type,
-          },
-        }
-      : undefined;
+    const facets: Record<string, unknown> = {};
+    if (job.type) {
+      const kind = job.item ? JOB_KIND[job.item.itemType] : undefined;
+      facets.jobType = {
+        _producer: OL_PRODUCER,
+        _schemaURL: JOB_TYPE_FACET_URL,
+        processingType: kind?.processingType ?? 'BATCH',
+        integration: job.integration ?? 'FABRIC',
+        jobType: kind?.jobType ?? job.type,
+      };
+    }
+    if (job.item) facets[FABRIC_ITEM_FACET] = fabricItemFacet(job.item);
+    if (job.item?.description) {
+      facets.documentation = { _producer: OL_PRODUCER, _schemaURL: DOC_JOB_FACET_URL, description: job.item.description };
+    }
+    if (job.item && owner(job.item)) {
+      facets.ownership = { _producer: OL_PRODUCER, _schemaURL: OWNER_JOB_FACET_URL, owners: [{ name: `user:${owner(job.item)}`, type: 'OWNER' }] };
+    }
     lines.push(
       JSON.stringify({
         ...base,
         schemaURL: `${OL_SPEC_URL}#/$defs/JobEvent`,
-        job: { namespace: job.namespace, name: job.name, ...(facets ? { facets } : {}) },
+        job: { namespace: job.namespace, name: job.name, ...(Object.keys(facets).length ? { facets } : {}) },
         inputs,
         outputs,
       }),
@@ -537,22 +588,52 @@ export function exportOpenLineage(
       direct.set(key, g);
     }
   }
+  // Table-level reads/writes parsed from notebook code: job → (store → tables).
+  const tableReads = new Map<string, Map<string, Set<string>>>();
+  const tableWrites = new Map<string, Map<string, Set<string>>>();
+  const addTable = (m: Map<string, Map<string, Set<string>>>, jobId: string, storeId: string, table: string) => {
+    const store = items.get(storeId);
+    if (!store || isJob(store) || !table) return;
+    const parts = table.split('.');
+    // `lakehouse.schema.table` → `schema.table` when the first part names the store.
+    const name = parts.length > 1 && parts[0].toLowerCase() === store.displayName.toLowerCase() ? parts.slice(1).join('.') : table;
+    const byStore = m.get(jobId) ?? new Map<string, Set<string>>();
+    const set = byStore.get(storeId) ?? new Set<string>();
+    set.add(name);
+    byStore.set(storeId, set);
+    m.set(jobId, byStore);
+  };
+  for (const e of data.objectEdges ?? []) {
+    if (e.relation === 'reads' && e.target.kind === 'notebookObject' && e.source.kind === 'sourceObject' && e.source.itemId !== e.target.itemId) {
+      addTable(tableReads, e.target.itemId, e.source.itemId, e.source.tableName ?? e.source.name);
+    } else if (e.relation === 'writes' && e.source.kind === 'notebookObject' && e.target.kind === 'sourceObject' && e.target.itemId !== e.source.itemId) {
+      addTable(tableWrites, e.source.itemId, e.target.itemId, e.target.tableName ?? e.target.name);
+    }
+  }
+  const sides = (stores: Item[], tables: Map<string, Set<string>> | undefined): OlDatasetRef[] => {
+    const out: OlDatasetRef[] = [];
+    const ids = new Set([...stores.map((s) => s.fabricId), ...(tables?.keys() ?? [])]);
+    for (const id of ids) {
+      const store = items.get(id);
+      if (!store) continue;
+      const names = tables?.get(id);
+      if (names?.size) for (const t of [...names].sort()) out.push(itemRef(store, t));
+      else out.push(itemRef(store));
+    }
+    return out;
+  };
   for (const item of items.values()) {
     if (!isJob(item)) continue;
-    const ins = jobInputs.get(item.fabricId) ?? [];
-    const outs = jobOutputs.get(item.fabricId) ?? [];
+    const ins = sides(jobInputs.get(item.fabricId) ?? [], tableReads.get(item.fabricId));
+    const outs = sides(jobOutputs.get(item.fabricId) ?? [], tableWrites.get(item.fabricId));
     if (!ins.length && !outs.length) continue;
-    jobEvent(
-      { namespace, name: oneLakeName(item), type: item.itemType.toUpperCase() },
-      ins.map((i) => ref(i)),
-      outs.map((i) => ref(i)),
-    );
+    jobEvent({ namespace, name: oneLakeName(item), type: item.itemType.toUpperCase(), item }, ins, outs);
   }
   for (const g of direct.values()) {
     jobEvent(
       { namespace, name: `${oneLakeName(g.target)}#${g.relation || 'lineage'}`, type: 'LINEAGE' },
-      g.sources.map((i) => ref(i)),
-      [ref(g.target)],
+      g.sources.map((i) => itemRef(i)),
+      [itemRef(g.target)],
     );
   }
 
@@ -563,7 +644,7 @@ export function exportOpenLineage(
       const d = byId.get(id);
       if (!d) return null;
       const item = d.state === 'linked' && d.fabricItemId ? data.items.find((i) => i.fabricId === d.fabricItemId) : undefined;
-      if (item) return { ref: ref(item, d.fabricObjectName || undefined), linked: inScope(item.fabricId) };
+      if (item) return { ref: itemRef(item, d.fabricObjectName || undefined), linked: inScope(item.fabricId) };
       return { ref: { namespace: d.namespace, name: d.name }, linked: false };
     };
     for (const e of opts.external.edges) {
@@ -593,13 +674,40 @@ export function exportOpenLineage(
 
   // Every dataset in scope, including items with no edge.
   const datasetRefs: OlDatasetRef[] = [];
-  for (const item of items.values()) if (!isJob(item)) datasetRefs.push(ref(item));
+  for (const item of items.values()) if (!isJob(item)) datasetRefs.push(itemRef(item));
   for (const key of datasetsSeen) {
     const [ns, ...rest] = key.split('|');
     if (!datasetRefs.some((d) => d.namespace === ns && d.name === rest.join('|'))) datasetRefs.push({ namespace: ns, name: rest.join('|') });
   }
+  const tableSchema = (item: Item, table: string) => {
+    const last = table.split('.').pop()!.toLowerCase();
+    const tables = data.schema?.[item.fabricId] ?? [];
+    return tables.find((t) => t.name.toLowerCase() === table.toLowerCase()) ?? tables.find((t) => t.name.toLowerCase() === last);
+  };
   for (const d of datasetRefs) {
-    lines.push(JSON.stringify({ ...base, schemaURL: `${OL_SPEC_URL}#/$defs/DatasetEvent`, dataset: d }));
+    const src = datasetSource.get(`${d.namespace}|${d.name}`);
+    const facets: Record<string, unknown> = {};
+    let time = eventTime;
+    if (src) {
+      const { item, table } = src;
+      const schema = table ? tableSchema(item, table) : undefined;
+      const type = table ? undefined : ITEM_DATASET_TYPE[item.itemType];
+      if (type) facets.datasetType = { _producer: OL_PRODUCER, _schemaURL: DATASET_TYPE_FACET_URL, ...type };
+      facets[FABRIC_ITEM_FACET] = fabricItemFacet(item);
+      const description = table ? schema?.description : item.description;
+      if (description) facets.documentation = { _producer: OL_PRODUCER, _schemaURL: DOC_DATASET_FACET_URL, description };
+      if (owner(item)) facets.ownership = { _producer: OL_PRODUCER, _schemaURL: OWNER_DATASET_FACET_URL, owners: [{ name: `user:${owner(item)}`, type: 'OWNER' }] };
+      if (schema?.columns.length) {
+        facets.schema = {
+          _producer: OL_PRODUCER,
+          _schemaURL: SCHEMA_DATASET_FACET_URL,
+          fields: schema.columns.map((c) => ({ name: c.name, type: c.dataType, ...(c.description ? { description: c.description } : {}) })),
+        };
+      }
+      time = item.updatedAt || item.lastRefresh || item.createdAt || eventTime;
+    }
+    const dataset = Object.keys(facets).length ? { ...d, facets } : d;
+    lines.push(JSON.stringify({ eventTime: time, producer: OL_PRODUCER, schemaURL: `${OL_SPEC_URL}#/$defs/DatasetEvent`, dataset }));
   }
 
   const day = eventTime.slice(0, 10);

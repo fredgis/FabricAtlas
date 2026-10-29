@@ -48,6 +48,12 @@ PostgreSQL tables and writing to a OneLake lakehouse (`Sales-Analytics` workspac
 `lh_sales` lakehouse). Import it as is to try manual linking, or replace the workspace and
 lakehouse names with yours so the OneLake outputs link automatically.
 
+[`samples/openlineage/example-crm-iot-sources.ndjson`](../samples/openlineage/example-crm-iot-sources.ndjson)
+holds 5 Airflow runs with other sources: Salesforce, PostgreSQL, Kafka (streaming)
+and S3. Its OneLake outputs target items of the `FGI-MAIN` workspace
+(`alpinerent_lakehouse`, `LH_Healthcare_Clinical`, `HealthcareTelemetryStream`) and link
+automatically there; the `source://partner-hub` datasets stay **To link**.
+
 ## Link to Fabric
 
 The link point is the dataset that exists on both sides.
@@ -57,8 +63,10 @@ The link point is the dataset that exists on both sides.
   and whose name is an item path (`<item>[.<Type>]/Tables/<schema>/<table>`,
   `<item>[.<Type>]/Files/...` or `<item>.<Type>`) is linked to that item.
   Names and GUIDs are both accepted; nothing is guessed.
-- **Manual** — every other dataset is **To link**. An administrator picks the
-  Fabric item, or marks it **External** (stays outside Fabric).
+- **Manual** — every other dataset is **To link**. An administrator picks any
+  Fabric item of the workspace (data stores are listed first; search matches the
+  name or the type, for example `eventstream`) or a known table, or marks it
+  **External** (stays outside Fabric).
 
 ## Map and impact
 
@@ -82,12 +90,28 @@ NDJSON file in the browser — no network call.
 Content:
 
 - One **JobEvent** per Fabric job item (Notebook, Data pipeline, Dataflow,
-  Eventstream, User data function): inputs → job → outputs, `jobType` facet
-  `integration = FABRIC`.
+  Eventstream, User data function): inputs → job → outputs, `jobType` facet with
+  `integration = FABRIC` and, per item type, `NOTEBOOK`/`BATCH`, `DAG`/`BATCH`
+  (pipeline), `DATAFLOW`/`BATCH`, `EVENTSTREAM`/`STREAMING`, `FUNCTION`/`SERVICE`,
+  plus `documentation` / `ownership` facets when known.
+- Notebooks are exported at **table level** when Atlas parsed their code
+  (`spark.read.table`, `saveAsTable`, Spark SQL…): `lh.Lakehouse/Tables/bronze/orders`
+  → notebook → `lh.Lakehouse/Tables/silver/orders`. Otherwise the job keeps the
+  item-level lakehouse, which can appear as both input and output.
 - One **JobEvent** per group of direct item → item edges (for example Warehouse →
   Semantic model), named `<target>.<Type>#<relation>`.
-- One **DatasetEvent** per dataset item in scope, including items with no edge.
+- One **DatasetEvent** per dataset item or table in scope, including items with
+  no edge (they are catalog entries, so they show as unconnected nodes). Facets:
+  `documentation` (description), `ownership` (owner) and `schema` (columns, for
+  tables whose schema was scanned), `datasetType` `MODEL` for Semantic models
+  (`SEMANTIC_MODEL`), Graph models (`GRAPH`) and Ontologies (`ONTOLOGY`); containers
+  (Lakehouse, Warehouse…) carry no generic type. `eventTime` is the item's last update when
+  known, the export time otherwise.
 - Fabric datasets use the OneLake namespace and names above, so importing the
   file back links 100 % of them by exact path.
+- Every Fabric job and dataset carries the custom facet `fabricAtlas_item`
+  (`platform = MICROSOFT_FABRIC`, `itemType`, `itemId`, `workspaceId`), so consumers
+  read the exact Fabric type without parsing the name suffix. Schema:
+  [`docs/openlineage/FabricAtlasItemFacet.json`](openlineage/FabricAtlasItemFacet.json).
 - `producer = https://github.com/fredgis/FabricAtlas/v2.7`, official
   OpenLineage `schemaURL`. Only item, table and job names are written.

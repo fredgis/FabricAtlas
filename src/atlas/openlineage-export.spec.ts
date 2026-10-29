@@ -78,7 +78,10 @@ function specErrors(ev: Record<string, any>): string[] {
       else ev[k].forEach((d: any, i: number) => (nsName(d, `${k}[${i}]`), facets(d.facets, `${k}[${i}].facets`)));
     }
     if (ev.run) errs.push('run must be absent on a JobEvent');
-  } else if (ev.dataset) nsName(ev.dataset, 'dataset');
+  } else if (ev.dataset) {
+    nsName(ev.dataset, 'dataset');
+    facets(ev.dataset.facets, 'dataset.facets');
+  }
   else errs.push('neither job nor dataset');
   return errs;
 }
@@ -140,6 +143,53 @@ describe('exportOpenLineage', () => {
     const out = parsed.datasets.find((d) => d.name === 'sales.Lakehouse/Tables/dbo/orders')!;
     expect(links.get(out.key)).toMatchObject({ state: 'linked', fabricItemId: LH, fabricObjectName: 'dbo.orders' });
     expect(exportOpenLineage(data, { eventTime, includeExternal: true, external, itemIds: new Set([DW]) }).externalEdgeCount).toBe(0);
+  });
+
+  it('exports notebook lineage at table level, Eventstreams as STREAMING, and dataset facets', () => {
+    const ES = id(7);
+    const KQL = id(8);
+    const rich = {
+      ...data,
+      items: [
+        ...data.items.map((i) =>
+          i.fabricId === LH
+            ? { ...i, description: 'Raw sales', ownerEmail: 'ana@contoso.com', updatedAt: '2026-10-01T10:00:00.000Z' }
+            : i,
+        ),
+        item(ES, 'telemetry', 'Eventstream'),
+        item(KQL, 'kql', 'KQLDatabase'),
+      ],
+      edges: [...data.edges, { source: LH, target: NB, relation: 'reads' }, { source: NB, target: LH, relation: 'writes' }, { source: ES, target: KQL, relation: 'writes' }],
+      objectEdges: [
+        { source: { itemId: LH, kind: 'sourceObject', id: 'b', name: 'bronze.orders', tableName: 'bronze.orders' }, target: { itemId: NB, kind: 'notebookObject', id: 'b', name: 'bronze.orders' }, relation: 'reads' },
+        { source: { itemId: NB, kind: 'notebookObject', id: 's', name: 'sales.silver.orders' }, target: { itemId: LH, kind: 'sourceObject', id: 's', name: 'sales.silver.orders', tableName: 'sales.silver.orders' }, relation: 'writes' },
+        // Unknown store (notebook itself): ignored.
+        { source: { itemId: NB, kind: 'sourceObject', id: 'x', name: 'tmp' }, target: { itemId: NB, kind: 'notebookObject', id: 'x', name: 'tmp' }, relation: 'reads' },
+      ],
+      schema: { [LH]: [{ name: 'silver.orders', description: 'Clean orders', columns: [{ name: 'order_id', dataType: 'int' }], measures: [] }] },
+    } as unknown as AtlasData;
+    const events = lines(exportOpenLineage(rich, { eventTime }).text);
+    for (const ev of events) expect(specErrors(ev)).toEqual([]);
+    const nb = events.find((e) => e.job?.name === 'nb_transform.Notebook')!;
+    expect(nb.inputs.map((d: any) => d.name)).toEqual(['sales.Lakehouse/Tables/bronze/orders']);
+    expect(nb.outputs.map((d: any) => d.name)).toEqual(['dw_gold.Warehouse', 'sales.Lakehouse/Tables/silver/orders']);
+    expect(events.find((e) => e.job?.name === 'telemetry.Eventstream')!.job.facets.jobType.processingType).toBe('STREAMING');
+    const ds = (name: string) => events.find((e) => e.dataset?.name === name)!;
+    expect(ds('sales.Lakehouse')).toMatchObject({
+      eventTime: '2026-10-01T10:00:00.000Z',
+      dataset: { facets: { documentation: { description: 'Raw sales' }, ownership: { owners: [{ name: 'user:ana@contoso.com', type: 'OWNER' }] } } },
+    });
+    expect(ds('sales.Lakehouse/Tables/silver/orders').dataset.facets).toMatchObject({
+      documentation: { description: 'Clean orders' },
+      schema: { fields: [{ name: 'order_id', type: 'int' }] },
+    });
+    expect(ds('dw_gold.Warehouse')).toMatchObject({ eventTime });
+    expect(ds('dw_gold.Warehouse').dataset.facets).toEqual({
+      fabricAtlas_item: expect.objectContaining({ platform: 'MICROSOFT_FABRIC', itemType: 'Warehouse', itemId: DW, workspaceId: WS }),
+    });
+    expect(ds('sales.SemanticModel').dataset.facets.datasetType).toMatchObject({ datasetType: 'MODEL', subType: 'SEMANTIC_MODEL' });
+    expect(ds('sales.Lakehouse').dataset.facets.datasetType).toBeUndefined();
+    expect(events.find((e) => e.job?.name === 'telemetry.Eventstream')!.job.facets.fabricAtlas_item).toMatchObject({ itemType: 'Eventstream', itemId: ES });
   });
 
   it('returns an empty file when nothing is in scope', () => {
