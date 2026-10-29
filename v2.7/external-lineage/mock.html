@@ -174,7 +174,7 @@ tr.sel td{background:rgba(17,120,101,.06)}
     <div class="tabs"><span class="tab on">Sources <span class="c">3</span></span><span class="tab">Dataset resolution <span class="c">7</span></span><span class="tab">OpenLineage in / out</span><span class="tab">Data model</span></div>
 
     <div class="grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
-      <div class="card kpi"><div class="l"><span data-i="plug" data-s="14"></span>External sources</div><div class="v num">3</div><div class="d">2 push · 1 OneLake drop folder</div></div>
+      <div class="card kpi"><div class="l"><span data-i="plug" data-s="14"></span>External sources</div><div class="v num">3</div><div class="d">3 OneLake drop folders · no inbound API</div></div>
       <div class="card kpi"><div class="l"><span data-i="activity" data-s="14"></span>OpenLineage events (7 d)</div><div class="v num">12 480</div><div class="d"><span style="color:var(--healthy)">▲ 8 %</span> · 0 rejected</div></div>
       <div class="card kpi"><div class="l"><span data-i="link" data-s="14"></span>Cross-platform edges</div><div class="v num">86</div><div class="d">41 land on Fabric items</div></div>
       <div class="card kpi"><div class="l"><span data-i="alert" data-s="14"></span>Datasets to resolve</div><div class="v num" style="color:var(--w-fg)">7</div><div class="d">3 ambiguous · 4 unmatched</div></div>
@@ -186,7 +186,7 @@ tr.sel td{background:rgba(17,120,101,.06)}
         <table>
           <tr><th>Source</th><th>Namespace</th><th>Ingestion</th><th>Last event</th><th>Datasets</th><th>Status</th></tr>
           <tr class="sel"><td><div class="row"><span class="sys" style="background:#0a66b1">SAS</span><div><b>SAS Viya – Risk</b><div class="s11 muted">Owner · risk-platform@contoso.com</div></div></div></td>
-            <td class="mono s12">sas://viya-prod/risk</td><td><span class="chip"><span data-i="globe" data-s="14"></span>HTTP · Entra ID</span></td><td class="s12">4 min ago</td><td class="num">23</td><td><span class="badge b-s"><span data-i="check" data-s="14"></span>Healthy</span></td></tr>
+            <td class="mono s12">sas://viya-prod/risk</td><td><span class="chip"><span data-i="folder" data-s="14"></span>Drop folder · SAS adapter</span></td><td class="s12">4 min ago</td><td class="num">23</td><td><span class="badge b-s"><span data-i="check" data-s="14"></span>Healthy</span></td></tr>
           <tr><td><div class="row"><span class="sys" style="background:#e5482f">DB</span><div><b>Databricks – Pricing</b><div class="s11 muted">Owner · data-eng@contoso.com</div></div></div></td>
             <td class="mono s12">databricks://adb-7421</td><td><span class="chip"><span data-i="folder" data-s="14"></span>OneLake drop folder</span></td><td class="s12">1 h ago</td><td class="num">12</td><td><span class="badge b-w">2 unresolved</span></td></tr>
           <tr><td><div class="row"><span class="sys" style="background:var(--teal)"><span data-i="spark" data-s="14"></span></span><div><b>Fabric Spark runtime</b><div class="s11 muted">Column lineage · OL Spark listener</div></div></div></td>
@@ -293,20 +293,19 @@ tr.sel td{background:rgba(17,120,101,.06)}
   <!-- ============ SCREEN 4 : IN / OUT ============ -->
   <section class="scr" data-s="4">
     <div class="ph"><div><h1>External lineage <span class="help">?</span></h1>
-      <div class="obj">One OpenLineage parser for every input; one exporter to publish Fabric lineage to Marquez, Purview or any OL consumer.</div></div></div>
+      <div class="obj">One OpenLineage parser for every input; Atlas pushes Fabric lineage out — it does not host an OpenLineage API.</div></div></div>
     <div class="tabs"><span class="tab">Sources <span class="c">3</span></span><span class="tab">Dataset resolution <span class="c">7</span></span><span class="tab on">OpenLineage in / out</span><span class="tab">Data model</span></div>
     <div class="grid" style="grid-template-columns:1fr 1fr">
       <div class="card">
         <div class="card-h"><span data-i="download" data-s="16" style="color:var(--up)"></span><h3>Inbound · receive events</h3><span class="badge b-s" style="margin-left:auto">Enabled</span></div>
         <div class="card-b">
-          <div class="field">HTTP endpoint (OpenLineage HTTP transport)</div>
-          <div class="input mono s12" style="margin-bottom:12px"><span style="flex:1">https://atlas-finance.contoso.app/api/v1/lineage</span><span data-i="copy" data-s="14"></span></div>
+          <div class="field">OneLake drop folder (NDJSON, one event per line)</div>
+          <div class="input mono s12" style="margin-bottom:12px"><span style="flex:1">lh_atlas/Files/openlineage/inbox/sas-viya-risk/</span><span data-i="copy" data-s="14"></span></div>
           <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-            <div><div class="field">Authentication</div><div class="input s12"><span data-i="key" data-s="14"></span>Entra ID · app role Lineage.Write</div></div>
+            <div><div class="field">Authentication</div><div class="input s12"><span data-i="key" data-s="14"></span>OneLake · Contributor on folder</div></div>
             <div><div class="field">Bound source</div><div class="input s12">SAS Viya – Risk</div></div>
           </div>
-          <div class="field">Or drop NDJSON files in OneLake</div>
-          <div class="input mono s12" style="margin-bottom:14px">lh_atlas/Files/openlineage/inbox/</div>
+          <div class="note" style="background:var(--i-bg);color:var(--i-fg);margin-bottom:14px"><span data-i="info" data-s="16"></span><div>No OpenLineage HTTP endpoint: the Rayfin backend cannot host one. Optional: an adapter can call the Atlas function with an Entra ID token.</div></div>
           <div class="field">Accepted event (SAS adapter → OpenLineage RunEvent)</div>
 <div class="code">{ <span class="k">"eventType"</span>: <span class="s">"COMPLETE"</span>,
   <span class="k">"eventTime"</span>: <span class="s">"2026-10-29T06:12:44Z"</span>,
@@ -328,8 +327,8 @@ tr.sel td{background:rgba(17,120,101,.06)}
           <div class="seg" style="margin-bottom:12px"><span class="on">JobEvent / DatasetEvent</span><span>Static snapshot</span></div>
           <div class="field">Destination</div>
           <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
-            <div style="border:2px solid var(--primary);border-radius:6px;padding:10px"><b class="s12">NDJSON in OneLake</b><div class="s11 muted mono">Files/openlineage/export/</div></div>
-            <div style="border:1px solid var(--border);border-radius:6px;padding:10px"><b class="s12">Marquez / OL endpoint</b><div class="s11 muted mono">https://marquez…/api/v1/lineage</div></div>
+            <div style="border:2px solid var(--primary);border-radius:6px;padding:10px"><b class="s12">NDJSON in OneLake</b><div class="s11 muted mono">Files/openlineage/outbox/</div></div>
+            <div style="border:1px solid var(--border);border-radius:6px;padding:10px"><b class="s12">Push to Marquez / OL endpoint</b><div class="s11 muted">Optional · needs outbound network</div></div>
           </div>
           <div class="note" style="background:var(--w-bg);color:var(--w-fg);margin-bottom:14px"><span data-i="alert" data-s="16"></span><div>Snapshot lineage is exported as <b>JobEvent / DatasetEvent</b> — no fake RunEvents. Real runs only for Spark jobs captured at runtime.</div></div>
           <div class="row" style="justify-content:flex-end;margin-bottom:14px"><span class="btn">Preview 214 events</span><span class="btn primary"><span data-i="upload" data-s="16"></span>Export</span></div>
@@ -486,7 +485,7 @@ if(s===3){
 
 if(s===5){
   const T=[
-   ["ExternalSystem","var(--ext)",30,30,[["SystemId","pk","guid"],["Name","","nvarchar"],["Namespace","","nvarchar"],["Ingestion","","http|folder"],["OwnerUpn","","nvarchar"]]],
+   ["ExternalSystem","var(--ext)",30,30,[["SystemId","pk","guid"],["Name","","nvarchar"],["Namespace","","nvarchar"],["Ingestion","","folder|upload"],["OwnerUpn","","nvarchar"]]],
    ["OpenLineageBatch","var(--ext)",30,250,[["BatchId","pk","guid"],["SystemId","fk","guid"],["ReceivedAt","","datetime2"],["EventCount","","int"],["Status","","varchar"]]],
    ["OpenLineageEvent","var(--ext)",30,465,[["EventId","pk","guid"],["BatchId","fk","guid"],["RunId · EventType","",""],["Payload (trimmed)","","json"]]],
    ["ExternalDataset","var(--purple)",340,30,[["DatasetId","pk","hash(ns,name)"],["Namespace · Name","","nvarchar"],["FabricItemId","fk","guid?"],["State","","matched|ambiguous|…"],["Evidence","","varchar"]]],
