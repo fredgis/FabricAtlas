@@ -8,7 +8,7 @@ release tag was published.
 
 ## [Unreleased]
 
-## [2.7.0] - 2026-10-29
+## [2.6.5] - 2026-10-29
 
 ### Added
 

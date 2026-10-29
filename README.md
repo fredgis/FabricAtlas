@@ -132,7 +132,7 @@ Fabric Atlas collects that metadata without copying business data.
 
 ## Capabilities
 
-| Area | Included in Fabric Atlas 2.7 |
+| Area | Included in Fabric Atlas 2.6.5 |
 |---|---|
 | Workspaces and sync | Shared workspace scope, independent validated snapshots, persisted per-workspace run status, active-workspace switching, staged progress and last-known-good fallback |
 | Catalog and search | Item Catalog with facets and tag scope, Collection status with the reason for each missing section (for example schema-enabled Lakehouses, whose tables come only from the SQL analytics endpoint), alphabetized Asset Catalog, `Ctrl+K` search with description snippets, Request access link, SQL/KQL/semantic/Ontology 2.0/graph/Data Agent inventory |

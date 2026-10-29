@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.7.0";
+  "2.6.5";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -57,7 +57,7 @@ export function sameDeploymentGeneration(
 
 export const RELEASES: AtlasRelease[] = [
   {
-    version: "2.7.0",
+    version: "2.6.5",
     date: "2026-10-29",
     title: "External lineage (OpenLineage)",
     sections: [
