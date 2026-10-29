@@ -166,15 +166,15 @@ tr.sel td{background:rgba(17,120,101,.06)}
   </header>
   <div class="canvas">
 
-  <!-- ============ SCREEN 1 : SOURCES ============ -->
+  <!-- ============ SCREEN 1 : PRODUCERS ============ -->
   <section class="scr" data-s="1">
     <div class="ph"><div><h1>External lineage <span class="help">?</span></h1>
       <div class="obj">Bring lineage from other data platforms into Atlas through OpenLineage — and publish Fabric lineage back out.</div></div>
-      <div class="toolbar"><span class="btn"><span data-i="upload" data-s="16"></span>Upload events</span><span class="btn primary"><span data-i="plus" data-s="16"></span>Add source</span></div></div>
-    <div class="tabs"><span class="tab on">Sources <span class="c">3</span></span><span class="tab">Dataset resolution <span class="c">7</span></span><span class="tab">OpenLineage in / out</span><span class="tab">Data model</span></div>
+      <div class="toolbar"><span class="btn"><span data-i="upload" data-s="16"></span>Upload events</span><span class="btn primary"><span data-i="copy" data-s="16"></span>Copy drop folder path</span></div></div>
+    <div class="tabs"><span class="tab on">Producers <span class="c">3</span></span><span class="tab">Dataset resolution <span class="c">7</span></span><span class="tab">OpenLineage in / out</span><span class="tab">Data model</span></div>
 
     <div class="grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
-      <div class="card kpi"><div class="l"><span data-i="plug" data-s="14"></span>External sources</div><div class="v num">3</div><div class="d">3 OneLake drop folders · no inbound API</div></div>
+      <div class="card kpi"><div class="l"><span data-i="plug" data-s="14"></span>OpenLineage producers</div><div class="v num">3</div><div class="d">Auto-detected from namespaces · no setup</div></div>
       <div class="card kpi"><div class="l"><span data-i="activity" data-s="14"></span>OpenLineage events (7 d)</div><div class="v num">12 480</div><div class="d"><span style="color:var(--healthy)">▲ 8 %</span> · 0 rejected</div></div>
       <div class="card kpi"><div class="l"><span data-i="link" data-s="14"></span>Cross-platform edges</div><div class="v num">86</div><div class="d">41 land on Fabric items</div></div>
       <div class="card kpi"><div class="l"><span data-i="alert" data-s="14"></span>Datasets to resolve</div><div class="v num" style="color:var(--w-fg)">7</div><div class="d">3 ambiguous · 4 unmatched</div></div>
@@ -182,14 +182,14 @@ tr.sel td{background:rgba(17,120,101,.06)}
 
     <div class="grid" style="grid-template-columns:1.65fr 1fr">
       <div class="card">
-        <div class="card-h"><h3>Connected sources</h3><span class="sub">· events are kept outside the Fabric snapshot and merged at read time</span></div>
+        <div class="card-h"><h3>Detected producers</h3><span class="sub">· anything that writes OpenLineage to the drop folder · no per-platform connector</span></div>
         <table>
-          <tr><th>Source</th><th>Namespace</th><th>Ingestion</th><th>Last event</th><th>Datasets</th><th>Status</th></tr>
-          <tr class="sel"><td><div class="row"><span class="sys" style="background:#0a66b1">SAS</span><div><b>SAS Viya – Risk</b><div class="s11 muted">Owner · risk-platform@contoso.com</div></div></div></td>
-            <td class="mono s12">sas://viya-prod/risk</td><td><span class="chip"><span data-i="folder" data-s="14"></span>Drop folder · SAS adapter</span></td><td class="s12">4 min ago</td><td class="num">23</td><td><span class="badge b-s"><span data-i="check" data-s="14"></span>Healthy</span></td></tr>
-          <tr><td><div class="row"><span class="sys" style="background:#e5482f">DB</span><div><b>Databricks – Pricing</b><div class="s11 muted">Owner · data-eng@contoso.com</div></div></div></td>
+          <tr><th>Producer</th><th>Namespace</th><th>Format</th><th>Last event</th><th>Datasets</th><th>Status</th></tr>
+          <tr class="sel"><td><div class="row"><span class="sys" style="background:#0a66b1">SAS</span><div><b>SAS Viya – Risk</b><div class="s11 muted">First seen 12 Oct · auto-detected</div></div></div></td>
+            <td class="mono s12">sas://viya-prod/risk</td><td><span class="chip">OpenLineage 2-0-2</span></td><td class="s12">4 min ago</td><td class="num">23</td><td><span class="badge b-s"><span data-i="check" data-s="14"></span>Healthy</span></td></tr>
+          <tr><td><div class="row"><span class="sys" style="background:#e5482f">DB</span><div><b>Databricks – Pricing</b><div class="s11 muted">First seen 3 Oct · auto-detected</div></div></div></td>
             <td class="mono s12">databricks://adb-7421</td><td><span class="chip"><span data-i="folder" data-s="14"></span>OneLake drop folder</span></td><td class="s12">1 h ago</td><td class="num">12</td><td><span class="badge b-w">2 unresolved</span></td></tr>
-          <tr><td><div class="row"><span class="sys" style="background:var(--teal)"><span data-i="spark" data-s="14"></span></span><div><b>Fabric Spark runtime</b><div class="s11 muted">Column lineage · OL Spark listener</div></div></div></td>
+          <tr><td><div class="row"><span class="sys" style="background:var(--teal)"><span data-i="spark" data-s="14"></span></span><div><b>Fabric Spark runtime</b><div class="s11 muted">Column lineage · native emitter</div></div></div></td>
             <td class="mono s12">abfss://…onelake…</td><td><span class="chip"><span data-i="folder" data-s="14"></span>Files/openlineage/</span></td><td class="s12">12 min ago</td><td class="num">51</td><td><span class="badge b-s"><span data-i="check" data-s="14"></span>Healthy</span></td></tr>
         </table>
       </div>
@@ -202,7 +202,7 @@ tr.sel td{background:rgba(17,120,101,.06)}
           <tr><td class="s12">Yesterday 22:15</td><td class="num">98</td><td class="num">3</td><td><span class="badge b-w">5 dup. skipped</span></td></tr>
           <tr><td class="s12">Yesterday 18:00</td><td class="num">0</td><td class="num">0</td><td><span class="badge b-d">Schema invalid</span></td></tr>
         </table>
-        <div class="card-b" style="padding-top:10px"><div class="note" style="background:var(--i-bg);color:var(--i-fg)"><span data-i="info" data-s="16"></span><div>Only facts carried by the events are stored. Atlas never invents runs, owners or columns for external systems.</div></div></div>
+        <div class="card-b" style="padding-top:10px"><div class="note" style="background:var(--i-bg);color:var(--i-fg)"><span data-i="info" data-s="16"></span><div>Atlas only speaks OpenLineage. Producing valid events is the producer's job; Atlas stores only the facts they carry and never invents runs or columns.</div></div></div>
       </div>
     </div>
   </section>
@@ -212,7 +212,7 @@ tr.sel td{background:rgba(17,120,101,.06)}
     <div class="ph"><div><h1>External lineage <span class="help">?</span></h1>
       <div class="obj">Bind external datasets to Fabric items only on explicit evidence — OneLake path, SQL endpoint host or an admin rule.</div></div>
       <div class="toolbar"><span class="seg"><span class="on">All 32</span><span>Matched 25</span><span>Ambiguous 3</span><span>External 4</span></span><span class="btn primary"><span data-i="plus" data-s="16"></span>Mapping rule</span></div></div>
-    <div class="tabs"><span class="tab">Sources <span class="c">3</span></span><span class="tab on">Dataset resolution <span class="c">7</span></span><span class="tab">OpenLineage in / out</span><span class="tab">Data model</span></div>
+    <div class="tabs"><span class="tab">Producers <span class="c">3</span></span><span class="tab on">Dataset resolution <span class="c">7</span></span><span class="tab">OpenLineage in / out</span><span class="tab">Data model</span></div>
     <div class="grid" style="grid-template-columns:1fr 340px">
       <div class="card">
         <table>
@@ -264,7 +264,7 @@ tr.sel td{background:rgba(17,120,101,.06)}
         <div class="card-b">
           <dl class="kv">
             <dt>Job</dt><dd><b>risk.score_customers</b><div class="s11 muted mono">sas://viya-prod/risk</div></dd>
-            <dt>Producer</dt><dd class="s12 mono">sas-viya-ol-adapter/1.0</dd>
+            <dt>Producer</dt><dd class="s12 mono">sas://viya-prod/risk</dd>
             <dt>Last run</dt><dd><span class="badge b-s">COMPLETE</span> <span class="s12">today 06:12 · 4 m 31 s</span></dd>
             <dt>Run id</dt><dd class="mono s11">0198d4f2-…-7c1e</dd>
             <dt>Target</dt><dd><div class="row"><span data-i="db" data-s="14" style="color:var(--o-table)"></span>lh_bronze.risk_scores</div><span class="badge b-cert" style="margin-top:4px">Certified</span></dd>
@@ -284,7 +284,7 @@ tr.sel td{background:rgba(17,120,101,.06)}
           <div class="row s12" style="justify-content:space-between"><span>Fabric items</span><b class="num" style="color:var(--down)">6</b></div>
           <div class="row s12" style="justify-content:space-between;margin-top:4px"><span>Workspaces</span><b class="num" style="color:var(--down)">3</b></div>
           <div class="row s12" style="justify-content:space-between;margin-top:4px"><span>Reports</span><b class="num" style="color:var(--down)">1</b></div>
-          <div class="note" style="background:var(--i-bg);color:var(--i-fg);margin-top:14px"><span data-i="info" data-s="16"></span><div>Stored in <span class="mono">ExternalLineageEdge</span>, merged with the snapshot at read time. Removing the source removes the edge.</div></div>
+          <div class="note" style="background:var(--i-bg);color:var(--i-fg);margin-top:14px"><span data-i="info" data-s="16"></span><div>Stored in <span class="mono">ExternalLineageEdge</span>, merged with the snapshot at read time. Purging a producer removes its edges.</div></div>
         </div>
       </div>
     </div>
@@ -294,7 +294,7 @@ tr.sel td{background:rgba(17,120,101,.06)}
   <section class="scr" data-s="4">
     <div class="ph"><div><h1>External lineage <span class="help">?</span></h1>
       <div class="obj">One OpenLineage parser for every input; Atlas pushes Fabric lineage out — it does not host an OpenLineage API.</div></div></div>
-    <div class="tabs"><span class="tab">Sources <span class="c">3</span></span><span class="tab">Dataset resolution <span class="c">7</span></span><span class="tab on">OpenLineage in / out</span><span class="tab">Data model</span></div>
+    <div class="tabs"><span class="tab">Producers <span class="c">3</span></span><span class="tab">Dataset resolution <span class="c">7</span></span><span class="tab on">OpenLineage in / out</span><span class="tab">Data model</span></div>
     <div class="grid" style="grid-template-columns:1fr 1fr">
       <div class="card">
         <div class="card-h"><span data-i="download" data-s="16" style="color:var(--up)"></span><h3>Inbound · receive events</h3><span class="badge b-s" style="margin-left:auto">Enabled</span></div>
@@ -303,10 +303,10 @@ tr.sel td{background:rgba(17,120,101,.06)}
           <div class="input mono s12" style="margin-bottom:12px"><span style="flex:1">lh_atlas/Files/openlineage/inbox/sas-viya-risk/</span><span data-i="copy" data-s="14"></span></div>
           <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
             <div><div class="field">Authentication</div><div class="input s12"><span data-i="key" data-s="14"></span>OneLake · Contributor on folder</div></div>
-            <div><div class="field">Bound source</div><div class="input s12">SAS Viya – Risk</div></div>
+            <div><div class="field">Accepted spec</div><div class="input s12">OpenLineage 2-0-x · NDJSON</div></div>
           </div>
-          <div class="note" style="background:var(--i-bg);color:var(--i-fg);margin-bottom:14px"><span data-i="info" data-s="16"></span><div>No OpenLineage HTTP endpoint: the Rayfin backend cannot host one. Optional: an adapter can call the Atlas function with an Entra ID token.</div></div>
-          <div class="field">Accepted event (SAS adapter → OpenLineage RunEvent)</div>
+          <div class="note" style="background:var(--i-bg);color:var(--i-fg);margin-bottom:14px"><span data-i="info" data-s="16"></span><div>One contract for everyone: valid OpenLineage events in this folder. No per-platform connector, no HTTP endpoint. Platforms that don't emit OpenLineage convert on their side.</div></div>
+          <div class="field">Accepted event (OpenLineage RunEvent)</div>
 <div class="code">{ <span class="k">"eventType"</span>: <span class="s">"COMPLETE"</span>,
   <span class="k">"eventTime"</span>: <span class="s">"2026-10-29T06:12:44Z"</span>,
   <span class="k">"run"</span>: { <span class="k">"runId"</span>: <span class="s">"0198d4f2-…-7c1e"</span> },
@@ -346,7 +346,7 @@ tr.sel td{background:rgba(17,120,101,.06)}
   <section class="scr" data-s="5">
     <div class="ph"><div><h1>External lineage <span class="help">?</span></h1>
       <div class="obj">Dedicated tables, outside the snapshot. Read path = snapshot edges ∪ external edges.</div></div></div>
-    <div class="tabs"><span class="tab">Sources <span class="c">3</span></span><span class="tab">Dataset resolution <span class="c">7</span></span><span class="tab">OpenLineage in / out</span><span class="tab on">Data model</span></div>
+    <div class="tabs"><span class="tab">Producers <span class="c">3</span></span><span class="tab">Dataset resolution <span class="c">7</span></span><span class="tab">OpenLineage in / out</span><span class="tab on">Data model</span></div>
     <div class="card" style="position:relative;height:640px;overflow:hidden" id="erd">
       <svg id="erdedges" style="position:absolute;inset:0;width:100%;height:100%;z-index:1"></svg>
     </div>
@@ -438,7 +438,7 @@ if(s===3){
 
 /* ---------- interactions ---------- */
 const go=n=>{location.search='?s='+n};
-const TABMAP={"Sources":1,"Dataset resolution":2,"OpenLineage in / out":4,"Data model":5};
+const TABMAP={"Producers":1,"Dataset resolution":2,"OpenLineage in / out":4,"Data model":5};
 document.querySelectorAll('.tab').forEach(t=>{const k=Object.keys(TABMAP).find(x=>t.textContent.trim().startsWith(x));
   t.style.cursor='pointer';
   t.onclick=()=>{if(k)go(TABMAP[k]);else{t.parentElement.querySelectorAll('.tab').forEach(o=>o.classList.remove('on'));t.classList.add('on')}}});
@@ -485,7 +485,7 @@ if(s===3){
 
 if(s===5){
   const T=[
-   ["ExternalSystem","var(--ext)",30,30,[["SystemId","pk","guid"],["Name","","nvarchar"],["Namespace","","nvarchar"],["Ingestion","","folder|upload"],["OwnerUpn","","nvarchar"]]],
+   ["ExternalSystem","var(--ext)",30,30,[["SystemId","pk","guid"],["Namespace","","nvarchar"],["DisplayName","","nvarchar"],["FirstSeenAt","","datetime2"],["LastEventAt","","datetime2"]]],
    ["OpenLineageBatch","var(--ext)",30,250,[["BatchId","pk","guid"],["SystemId","fk","guid"],["ReceivedAt","","datetime2"],["EventCount","","int"],["Status","","varchar"]]],
    ["OpenLineageEvent","var(--ext)",30,465,[["EventId","pk","guid"],["BatchId","fk","guid"],["RunId · EventType","",""],["Payload (trimmed)","","json"]]],
    ["ExternalDataset","var(--purple)",340,30,[["DatasetId","pk","hash(ns,name)"],["Namespace · Name","","nvarchar"],["FabricItemId","fk","guid?"],["State","","matched|ambiguous|…"],["Evidence","","varchar"]]],
