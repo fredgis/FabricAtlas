@@ -8,6 +8,16 @@ release tag was published.
 
 ## [Unreleased]
 
+## [2.7.0] - 2026-10-29
+
+### Added
+
+- External lineage page: manual import of OpenLineage files (`.json` or `.ndjson`; RunEvent, JobEvent and DatasetEvent; 20 MB, 50 000 events and 5 000 datasets per file), with per-file status, counts and reject reasons. Re-importing a file with the same name replaces its edges.
+- Link to Fabric: datasets on a OneLake path of the current workspace link automatically by exact path; administrators link the others to a Fabric item or mark them External. Manual links survive re-imports.
+- Map & lineage: External lineage switch with an "External · OpenLineage" lane; impact analysis crosses the Fabric boundary in both directions.
+- Download OpenLineage (External lineage and Map): NDJSON export of the workspace or the map selection, one JobEvent per job and one DatasetEvent per dataset item, with OneLake `abfss://` names and optional linked external edges with column lineage.
+- New Rayfin entities `OpenLineageImport`, `ExternalDataset` and `ExternalLineageEdge`. See [External lineage](docs/external-lineage.md).
+
 ## [2.6.4] - 2026-10-28
 
 ### Added

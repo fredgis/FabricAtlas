@@ -132,11 +132,11 @@ Fabric Atlas collects that metadata without copying business data.
 
 ## Capabilities
 
-| Area | Included in Fabric Atlas 2.6 |
+| Area | Included in Fabric Atlas 2.7 |
 |---|---|
 | Workspaces and sync | Shared workspace scope, independent validated snapshots, persisted per-workspace run status, active-workspace switching, staged progress and last-known-good fallback |
 | Catalog and search | Item Catalog with facets and tag scope, Collection status with the reason for each missing section (for example schema-enabled Lakehouses, whose tables come only from the SQL analytics endpoint), alphabetized Asset Catalog, `Ctrl+K` search with description snippets, Request access link, SQL/KQL/semantic/Ontology 2.0/graph/Data Agent inventory |
-| Lineage and impact | Trusted Atlas graph, connected type-filter context, stable Impact mode, Item Relations Preview, Evidence, Changes, X-Ray, notebook and semantic object lineage, and exportable impact reports |
+| Lineage and impact | Trusted Atlas graph, connected type-filter context, stable Impact mode, Item Relations Preview, Evidence, Changes, X-Ray, notebook and semantic object lineage, exportable impact reports, and [external lineage](docs/external-lineage.md): OpenLineage import, link to Fabric items and NDJSON export |
 | Governance | Findings with Fix in Fabric links, Why panel and priority score, My items, OneLake catalog pillars (Health, Protect, Trust), JSON and snapshot export, Teams Adaptive Card and optional webhook, Fabric domain names, filter and per-domain posture, tenant settings drift, a closed six-pillar Governance Radar, snapshot comparison, history, item-family Coverage, posture targets, Policies & AI, read-only Fabric policies and optional AI description suggestions |
 | Access | Effective recorded access, principal type and role filters, OneLake data access roles (RLS/CLS), sensitive external shares, personal decisions, What-if simulation and evidence-based departure packs |
 | Operations | Job history, observed incidents, inferred downstream impact, Full or Incremental sync (one shared choice; a notice explains when a full scan is required because this browser holds no previous full snapshot or the 7-day full rescan is due), rescanned/reused counts and real run duration, Open in Fabric cards for Govern and Admin monitoring, configuration and team notes |
@@ -619,6 +619,7 @@ original Microsoft copyright headers. See [NOTICE](NOTICE).
 - [Installation](docs/installation.md)
 - [Architecture](docs/architecture.md)
 - [Data model](docs/data-model.md)
+- [External lineage (OpenLineage)](docs/external-lineage.md)
 - [Power BI metadata replacement and blocker](docs/powerbi-scanner-replacement.md)
 - [Optional Power BI scanner Secret Store setup](docs/powerbi-scanner-secret-store.md)
 - [Security policy](.github/SECURITY.md)
