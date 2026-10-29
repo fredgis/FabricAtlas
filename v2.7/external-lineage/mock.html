@@ -166,77 +166,75 @@ tr.sel td{background:rgba(17,120,101,.06)}
   </header>
   <div class="canvas">
 
-  <!-- ============ SCREEN 1 : PRODUCERS ============ -->
+  <!-- ============ SCREEN 1 : IMPORTS ============ -->
   <section class="scr" data-s="1">
     <div class="ph"><div><h1>External lineage <span class="help">?</span></h1>
-      <div class="obj">Bring lineage from other data platforms into Atlas through OpenLineage — and publish Fabric lineage back out.</div></div>
-      <div class="toolbar"><span class="btn"><span data-i="upload" data-s="16"></span>Upload events</span><span class="btn primary"><span data-i="copy" data-s="16"></span>Copy drop folder path</span></div></div>
-    <div class="tabs"><span class="tab on">Producers <span class="c">3</span></span><span class="tab">Dataset resolution <span class="c">7</span></span><span class="tab">OpenLineage in / out</span><span class="tab">Data model</span></div>
+      <div class="obj">Import OpenLineage files from other platforms and link their datasets to Fabric items. Manual, on demand — no automation in v1.</div></div>
+      <div class="toolbar"><span class="btn primary" id="imp"><span data-i="upload" data-s="16"></span>Import OpenLineage file</span></div></div>
+    <div class="tabs"><span class="tab on">Imports <span class="c">3</span></span><span class="tab">Link to Fabric <span class="c">7</span></span><span class="tab">File format</span><span class="tab">Data model</span></div>
 
     <div class="grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
-      <div class="card kpi"><div class="l"><span data-i="plug" data-s="14"></span>OpenLineage producers</div><div class="v num">3</div><div class="d">Auto-detected from namespaces · no setup</div></div>
-      <div class="card kpi"><div class="l"><span data-i="activity" data-s="14"></span>OpenLineage events (7 d)</div><div class="v num">12 480</div><div class="d"><span style="color:var(--healthy)">▲ 8 %</span> · 0 rejected</div></div>
-      <div class="card kpi"><div class="l"><span data-i="link" data-s="14"></span>Cross-platform edges</div><div class="v num">86</div><div class="d">41 land on Fabric items</div></div>
-      <div class="card kpi"><div class="l"><span data-i="alert" data-s="14"></span>Datasets to resolve</div><div class="v num" style="color:var(--w-fg)">7</div><div class="d">3 ambiguous · 4 unmatched</div></div>
+      <div class="card kpi"><div class="l"><span data-i="folder" data-s="14"></span>Imported files</div><div class="v num">3</div><div class="d">1 rejected · last import today</div></div>
+      <div class="card kpi"><div class="l"><span data-i="globe" data-s="14"></span>External datasets</div><div class="v num">32</div><div class="d">SAS · Oracle · Databricks</div></div>
+      <div class="card kpi"><div class="l"><span data-i="link" data-s="14"></span>Linked to Fabric</div><div class="v num">25</div><div class="d">86 cross-platform edges on the map</div></div>
+      <div class="card kpi"><div class="l"><span data-i="alert" data-s="14"></span>To link</div><div class="v num" style="color:var(--w-fg)">7</div><div class="d">Pick the Fabric item by hand</div></div>
     </div>
 
     <div class="grid" style="grid-template-columns:1.65fr 1fr">
       <div class="card">
-        <div class="card-h"><h3>Detected producers</h3><span class="sub">· anything that writes OpenLineage to the drop folder · no per-platform connector</span></div>
+        <div class="card-h"><h3>Imported files</h3><span class="sub">· stored outside the Fabric snapshot and merged at read time</span></div>
         <table>
-          <tr><th>Producer</th><th>Namespace</th><th>Format</th><th>Last event</th><th>Datasets</th><th>Status</th></tr>
-          <tr class="sel"><td><div class="row"><span class="sys" style="background:#0a66b1">SAS</span><div><b>SAS Viya – Risk</b><div class="s11 muted">First seen 12 Oct · auto-detected</div></div></div></td>
-            <td class="mono s12">sas://viya-prod/risk</td><td><span class="chip">OpenLineage 2-0-2</span></td><td class="s12">4 min ago</td><td class="num">23</td><td><span class="badge b-s"><span data-i="check" data-s="14"></span>Healthy</span></td></tr>
-          <tr><td><div class="row"><span class="sys" style="background:#e5482f">DB</span><div><b>Databricks – Pricing</b><div class="s11 muted">First seen 3 Oct · auto-detected</div></div></div></td>
-            <td class="mono s12">databricks://adb-7421</td><td><span class="chip"><span data-i="folder" data-s="14"></span>OneLake drop folder</span></td><td class="s12">1 h ago</td><td class="num">12</td><td><span class="badge b-w">2 unresolved</span></td></tr>
-          <tr><td><div class="row"><span class="sys" style="background:var(--teal)"><span data-i="spark" data-s="14"></span></span><div><b>Fabric Spark runtime</b><div class="s11 muted">Column lineage · native emitter</div></div></div></td>
-            <td class="mono s12">abfss://…onelake…</td><td><span class="chip"><span data-i="folder" data-s="14"></span>Files/openlineage/</span></td><td class="s12">12 min ago</td><td class="num">51</td><td><span class="badge b-s"><span data-i="check" data-s="14"></span>Healthy</span></td></tr>
+          <tr><th>File</th><th>Imported by</th><th>Events</th><th>Datasets</th><th>Result</th><th></th></tr>
+          <tr class="sel"><td><div class="row"><span class="sys" style="background:#0a66b1">SAS</span><div><b class="mono s12">sas_risk_2026-10-28.ndjson</b><div class="s11 muted">sas://viya-prod/risk · today 09:42</div></div></div></td>
+            <td class="s12">frgisber</td><td class="num">412</td><td class="num">23</td><td><span class="badge b-w">5 to link</span></td><td><span class="btn sm">Replace</span></td></tr>
+          <tr><td><div class="row"><span class="sys" style="background:#e5482f">DB</span><div><b class="mono s12">pricing_lineage.json</b><div class="s11 muted">databricks://adb-7421 · 21 Oct</div></div></div></td>
+            <td class="s12">data-eng</td><td class="num">96</td><td class="num">9</td><td><span class="badge b-w">2 to link</span></td><td><span class="btn sm">Replace</span></td></tr>
+          <tr><td><div class="row"><span class="sys" style="background:#8a8886">?</span><div><b class="mono s12">export_lineage_v1.json</b><div class="s11 muted">— · 20 Oct</div></div></div></td>
+            <td class="s12">frgisber</td><td class="num">0</td><td class="num">0</td><td><span class="badge b-d">Not OpenLineage</span></td><td><span class="btn sm">Delete</span></td></tr>
         </table>
       </div>
       <div class="card">
-        <div class="card-h"><h3>Recent batches</h3><span class="sub">· SAS Viya – Risk</span></div>
-        <table>
-          <tr><th>Received</th><th>Events</th><th>Runs</th><th>Result</th></tr>
-          <tr><td class="s12">Today 09:42</td><td class="num">412</td><td class="num">18</td><td><span class="badge b-s">Accepted</span></td></tr>
-          <tr><td class="s12">Today 06:00</td><td class="num">1 106</td><td class="num">44</td><td><span class="badge b-s">Accepted</span></td></tr>
-          <tr><td class="s12">Yesterday 22:15</td><td class="num">98</td><td class="num">3</td><td><span class="badge b-w">5 dup. skipped</span></td></tr>
-          <tr><td class="s12">Yesterday 18:00</td><td class="num">0</td><td class="num">0</td><td><span class="badge b-d">Schema invalid</span></td></tr>
-        </table>
-        <div class="card-b" style="padding-top:10px"><div class="note" style="background:var(--i-bg);color:var(--i-fg)"><span data-i="info" data-s="16"></span><div>Atlas only speaks OpenLineage. Producing valid events is the producer's job; Atlas stores only the facts they carry and never invents runs or columns.</div></div></div>
+        <div class="card-h"><h3>Import a file</h3></div>
+        <div class="card-b">
+          <div id="drop" style="border:2px dashed var(--input);border-radius:8px;padding:26px 16px;text-align:center;margin-bottom:14px">
+            <span data-i="upload" data-s="26" style="color:var(--primary)"></span>
+            <div style="margin-top:8px"><b>Drop an OpenLineage file</b> or <span style="color:var(--primary);text-decoration:underline">browse</span></div>
+            <div class="s11 muted" style="margin-top:4px">.json or .ndjson · RunEvent / JobEvent / DatasetEvent · max 20 MB</div>
+          </div>
+          <div class="note" style="background:var(--i-bg);color:var(--i-fg)"><span data-i="info" data-s="16"></span><div>Atlas only reads standard OpenLineage. Getting the file out of SAS or any other platform is up to that platform. Re-importing a file replaces its edges; deleting it removes them.</div></div>
+        </div>
       </div>
     </div>
   </section>
 
-  <!-- ============ SCREEN 2 : RESOLUTION ============ -->
+  <!-- ============ SCREEN 2 : LINK TO FABRIC ============ -->
   <section class="scr" data-s="2">
     <div class="ph"><div><h1>External lineage <span class="help">?</span></h1>
-      <div class="obj">Bind external datasets to Fabric items only on explicit evidence — OneLake path, SQL endpoint host or an admin rule.</div></div>
-      <div class="toolbar"><span class="seg"><span class="on">All 32</span><span>Matched 25</span><span>Ambiguous 3</span><span>External 4</span></span><span class="btn primary"><span data-i="plus" data-s="16"></span>Mapping rule</span></div></div>
-    <div class="tabs"><span class="tab">Producers <span class="c">3</span></span><span class="tab on">Dataset resolution <span class="c">7</span></span><span class="tab">OpenLineage in / out</span><span class="tab">Data model</span></div>
+      <div class="obj">Link each external dataset to the Fabric item it feeds or reads. Exact OneLake paths link automatically; everything else is picked by hand.</div></div>
+      <div class="toolbar"><span class="seg"><span class="on">All 32</span><span>Linked 25</span><span>To link 7</span><span>External 4</span></span></div></div>
+    <div class="tabs"><span class="tab">Imports <span class="c">3</span></span><span class="tab on">Link to Fabric <span class="c">7</span></span><span class="tab">File format</span><span class="tab">Data model</span></div>
     <div class="grid" style="grid-template-columns:1fr 340px">
       <div class="card">
         <table>
-          <tr><th>OpenLineage dataset (namespace · name)</th><th>Fabric item</th><th>Evidence</th><th>State</th><th></th></tr>
-          <tr><td><div class="mono s12">abfss://finance-bronze@onelake…</div><b class="s12">lh_bronze/Tables/risk_scores</b></td><td><div class="row"><span data-i="db" data-s="16" style="color:var(--o-table)"></span>lh_bronze.risk_scores</div><div class="s11 muted">Finance-Bronze · Lakehouse</div></td><td><span class="chip">OneLake path</span></td><td><span class="badge b-s">Matched · certain</span></td><td></td></tr>
-          <tr><td><div class="mono s12">mssql://x6ey…datawarehouse.fabric.microsoft.com</div><b class="s12">dw_gold.dbo.fact_exposure</b></td><td><div class="row"><span data-i="db" data-s="16" style="color:var(--o-table)"></span>dw_gold.fact_exposure</div><div class="s11 muted">Finance-Gold · Warehouse</div></td><td><span class="chip">SQL endpoint host</span></td><td><span class="badge b-s">Matched · certain</span></td><td></td></tr>
-          <tr class="sel"><td><div class="mono s12">sas://viya-prod/risk</div><b class="s12">RISKLIB.CUSTOMER_PD</b></td><td><div class="s12 muted">2 candidates</div><div class="s11">lh_silver.customer_pd · lh_gold.customer_pd</div></td><td><span class="chip">Name only</span></td><td><span class="badge b-w">Ambiguous</span></td><td><span class="btn sm">Resolve</span></td></tr>
-          <tr><td><div class="mono s12">sas://viya-prod/risk</div><b class="s12">RISKLIB.MODEL_INPUT</b></td><td><span class="ext-pill">External · SAS</span></td><td class="s12 muted">—</td><td><span class="badge b-i">External</span></td><td></td></tr>
-          <tr><td><div class="mono s12">oracle://core-bank:1521</div><b class="s12">CBS.LOANS</b></td><td><span class="ext-pill">External · Oracle</span></td><td class="s12 muted">—</td><td><span class="badge b-i">External</span></td><td></td></tr>
-          <tr><td><div class="mono s12">databricks://adb-7421</div><b class="s12">pricing.curves_tmp</b></td><td class="s12 muted">—</td><td class="s12 muted">Rule: *_tmp</td><td><span class="badge b-m">Ignored</span></td><td></td></tr>
-          <tr><td><div class="mono s12">s3://contoso-legacy</div><b class="s12">exports/limits.csv</b></td><td class="s12 muted">—</td><td class="s12 muted">Outside tenant</td><td><span class="badge b-m">Out of scope</span></td><td></td></tr>
+          <tr><th>OpenLineage dataset (namespace · name)</th><th>Fabric item</th><th>How</th><th>State</th><th></th></tr>
+          <tr><td><div class="mono s12">abfss://finance-bronze@onelake…</div><b class="s12">lh_bronze/Tables/risk_scores</b></td><td><div class="row"><span data-i="db" data-s="16" style="color:var(--o-table)"></span>lh_bronze.risk_scores</div><div class="s11 muted">Finance-Bronze · Lakehouse</div></td><td><span class="chip">Exact OneLake path</span></td><td><span class="badge b-s">Linked</span></td><td></td></tr>
+          <tr><td><div class="mono s12">mssql://x6ey…datawarehouse.fabric.microsoft.com</div><b class="s12">dw_gold.dbo.fact_exposure</b></td><td><div class="row"><span data-i="db" data-s="16" style="color:var(--o-table)"></span>dw_gold.fact_exposure</div><div class="s11 muted">Finance-Gold · Warehouse</div></td><td><span class="chip">Picked by frgisber</span></td><td><span class="badge b-s">Linked</span></td><td><span class="btn sm">Unlink</span></td></tr>
+          <tr class="sel"><td><div class="mono s12">sas://viya-prod/risk</div><b class="s12">RISKLIB.CUSTOMER_PD</b></td><td class="s12 muted">—</td><td class="s12 muted">—</td><td><span class="badge b-w">To link</span></td><td><span class="btn sm">Link</span></td></tr>
+          <tr><td><div class="mono s12">sas://viya-prod/risk</div><b class="s12">RISKLIB.LIMITS</b></td><td class="s12 muted">—</td><td class="s12 muted">—</td><td><span class="badge b-w">To link</span></td><td><span class="btn sm">Link</span></td></tr>
+          <tr><td><div class="mono s12">sas://viya-prod/risk</div><b class="s12">RISKLIB.MODEL_INPUT</b></td><td><span class="ext-pill">External · SAS</span></td><td class="s12 muted">Stays outside Fabric</td><td><span class="badge b-i">External</span></td><td></td></tr>
+          <tr><td><div class="mono s12">oracle://core-bank:1521</div><b class="s12">CBS.LOANS</b></td><td><span class="ext-pill">External · Oracle</span></td><td class="s12 muted">Stays outside Fabric</td><td><span class="badge b-i">External</span></td><td></td></tr>
         </table>
       </div>
       <div class="card">
-        <div class="card-h"><h3>Resolve RISKLIB.CUSTOMER_PD</h3></div>
+        <div class="card-h"><h3>Link RISKLIB.CUSTOMER_PD</h3></div>
         <div class="card-b">
-          <div class="note" style="background:var(--w-bg);color:var(--w-fg);margin-bottom:14px"><span data-i="alert" data-s="16"></span><div>Two Fabric tables share this name. Atlas will not guess — pick one or keep it external.</div></div>
-          <label class="row" style="border:2px solid var(--primary);border-radius:6px;padding:10px;margin-bottom:8px;align-items:flex-start"><span style="width:14px;height:14px;border-radius:50%;border:4px solid var(--primary);margin-top:2px"></span><div><b class="s12">lh_silver.customer_pd</b><div class="s11 muted">Finance-Silver · written by SAS job at 06:00 (path seen in run facet)</div></div></label>
-          <label class="row" style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;align-items:flex-start"><span style="width:14px;height:14px;border-radius:50%;border:1px solid var(--input);margin-top:2px"></span><div><b class="s12">lh_gold.customer_pd</b><div class="s11 muted">Finance-Gold · no matching write</div></div></label>
-          <label class="row" style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:14px"><span style="width:14px;height:14px;border-radius:50%;border:1px solid var(--input)"></span><span class="s12">Keep as external dataset</span></label>
-          <div class="field">Save as mapping rule</div>
-          <div class="input mono s12" style="margin-bottom:6px">sas://viya-prod/risk · RISKLIB.* → lh_silver.*</div>
-          <div class="s11 muted" style="margin-bottom:14px">Applies to 4 more SAS datasets. Audited, reversible.</div>
-          <div class="row" style="justify-content:flex-end"><span class="btn">Cancel</span><span class="btn primary">Bind &amp; save rule</span></div>
+          <div class="field">Fabric item</div>
+          <div class="input s12" style="margin-bottom:10px"><span data-i="search" data-s="14"></span><span style="flex:1">customer_pd</span></div>
+          <label class="row" style="border:2px solid var(--primary);border-radius:6px;padding:10px;margin-bottom:8px;align-items:flex-start"><span style="width:14px;height:14px;border-radius:50%;border:4px solid var(--primary);margin-top:2px"></span><div><b class="s12">lh_silver.customer_pd</b><div class="s11 muted">Finance-Silver · Lakehouse table</div></div></label>
+          <label class="row" style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;align-items:flex-start"><span style="width:14px;height:14px;border-radius:50%;border:1px solid var(--input);margin-top:2px"></span><div><b class="s12">lh_gold.customer_pd</b><div class="s11 muted">Finance-Gold · Lakehouse table</div></div></label>
+          <label class="row" style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:14px"><span style="width:14px;height:14px;border-radius:50%;border:1px solid var(--input)"></span><span class="s12">Not in Fabric — keep external</span></label>
+          <div class="note" style="background:var(--i-bg);color:var(--i-fg);margin-bottom:14px"><span data-i="info" data-s="16"></span><div>Atlas never guesses on names. The link is kept when the file is re-imported.</div></div>
+          <div class="row" style="justify-content:flex-end"><span class="btn">Cancel</span><span class="btn primary">Link</span></div>
         </div>
       </div>
     </div>
@@ -257,19 +255,25 @@ tr.sel td{background:rgba(17,120,101,.06)}
         <div class="lane" style="left:696px;width:210px"><div class="lane-h"><span data-i="ws" data-s="14"></span>Finance-Gold</div></div>
         <svg id="edges" style="position:absolute;inset:0;width:100%;height:100%;z-index:1"></svg>
         <div id="nodes"></div>
-        <div class="legend"><span class="lg"><i style="border-color:var(--up)"></i>Upstream</span><span class="lg"><i style="border-color:var(--down)"></i>Downstream</span><span class="lg"><i style="border-color:var(--ext);border-top-style:dashed"></i>OpenLineage (external)</span><span class="lg"><i style="border-color:var(--neutral)"></i>Fabric metadata</span></div>
+        <div class="legend"><span class="lg"><i style="border-color:var(--up)"></i>Upstream</span><span class="lg"><i style="border-color:var(--down)"></i>Downstream</span><span class="lg"><i style="border-color:var(--ext);border-top-style:dashed"></i>OpenLineage (external)</span><span class="lg"><i style="border-color:var(--neutral)"></i>Fabric metadata</span><span class="lg"><i style="border-color:#c239b3;border-top-style:dotted;border-top-width:3px"></i>Link point = same dataset</span></div>
       </div>
       <div class="card panel">
         <div class="card-h"><span class="ext-pill">OpenLineage</span><h3 style="font-size:13px">SAS → lh_bronze.risk_scores</h3></div>
         <div class="card-b">
           <dl class="kv">
             <dt>Job</dt><dd><b>risk.score_customers</b><div class="s11 muted mono">sas://viya-prod/risk</div></dd>
-            <dt>Producer</dt><dd class="s12 mono">sas://viya-prod/risk</dd>
-            <dt>Last run</dt><dd><span class="badge b-s">COMPLETE</span> <span class="s12">today 06:12 · 4 m 31 s</span></dd>
+            <dt>Imported from</dt><dd class="s12 mono">sas_risk_2026-10-28.ndjson</dd>
+            <dt>Last run in file</dt><dd><span class="badge b-s">COMPLETE</span> <span class="s12">28 Oct 06:12 (from file)</span></dd>
             <dt>Run id</dt><dd class="mono s11">0198d4f2-…-7c1e</dd>
             <dt>Target</dt><dd><div class="row"><span data-i="db" data-s="14" style="color:var(--o-table)"></span>lh_bronze.risk_scores</div><span class="badge b-cert" style="margin-top:4px">Certified</span></dd>
-            <dt>Binding</dt><dd><span class="chip">OneLake path · certain</span></dd>
+            <dt>Link</dt><dd><span class="chip">Exact OneLake path</span></dd>
           </dl>
+          <div class="sect">How external meets internal</div>
+          <div style="display:grid;grid-template-columns:22px 1fr;gap:6px 8px;font-size:11.5px;margin-bottom:4px">
+            <span class="ext-pill" style="padding:0 5px;justify-content:center">1</span><span>The file says <span class="mono">risk.score_customers</span> writes <span class="mono">abfss://…/risk_scores</span></span>
+            <span class="ext-pill" style="padding:0 5px;justify-content:center;border-color:#c239b3;color:#c239b3">2</span><span>That path is exactly <b>lh_bronze.risk_scores</b> → one node, not two</span>
+            <span class="ext-pill" style="padding:0 5px;justify-content:center;border-color:var(--down);color:var(--down)">3</span><span>From there, Fabric's own lineage continues (snapshot)</span>
+          </div>
           <div class="sect">Inputs (external)</div>
           <div class="row s12" style="margin-bottom:6px"><span class="ext-pill">SAS</span><span class="mono">RISKLIB.MODEL_INPUT</span></div>
           <div class="row s12"><span class="ext-pill">Oracle</span><span class="mono">CBS.LOANS</span></div>
@@ -284,31 +288,26 @@ tr.sel td{background:rgba(17,120,101,.06)}
           <div class="row s12" style="justify-content:space-between"><span>Fabric items</span><b class="num" style="color:var(--down)">6</b></div>
           <div class="row s12" style="justify-content:space-between;margin-top:4px"><span>Workspaces</span><b class="num" style="color:var(--down)">3</b></div>
           <div class="row s12" style="justify-content:space-between;margin-top:4px"><span>Reports</span><b class="num" style="color:var(--down)">1</b></div>
-          <div class="note" style="background:var(--i-bg);color:var(--i-fg);margin-top:14px"><span data-i="info" data-s="16"></span><div>Stored in <span class="mono">ExternalLineageEdge</span>, merged with the snapshot at read time. Purging a producer removes its edges.</div></div>
+          <div class="note" style="background:var(--i-bg);color:var(--i-fg);margin-top:14px"><span data-i="info" data-s="16"></span><div>Stored in <span class="mono">ExternalLineageEdge</span>, merged with the snapshot at read time. Deleting the imported file removes its edges.</div></div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ============ SCREEN 4 : IN / OUT ============ -->
+  <!-- ============ SCREEN 4 : FILE FORMAT ============ -->
   <section class="scr" data-s="4">
     <div class="ph"><div><h1>External lineage <span class="help">?</span></h1>
-      <div class="obj">One OpenLineage parser for every input; Atlas pushes Fabric lineage out — it does not host an OpenLineage API.</div></div></div>
-    <div class="tabs"><span class="tab">Producers <span class="c">3</span></span><span class="tab">Dataset resolution <span class="c">7</span></span><span class="tab on">OpenLineage in / out</span><span class="tab">Data model</span></div>
+      <div class="obj">What Atlas reads from an OpenLineage file — and what it ignores.</div></div></div>
+    <div class="tabs"><span class="tab">Imports <span class="c">3</span></span><span class="tab">Link to Fabric <span class="c">7</span></span><span class="tab on">File format</span><span class="tab">Data model</span></div>
     <div class="grid" style="grid-template-columns:1fr 1fr">
       <div class="card">
-        <div class="card-h"><span data-i="download" data-s="16" style="color:var(--up)"></span><h3>Inbound · receive events</h3><span class="badge b-s" style="margin-left:auto">Enabled</span></div>
+        <div class="card-h"><span data-i="download" data-s="16" style="color:var(--up)"></span><h3>Accepted file</h3><span class="badge b-s" style="margin-left:auto">OpenLineage 2-0-x</span></div>
         <div class="card-b">
-          <div class="field">OneLake drop folder (NDJSON, one event per line)</div>
-          <div class="input mono s12" style="margin-bottom:12px"><span style="flex:1">lh_atlas/Files/openlineage/inbox/sas-viya-risk/</span><span data-i="copy" data-s="14"></span></div>
-          <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-            <div><div class="field">Authentication</div><div class="input s12"><span data-i="key" data-s="14"></span>OneLake · Contributor on folder</div></div>
-            <div><div class="field">Accepted spec</div><div class="input s12">OpenLineage 2-0-x · NDJSON</div></div>
-          </div>
-          <div class="note" style="background:var(--i-bg);color:var(--i-fg);margin-bottom:14px"><span data-i="info" data-s="16"></span><div>One contract for everyone: valid OpenLineage events in this folder. No per-platform connector, no HTTP endpoint. Platforms that don't emit OpenLineage convert on their side.</div></div>
-          <div class="field">Accepted event (OpenLineage RunEvent)</div>
+          <div class="field">Format</div>
+          <div class="seg" style="margin-bottom:12px"><span class="on">.ndjson (one event per line)</span><span>.json (array)</span></div>
+          <div class="field">Example (one RunEvent)</div>
 <div class="code">{ <span class="k">"eventType"</span>: <span class="s">"COMPLETE"</span>,
-  <span class="k">"eventTime"</span>: <span class="s">"2026-10-29T06:12:44Z"</span>,
+  <span class="k">"eventTime"</span>: <span class="s">"2026-10-28T06:12:44Z"</span>,
   <span class="k">"run"</span>: { <span class="k">"runId"</span>: <span class="s">"0198d4f2-…-7c1e"</span> },
   <span class="k">"job"</span>: { <span class="k">"namespace"</span>: <span class="s">"sas://viya-prod/risk"</span>,
            <span class="k">"name"</span>: <span class="s">"risk.score_customers"</span> },
@@ -319,24 +318,17 @@ tr.sel td{background:rgba(17,120,101,.06)}
         </div>
       </div>
       <div class="card">
-        <div class="card-h"><span data-i="upload" data-s="16" style="color:var(--down)"></span><h3>Outbound · publish Fabric lineage</h3><span class="badge b-m" style="margin-left:auto">Manual</span></div>
+        <div class="card-h"><span data-i="check" data-s="16" style="color:var(--healthy)"></span><h3>What Atlas keeps</h3></div>
         <div class="card-b">
-          <div class="field">Scope</div>
-          <div class="row" style="margin-bottom:12px;flex-wrap:wrap"><span class="chip">Finance-Bronze</span><span class="chip">Finance-Silver</span><span class="chip">Finance-Gold</span><span class="chip" style="border-style:dashed">+ workspace</span></div>
-          <div class="field">Format</div>
-          <div class="seg" style="margin-bottom:12px"><span class="on">JobEvent / DatasetEvent</span><span>Static snapshot</span></div>
-          <div class="field">Destination</div>
-          <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
-            <div style="border:2px solid var(--primary);border-radius:6px;padding:10px"><b class="s12">NDJSON in OneLake</b><div class="s11 muted mono">Files/openlineage/outbox/</div></div>
-            <div style="border:1px solid var(--border);border-radius:6px;padding:10px"><b class="s12">Push to Marquez / OL endpoint</b><div class="s11 muted">Optional · needs outbound network</div></div>
-          </div>
-          <div class="note" style="background:var(--w-bg);color:var(--w-fg);margin-bottom:14px"><span data-i="alert" data-s="16"></span><div>Snapshot lineage is exported as <b>JobEvent / DatasetEvent</b> — no fake RunEvents. Real runs only for Spark jobs captured at runtime.</div></div>
-          <div class="row" style="justify-content:flex-end;margin-bottom:14px"><span class="btn">Preview 214 events</span><span class="btn primary"><span data-i="upload" data-s="16"></span>Export</span></div>
           <table>
-            <tr><th>Export</th><th>Events</th><th>Datasets</th><th>Result</th></tr>
-            <tr><td class="s12">Today 07:00 · NDJSON</td><td class="num">214</td><td class="num">96</td><td><span class="badge b-s">Done</span></td></tr>
-            <tr><td class="s12">Mon 07:00 · Marquez</td><td class="num">209</td><td class="num">94</td><td><span class="badge b-s">Done</span></td></tr>
+            <tr><th>Field</th><th>Used for</th></tr>
+            <tr><td class="mono s12">job.namespace · job.name</td><td class="s12">Job node on the map</td></tr>
+            <tr><td class="mono s12">inputs[] · outputs[]</td><td class="s12">External datasets and edges</td></tr>
+            <tr><td class="mono s12">facets.columnLineage</td><td class="s12">Column mappings</td></tr>
+            <tr><td class="mono s12">eventType · eventTime · runId</td><td class="s12">Last run shown on the edge</td></tr>
           </table>
+          <div class="note" style="background:var(--w-bg);color:var(--w-fg);margin-top:14px"><span data-i="alert" data-s="16"></span><div>Ignored and never stored: SQL text, source code, data samples, credentials and any other facet.</div></div>
+          <div class="note" style="background:var(--i-bg);color:var(--i-fg);margin-top:10px"><span data-i="info" data-s="16"></span><div>Later versions: automatic ingestion, Spark runtime events (#86) and OpenLineage export (#19).</div></div>
         </div>
       </div>
     </div>
@@ -345,9 +337,8 @@ tr.sel td{background:rgba(17,120,101,.06)}
   <!-- ============ SCREEN 5 : DATA MODEL ============ -->
   <section class="scr" data-s="5">
     <div class="ph"><div><h1>External lineage <span class="help">?</span></h1>
-      <div class="obj">Dedicated tables, outside the snapshot. Read path = snapshot edges ∪ external edges.</div></div></div>
-    <div class="tabs"><span class="tab">Producers <span class="c">3</span></span><span class="tab">Dataset resolution <span class="c">7</span></span><span class="tab">OpenLineage in / out</span><span class="tab on">Data model</span></div>
-    <div class="card" style="position:relative;height:640px;overflow:hidden" id="erd">
+      <div class="obj">Three dedicated tables, outside the snapshot. Read path = snapshot edges ∪ external edges.</div></div></div>
+    <div class="tabs"><span class="tab">Imports <span class="c">3</span></span><span class="tab">Link to Fabric <span class="c">7</span></span><span class="tab">File format</span><span class="tab on">Data model</span></div>    <div class="card" style="position:relative;height:640px;overflow:hidden" id="erd">
       <svg id="erdedges" style="position:absolute;inset:0;width:100%;height:100%;z-index:1"></svg>
     </div>
   </section>
@@ -425,20 +416,23 @@ if(s===3){
   N.forEach(([id,t,m,i,x,y,k])=>{const w=k==='ext'?188:186;pos[id]={x,y,w};
     const c=k==='ext'?'var(--ext)':col[i];
     nodes.insertAdjacentHTML('beforeend',`<div class="node ${k}" style="left:${x}px;top:${y}px;width:${w}px"><span class="ic" style="background:color-mix(in srgb,${c} 12%,#fff);color:${c}">${ic(i,15)}</span><div style="min-width:0"><div class="t">${t}</div><div class="m">${m}</div></div></div>`)});
-  const E=[["sasin","sasjob","ext"],["ora","sasjob","ext"],["sasjob","b1","ext"],["sasjob","sasout2","ext"],["sasout2","s2","ext"],
+  const E=[["sasin","sasjob","ext"],["ora","sasjob","ext"],["sasjob","b1","ext"],["sasjob","sasout2","ext"],["sasout2","s2","link"],
    ["b2","b1","up"],["b1","s1","down"],["s1","s2","down"],["s2","g1","down"],["b1","g1","down"],["g1","g2","down"],["g2","g3","down"]];
-  const sc={ext:'#0078d4',up:'#742774',down:'#117865'};
+  const sc={ext:'#0078d4',up:'#742774',down:'#117865',link:'#c239b3'};
   let svg='<defs>'+Object.entries(sc).map(([k,c])=>`<marker id="m${k}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="${c}"/></marker>`).join('')+'</defs>';
-  E.forEach(([a,b,k])=>{const A=pos[a],B=pos[b];let x1=A.x+A.w,y1=A.y+23,x2=B.x,y2=B.y+23;
+  E.forEach(([a,b,k])=>{const A=pos[a],B=pos[b];if(k==='link'){const y=A.y+23;svg+=`<path d="M${A.x+A.w} ${y} L${B.x} ${y}" fill="none" stroke="${sc.link}" stroke-width="2.5" stroke-dasharray="2 4" stroke-linecap="round" class="lnk"/>`;return;}let x1=A.x+A.w,y1=A.y+23,x2=B.x,y2=B.y+23;
     if(A.x===B.x){x1=A.x+A.w/2;y1=A.y+(B.y>A.y?46:0);x2=B.x+B.w/2;y2=B.y+(B.y>A.y?0:46);
       svg+=`<path d="M${x1} ${y1} L${x2} ${y2-(B.y>A.y?3:-3)}" fill="none" stroke="${sc[k]}" stroke-width="2" ${k==='ext'?'stroke-dasharray="6 4"':''} marker-end="url(#m${k})"/>`;return;}
     const mx=(x1+x2)/2;svg+=`<path d="M${x1} ${y1} C${mx} ${y1},${mx} ${y2},${x2-3} ${y2}" fill="none" stroke="${sc[k]}" stroke-width="${a==='sasjob'&&b==='b1'?3:2}" ${k==='ext'?'stroke-dasharray="6 4"':''} marker-end="url(#m${k})"/>`});
   document.getElementById('edges').innerHTML=svg;
+  const badge=(x,y,txt,tip)=>nodes.insertAdjacentHTML('beforeend',`<div class="lbadge" title="${tip}" style="position:absolute;left:${x}px;top:${y}px;z-index:3;display:flex;align-items:center;gap:4px;background:#fff;border:1.5px solid #c239b3;color:#c239b3;border-radius:999px;padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.12);cursor:pointer">${ic('link',11)}${txt}</div>`);
+  badge(262,226,'Linked · exact OneLake path','OpenLineage output abfss://finance-bronze@onelake…/lh_bronze/Tables/risk_scores = this Fabric table');
+  badge(268,393,'Linked · manual (frgisber)','RISKLIB.CUSTOMER_PD was linked by hand to lh_silver.customer_pd');
 }
 
 /* ---------- interactions ---------- */
 const go=n=>{location.search='?s='+n};
-const TABMAP={"Producers":1,"Dataset resolution":2,"OpenLineage in / out":4,"Data model":5};
+const TABMAP={"Imports":1,"Link to Fabric":2,"File format":4,"Data model":5};
 document.querySelectorAll('.tab').forEach(t=>{const k=Object.keys(TABMAP).find(x=>t.textContent.trim().startsWith(x));
   t.style.cursor='pointer';
   t.onclick=()=>{if(k)go(TABMAP[k]);else{t.parentElement.querySelectorAll('.tab').forEach(o=>o.classList.remove('on'));t.classList.add('on')}}});
@@ -447,34 +441,36 @@ document.querySelectorAll('.ni').forEach(n=>{const l=n.textContent.replace('New'
 document.querySelectorAll('.seg').forEach(g=>g.querySelectorAll('span').forEach(sp=>{sp.style.cursor='pointer';
   sp.onclick=()=>{g.querySelectorAll('span').forEach(o=>o.classList.remove('on'));sp.classList.add('on');
     if(s===2){const f=sp.textContent.split(' ')[0];document.querySelectorAll('[data-s="2"] table tr').forEach((r,i)=>{if(!i)return;const st=r.querySelector('.badge')?.textContent||'';
-      r.style.display=(f==='All'||(f==='Matched'&&st.startsWith('Matched'))||(f==='Ambiguous'&&st==='Ambiguous')||(f==='External'&&st==='External'))?'':'none'})}}}));
+      r.style.display=(f==='All'||(f==='Linked'&&st==='Linked')||(f==='To'&&st==='To link')||(f==='External'&&st==='External'))?'':'none'})}}}));
 document.querySelectorAll('.btn, .kpi, .chip, label, tr').forEach(b=>b.style.cursor='pointer');
-document.querySelectorAll('.kpi').forEach(k=>{if(/resolve|edges/i.test(k.textContent))k.onclick=()=>go(/resolve/i.test(k.textContent)?2:3)});
+document.querySelectorAll('.kpi').forEach(k=>{if(/link|datasets/i.test(k.textContent))k.onclick=()=>go(/To link/.test(k.textContent)?2:3)});
 document.querySelectorAll('.btn').forEach(b=>{const t=b.textContent.trim();
-  if(t==='Resolve')b.onclick=()=>{};
-  if(t==='Bind & save rule')b.onclick=()=>{b.textContent='✓ Bound · rule saved';b.style.background='#0e700e'};
-  if(t==='Export')b.onclick=()=>{b.innerHTML='✓ Exported 214 events'};
+  if(t==='Link'&&b.classList.contains('primary'))b.onclick=()=>{b.textContent='✓ Linked';b.style.background='#0e700e'};
+  if(t==='Link'&&b.classList.contains('sm'))b.onclick=e=>{e.stopPropagation();b.closest('tr').click()};
+  if(t==='Import OpenLineage file')b.onclick=()=>{const d=document.getElementById('drop');d.style.borderColor='var(--primary)';d.style.background='var(--i-bg)';d.animate([{transform:'scale(1)'},{transform:'scale(1.02)'},{transform:'scale(1)'}],{duration:300})};
   if(t==='Impact analysis')b.onclick=()=>document.querySelectorAll('.node:not(.ext)').forEach(n=>n.style.outline=n.classList.contains('focus')?'':'2px solid rgba(17,120,101,.35)');});
-/* source rows -> resolution */
+/* imported files -> link */
 if(s===1)document.querySelectorAll('[data-s="1"] table')[0].querySelectorAll('tr').forEach((r,i)=>{if(i)r.onclick=()=>go(2)});
-/* resolution: select row + radio choices */
+/* link: select row + radio choices */
 if(s===2){
   const labels=[...document.querySelectorAll('[data-s="2"] label')];
   labels.forEach(l=>l.onclick=()=>{labels.forEach(o=>{o.style.border='1px solid var(--border)';const d=o.querySelector('span');d.style.border='1px solid var(--input)'});
     l.style.border='2px solid var(--primary)';l.querySelector('span').style.border='4px solid var(--primary)'});
   const rows=[...document.querySelectorAll('[data-s="2"] table tr')].slice(1);
   rows.forEach(r=>r.onclick=()=>{rows.forEach(o=>o.classList.remove('sel'));r.classList.add('sel');
-    document.querySelector('[data-s="2"] .card-h h3').textContent='Resolve '+r.querySelector('b').textContent});
+    document.querySelector('[data-s="2"] .card-h h3').textContent='Link '+r.querySelector('b').textContent});
 }
 /* in/out: destination cards */
-if(s===4){const cards=[...document.querySelectorAll('[data-s="4"] .grid .grid > div')].filter(d=>d.querySelector('b'));
+if(false){const cards=[];
   cards.forEach(c=>{c.style.cursor='pointer';c.onclick=()=>{cards.forEach(o=>o.style.border='1px solid var(--border)');c.style.border='2px solid var(--primary)'}})}
+/* map: link badge click */
+if(s===3)document.querySelectorAll('.lbadge').forEach(b=>b.onclick=e=>{e.stopPropagation();document.querySelector('.panel .card-h h3').textContent=b.textContent;const p=document.querySelector('.panel .ext-pill');p.textContent='Link point';p.style.borderColor='#c239b3';p.style.color='#c239b3'});
 /* map: external toggle + node click */
 if(s===3){
   let on=true;const tg=document.querySelector('[data-s="3"] .toolbar .chip');
   tg.onclick=()=>{on=!on;tg.querySelector('.toggle').style.background=on?'var(--ext)':'#c8c8c8';tg.querySelector('.toggle').classList.toggle('off',!on);
     document.querySelectorAll('.node.ext,.lane.ext').forEach(e=>e.style.display=on?'':'none');
-    document.querySelectorAll('#edges path[stroke-dasharray]').forEach(e=>e.style.display=on?'':'none');
+    document.querySelectorAll('#edges path[stroke-dasharray],.lbadge').forEach(e=>e.style.display=on?'':'none');
     document.querySelector('.panel').style.opacity=on?1:.35};
   document.querySelectorAll('.node').forEach(n=>{n.style.cursor='pointer';n.onclick=()=>{
     document.querySelectorAll('.node').forEach(o=>{o.classList.remove('focus')});n.classList.add('focus');
@@ -485,26 +481,16 @@ if(s===3){
 
 if(s===5){
   const T=[
-   ["ExternalSystem","var(--ext)",30,30,[["SystemId","pk","guid"],["Namespace","","nvarchar"],["DisplayName","","nvarchar"],["FirstSeenAt","","datetime2"],["LastEventAt","","datetime2"]]],
-   ["OpenLineageBatch","var(--ext)",30,250,[["BatchId","pk","guid"],["SystemId","fk","guid"],["ReceivedAt","","datetime2"],["EventCount","","int"],["Status","","varchar"]]],
-   ["OpenLineageEvent","var(--ext)",30,465,[["EventId","pk","guid"],["BatchId","fk","guid"],["RunId · EventType","",""],["Payload (trimmed)","","json"]]],
-   ["ExternalDataset","var(--purple)",340,30,[["DatasetId","pk","hash(ns,name)"],["Namespace · Name","","nvarchar"],["FabricItemId","fk","guid?"],["State","","matched|ambiguous|…"],["Evidence","","varchar"]]],
-   ["ExternalJob","var(--purple)",340,270,[["JobId","pk","hash(ns,name)"],["SystemId","fk","guid"],["LastRunId","","guid"],["LastState","","COMPLETE|FAIL"]]],
-   ["ExternalLineageEdge","var(--teal)",650,150,[["EdgeId","pk","hash(src,tgt,job)"],["SourceDatasetId","fk",""],["TargetDatasetId","fk",""],["JobId","fk",""],["ColumnLineage","","json"],["LastSeenAt","","datetime2"]]],
-   ["DatasetMappingRule","var(--o-measure)",340,470,[["RuleId","pk","guid"],["Pattern","","ns · name glob"],["Target","","item | ignore"],["CreatedBy","","upn"]]],
-   ["OpenLineageExportRun","var(--o-measure)",650,430,[["ExportId","pk","guid"],["Scope","","workspaces"],["Destination","","ndjson|url"],["EventCount","","int"]]],
+   ["OpenLineageImport","var(--ext)",40,40,[["ImportId","pk","guid"],["FileName","","nvarchar"],["ImportedBy","","upn"],["ImportedAt","","datetime2"],["EventCount","","int"],["Status","","accepted|rejected"]]],
+   ["ExternalDataset","var(--purple)",360,40,[["DatasetId","pk","hash(ns,name)"],["Namespace · Name","","nvarchar"],["FabricItemId","fk","guid?"],["State","","linked|to link|external"],["LinkedBy","","exact path | upn"]]],
+   ["ExternalLineageEdge","var(--teal)",360,330,[["EdgeId","pk","hash(src,tgt,job)"],["ImportId","fk","guid"],["SourceDatasetId","fk",""],["TargetDatasetId","fk",""],["JobName · LastRunState","","nvarchar"],["ColumnLineage","","json"]]],
   ];
   const erd=document.getElementById('erd');
   T.forEach(([n,c,x,y,f])=>erd.insertAdjacentHTML('beforeend',`<div class="ent" style="left:${x}px;top:${y}px"><div class="eh" style="background:${c}">${ic('db',14)}${n}</div>${f.map(([a,k,t])=>`<div class="f"><span class="${k}">${k?k.toUpperCase()+' · ':''}${a}</span><span>${t}</span></div>`).join('')}</div>`));
-  erd.insertAdjacentHTML('beforeend',`<div class="ent" style="left:960px;top:150px;width:240px;border:1.5px dashed var(--border);box-shadow:none"><div class="eh" style="background:var(--muted);color:var(--fg)">${ic('layers',14)}Existing snapshot</div><div class="f"><span>Item · ItemDependency</span><span>read-only</span></div><div class="f"><span>ObjectLineage (columns)</span><span>read-only</span></div><div style="padding:10px 12px;font-size:11.5px;color:var(--muted-fg);border-top:1px solid var(--muted)">Lineage read = snapshot edges <b>∪</b> ExternalLineageEdge, joined on FabricItemId. Snapshot rebuilds never touch external tables.</div></div>`);
-  const L=[[250,80,30,250+20],[250,300,30,465+20]];
+  erd.insertAdjacentHTML('beforeend',`<div class="ent" style="left:960px;top:200px;width:240px;border:1.5px dashed var(--border);box-shadow:none"><div class="eh" style="background:var(--muted);color:var(--fg)">${ic('layers',14)}Existing snapshot</div><div class="f"><span>Item · ItemDependency</span><span>read-only</span></div><div class="f"><span>ObjectLineage (columns)</span><span>read-only</span></div><div style="padding:10px 12px;font-size:11.5px;color:var(--muted-fg);border-top:1px solid var(--muted)">Lineage read = snapshot edges <b>∪</b> ExternalLineageEdge, joined on FabricItemId. Snapshot rebuilds never touch external tables.</div></div>`);
   let svg='';
   const line=(d,c,dash)=>svg+=`<path d="${d}" fill="none" stroke="${c}" stroke-width="1.5" ${dash?'stroke-dasharray="5 4"':''}/>`;
-  line('M155 165 V250','#0078d4');line('M155 380 V465','#0078d4');
-  line('M280 80 H340','#94a3b8');line('M280 320 H340','#94a3b8');
-  line('M590 100 C620 100,620 210,650 210','#117865');line('M590 320 C620 320,620 260,650 260','#117865');
-  line('M590 520 H620 V120 H590','#817400',1);
-  line('M900 230 H960','#94a3b8',1);
+  line('M280 110 C320 110,320 400,360 400','#0078d4');line('M480 210 V330','#117865');line('M600 120 H780 V230 H960','#94a3b8',1);
   document.getElementById('erdedges').innerHTML=svg;
 }
 </script>
