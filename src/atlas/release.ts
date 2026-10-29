@@ -58,7 +58,7 @@ export function sameDeploymentGeneration(
 export const RELEASES: AtlasRelease[] = [
   {
     version: "2.6.4",
-    date: "2026-10-30",
+    date: "2026-10-28",
     title: "Reliable incremental sync",
     sections: [
       {
@@ -79,7 +79,7 @@ export const RELEASES: AtlasRelease[] = [
   },
   {
     version: "2.6.3",
-    date: "2026-10-30",
+    date: "2026-10-28",
     title: "Sync mode, MCP page and layout fixes",
     sections: [
       {
@@ -103,7 +103,7 @@ export const RELEASES: AtlasRelease[] = [
   },
   {
     version: "2.6.2",
-    date: "2026-10-29",
+    date: "2026-10-28",
     title: "Domain posture and mockup alignment",
     sections: [
       {
@@ -184,7 +184,7 @@ export const RELEASES: AtlasRelease[] = [
   },
   {
     version: "2.2.0",
-    date: "2026-10-18",
+    date: "2026-10-28",
     title: "OneLake catalog alignment",
     sections: [
       {

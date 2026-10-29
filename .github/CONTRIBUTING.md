@@ -15,6 +15,31 @@ npm run build
 
 `npm ci` also restores the typed Rayfin Functions dependencies.
 
+`npm run build` runs `npm run typecheck` first. Run it on its own when you
+only need the TypeScript check.
+
+The Fabric User Data Function has its own Python tests:
+
+```powershell
+Set-Location fabric/udf/atlas_sync_functions
+python -m pip install -r requirements.txt pytest
+python -m pytest
+```
+
+The repository has no CI workflow yet. Run these checks locally before you
+open a pull request.
+
+## Releases
+
+1. Bump `version` in `package.json` and `APP_VERSION` in
+   `src/atlas/release.ts`.
+2. Add the release notes at the top of `RELEASES` in `src/atlas/release.ts`.
+3. Move the `[Unreleased]` entries in `CHANGELOG.md` under a new
+   `## [x.y.z] - YYYY-MM-DD` heading. Add its `releases/tag/vx.y.z` link and
+   update the `[Unreleased]` compare link.
+4. Run `npm test`, `npm run lint` and `npm run build`.
+5. Tag `vx.y.z`, push the tag and publish the GitHub release.
+
 ## Pull requests
 
 - Keep each pull request focused.

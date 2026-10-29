@@ -127,14 +127,14 @@ remain separately addressable and are loaded only when a user switches to them.
 
 ## Workspace orientation
 
-### Radar-led Overview
+### Governance Radar Overview
 
-The Overview is designed for orientation. The governance radar is the main
+The Overview is designed for orientation. The Governance Radar is the main
 visual, with workspace health and priority signals beside it. The current
 snapshot places four of six posture pillars at or above their 70 percent
 targets.
 
-![Radar-led Overview for FGI-MAIN.](fabric-atlas-whitepaper/assets/01-overview.png){ width=100% }
+![Governance Radar Overview for FGI-MAIN.](fabric-atlas-whitepaper/assets/01-overview.png){ width=100% }
 
 The screenshot reports:
 
@@ -392,7 +392,7 @@ The Posture tab opens with the same pillars rolled up per Fabric domain and
 mapped to the Microsoft Health, Protect and Trust groups. In this capture the
 FGI domain scores 91 percent Health, 49 percent Protect and 74 percent Trust,
 with two of three pillar groups at target. Fabric governance signals beside
-the radar report 2 percent endorsed items and 128 of 182 governance-relevant
+the Governance Radar report 2 percent endorsed items and 128 of 182 governance-relevant
 tenant settings enabled.
 
 ### Policies & AI
@@ -741,7 +741,7 @@ reads and controlled cleanup without being allowed to publish.
 | SavedView | Personal navigation and filter preset |
 | AccessReview | Personal decision for one effective access pair |
 | AccessReviewEvent | Personal append-only review history |
-| FindingAck | Personal Radar acknowledgement or mute |
+| FindingAck | Personal Governance Radar acknowledgement or mute |
 | GovernancePolicy | Shared posture targets |
 | GovernanceException | Shared, time-bounded exception with reason and scope |
 
@@ -781,7 +781,7 @@ Collection tokens must match the current Fabric user and tenant.
 | Shared team notes | Every authenticated app user | Authenticated author with email and subject binding |
 | Saved views | Current user only | Current user only |
 | Access review decisions | Current user only | Current user only |
-| Radar acknowledgements and mutes | Current user only | Current user only |
+| Governance Radar acknowledgements and mutes | Current user only | Current user only |
 
 The Fabric App audience is the catalog read boundary. Selected workspace
 metadata and team notes are shared with that complete audience. Personal review
@@ -849,7 +849,7 @@ contact visible.
 2. Keep the synchronizer identity and compatibility permissions current.
 3. Run synchronization after material workspace changes.
 4. Review failed items and optional collector boundaries.
-5. Review Radar and Change Center after a new validated snapshot.
+5. Review the Governance Radar and Change Center after a new validated snapshot.
 6. Use Coverage before treating a missing value as a governance defect.
 7. Rotate the trusted writer explicitly when responsibility changes.
 
@@ -967,7 +967,7 @@ Within those limits, Atlas answers four recurring questions:
 
 | Figure | Subject |
 |---:|---|
-| 1 | Radar-led Overview |
+| 1 | Governance Radar Overview |
 | 2 | Item Catalog |
 | 3 | Workspace-wide search for `asmdb` |
 | 4 | Asset Catalog |
@@ -1010,7 +1010,7 @@ Within those limits, Atlas answers four recurring questions:
 | Finding | Reproducible governance check over synchronized evidence |
 | Inferred object hop | Cross-item source connection supported by item lineage and one unique schema match |
 | Item Relations Preview | Beta graph built from raw Fabric Item Relations responses |
-| Radar occurrence | New priority finding or risky change in the latest adjacent snapshot pair |
+| Governance Radar occurrence | New priority finding or risky change in the latest adjacent snapshot pair |
 | Reachable pair | Principal and item combination with recorded effective access |
 | Trusted writer | Configured immutable Entra subject allowed to publish and prune snapshots |
 | What-if | Local simulation that excludes recorded grant paths without changing Fabric |

@@ -314,7 +314,7 @@ synchronizer subject.
 These rows store no browser token, arbitrary endpoint, request body or business data. There is no
 separate workspace-state row. Uniqueness and persisted read-back support retries under serialized
 invocations; they do not establish distributed atomic task claims. See
-[architecture.md](architecture.md#phase-2-persistence-probe-no-cutover) for the concurrency boundary.
+[architecture.md](architecture.md#scheduling-boundary) for the concurrency boundary.
 
 ### Version 2 additive graph fields
 
@@ -364,7 +364,7 @@ No additive orchestration field stores tokens, request bodies, arbitrary URLs,
 raw definitions, business rows or large collector payloads. These schemas and
 local tests do not prove distributed durability. Public v2 mutations are blocked
 until the serialization, immutable store and adapter deployment seams described
-in [architecture.md](architecture.md#phase-2-v2-server-cutover-framework-disabled)
+in [rayfin-platform-gaps.md](rayfin-platform-gaps.md#to-run-synchronization-without-an-open-browser)
 are resolved.
 
 ### Immutable SQL payload storage
