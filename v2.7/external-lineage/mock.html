@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fabric Atlas · External lineage (mock)</title>
+<style>
+:root{
+  --bg:#f5f5f5;--fg:#242424;--card:#fff;--primary:#117865;--primary-h:#0c695a;--secondary:#fafafa;
+  --muted:#f0f0f0;--muted-fg:#616161;--border:#e0e0e0;--input:#d1d1d1;--accent:#f0f0f0;
+  --purple:#742774;--magenta:#b146c2;--blue:#0078d4;--teal:#117865;
+  --up:#742774;--down:#117865;--neutral:#94a3b8;--ext:#0078d4;
+  --o-source:#2f9e6f;--o-table:#0c695a;--o-col:#0078d4;--o-measure:#817400;
+  --healthy:#0e700e;--warning:#817400;--failing:#bc2f32;
+  --w-bg:#fff8eb;--w-fg:#835b00;--d-bg:#fcf0f0;--d-fg:#a4262c;--s-bg:#edf6ef;--s-fg:#28623c;--i-bg:#edf4fc;--i-fg:#245f96;
+  --cert-bg:#e3f7ef;--cert-fg:#0c695a;--prom-bg:#f7eff8;--prom-fg:#742774;
+  --sh2:0 0 2px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.14);
+  --sh4:0 0 2px rgba(0,0,0,.12),0 2px 4px rgba(0,0,0,.14);
+  --sh8:0 0 2px rgba(0,0,0,.12),0 4px 8px rgba(0,0,0,.14);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:"Segoe UI","Segoe UI Web (West European)",-apple-system,sans-serif;font-size:14px;color:var(--fg);background:var(--bg);-webkit-font-smoothing:antialiased}
+.num{font-family:Bahnschrift,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+.mono{font-family:Consolas,monospace}
+svg.i{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+svg.i.s14{width:14px;height:14px} svg.i.s16{width:16px;height:16px} svg.i.s19{width:19px;height:19px}
+
+/* shell */
+.spectrum{position:fixed;top:0;left:0;right:0;height:3px;z-index:10;background:linear-gradient(90deg,var(--purple),var(--magenta) 34%,var(--blue) 67%,var(--teal))}
+.app{display:flex;height:100vh;padding-top:3px}
+aside{width:224px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.brand{display:flex;align-items:center;gap:11px;padding:16px 14px 13px}
+.brand-mark{width:34px;height:34px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:var(--sh4);background:linear-gradient(135deg,var(--purple),var(--blue) 56%,var(--teal))}
+.brand-t{font-size:15px;font-weight:600;line-height:1}
+.brand-s{font-size:11px;color:var(--muted-fg);margin-top:3px}
+nav{flex:1;padding:0 10px 10px;overflow:auto}
+.ng{margin-top:12px}.ng:first-child{margin-top:0}
+.ngl{padding:0 10px 5px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-fg)}
+.ni{position:relative;display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:4px;font-size:13px;font-weight:500;color:rgba(36,36,36,.75);margin-bottom:2px}
+.ni.sub{padding-left:22px;font-size:12.5px}
+.ni.active{background:rgba(17,120,101,.1);color:#0c695a}
+.ni.active:before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:3px;border-radius:9px;background:var(--primary)}
+.new{margin-left:auto;font-size:10px;font-weight:600;padding:1px 6px;border-radius:9px;background:var(--i-bg);color:var(--i-fg)}
+.wscard{margin:12px;border:1px solid var(--border);background:var(--secondary);border-radius:6px;padding:11px;font-size:12px;color:var(--muted-fg)}
+.wscard .k{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+.wscard .v{font-size:13px;font-weight:700;color:var(--fg);margin-top:2px}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--healthy)}
+main{flex:1;min-width:0;display:flex;flex-direction:column}
+header{height:52px;flex-shrink:0;background:var(--card);box-shadow:var(--sh2);display:flex;align-items:center;gap:12px;padding:0 20px;z-index:2}
+.crumb{font-size:13px;color:var(--muted-fg);display:flex;align-items:center;gap:6px}
+.crumb b{color:var(--fg);font-weight:600}
+.dom{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--input);border-radius:4px;background:var(--card);font-size:12px;color:var(--fg);margin-left:8px}
+.hsp{flex:1}
+.search{display:flex;align-items:center;gap:8px;height:32px;width:280px;padding:0 10px;border-radius:4px;background:var(--secondary);border:1px solid var(--border);font-size:13px;color:var(--muted-fg)}
+kbd{margin-left:auto;font-family:"Segoe UI";font-size:11px;border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;padding:0 5px;background:#fff;color:var(--muted-fg)}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:4px;font-size:13px;font-weight:600;border:1px solid var(--input);background:var(--card);color:var(--fg);white-space:nowrap}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn.sm{height:28px;padding:0 10px;font-size:12px}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted-fg)}
+.canvas{flex:1;overflow:auto;padding:20px 24px 24px;background:radial-gradient(ellipse at 85% 0%,rgba(116,39,116,.05),transparent 45%),var(--bg)}
+
+/* page header */
+.ph{display:flex;align-items:flex-start;gap:16px;margin-bottom:14px}
+.ph h1{margin:0;font-size:20px;line-height:28px;font-weight:600;display:flex;align-items:center;gap:8px}
+.help{width:20px;height:20px;border-radius:50%;border:1px solid var(--input);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--muted-fg);background:var(--card)}
+.ph .obj{font-size:12px;color:var(--muted-fg);margin-top:2px}
+.toolbar{margin-left:auto;display:flex;gap:8px;align-items:center}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:16px}
+.tab{position:relative;padding:8px 12px;font-size:13px;font-weight:600;color:var(--muted-fg);display:flex;align-items:center;gap:6px}
+.tab.on{color:#0c695a}
+.tab.on:after{content:"";position:absolute;left:8px;right:8px;bottom:-1px;height:2px;border-radius:2px;background:#0c695a}
+.tab .c{font-size:11px;font-weight:600;background:var(--muted);color:var(--muted-fg);border-radius:9px;padding:0 6px}
+
+.card{background:var(--card);border-radius:8px;box-shadow:var(--sh2)}
+.card-h{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border)}
+.card-h h3{margin:0;font-size:14px;font-weight:600}
+.card-h .sub{font-size:12px;color:var(--muted-fg)}
+.card-b{padding:16px}
+.grid{display:grid;gap:16px}
+.kpi{padding:14px 16px}
+.kpi .l{font-size:12px;color:var(--muted-fg);display:flex;align-items:center;gap:6px}
+.kpi .v{font-size:28px;line-height:34px;font-weight:600;margin-top:4px}
+.kpi .d{font-size:12px;color:var(--muted-fg)}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{background:var(--secondary);text-align:left;font-size:12px;font-weight:600;color:var(--muted-fg);padding:8px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+tr.sel td{background:rgba(17,120,101,.06)}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;padding:1px 8px;border-radius:4px;white-space:nowrap}
+.b-s{background:var(--s-bg);color:var(--s-fg)}.b-w{background:var(--w-bg);color:var(--w-fg)}.b-d{background:var(--d-bg);color:var(--d-fg)}.b-i{background:var(--i-bg);color:var(--i-fg)}.b-m{background:var(--muted);color:var(--muted-fg)}
+.b-cert{background:var(--cert-bg);color:var(--cert-fg)}.b-prom{background:var(--prom-bg);color:var(--prom-fg)}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:2px 8px;border-radius:4px;border:1px solid var(--border);background:var(--secondary)}
+.sys{display:inline-flex;width:26px;height:26px;border-radius:6px;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:700;flex-shrink:0}
+.muted{color:var(--muted-fg)}.s12{font-size:12px}.s11{font-size:11px}
+.row{display:flex;align-items:center;gap:8px}
+.ext-pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:0 6px;border-radius:4px;border:1px dashed var(--ext);color:var(--ext);background:#f4f9fe}
+.bar{height:6px;border-radius:3px;background:var(--muted);overflow:hidden;display:flex}
+.bar span{display:block;height:100%}
+.note{display:flex;gap:10px;padding:10px 12px;border-radius:6px;font-size:12px;line-height:17px}
+.code{font-family:Consolas,monospace;font-size:12px;background:#fafafa;border:1px solid var(--border);border-radius:6px;padding:10px 12px;white-space:pre;line-height:17px;color:#242424;overflow:hidden}
+.code .k{color:#742774}.code .s{color:#0c695a}.code .c{color:#8a8a8a}
+.field{font-size:12px;color:var(--muted-fg);margin-bottom:4px;font-weight:600}
+.input{height:32px;border:1px solid var(--input);border-radius:4px;display:flex;align-items:center;padding:0 10px;font-size:13px;background:#fff;gap:8px}
+.seg{display:inline-flex;border:1px solid var(--input);border-radius:4px;overflow:hidden}
+.seg span{padding:5px 10px;font-size:12px;font-weight:600;color:var(--muted-fg);border-right:1px solid var(--input)}
+.seg span:last-child{border-right:0}.seg span.on{background:rgba(17,120,101,.1);color:#0c695a}
+.toggle{width:28px;height:16px;border-radius:9px;background:var(--primary);position:relative;display:inline-block}
+.toggle.off:after{right:auto;left:2px}
+.toggle:after{content:"";position:absolute;right:2px;top:2px;width:12px;height:12px;border-radius:50%;background:#fff}
+
+/* map */
+.mapwrap{display:grid;grid-template-columns:1fr 360px;gap:16px;height:calc(100vh - 3px - 52px - 20px - 24px - 56px - 52px)}
+.map{position:relative;border-radius:8px;box-shadow:var(--sh2);overflow:hidden;background-color:#f8f8f8;
+ background-image:linear-gradient(rgba(224,224,224,.6) 1px,transparent 1px),linear-gradient(90deg,rgba(224,224,224,.6) 1px,transparent 1px),radial-gradient(circle at 55% 42%,rgba(17,120,101,.08),transparent 38%);background-size:24px 24px,24px 24px,auto}
+.lane{position:absolute;top:40px;bottom:16px;border-radius:12px;border:1px dashed var(--border);background:rgba(255,255,255,.45)}
+.lane.ext{border-color:rgba(0,120,212,.45);background:rgba(0,120,212,.035)}
+.lane-h{position:absolute;top:-28px;left:0;right:0;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-fg);display:flex;align-items:center;gap:6px;white-space:nowrap}
+.node{position:absolute;display:flex;align-items:center;gap:10px;height:46px;padding:0 12px;border-radius:6px;background:#fff;border:1px solid var(--border);box-shadow:var(--sh2);font-size:12.5px;z-index:3}
+.node .t{font-size:12px;font-weight:600;line-height:15px;white-space:nowrap}
+.node .m{font-size:11px;color:var(--muted-fg);line-height:14px;white-space:nowrap}
+.node .ic{width:26px;height:26px;border-radius:4px;display:flex;align-items:center;justify-content:center}
+.node.ext{border:1.5px dashed var(--ext);background:#fbfdff}
+.node.focus{border:2px solid var(--down);box-shadow:var(--sh8)}
+.node.up{border-color:rgba(116,39,116,.5)}
+.legend{position:absolute;left:12px;bottom:12px;display:flex;gap:14px;align-items:center;background:#fff;border-radius:6px;box-shadow:var(--sh2);padding:7px 12px;font-size:11.5px;color:var(--muted-fg);z-index:4}
+.lg{display:flex;align-items:center;gap:6px}
+.lg i{display:inline-block;width:22px;height:0;border-top:2px solid}
+.mapbar{position:absolute;top:10px;right:12px;display:flex;gap:8px;z-index:4}
+.panel{overflow:auto}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:6px 10px;font-size:12px}
+.kv dt{color:var(--muted-fg)}.kv dd{margin:0}
+.sect{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-fg);margin:16px 0 8px}
+.colmap{display:grid;grid-template-columns:1fr 18px 1fr;gap:4px 6px;align-items:center;font-size:12px}
+.colmap .a{font-family:Consolas;background:var(--i-bg);color:var(--i-fg);border-radius:4px;padding:2px 6px}
+.colmap .b{font-family:Consolas;background:var(--cert-bg);color:var(--cert-fg);border-radius:4px;padding:2px 6px}
+
+/* data model */
+.ent{position:absolute;width:250px;background:#fff;border-radius:8px;box-shadow:var(--sh4);overflow:hidden;font-size:12px;z-index:2}
+.ent .eh{padding:8px 12px;font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px;color:#fff}
+.ent .f{display:flex;justify-content:space-between;padding:4px 12px;border-top:1px solid var(--muted)}
+.ent .f span:last-child{color:var(--muted-fg);font-family:Consolas;font-size:11px}
+.pk{color:#835b00;font-weight:600}.fk{color:#245f96;font-weight:600}
+.scr{display:none}.scr.on{display:block}
+</style>
+</head>
+<body>
+<div class="spectrum"></div>
+<div class="app">
+<aside>
+  <div class="brand"><span class="brand-mark" data-i="compass" data-s="19"></span>
+    <div><div class="brand-t">Fabric Atlas</div><div class="brand-s">Workspace governance</div></div></div>
+  <nav id="nav"></nav>
+  <div class="wscard"><div class="k">Fabric workspace</div><div class="v">Finance-Gold</div>
+    <div class="s11" style="margin-top:4px">Domain · Finance &amp; Risk</div>
+    <div class="row s11" style="margin-top:6px;gap:6px"><span class="dot"></span>148 Fabric items</div>
+    <div class="s11 muted" style="font-size:10px;margin-top:2px">Latest validated snapshot</div></div>
+</aside>
+<main>
+  <header>
+    <div class="crumb">Fabric · <b>Finance-Gold</b><span class="dom"><span data-i="layers" data-s="14"></span>Domain: Finance &amp; Risk<span data-i="chev" data-s="14"></span></span></div>
+    <div class="hsp"></div>
+    <div class="search"><span data-i="search" data-s="16"></span>Search items, datasets, owners…<kbd>Ctrl K</kbd></div>
+    <span class="btn primary"><span data-i="refresh" data-s="16"></span>Sync</span>
+    <span class="btn ghost" style="padding:0 8px"><span data-i="rows" data-s="16"></span></span>
+  </header>
+  <div class="canvas">
+
+  <!-- ============ SCREEN 1 : SOURCES ============ -->
+  <section class="scr" data-s="1">
+    <div class="ph"><div><h1>External lineage <span class="help">?</span></h1>
+      <div class="obj">Bring lineage from other data platforms into Atlas through OpenLineage — and publish Fabric lineage back out.</div></div>
+      <div class="toolbar"><span class="btn"><span data-i="upload" data-s="16"></span>Upload events</span><span class="btn primary"><span data-i="plus" data-s="16"></span>Add source</span></div></div>
+    <div class="tabs"><span class="tab on">Sources <span class="c">3</span></span><span class="tab">Dataset resolution <span class="c">7</span></span><span class="tab">OpenLineage in / out</span><span class="tab">Data model</span></div>
+
+    <div class="grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
+      <div class="card kpi"><div class="l"><span data-i="plug" data-s="14"></span>External sources</div><div class="v num">3</div><div class="d">2 push · 1 OneLake drop folder</div></div>
+      <div class="card kpi"><div class="l"><span data-i="activity" data-s="14"></span>OpenLineage events (7 d)</div><div class="v num">12 480</div><div class="d"><span style="color:var(--healthy)">▲ 8 %</span> · 0 rejected</div></div>
+      <div class="card kpi"><div class="l"><span data-i="link" data-s="14"></span>Cross-platform edges</div><div class="v num">86</div><div class="d">41 land on Fabric items</div></div>
+      <div class="card kpi"><div class="l"><span data-i="alert" data-s="14"></span>Datasets to resolve</div><div class="v num" style="color:var(--w-fg)">7</div><div class="d">3 ambiguous · 4 unmatched</div></div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1.65fr 1fr">
+      <div class="card">
+        <div class="card-h"><h3>Connected sources</h3><span class="sub">· events are kept outside the Fabric snapshot and merged at read time</span></div>
+        <table>
+          <tr><th>Source</th><th>Namespace</th><th>Ingestion</th><th>Last event</th><th>Datasets</th><th>Status</th></tr>
+          <tr class="sel"><td><div class="row"><span class="sys" style="background:#0a66b1">SAS</span><div><b>SAS Viya – Risk</b><div class="s11 muted">Owner · risk-platform@contoso.com</div></div></div></td>
+            <td class="mono s12">sas://viya-prod/risk</td><td><span class="chip"><span data-i="globe" data-s="14"></span>HTTP · Entra ID</span></td><td class="s12">4 min ago</td><td class="num">23</td><td><span class="badge b-s"><span data-i="check" data-s="14"></span>Healthy</span></td></tr>
+          <tr><td><div class="row"><span class="sys" style="background:#e5482f">DB</span><div><b>Databricks – Pricing</b><div class="s11 muted">Owner · data-eng@contoso.com</div></div></div></td>
+            <td class="mono s12">databricks://adb-7421</td><td><span class="chip"><span data-i="folder" data-s="14"></span>OneLake drop folder</span></td><td class="s12">1 h ago</td><td class="num">12</td><td><span class="badge b-w">2 unresolved</span></td></tr>
+          <tr><td><div class="row"><span class="sys" style="background:var(--teal)"><span data-i="spark" data-s="14"></span></span><div><b>Fabric Spark runtime</b><div class="s11 muted">Column lineage · OL Spark listener</div></div></div></td>
+            <td class="mono s12">abfss://…onelake…</td><td><span class="chip"><span data-i="folder" data-s="14"></span>Files/openlineage/</span></td><td class="s12">12 min ago</td><td class="num">51</td><td><span class="badge b-s"><span data-i="check" data-s="14"></span>Healthy</span></td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>Recent batches</h3><span class="sub">· SAS Viya – Risk</span></div>
+        <table>
+          <tr><th>Received</th><th>Events</th><th>Runs</th><th>Result</th></tr>
+          <tr><td class="s12">Today 09:42</td><td class="num">412</td><td class="num">18</td><td><span class="badge b-s">Accepted</span></td></tr>
+          <tr><td class="s12">Today 06:00</td><td class="num">1 106</td><td class="num">44</td><td><span class="badge b-s">Accepted</span></td></tr>
+          <tr><td class="s12">Yesterday 22:15</td><td class="num">98</td><td class="num">3</td><td><span class="badge b-w">5 dup. skipped</span></td></tr>
+          <tr><td class="s12">Yesterday 18:00</td><td class="num">0</td><td class="num">0</td><td><span class="badge b-d">Schema invalid</span></td></tr>
+        </table>
+        <div class="card-b" style="padding-top:10px"><div class="note" style="background:var(--i-bg);color:var(--i-fg)"><span data-i="info" data-s="16"></span><div>Only facts carried by the events are stored. Atlas never invents runs, owners or columns for external systems.</div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN 2 : RESOLUTION ============ -->
+  <section class="scr" data-s="2">
+    <div class="ph"><div><h1>External lineage <span class="help">?</span></h1>
+      <div class="obj">Bind external datasets to Fabric items only on explicit evidence — OneLake path, SQL endpoint host or an admin rule.</div></div>
+      <div class="toolbar"><span class="seg"><span class="on">All 32</span><span>Matched 25</span><span>Ambiguous 3</span><span>External 4</span></span><span class="btn primary"><span data-i="plus" data-s="16"></span>Mapping rule</span></div></div>
+    <div class="tabs"><span class="tab">Sources <span class="c">3</span></span><span class="tab on">Dataset resolution <span class="c">7</span></span><span class="tab">OpenLineage in / out</span><span class="tab">Data model</span></div>
+    <div class="grid" style="grid-template-columns:1fr 340px">
+      <div class="card">
+        <table>
+          <tr><th>OpenLineage dataset (namespace · name)</th><th>Fabric item</th><th>Evidence</th><th>State</th><th></th></tr>
+          <tr><td><div class="mono s12">abfss://finance-bronze@onelake…</div><b class="s12">lh_bronze/Tables/risk_scores</b></td><td><div class="row"><span data-i="db" data-s="16" style="color:var(--o-table)"></span>lh_bronze.risk_scores</div><div class="s11 muted">Finance-Bronze · Lakehouse</div></td><td><span class="chip">OneLake path</span></td><td><span class="badge b-s">Matched · certain</span></td><td></td></tr>
+          <tr><td><div class="mono s12">mssql://x6ey…datawarehouse.fabric.microsoft.com</div><b class="s12">dw_gold.dbo.fact_exposure</b></td><td><div class="row"><span data-i="db" data-s="16" style="color:var(--o-table)"></span>dw_gold.fact_exposure</div><div class="s11 muted">Finance-Gold · Warehouse</div></td><td><span class="chip">SQL endpoint host</span></td><td><span class="badge b-s">Matched · certain</span></td><td></td></tr>
+          <tr class="sel"><td><div class="mono s12">sas://viya-prod/risk</div><b class="s12">RISKLIB.CUSTOMER_PD</b></td><td><div class="s12 muted">2 candidates</div><div class="s11">lh_silver.customer_pd · lh_gold.customer_pd</div></td><td><span class="chip">Name only</span></td><td><span class="badge b-w">Ambiguous</span></td><td><span class="btn sm">Resolve</span></td></tr>
+          <tr><td><div class="mono s12">sas://viya-prod/risk</div><b class="s12">RISKLIB.MODEL_INPUT</b></td><td><span class="ext-pill">External · SAS</span></td><td class="s12 muted">—</td><td><span class="badge b-i">External</span></td><td></td></tr>
+          <tr><td><div class="mono s12">oracle://core-bank:1521</div><b class="s12">CBS.LOANS</b></td><td><span class="ext-pill">External · Oracle</span></td><td class="s12 muted">—</td><td><span class="badge b-i">External</span></td><td></td></tr>
+          <tr><td><div class="mono s12">databricks://adb-7421</div><b class="s12">pricing.curves_tmp</b></td><td class="s12 muted">—</td><td class="s12 muted">Rule: *_tmp</td><td><span class="badge b-m">Ignored</span></td><td></td></tr>
+          <tr><td><div class="mono s12">s3://contoso-legacy</div><b class="s12">exports/limits.csv</b></td><td class="s12 muted">—</td><td class="s12 muted">Outside tenant</td><td><span class="badge b-m">Out of scope</span></td><td></td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>Resolve RISKLIB.CUSTOMER_PD</h3></div>
+        <div class="card-b">
+          <div class="note" style="background:var(--w-bg);color:var(--w-fg);margin-bottom:14px"><span data-i="alert" data-s="16"></span><div>Two Fabric tables share this name. Atlas will not guess — pick one or keep it external.</div></div>
+          <label class="row" style="border:2px solid var(--primary);border-radius:6px;padding:10px;margin-bottom:8px;align-items:flex-start"><span style="width:14px;height:14px;border-radius:50%;border:4px solid var(--primary);margin-top:2px"></span><div><b class="s12">lh_silver.customer_pd</b><div class="s11 muted">Finance-Silver · written by SAS job at 06:00 (path seen in run facet)</div></div></label>
+          <label class="row" style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;align-items:flex-start"><span style="width:14px;height:14px;border-radius:50%;border:1px solid var(--input);margin-top:2px"></span><div><b class="s12">lh_gold.customer_pd</b><div class="s11 muted">Finance-Gold · no matching write</div></div></label>
+          <label class="row" style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:14px"><span style="width:14px;height:14px;border-radius:50%;border:1px solid var(--input)"></span><span class="s12">Keep as external dataset</span></label>
+          <div class="field">Save as mapping rule</div>
+          <div class="input mono s12" style="margin-bottom:6px">sas://viya-prod/risk · RISKLIB.* → lh_silver.*</div>
+          <div class="s11 muted" style="margin-bottom:14px">Applies to 4 more SAS datasets. Audited, reversible.</div>
+          <div class="row" style="justify-content:flex-end"><span class="btn">Cancel</span><span class="btn primary">Bind &amp; save rule</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN 3 : MAP ============ -->
+  <section class="scr" data-s="3">
+    <div class="ph"><div><h1>Map &amp; lineage <span class="help">?</span></h1>
+      <div class="obj">Item lineage across workspaces — now including external platforms reported through OpenLineage.</div></div>
+      <div class="toolbar"><span class="chip" style="background:#fff;border-color:rgba(0,120,212,.4);color:var(--ext)"><span class="toggle" style="background:var(--ext)"></span><b>External lineage</b></span><span class="seg"><span>Item</span><span class="on">Cross-platform</span><span>Columns</span></span><span class="btn"><span data-i="target" data-s="16"></span>Impact analysis</span></div></div>
+    <div class="tabs"><span class="tab">Map</span><span class="tab on">Lineage</span><span class="tab">Evidence</span></div>
+    <div class="mapwrap">
+      <div class="map" id="map">
+        <div class="mapbar"><span class="btn sm"><span data-i="minus" data-s="14"></span></span><span class="btn sm"><span data-i="plus" data-s="14"></span></span><span class="btn sm">Fit</span></div>
+        <div class="lane ext" style="left:16px;width:212px"><div class="lane-h" style="color:var(--ext)"><span data-i="globe" data-s="14"></span>SAS Viya – Risk · external</div></div>
+        <div class="lane" style="left:244px;width:210px"><div class="lane-h"><span data-i="ws" data-s="14"></span>Finance-Bronze</div></div>
+        <div class="lane" style="left:470px;width:210px"><div class="lane-h"><span data-i="ws" data-s="14"></span>Finance-Silver</div></div>
+        <div class="lane" style="left:696px;width:210px"><div class="lane-h"><span data-i="ws" data-s="14"></span>Finance-Gold</div></div>
+        <svg id="edges" style="position:absolute;inset:0;width:100%;height:100%;z-index:1"></svg>
+        <div id="nodes"></div>
+        <div class="legend"><span class="lg"><i style="border-color:var(--up)"></i>Upstream</span><span class="lg"><i style="border-color:var(--down)"></i>Downstream</span><span class="lg"><i style="border-color:var(--ext);border-top-style:dashed"></i>OpenLineage (external)</span><span class="lg"><i style="border-color:var(--neutral)"></i>Fabric metadata</span></div>
+      </div>
+      <div class="card panel">
+        <div class="card-h"><span class="ext-pill">OpenLineage</span><h3 style="font-size:13px">SAS → lh_bronze.risk_scores</h3></div>
+        <div class="card-b">
+          <dl class="kv">
+            <dt>Job</dt><dd><b>risk.score_customers</b><div class="s11 muted mono">sas://viya-prod/risk</div></dd>
+            <dt>Producer</dt><dd class="s12 mono">sas-viya-ol-adapter/1.0</dd>
+            <dt>Last run</dt><dd><span class="badge b-s">COMPLETE</span> <span class="s12">today 06:12 · 4 m 31 s</span></dd>
+            <dt>Run id</dt><dd class="mono s11">0198d4f2-…-7c1e</dd>
+            <dt>Target</dt><dd><div class="row"><span data-i="db" data-s="14" style="color:var(--o-table)"></span>lh_bronze.risk_scores</div><span class="badge b-cert" style="margin-top:4px">Certified</span></dd>
+            <dt>Binding</dt><dd><span class="chip">OneLake path · certain</span></dd>
+          </dl>
+          <div class="sect">Inputs (external)</div>
+          <div class="row s12" style="margin-bottom:6px"><span class="ext-pill">SAS</span><span class="mono">RISKLIB.MODEL_INPUT</span></div>
+          <div class="row s12"><span class="ext-pill">Oracle</span><span class="mono">CBS.LOANS</span></div>
+          <div class="sect">Column lineage · columnLineage facet</div>
+          <div class="colmap">
+            <span class="a">PD_12M</span><span data-i="arrow" data-s="14" style="color:var(--ext)"></span><span class="b">pd_12m</span>
+            <span class="a">LGD</span><span data-i="arrow" data-s="14" style="color:var(--ext)"></span><span class="b">lgd</span>
+            <span class="a">CUST_ID</span><span data-i="arrow" data-s="14" style="color:var(--ext)"></span><span class="b">customer_id</span>
+            <span class="a">SEGMENT</span><span data-i="arrow" data-s="14" style="color:var(--ext)"></span><span class="b">risk_segment</span>
+          </div>
+          <div class="sect">Downstream impact</div>
+          <div class="row s12" style="justify-content:space-between"><span>Fabric items</span><b class="num" style="color:var(--down)">6</b></div>
+          <div class="row s12" style="justify-content:space-between;margin-top:4px"><span>Workspaces</span><b class="num" style="color:var(--down)">3</b></div>
+          <div class="row s12" style="justify-content:space-between;margin-top:4px"><span>Reports</span><b class="num" style="color:var(--down)">1</b></div>
+          <div class="note" style="background:var(--i-bg);color:var(--i-fg);margin-top:14px"><span data-i="info" data-s="16"></span><div>Stored in <span class="mono">ExternalLineageEdge</span>, merged with the snapshot at read time. Removing the source removes the edge.</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN 4 : IN / OUT ============ -->
+  <section class="scr" data-s="4">
+    <div class="ph"><div><h1>External lineage <span class="help">?</span></h1>
+      <div class="obj">One OpenLineage parser for every input; one exporter to publish Fabric lineage to Marquez, Purview or any OL consumer.</div></div></div>
+    <div class="tabs"><span class="tab">Sources <span class="c">3</span></span><span class="tab">Dataset resolution <span class="c">7</span></span><span class="tab on">OpenLineage in / out</span><span class="tab">Data model</span></div>
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="card">
+        <div class="card-h"><span data-i="download" data-s="16" style="color:var(--up)"></span><h3>Inbound · receive events</h3><span class="badge b-s" style="margin-left:auto">Enabled</span></div>
+        <div class="card-b">
+          <div class="field">HTTP endpoint (OpenLineage HTTP transport)</div>
+          <div class="input mono s12" style="margin-bottom:12px"><span style="flex:1">https://atlas-finance.contoso.app/api/v1/lineage</span><span data-i="copy" data-s="14"></span></div>
+          <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+            <div><div class="field">Authentication</div><div class="input s12"><span data-i="key" data-s="14"></span>Entra ID · app role Lineage.Write</div></div>
+            <div><div class="field">Bound source</div><div class="input s12">SAS Viya – Risk</div></div>
+          </div>
+          <div class="field">Or drop NDJSON files in OneLake</div>
+          <div class="input mono s12" style="margin-bottom:14px">lh_atlas/Files/openlineage/inbox/</div>
+          <div class="field">Accepted event (SAS adapter → OpenLineage RunEvent)</div>
+<div class="code">{ <span class="k">"eventType"</span>: <span class="s">"COMPLETE"</span>,
+  <span class="k">"eventTime"</span>: <span class="s">"2026-10-29T06:12:44Z"</span>,
+  <span class="k">"run"</span>: { <span class="k">"runId"</span>: <span class="s">"0198d4f2-…-7c1e"</span> },
+  <span class="k">"job"</span>: { <span class="k">"namespace"</span>: <span class="s">"sas://viya-prod/risk"</span>,
+           <span class="k">"name"</span>: <span class="s">"risk.score_customers"</span> },
+  <span class="k">"inputs"</span>:  [{ <span class="k">"namespace"</span>: <span class="s">"sas://viya-prod/risk"</span>, <span class="k">"name"</span>: <span class="s">"RISKLIB.MODEL_INPUT"</span> }],
+  <span class="k">"outputs"</span>: [{ <span class="k">"namespace"</span>: <span class="s">"abfss://finance-bronze@onelake…"</span>,
+               <span class="k">"name"</span>: <span class="s">"lh_bronze/Tables/risk_scores"</span>,
+               <span class="k">"facets"</span>: { <span class="k">"columnLineage"</span>: { <span class="c">…</span> } } }] }</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><span data-i="upload" data-s="16" style="color:var(--down)"></span><h3>Outbound · publish Fabric lineage</h3><span class="badge b-m" style="margin-left:auto">Manual</span></div>
+        <div class="card-b">
+          <div class="field">Scope</div>
+          <div class="row" style="margin-bottom:12px;flex-wrap:wrap"><span class="chip">Finance-Bronze</span><span class="chip">Finance-Silver</span><span class="chip">Finance-Gold</span><span class="chip" style="border-style:dashed">+ workspace</span></div>
+          <div class="field">Format</div>
+          <div class="seg" style="margin-bottom:12px"><span class="on">JobEvent / DatasetEvent</span><span>Static snapshot</span></div>
+          <div class="field">Destination</div>
+          <div class="grid" style="grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+            <div style="border:2px solid var(--primary);border-radius:6px;padding:10px"><b class="s12">NDJSON in OneLake</b><div class="s11 muted mono">Files/openlineage/export/</div></div>
+            <div style="border:1px solid var(--border);border-radius:6px;padding:10px"><b class="s12">Marquez / OL endpoint</b><div class="s11 muted mono">https://marquez…/api/v1/lineage</div></div>
+          </div>
+          <div class="note" style="background:var(--w-bg);color:var(--w-fg);margin-bottom:14px"><span data-i="alert" data-s="16"></span><div>Snapshot lineage is exported as <b>JobEvent / DatasetEvent</b> — no fake RunEvents. Real runs only for Spark jobs captured at runtime.</div></div>
+          <div class="row" style="justify-content:flex-end;margin-bottom:14px"><span class="btn">Preview 214 events</span><span class="btn primary"><span data-i="upload" data-s="16"></span>Export</span></div>
+          <table>
+            <tr><th>Export</th><th>Events</th><th>Datasets</th><th>Result</th></tr>
+            <tr><td class="s12">Today 07:00 · NDJSON</td><td class="num">214</td><td class="num">96</td><td><span class="badge b-s">Done</span></td></tr>
+            <tr><td class="s12">Mon 07:00 · Marquez</td><td class="num">209</td><td class="num">94</td><td><span class="badge b-s">Done</span></td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SCREEN 5 : DATA MODEL ============ -->
+  <section class="scr" data-s="5">
+    <div class="ph"><div><h1>External lineage <span class="help">?</span></h1>
+      <div class="obj">Dedicated tables, outside the snapshot. Read path = snapshot edges ∪ external edges.</div></div></div>
+    <div class="tabs"><span class="tab">Sources <span class="c">3</span></span><span class="tab">Dataset resolution <span class="c">7</span></span><span class="tab">OpenLineage in / out</span><span class="tab on">Data model</span></div>
+    <div class="card" style="position:relative;height:640px;overflow:hidden" id="erd">
+      <svg id="erdedges" style="position:absolute;inset:0;width:100%;height:100%;z-index:1"></svg>
+    </div>
+  </section>
+
+  </div>
+</main>
+</div>
+
+<script>
+const P={
+compass:'<circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>',
+chart:'<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
+way:'<circle cx="12" cy="4.5" r="2.5"/><path d="m10.2 6.3-3.9 3.9"/><circle cx="4.5" cy="12" r="2.5"/><path d="M7 12h10"/><circle cx="19.5" cy="12" r="2.5"/><path d="m13.8 17.7 3.9-3.9"/><circle cx="12" cy="19.5" r="2.5"/>',
+tree:'<path d="M20 10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2.5a1 1 0 0 1-.8-.4l-.9-1.2A1 1 0 0 0 15 3h-2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"/><path d="M20 21a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1h-2.9a1 1 0 0 1-.88-.55l-.42-.85a1 1 0 0 0-.92-.6H13a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"/><path d="M3 5a2 2 0 0 0 2 2h3"/><path d="M3 3v13a2 2 0 0 0 2 2h3"/>',
+boxes:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+shield:'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/>',
+key:'<circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/>',
+user:'<circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/>',
+activity:'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+settings:'<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
+plug:'<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>',
+info:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+globe:'<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+search:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+refresh:'<path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/>',
+rows:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 12h18"/><path d="M3 7.5h18"/><path d="M3 16.5h18"/>',
+layers:'<path d="m12 2 10 5-10 5L2 7Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>',
+chev:'<path d="m6 9 6 6 6-6"/>',
+upload:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
+download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
+plus:'<path d="M5 12h14"/><path d="M12 5v14"/>',minus:'<path d="M5 12h14"/>',
+link:'<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+alert:'<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+check:'<path d="M20 6 9 17l-5-5"/>',
+folder:'<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+spark:'<path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>',
+db:'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>',
+ws:'<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',
+target:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+arrow:'<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
+copy:'<rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+nb:'<path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M16 2v20"/>',
+pipe:'<rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="15" width="6" height="6" rx="1"/><path d="M9 6h4a2 2 0 0 1 2 2v7"/>',
+report:'<path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="5"/><rect x="12" y="8" width="3" height="9"/><rect x="17" y="5" width="3" height="12"/>',
+model:'<circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/><path d="M12 8v3"/><path d="m7 17 4-6"/><path d="m17 17-4-6"/>'
+};
+const ic=(n,s=17)=>`<svg class="i" viewBox="0 0 24 24" style="width:${s}px;height:${s}px">${P[n]||''}</svg>`;
+
+const NAV=[["Explore",[["chart","Overview"],["way","Map & lineage",1],["globe","External lineage",2],["tree","Catalog"],["boxes","Asset Catalog"]]],
+["Govern",[["shield","Governance Center"],["key","Access Review"],["user","My items"]]],
+["Operate",[["activity","Jobs & health"],["settings","Workspace Hub"]]],
+["System",[["plug","MCP"],["info","About"]]]];
+const s=+(new URLSearchParams(location.search).get('s')||1);
+const activeNav=s===3?"Map & lineage":"External lineage";
+document.getElementById('nav').innerHTML=NAV.map(([g,items])=>`<div class="ng"><div class="ngl">${g}</div>${items.map(([i,l,k])=>`<div class="ni ${l===activeNav?'active':''}">${ic(i)}${l}${k===2?'<span class="new">New</span>':''}</div>`).join('')}</div>`).join('');
+document.querySelectorAll('[data-i]').forEach(e=>e.innerHTML=ic(e.dataset.i,+(e.dataset.s||17)));
+document.querySelector(`.scr[data-s="${s}"]`).classList.add('on');
+
+if(s===3){
+  const N=[
+   ["sasin","RISKLIB.MODEL_INPUT","SAS dataset","db",28,60,'ext'],
+   ["ora","CBS.LOANS","Oracle · via SAS","db",28,140,'ext'],
+   ["sasjob","risk.score_customers","SAS job · COMPLETE 06:12","spark",28,250,'ext'],
+   ["sasout2","RISKLIB.CUSTOMER_PD","SAS dataset","db",28,380,'ext'],
+   ["b1","lh_bronze.risk_scores","Lakehouse table","db",256,250,'focus'],
+   ["b2","pl_ingest_core","Data pipeline","pipe",256,120,''],
+   ["s1","nb_conform_risk","Notebook · Spark OL","nb",482,250,''],
+   ["s2","lh_silver.customer_pd","Lakehouse table","db",482,380,''],
+   ["g1","dw_gold.fact_exposure","Warehouse table","db",708,190,''],
+   ["g2","sm_risk_exposure","Semantic model","model",708,300,''],
+   ["g3","Credit Risk Dashboard","Report · Certified","report",708,410,'']
+  ];
+  const col={db:'var(--o-table)',spark:'var(--ext)',pipe:'var(--o-source)',nb:'var(--purple)',model:'var(--o-measure)',report:'var(--o-measure)'};
+  const nodes=document.getElementById('nodes'),pos={};
+  N.forEach(([id,t,m,i,x,y,k])=>{const w=k==='ext'?188:186;pos[id]={x,y,w};
+    const c=k==='ext'?'var(--ext)':col[i];
+    nodes.insertAdjacentHTML('beforeend',`<div class="node ${k}" style="left:${x}px;top:${y}px;width:${w}px"><span class="ic" style="background:color-mix(in srgb,${c} 12%,#fff);color:${c}">${ic(i,15)}</span><div style="min-width:0"><div class="t">${t}</div><div class="m">${m}</div></div></div>`)});
+  const E=[["sasin","sasjob","ext"],["ora","sasjob","ext"],["sasjob","b1","ext"],["sasjob","sasout2","ext"],["sasout2","s2","ext"],
+   ["b2","b1","up"],["b1","s1","down"],["s1","s2","down"],["s2","g1","down"],["b1","g1","down"],["g1","g2","down"],["g2","g3","down"]];
+  const sc={ext:'#0078d4',up:'#742774',down:'#117865'};
+  let svg='<defs>'+Object.entries(sc).map(([k,c])=>`<marker id="m${k}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="${c}"/></marker>`).join('')+'</defs>';
+  E.forEach(([a,b,k])=>{const A=pos[a],B=pos[b];let x1=A.x+A.w,y1=A.y+23,x2=B.x,y2=B.y+23;
+    if(A.x===B.x){x1=A.x+A.w/2;y1=A.y+(B.y>A.y?46:0);x2=B.x+B.w/2;y2=B.y+(B.y>A.y?0:46);
+      svg+=`<path d="M${x1} ${y1} L${x2} ${y2-(B.y>A.y?3:-3)}" fill="none" stroke="${sc[k]}" stroke-width="2" ${k==='ext'?'stroke-dasharray="6 4"':''} marker-end="url(#m${k})"/>`;return;}
+    const mx=(x1+x2)/2;svg+=`<path d="M${x1} ${y1} C${mx} ${y1},${mx} ${y2},${x2-3} ${y2}" fill="none" stroke="${sc[k]}" stroke-width="${a==='sasjob'&&b==='b1'?3:2}" ${k==='ext'?'stroke-dasharray="6 4"':''} marker-end="url(#m${k})"/>`});
+  document.getElementById('edges').innerHTML=svg;
+}
+
+/* ---------- interactions ---------- */
+const go=n=>{location.search='?s='+n};
+const TABMAP={"Sources":1,"Dataset resolution":2,"OpenLineage in / out":4,"Data model":5};
+document.querySelectorAll('.tab').forEach(t=>{const k=Object.keys(TABMAP).find(x=>t.textContent.trim().startsWith(x));
+  t.style.cursor='pointer';
+  t.onclick=()=>{if(k)go(TABMAP[k]);else{t.parentElement.querySelectorAll('.tab').forEach(o=>o.classList.remove('on'));t.classList.add('on')}}});
+document.querySelectorAll('.ni').forEach(n=>{const l=n.textContent.replace('New','').trim();n.style.cursor='pointer';
+  n.onclick=()=>{if(l==='External lineage')go(1);else if(l==='Map & lineage')go(3);else{n.animate([{background:'#f0f0f0'},{background:'transparent'}],{duration:400});}}});
+document.querySelectorAll('.seg').forEach(g=>g.querySelectorAll('span').forEach(sp=>{sp.style.cursor='pointer';
+  sp.onclick=()=>{g.querySelectorAll('span').forEach(o=>o.classList.remove('on'));sp.classList.add('on');
+    if(s===2){const f=sp.textContent.split(' ')[0];document.querySelectorAll('[data-s="2"] table tr').forEach((r,i)=>{if(!i)return;const st=r.querySelector('.badge')?.textContent||'';
+      r.style.display=(f==='All'||(f==='Matched'&&st.startsWith('Matched'))||(f==='Ambiguous'&&st==='Ambiguous')||(f==='External'&&st==='External'))?'':'none'})}}}));
+document.querySelectorAll('.btn, .kpi, .chip, label, tr').forEach(b=>b.style.cursor='pointer');
+document.querySelectorAll('.kpi').forEach(k=>{if(/resolve|edges/i.test(k.textContent))k.onclick=()=>go(/resolve/i.test(k.textContent)?2:3)});
+document.querySelectorAll('.btn').forEach(b=>{const t=b.textContent.trim();
+  if(t==='Resolve')b.onclick=()=>{};
+  if(t==='Bind & save rule')b.onclick=()=>{b.textContent='✓ Bound · rule saved';b.style.background='#0e700e'};
+  if(t==='Export')b.onclick=()=>{b.innerHTML='✓ Exported 214 events'};
+  if(t==='Impact analysis')b.onclick=()=>document.querySelectorAll('.node:not(.ext)').forEach(n=>n.style.outline=n.classList.contains('focus')?'':'2px solid rgba(17,120,101,.35)');});
+/* source rows -> resolution */
+if(s===1)document.querySelectorAll('[data-s="1"] table')[0].querySelectorAll('tr').forEach((r,i)=>{if(i)r.onclick=()=>go(2)});
+/* resolution: select row + radio choices */
+if(s===2){
+  const labels=[...document.querySelectorAll('[data-s="2"] label')];
+  labels.forEach(l=>l.onclick=()=>{labels.forEach(o=>{o.style.border='1px solid var(--border)';const d=o.querySelector('span');d.style.border='1px solid var(--input)'});
+    l.style.border='2px solid var(--primary)';l.querySelector('span').style.border='4px solid var(--primary)'});
+  const rows=[...document.querySelectorAll('[data-s="2"] table tr')].slice(1);
+  rows.forEach(r=>r.onclick=()=>{rows.forEach(o=>o.classList.remove('sel'));r.classList.add('sel');
+    document.querySelector('[data-s="2"] .card-h h3').textContent='Resolve '+r.querySelector('b').textContent});
+}
+/* in/out: destination cards */
+if(s===4){const cards=[...document.querySelectorAll('[data-s="4"] .grid .grid > div')].filter(d=>d.querySelector('b'));
+  cards.forEach(c=>{c.style.cursor='pointer';c.onclick=()=>{cards.forEach(o=>o.style.border='1px solid var(--border)');c.style.border='2px solid var(--primary)'}})}
+/* map: external toggle + node click */
+if(s===3){
+  let on=true;const tg=document.querySelector('[data-s="3"] .toolbar .chip');
+  tg.onclick=()=>{on=!on;tg.querySelector('.toggle').style.background=on?'var(--ext)':'#c8c8c8';tg.querySelector('.toggle').classList.toggle('off',!on);
+    document.querySelectorAll('.node.ext,.lane.ext').forEach(e=>e.style.display=on?'':'none');
+    document.querySelectorAll('#edges path[stroke-dasharray]').forEach(e=>e.style.display=on?'':'none');
+    document.querySelector('.panel').style.opacity=on?1:.35};
+  document.querySelectorAll('.node').forEach(n=>{n.style.cursor='pointer';n.onclick=()=>{
+    document.querySelectorAll('.node').forEach(o=>{o.classList.remove('focus')});n.classList.add('focus');
+    document.querySelector('.panel .card-h h3').textContent=n.querySelector('.t').textContent;
+    const ext=n.classList.contains('ext');const pill=document.querySelector('.panel .ext-pill');pill.textContent=ext?'OpenLineage · external':'Fabric item';
+    pill.style.borderColor=ext?'var(--ext)':'var(--primary)';pill.style.color=ext?'var(--ext)':'var(--primary)'}});
+}
+
+if(s===5){
+  const T=[
+   ["ExternalSystem","var(--ext)",30,30,[["SystemId","pk","guid"],["Name","","nvarchar"],["Namespace","","nvarchar"],["Ingestion","","http|folder"],["OwnerUpn","","nvarchar"]]],
+   ["OpenLineageBatch","var(--ext)",30,250,[["BatchId","pk","guid"],["SystemId","fk","guid"],["ReceivedAt","","datetime2"],["EventCount","","int"],["Status","","varchar"]]],
+   ["OpenLineageEvent","var(--ext)",30,465,[["EventId","pk","guid"],["BatchId","fk","guid"],["RunId · EventType","",""],["Payload (trimmed)","","json"]]],
+   ["ExternalDataset","var(--purple)",340,30,[["DatasetId","pk","hash(ns,name)"],["Namespace · Name","","nvarchar"],["FabricItemId","fk","guid?"],["State","","matched|ambiguous|…"],["Evidence","","varchar"]]],
+   ["ExternalJob","var(--purple)",340,270,[["JobId","pk","hash(ns,name)"],["SystemId","fk","guid"],["LastRunId","","guid"],["LastState","","COMPLETE|FAIL"]]],
+   ["ExternalLineageEdge","var(--teal)",650,150,[["EdgeId","pk","hash(src,tgt,job)"],["SourceDatasetId","fk",""],["TargetDatasetId","fk",""],["JobId","fk",""],["ColumnLineage","","json"],["LastSeenAt","","datetime2"]]],
+   ["DatasetMappingRule","var(--o-measure)",340,470,[["RuleId","pk","guid"],["Pattern","","ns · name glob"],["Target","","item | ignore"],["CreatedBy","","upn"]]],
+   ["OpenLineageExportRun","var(--o-measure)",650,430,[["ExportId","pk","guid"],["Scope","","workspaces"],["Destination","","ndjson|url"],["EventCount","","int"]]],
+  ];
+  const erd=document.getElementById('erd');
+  T.forEach(([n,c,x,y,f])=>erd.insertAdjacentHTML('beforeend',`<div class="ent" style="left:${x}px;top:${y}px"><div class="eh" style="background:${c}">${ic('db',14)}${n}</div>${f.map(([a,k,t])=>`<div class="f"><span class="${k}">${k?k.toUpperCase()+' · ':''}${a}</span><span>${t}</span></div>`).join('')}</div>`));
+  erd.insertAdjacentHTML('beforeend',`<div class="ent" style="left:960px;top:150px;width:240px;border:1.5px dashed var(--border);box-shadow:none"><div class="eh" style="background:var(--muted);color:var(--fg)">${ic('layers',14)}Existing snapshot</div><div class="f"><span>Item · ItemDependency</span><span>read-only</span></div><div class="f"><span>ObjectLineage (columns)</span><span>read-only</span></div><div style="padding:10px 12px;font-size:11.5px;color:var(--muted-fg);border-top:1px solid var(--muted)">Lineage read = snapshot edges <b>∪</b> ExternalLineageEdge, joined on FabricItemId. Snapshot rebuilds never touch external tables.</div></div>`);
+  const L=[[250,80,30,250+20],[250,300,30,465+20]];
+  let svg='';
+  const line=(d,c,dash)=>svg+=`<path d="${d}" fill="none" stroke="${c}" stroke-width="1.5" ${dash?'stroke-dasharray="5 4"':''}/>`;
+  line('M155 165 V250','#0078d4');line('M155 380 V465','#0078d4');
+  line('M280 80 H340','#94a3b8');line('M280 320 H340','#94a3b8');
+  line('M590 100 C620 100,620 210,650 210','#117865');line('M590 320 C620 320,620 260,650 260','#117865');
+  line('M590 520 H620 V120 H590','#817400',1);
+  line('M900 230 H960','#94a3b8',1);
+  document.getElementById('erdedges').innerHTML=svg;
+}
+</script>
+</body>
+</html>
+
+
+
