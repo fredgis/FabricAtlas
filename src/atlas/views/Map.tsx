@@ -97,7 +97,7 @@ import { LINEAGE_ARROW_TIP, lineageCurve } from "../map-geometry";
 import { useAtlas } from "../store";
 import { OpenLineageExportDialog } from "../components/OpenLineageExportDialog";
 import { useExternalLineage } from "../external-lineage-store";
-import { buildExternalOverlay, EMPTY_EXTERNAL_OVERLAY, externalDatasetsIn } from "../map-external";
+import { buildExternalOverlay, EMPTY_EXTERNAL_OVERLAY, externalDatasetsIn, externalItemImpact } from "../map-external";
 import { mergeLineageEdges } from "../external-lineage";
 import {
   ExternalBadges,
@@ -1220,6 +1220,10 @@ export function MapView({
   const activeObject = objectNodeById.get(activeObjectId);
   const reportItemId =
     mode === "objects" ? activeObject?.itemId ?? activeId : activeId;
+  const reportExternal =
+    impactReportOpen && reportItemId
+      ? externalItemImpact(externalLineage, edges, reportItemId)
+      : undefined;
   const metadataReportObject =
     mode === "objects" ? activeObject?.metadataRef : undefined;
   const reportObject: SchemaObjectRef | undefined =
@@ -3755,6 +3759,7 @@ export function MapView({
           data={data}
           itemId={reportItemId}
           object={reportObject}
+          external={reportExternal}
           open={impactReportOpen}
           onClose={() => setImpactReportOpen(false)}
         />

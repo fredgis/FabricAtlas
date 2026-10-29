@@ -103,7 +103,7 @@ export function ExternalLineageView() {
   return (
     <Tabs.Root value={section} onValueChange={(v) => setSection(v as Section)} asChild>
       <div className="atlas-content-frame flex flex-col gap-l p-l sm:p-xxl">
-        <Card className="min-w-0 overflow-hidden">
+        <Card className="min-w-0">
           <PageHeader
             title="External lineage"
             purpose={purpose[section]}

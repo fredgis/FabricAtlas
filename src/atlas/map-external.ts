@@ -267,3 +267,45 @@ export function externalDownstream(
     reports: items.filter((i) => /report/i.test(i.itemType)).length,
   };
 }
+
+export interface ExternalImpactEntry {
+  dataset: ExternalDatasetRecord;
+  distance: number;
+}
+
+export interface ExternalItemImpact {
+  upstream: ExternalImpactEntry[];
+  downstream: ExternalImpactEntry[];
+  /** OpenLineage jobs that move data between the impacted nodes. */
+  jobs: string[];
+}
+
+/** Full transitive OpenLineage datasets and jobs around a Fabric item, across the link points. */
+export function externalItemImpact(
+  lineage: ExternalLineage,
+  snapshot: readonly Edge[],
+  itemId: string,
+): ExternalItemImpact {
+  if (!itemId || lineage.edges.length === 0) return { upstream: [], downstream: [], jobs: [] };
+  const index = createLineageIndex(mergeLineageEdges(snapshot, lineage));
+  const impact = getLineageImpact(index, itemId);
+  const entries = (ids: Set<string>, distance: Map<string, number>) =>
+    externalDatasetsIn(ids, lineage)
+      .map((dataset) => ({ dataset, distance: distance.get(externalNodeId(dataset)) ?? 0 }))
+      .sort((a, b) => a.distance - b.distance || a.dataset.name.localeCompare(b.dataset.name));
+  const reached = new Set([itemId, ...impact.upstream.ids, ...impact.downstream.ids]);
+  const byId = new Map(lineage.datasets.map((d) => [d.id, d]));
+  const jobs = new Set<string>();
+  for (const edge of lineage.edges) {
+    const source = byId.get(edge.sourceDatasetId);
+    const target = byId.get(edge.targetDatasetId);
+    if (source && target && reached.has(externalNodeId(source)) && reached.has(externalNodeId(target))) {
+      jobs.add(edge.jobName);
+    }
+  }
+  return {
+    upstream: entries(impact.upstream.ids, impact.upstream.distance),
+    downstream: entries(impact.downstream.ids, impact.downstream.distance),
+    jobs: [...jobs].sort((a, b) => a.localeCompare(b)),
+  };
+}

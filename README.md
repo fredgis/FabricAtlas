@@ -247,6 +247,12 @@ marked as Beta rather than authoritative lineage.
 
 ![Fabric Atlas Item Relations Preview](docs/screenshots/item-relations-preview-v2.png)
 
+### External lineage (OpenLineage)
+
+Import OpenLineage files (NDJSON or JSON) produced by sources outside Fabric, such as databases, ETL tools and streams, from **External lineage**. Give each import a name. Datasets whose namespace and name exactly match a Fabric item are linked automatically. You can link the other datasets manually to any catalog item. On **Map & lineage**, the **External lineage** toggle adds a dashed *External* lane with the imported jobs and datasets and link points on Fabric items. **Impact** follows the lineage across these link points: the inspector and the impact report list the external upstream and downstream datasets and the jobs between them. Fabric Atlas can also export a workspace's lineage as OpenLineage static `JobEvent` / `DatasetEvent` records. These records carry the custom `fabricAtlas_item` facet ([schema](docs/openlineage/FabricAtlasItemFacet.json)). Sample files are in [`samples/openlineage`](samples/openlineage). For more detail, see [docs/external-lineage.md](docs/external-lineage.md).
+
+![Fabric Atlas Map with the External lineage lane](docs/screenshots/external-lineage-map-v2.png)
+
 ### Object lineage
 
 Semantic Model Object Lineage starts with the complete table inventory and no

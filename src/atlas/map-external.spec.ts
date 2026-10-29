@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EXACT_PATH, mergeLineageEdges, type ExternalDatasetRecord, type ExternalEdgeRecord, type ExternalLineage } from './external-lineage';
 import { createLineageIndex, getLineageImpact } from './lineage';
-import { buildExternalOverlay, EMPTY_EXTERNAL_OVERLAY, externalDatasetsIn, externalDownstream, jobKeyOf } from './map-external';
+import { buildExternalOverlay, EMPTY_EXTERNAL_OVERLAY, externalDatasetsIn, externalDownstream, externalItemImpact, jobKeyOf } from './map-external';
 import type { Edge, Item, ItemType } from './model';
 
 const LH = 'lh-1';
@@ -131,5 +131,26 @@ describe('externalDownstream', () => {
     const up = getLineageImpact(index, RPT);
     expect(externalDatasetsIn(up.upstream.ids, lineage).map((d) => d.id)).toEqual(['crm', 'input']);
     expect(externalDatasetsIn(getLineageImpact(createLineageIndex(snapshot), RPT).upstream.ids, lineage)).toEqual([]);
+  });
+});
+
+describe('externalItemImpact', () => {
+  const snapshot: Edge[] = [
+    { source: LH, target: SM, relation: 'feeds' },
+    { source: SM, target: RPT, relation: 'feeds' },
+  ];
+
+  it('lists external upstream datasets with distance and the jobs feeding a report', () => {
+    const impact = externalItemImpact(lineage, snapshot, RPT);
+    expect(impact.upstream.map((e) => [e.dataset.id, e.distance])).toEqual([
+      ['crm', 3],
+      ['input', 3],
+    ]);
+    expect(impact.downstream).toEqual([]);
+    expect(impact.jobs).toEqual(['score_members']);
+  });
+
+  it('returns nothing without imported edges', () => {
+    expect(externalItemImpact({ ...lineage, edges: [] }, snapshot, RPT)).toEqual({ upstream: [], downstream: [], jobs: [] });
   });
 });
