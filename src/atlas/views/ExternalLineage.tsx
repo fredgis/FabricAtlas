@@ -21,6 +21,7 @@ import { useAtlas } from "../store";
 import { ExternalLinkTab } from "./ExternalLineageLink";
 import { ExternalFormatTab } from "./ExternalLineageFormat";
 import { Note, PlatformBadge } from "./ExternalLineageParts";
+import { OpenLineageExportDialog } from "../components/OpenLineageExportDialog";
 
 type Section = "imports" | "link" | "format" | "model";
 
@@ -106,10 +107,17 @@ export function ExternalLineageView() {
               </>
             }
             actions={
-              <button type="button" className={PRIMARY_BUTTON} onClick={browse} disabled={busy}>
-                <Upload className="size-4" aria-hidden="true" />
-                Import OpenLineage file
-              </button>
+              <div className="flex flex-wrap gap-s">
+                <OpenLineageExportDialog
+                  onExported={(r) =>
+                    setMessage({ tone: "info", text: `${r.fileName} downloaded · ${r.eventCount} events.` })
+                  }
+                />
+                <button type="button" className={PRIMARY_BUTTON} onClick={browse} disabled={busy}>
+                  <Upload className="size-4" aria-hidden="true" />
+                  Import OpenLineage file
+                </button>
+              </div>
             }
           />
           <input

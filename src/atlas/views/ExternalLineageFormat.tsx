@@ -110,7 +110,11 @@ export function ExternalFormatTab() {
           <Note tone="warning">
             Ignored and never stored: SQL text, source code, data samples, credentials and any other facet.
           </Note>
-          <Note>Later versions: automatic ingestion and Spark runtime events (#86).</Note>
+          <Note>
+        Export: <strong>Download OpenLineage</strong> writes the Fabric lineage as an NDJSON file (one
+        JobEvent per job, OneLake <code>abfss://</code> dataset names) that any OpenLineage tool can read.
+        Later versions: automatic ingestion and Spark runtime events (#86).
+      </Note>
         </div>
       </Card>
     </div>

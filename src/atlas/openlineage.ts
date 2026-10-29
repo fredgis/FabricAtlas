@@ -6,7 +6,13 @@
  * job identity, input/output datasets, the columnLineage facet and the last
  * run per edge. SQL text, source code, data samples and every other facet are
  * dropped during parsing and never leave this module.
+ *
+ * {@link exportOpenLineage} writes the reverse: the Fabric graph as standard
+ * OpenLineage JobEvents and DatasetEvents (NDJSON).
  */
+
+import type { AtlasData, Item, ItemType } from './model';
+import type { ExternalLineage } from './external-lineage';
 
 export const OL_LIMITS = {
   maxBytes: 20 * 1024 * 1024,
@@ -401,4 +407,208 @@ export function decodeColumns(text: string | undefined | null): OlColumnPair[] {
   } catch {
     return [];
   }
+}
+
+/* ------------------------------- export ------------------------------- */
+
+export const OL_PRODUCER = 'https://github.com/fredgis/FabricAtlas/v2.7';
+export const OL_SPEC_URL = 'https://openlineage.io/spec/2-0-2/OpenLineage.json';
+const JOB_TYPE_FACET_URL = 'https://openlineage.io/spec/facets/2-0-3/JobTypeJobFacet.json#/$defs/JobTypeJobFacet';
+const COLUMN_FACET_URL = 'https://openlineage.io/spec/facets/1-2-0/ColumnLineageDatasetFacet.json#/$defs/ColumnLineageDatasetFacet';
+
+/** Fabric items that run work; every other item is exported as a dataset. */
+export const JOB_ITEM_TYPES: ReadonlySet<ItemType> = new Set<ItemType>([
+  'Notebook',
+  'DataPipeline',
+  'Dataflow',
+  'Eventstream',
+  'UserDataFunction',
+]);
+
+export interface OlExportOptions {
+  /** Restricts the export to these item ids (map selection). All items when omitted. */
+  itemIds?: ReadonlySet<string>;
+  /** Adds the imported external edges that touch a linked Fabric item. */
+  includeExternal?: boolean;
+  external?: ExternalLineage;
+  eventTime?: string;
+}
+
+export interface OlExportResult {
+  text: string;
+  eventCount: number;
+  jobCount: number;
+  datasetCount: number;
+  externalEdgeCount: number;
+  fileName: string;
+}
+
+interface OlDatasetRef {
+  namespace: string;
+  name: string;
+  facets?: Record<string, unknown>;
+}
+
+/** `abfss://<workspace>@onelake.dfs.fabric.microsoft.com`, the namespace the auto-link reads back. */
+export function oneLakeNamespace(workspace: Pick<AtlasData['workspace'], 'fabricId' | 'displayName'>): string {
+  const id = workspace.fabricId || workspace.displayName || 'workspace';
+  return `abfss://${encodeURIComponent(id)}@onelake.dfs.fabric.microsoft.com`;
+}
+
+/** Item root path `<name>.<Type>`, optionally with `Tables/<schema>/<table>` or `Files/…`. */
+export function oneLakeName(item: Pick<Item, 'displayName' | 'itemType'>, objectName?: string): string {
+  const root = `${item.displayName.replace(/\//g, '%2F')}.${item.itemType}`;
+  if (!objectName) return root;
+  if (objectName.startsWith('Files/')) return `${root}/${objectName}`;
+  return `${root}/Tables/${objectName.split('.').join('/')}`;
+}
+
+function slug(s: string): string {
+  return s.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'workspace';
+}
+
+/** Writes the Fabric graph (plus linked external edges on demand) as OpenLineage NDJSON. Pure. */
+export function exportOpenLineage(
+  data: Pick<AtlasData, 'workspace' | 'items' | 'edges'>,
+  opts: OlExportOptions = {},
+): OlExportResult {
+  const eventTime = opts.eventTime ?? new Date().toISOString();
+  const namespace = oneLakeNamespace(data.workspace);
+  const inScope = (id: string) => !opts.itemIds || opts.itemIds.has(id);
+  const items = new Map(data.items.filter((i) => inScope(i.fabricId)).map((i) => [i.fabricId, i]));
+  const isJob = (i: Item) => JOB_ITEM_TYPES.has(i.itemType);
+  const ref = (i: Item, objectName?: string): OlDatasetRef => ({ namespace, name: oneLakeName(i, objectName) });
+  const base = { eventTime, producer: OL_PRODUCER };
+  const lines: string[] = [];
+  const datasetsSeen = new Set<string>();
+  const jobsSeen = new Set<string>();
+  const trackDataset = (d: OlDatasetRef) => datasetsSeen.add(`${d.namespace}|${d.name}`);
+
+  const jobEvent = (
+    job: { namespace: string; name: string; type?: string; integration?: string },
+    inputs: OlDatasetRef[],
+    outputs: OlDatasetRef[],
+  ) => {
+    inputs.forEach(trackDataset);
+    outputs.forEach(trackDataset);
+    jobsSeen.add(`${job.namespace}|${job.name}`);
+    const facets = job.type
+      ? {
+          jobType: {
+            _producer: OL_PRODUCER,
+            _schemaURL: JOB_TYPE_FACET_URL,
+            processingType: 'BATCH',
+            integration: job.integration ?? 'FABRIC',
+            jobType: job.type,
+          },
+        }
+      : undefined;
+    lines.push(
+      JSON.stringify({
+        ...base,
+        schemaURL: `${OL_SPEC_URL}#/$defs/JobEvent`,
+        job: { namespace: job.namespace, name: job.name, ...(facets ? { facets } : {}) },
+        inputs,
+        outputs,
+      }),
+    );
+  };
+
+  // Fabric jobs (notebooks, pipelines…): dataset inputs → job → dataset outputs.
+  const jobInputs = new Map<string, Item[]>();
+  const jobOutputs = new Map<string, Item[]>();
+  // Direct dataset → dataset edges, grouped by target and relation.
+  const direct = new Map<string, { target: Item; relation: string; sources: Item[] }>();
+  const push = (m: Map<string, Item[]>, k: string, v: Item) => {
+    const list = m.get(k) ?? [];
+    if (!list.includes(v)) list.push(v);
+    m.set(k, list);
+  };
+  for (const e of data.edges) {
+    const s = items.get(e.source);
+    const t = items.get(e.target);
+    if (!s || !t || s === t) continue;
+    if (isJob(t) && !isJob(s)) push(jobInputs, t.fabricId, s);
+    else if (isJob(s) && !isJob(t)) push(jobOutputs, s.fabricId, t);
+    else if (!isJob(s) && !isJob(t)) {
+      const key = `${t.fabricId}|${e.relation}`;
+      const g = direct.get(key) ?? { target: t, relation: e.relation, sources: [] };
+      if (!g.sources.includes(s)) g.sources.push(s);
+      direct.set(key, g);
+    }
+  }
+  for (const item of items.values()) {
+    if (!isJob(item)) continue;
+    const ins = jobInputs.get(item.fabricId) ?? [];
+    const outs = jobOutputs.get(item.fabricId) ?? [];
+    if (!ins.length && !outs.length) continue;
+    jobEvent(
+      { namespace, name: oneLakeName(item), type: item.itemType.toUpperCase() },
+      ins.map((i) => ref(i)),
+      outs.map((i) => ref(i)),
+    );
+  }
+  for (const g of direct.values()) {
+    jobEvent(
+      { namespace, name: `${oneLakeName(g.target)}#${g.relation || 'lineage'}`, type: 'LINEAGE' },
+      g.sources.map((i) => ref(i)),
+      [ref(g.target)],
+    );
+  }
+
+  let externalEdgeCount = 0;
+  if (opts.includeExternal && opts.external) {
+    const byId = new Map(opts.external.datasets.map((d) => [d.id, d]));
+    const refOf = (id: string): { ref: OlDatasetRef; linked: boolean } | null => {
+      const d = byId.get(id);
+      if (!d) return null;
+      const item = d.state === 'linked' && d.fabricItemId ? data.items.find((i) => i.fabricId === d.fabricItemId) : undefined;
+      if (item) return { ref: ref(item, d.fabricObjectName || undefined), linked: inScope(item.fabricId) };
+      return { ref: { namespace: d.namespace, name: d.name }, linked: false };
+    };
+    for (const e of opts.external.edges) {
+      const src = refOf(e.sourceDatasetId);
+      const tgt = refOf(e.targetDatasetId);
+      if (!src || !tgt || (!src.linked && !tgt.linked)) continue;
+      const output: OlDatasetRef = { ...tgt.ref };
+      if (e.columns.length) {
+        const fields: Record<string, { inputFields: unknown[] }> = {};
+        for (const c of e.columns) {
+          const f = (fields[c.to] ??= { inputFields: [] });
+          f.inputFields.push({
+            namespace: src.ref.namespace,
+            name: src.ref.name,
+            field: c.from,
+            ...(c.transform
+              ? { transformations: [{ type: /^(DIRECT|INDIRECT)$/i.test(c.transform) ? c.transform.toUpperCase() : 'DIRECT', subtype: c.transform }] }
+              : {}),
+          });
+        }
+        output.facets = { columnLineage: { _producer: OL_PRODUCER, _schemaURL: COLUMN_FACET_URL, fields } };
+      }
+      jobEvent({ namespace: e.jobNamespace, name: e.jobName }, [src.ref], [output]);
+      externalEdgeCount++;
+    }
+  }
+
+  // Every dataset in scope, including items with no edge.
+  const datasetRefs: OlDatasetRef[] = [];
+  for (const item of items.values()) if (!isJob(item)) datasetRefs.push(ref(item));
+  for (const key of datasetsSeen) {
+    const [ns, ...rest] = key.split('|');
+    if (!datasetRefs.some((d) => d.namespace === ns && d.name === rest.join('|'))) datasetRefs.push({ namespace: ns, name: rest.join('|') });
+  }
+  for (const d of datasetRefs) {
+    lines.push(JSON.stringify({ ...base, schemaURL: `${OL_SPEC_URL}#/$defs/DatasetEvent`, dataset: d }));
+  }
+
+  const day = eventTime.slice(0, 10);
+  return {
+    text: lines.length ? `${lines.join('\n')}\n` : '',
+    eventCount: lines.length,
+    jobCount: jobsSeen.size,
+    datasetCount: datasetRefs.length,
+    externalEdgeCount,
+    fileName: `fabric-atlas-${slug(data.workspace.displayName || data.workspace.fabricId)}-openlineage-${day}.ndjson`,
+  };
 }

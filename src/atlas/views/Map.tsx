@@ -95,6 +95,7 @@ import {
 import { DEFAULT_MAP_ZOOM, stepMapZoom } from "../map-zoom";
 import { LINEAGE_ARROW_TIP, lineageCurve } from "../map-geometry";
 import { useAtlas } from "../store";
+import { OpenLineageExportDialog } from "../components/OpenLineageExportDialog";
 import { useExternalLineage } from "../external-lineage-store";
 import { buildExternalOverlay, EMPTY_EXTERNAL_OVERLAY, externalDatasetsIn } from "../map-external";
 import { mergeLineageEdges } from "../external-lineage";
@@ -2232,6 +2233,9 @@ export function MapView({
                 }}
                 label="External lineage"
               />
+            )}
+            {!previewActive && (
+              <OpenLineageExportDialog selection={[...selectedItemIds]} />
             )}
           </>
         )}

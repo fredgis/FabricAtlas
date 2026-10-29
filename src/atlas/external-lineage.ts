@@ -41,6 +41,8 @@ export const LINKABLE_TYPES: ReadonlySet<ItemType> = new Set<ItemType>([
 export interface FabricIndex {
   workspaceKeys: Set<string>;
   itemsByKey: Map<string, Item>;
+  /** Every item by `<name>.<Type>` and id, for item-level OneLake paths. */
+  typedItems: Map<string, Item>;
   tablesByItem: Map<string, Set<string>>;
 }
 
@@ -50,8 +52,11 @@ export function buildFabricIndex(data: Pick<AtlasData, 'workspace' | 'items' | '
     if (k) workspaceKeys.add(k.trim().toLowerCase());
   }
   const itemsByKey = new Map<string, Item>();
+  const typedItems = new Map<string, Item>();
   const tablesByItem = new Map<string, Set<string>>();
   for (const item of data.items) {
+    typedItems.set(`${item.displayName}.${item.itemType}`.toLowerCase(), item);
+    typedItems.set(item.fabricId.toLowerCase(), item);
     if (!LINKABLE_TYPES.has(item.itemType)) continue;
     itemsByKey.set(item.fabricId.toLowerCase(), item);
     itemsByKey.set(item.displayName.toLowerCase(), item);
@@ -63,7 +68,7 @@ export function buildFabricIndex(data: Pick<AtlasData, 'workspace' | 'items' | '
       );
     }
   }
-  return { workspaceKeys, itemsByKey, tablesByItem };
+  return { workspaceKeys, itemsByKey, typedItems, tablesByItem };
 }
 
 function decode(s: string): string {
@@ -77,6 +82,7 @@ function decode(s: string): string {
 /**
  * Matches `abfss://<workspace>@…onelake.dfs.fabric.microsoft.com` +
  * `<item>[.Type]/Tables/[schema/]<table>` (or `/Files/…`) against loaded items.
+ * A bare `<item>.<Type>` (item root, as written by the export) links any item.
  */
 export function matchOneLakePath(
   namespace: string,
@@ -88,13 +94,18 @@ export function matchOneLakePath(
   if (!index.workspaceKeys.has(decode(ns[1]).toLowerCase())) return null;
 
   const parts = name.trim().replace(/^\/+|\/+$/g, '').split('/').map(decode);
+  if (parts.length === 1) {
+    const whole = index.typedItems.get(parts[0].toLowerCase());
+    return whole ? { fabricItemId: whole.fabricId, fabricObjectName: '' } : null;
+  }
   if (parts.length < 3) return null;
   const [rawItem, area, ...rest] = parts;
   const lowerArea = area.toLowerCase();
   if (lowerArea !== 'tables' && lowerArea !== 'files') return null;
 
   const typed = /^(.*)\.([A-Za-z]+)$/.exec(rawItem);
-  let item = index.itemsByKey.get(rawItem.toLowerCase());
+  const exact = index.typedItems.get(rawItem.toLowerCase());
+  let item = exact && LINKABLE_TYPES.has(exact.itemType) ? exact : index.itemsByKey.get(rawItem.toLowerCase());
   if (!item && typed) {
     const candidate = index.itemsByKey.get(typed[1].toLowerCase());
     if (candidate && candidate.itemType.toLowerCase() === typed[2].toLowerCase()) item = candidate;
