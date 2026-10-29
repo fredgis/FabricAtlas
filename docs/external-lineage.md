@@ -1,6 +1,6 @@
 # External lineage (OpenLineage)
 
-Since 2.6.5, Fabric Atlas can show what happens **outside Fabric** next to the
+Since 2.7, Fabric Atlas can show what happens **outside Fabric** next to the
 Fabric graph. The only exchange format is [OpenLineage](https://openlineage.io).
 Atlas has no connector for any external data source:
 each source writes OpenLineage, Atlas reads it. In the other direction, Atlas
