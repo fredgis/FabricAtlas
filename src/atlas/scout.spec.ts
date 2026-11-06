@@ -316,6 +316,52 @@ describe("Atlas Scout stale runs", () => {
     expect(answer).toMatchObject({ threadId: "t2", text: "ok" });
     expect(calls).toContain("POST /threads/t1/runs/run_old/cancel");
   });
+
+  it("continues in a fresh thread when the conversation thread is gone", async () => {
+    let threads = 0;
+    const client = createScoutClient({
+      endpoint,
+      getToken: async () => "token",
+      wait: async () => undefined,
+      fetch: async (url, init) => {
+        const path = new URL(url).pathname.split("/openai")[1];
+        if (path === "/assistants") return json({ id: "asst" });
+        if (path === "/threads") return json({ id: `t${++threads}` });
+        if (path === "/threads/old/messages") return json({ error: { message: "Thread not found" } }, 404);
+        if (path === "/threads/t1/messages" && init?.method === "POST") return json({ id: "m" });
+        if (path.endsWith("/runs")) return json({ id: "r1", status: "queued" });
+        if (path.endsWith("/runs/r1")) return json({ status: "completed" });
+        if (path === "/threads/t1/messages") return json({ data: [{ role: "assistant", content: [{ text: { value: "ok" } }] }] });
+        if (path.endsWith("/steps")) return json({ data: [] });
+        throw new Error(`unexpected ${path}`);
+      },
+    });
+    await expect(client.ask("Next question", "old")).resolves.toMatchObject({ threadId: "t1", text: "ok" });
+  });
+
+  it("asks once more when the service loses its own tool call", async () => {
+    let threads = 0;
+    const client = createScoutClient({
+      endpoint,
+      getToken: async () => "token",
+      wait: async () => undefined,
+      fetch: async (url, init) => {
+        const path = new URL(url).pathname.split("/openai")[1];
+        if (path === "/assistants") return json({ id: "asst" });
+        if (path === "/threads") return json({ id: `t${++threads}` });
+        if (path.endsWith("/messages") && init?.method === "POST") return json({ id: "m" });
+        if (path === "/threads/t1/runs") return json({ id: "r1", status: "queued" });
+        if (path === "/threads/t2/runs") return json({ id: "r2", status: "queued" });
+        if (path.endsWith("/runs/r1"))
+          return json({ status: "failed", last_error: { message: "Status code NotFound: OpenAI request to 'openai/threads/t1/runs/r1/submit_tool_outputs' failed." } });
+        if (path.endsWith("/runs/r2")) return json({ status: "completed" });
+        if (path === "/threads/t2/messages") return json({ data: [{ role: "assistant", content: [{ text: { value: "ok" } }] }] });
+        if (path.endsWith("/steps")) return json({ data: [] });
+        throw new Error(`unexpected ${path}`);
+      },
+    });
+    await expect(client.ask("Question")).resolves.toMatchObject({ threadId: "t2", text: "ok" });
+  });
 });
 
 describe("Scout markdown tables", () => {

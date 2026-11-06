@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.7.6";
+  "2.7.7";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,20 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.7.7",
+    date: "2026-11-06",
+    title: "Atlas Scout reliability",
+    sections: [
+      {
+        title: "Fixed",
+        items: [
+          "Object-level lineage of a table always shows its columns and flows instead of answering that nothing was found.",
+          "Scout continues in a fresh conversation when the previous thread expired, and asks once more when Fabric loses its own tool call.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.7.6",
     date: "2026-11-07",

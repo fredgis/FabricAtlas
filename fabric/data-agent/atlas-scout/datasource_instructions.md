@@ -49,9 +49,10 @@ items AS (SELECT i.fabricId, i.displayName FROM dbo.FabricItems i JOIN latest l 
 edges AS (SELECT COALESCE(JSON_VALUE(x.value,'$.source.tableName'), JSON_VALUE(x.value,'$.source.name')) AS sourceTable, JSON_VALUE(x.value,'$.source.name') AS sourceName, JSON_VALUE(x.value,'$.source.kind') AS sourceKind, JSON_VALUE(x.value,'$.source.itemId') AS sourceItemId, JSON_VALUE(x.value,'$.relation') AS relation, JSON_VALUE(x.value,'$.target.name') AS targetName, JSON_VALUE(x.value,'$.target.kind') AS targetKind, JSON_VALUE(x.value,'$.target.itemId') AS targetItemId FROM docs d CROSS APPLY OPENJSON(d.doc) x)
 SELECT DISTINCT e.sourceName + ' (' + COALESCE(si.displayName,'external') + ')' AS [Source], e.sourceKind AS [Source type], e.relation AS [Relation], e.targetName + ' (' + COALESCE(ti.displayName,'external') + ')' AS [Target], e.targetKind AS [Target type]
 FROM edges e LEFT JOIN items si ON si.fabricId = e.sourceItemId LEFT JOIN items ti ON ti.fabricId = e.targetItemId
-WHERE e.relation <> 'contains' AND (e.sourceName LIKE '%fact_sales%' OR e.targetName LIKE '%fact_sales%')
+WHERE e.sourceName LIKE '%fact_sales%' OR e.targetName LIKE '%fact_sales%' OR e.sourceTable LIKE '%fact_sales%'
 Variants of the final SELECT/WHERE:
-- Lineage of a table or column: the WHERE above with the object name.
+- Lineage of a table or column: the WHERE above with the object name. Keep the 'contains' edges (table -> columns): for many tables they are the only edges, and the graph shows the table, its columns and the notebooks or ontologies that use them. Names are matched case-insensitively (FACT_SALES, dbo.fact_sales).
+- If this query returns rows, the object HAS lineage: show the rows as the graph table. Never answer that no lineage exists when rows came back.
 - Tables that feed an ontology (or graph, data agent): SELECT DISTINCT e.sourceTable + ' (' + COALESCE(si.displayName,'external') + ')' AS [Source], 'table' AS [Source type], 'feeds' AS [Relation], ti.displayName AS [Target], 'Ontology' AS [Target type] ... WHERE e.targetKind LIKE 'ontology%' AND e.sourceKind IN ('sourceObject','sourceField') AND ti.displayName LIKE '%AcuteCareOperationsOntology%'. Ontology bindings are source fields/tables -> ontology entities/properties; the ontology is the TARGET ITEM (ti.displayName), never an object name.
 - Tables read and written by notebooks: WHERE e.relation IN ('reads','writes') (Source/Target then show the table with its lakehouse and the notebook item in parentheses).
 

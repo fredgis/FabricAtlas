@@ -8,6 +8,13 @@ release tag was published.
 
 ## [Unreleased]
 
+## [2.7.7] - 2026-11-06
+
+### Fixed
+
+- Object-level lineage of a table always shows its columns and flows: Scout no longer answers that no lineage was found for tables such as fact_sales.
+- Atlas Scout continues in a fresh thread when the conversation thread has expired (no more 'Data Agent was not found'), and asks once more when Fabric loses its own tool call (submit_tool_outputs NotFound).
+
 ## [2.7.6] - 2026-11-07
 
 ### Added
@@ -940,7 +947,8 @@ release tag was published.
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.7.6...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.7.7...HEAD
+[2.7.7]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.7
 [2.7.6]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.6
 [2.7.5]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.5
 [2.7.4]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.4

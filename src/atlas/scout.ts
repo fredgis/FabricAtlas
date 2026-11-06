@@ -127,6 +127,8 @@ function abortableWait(milliseconds: number, signal?: AbortSignal): Promise<void
   });
 }
 
+const TRANSIENT_RUN_FAILURE = /run failed: .*(server_error|status code (NotFound|InternalServerError|BadGateway|ServiceUnavailable|GatewayTimeout))/i;
+
 export function scoutErrorMessage(status: number, body: string): string {
   if (status === 401) return "Your session cannot call Atlas Scout. Sign in again and consent to DataAgent.Execute.All.";
   if (status === 403) return "You do not have access to the Atlas Scout Data Agent. Ask a workspace admin to share it with you.";
@@ -179,37 +181,48 @@ export function createScoutClient(options: ScoutClientOptions) {
     onPhase?.("connecting");
     assistantId ??= (await call<{ id: string }>("POST", "/assistants", { model: "not used" }, signal)).id;
     let thread = threadId ?? (await call<{ id: string }>("POST", "/threads", {}, signal)).id;
-    let run: { id: string; status: string } | undefined;
-    for (let attempt = 0; !run; attempt += 1) {
-      try {
-        await call("POST", `/threads/${thread}/messages`, { role: "user", content }, signal);
-        run = await call<{ id: string; status: string }>(
-          "POST",
-          `/threads/${thread}/runs`,
-          { assistant_id: assistantId },
-          signal,
-        );
-      } catch (error) {
-        // A stopped or stale run can stay active on a thread, even a brand new one handed back by the
-        // service: cancel it and continue in a fresh thread.
-        const active = error instanceof ScoutError ? /\b(run_[\w-]+)\b[^.]*\bis active/i.exec(error.message) : null;
-        if (!active || attempt >= 2) throw error;
-        const stale = thread;
-        void call("POST", `/threads/${stale}/runs/${active[1]}/cancel`)
-          .catch(() => undefined)
-          .then(() => endThread(stale));
-        if (attempt > 0) await wait(pollIntervalMs, signal);
-        thread = (await call<{ id: string }>("POST", "/threads", {}, signal)).id;
+    for (let retry = 0; ; retry += 1) {
+      let run: { id: string; status: string } | undefined;
+      for (let attempt = 0; !run; attempt += 1) {
+        try {
+          await call("POST", `/threads/${thread}/messages`, { role: "user", content }, signal);
+          run = await call<{ id: string; status: string }>(
+            "POST",
+            `/threads/${thread}/runs`,
+            { assistant_id: assistantId },
+            signal,
+          );
+        } catch (error) {
+          // A stopped or stale run can stay active on a thread, even a brand new one handed back by the
+          // service: cancel it and continue in a fresh thread.
+          // A thread that expired or was cleaned up answers 404: continue in a fresh thread too.
+          const active = error instanceof ScoutError ? /\b(run_[\w-]+)\b[^.]*\bis active/i.exec(error.message) : null;
+          const vanished = error instanceof ScoutError && error.status === 404;
+          if ((!active && !vanished) || attempt >= 2) throw error;
+          const stale = thread;
+          if (active) {
+            void call("POST", `/threads/${stale}/runs/${active[1]}/cancel`)
+              .catch(() => undefined)
+              .then(() => endThread(stale));
+          }
+          if (attempt > 0) await wait(pollIntervalMs, signal);
+          thread = (await call<{ id: string }>("POST", "/threads", {}, signal)).id;
+        }
       }
-    }
-    const cancelRun = () => {
-      void call("POST", `/threads/${thread}/runs/${run.id}/cancel`).catch(() => undefined);
-    };
-    signal?.addEventListener("abort", cancelRun, { once: true });
-    try {
-      return await waitForAnswer(thread, run, signal, onPhase);
-    } finally {
-      signal?.removeEventListener("abort", cancelRun);
+      const cancelRun = () => {
+        void call("POST", `/threads/${thread}/runs/${run.id}/cancel`).catch(() => undefined);
+      };
+      signal?.addEventListener("abort", cancelRun, { once: true });
+      try {
+        return await waitForAnswer(thread, run, signal, onPhase);
+      } catch (error) {
+        // The service sometimes loses its own tool call ("submit_tool_outputs ... NotFound"): ask once more.
+        const transient = error instanceof ScoutError && TRANSIENT_RUN_FAILURE.test(error.message);
+        if (!transient || retry > 0 || signal?.aborted) throw error;
+        thread = (await call<{ id: string }>("POST", "/threads", {}, signal)).id;
+      } finally {
+        signal?.removeEventListener("abort", cancelRun);
+      }
     }
   }
 
