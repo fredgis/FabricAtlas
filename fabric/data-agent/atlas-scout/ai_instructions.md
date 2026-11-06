@@ -33,3 +33,4 @@ For each finding use this format:
 - For findings, use a numbered list; put the finding title on the numbered line and the Evidence / Impact / Priority / Action fields as an indented "- Label: value" sub-list (indent with 3 spaces).
 - Priority values must be exactly one word: Critical, High, Medium or Low.
 - Use **bold** sparingly, no emojis, no horizontal rules.
+- For lineage questions (upstream, downstream, impact, dependencies), always include a Markdown table with exactly these columns, one row per edge: Source | Source type | Relation | Target | Target type | Broken | Target health | Failed runs (14d). Fabric Atlas draws this table as a lineage graph, so list every edge returned, then summarize the risks in 2-4 bullets.

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   Activity,
@@ -16,6 +16,7 @@ import {
   Maximize2,
   RotateCcw,
   Send,
+  Share2,
   Sparkles,
   Square,
   UserRound,
@@ -28,9 +29,12 @@ import {
   classifyScoutCell,
   parseScoutInline,
   parseScoutMarkdown,
+  scoutLineage,
   tokenizeSql,
   splitScoutLabel,
   type ScoutBlock,
+  type ScoutLineage,
+  type ScoutLineageNode,
   type ScoutListItem,
   type ScoutTone,
 } from "../scout-markdown";
@@ -251,7 +255,198 @@ function ListItems({ items, depth }: { items: ScoutListItem[]; depth: number }) 
   );
 }
 
-function Block({ block }: { block: ScoutBlock }): ReactNode {
+function TableBlock({ header, rows }: { header: string[]; rows: string[][] }) {
+  return (
+        <div className="max-w-full overflow-x-auto rounded-lg border border-border bg-background/60">
+        <table className="w-full border-collapse text-200">
+          <thead>
+            <tr className="bg-muted/60">
+              {header.map((cell, index) => (
+                <th key={index} scope="col" className="whitespace-nowrap px-m py-s text-left text-100 font-semibold uppercase tracking-wide text-muted-foreground">
+                  <Inline text={cell} />
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, rowIndex) => (
+              <motion.tr
+                key={rowIndex}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: Math.min(rowIndex, 12) * 0.035 }}
+                className="border-t border-border transition-colors hover:bg-accent/50"
+              >
+                {row.map((cell, index) => (
+                  <td key={index} className="px-m py-s align-middle"><Cell value={cell} header={header[index]} /></td>
+                ))}
+              </motion.tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+  );
+}
+
+const NODE_TONE: Record<ScoutLineageNode["tone"], string> = {
+  neutral: "border-border",
+  healthy: "border-status-healthy/50",
+  warning: "border-status-warning/50",
+  failing: "border-status-failing/60 bg-status-failing/[0.06]",
+};
+
+const NODE_DOT: Record<ScoutLineageNode["tone"], string> = {
+  neutral: "bg-muted-foreground/40",
+  healthy: "bg-status-healthy",
+  warning: "bg-status-warning",
+  failing: "bg-status-failing",
+};
+
+function LineageGraph({ lineage, compact }: { lineage: ScoutLineage; compact: boolean }) {
+  const markerId = useId().replace(/:/g, "");
+  const reduceMotion = useReducedMotion();
+  const nodeW = compact ? 150 : 184;
+  const nodeH = 46;
+  const colGap = compact ? 52 : 76;
+  const rowGap = 14;
+  const pad = 10;
+  const width = pad * 2 + lineage.layers * nodeW + (lineage.layers - 1) * colGap;
+  const height = pad * 2 + lineage.rows * nodeH + (lineage.rows - 1) * rowGap;
+  const perLayer = new Map<number, number>();
+  for (const node of lineage.nodes) perLayer.set(node.layer, (perLayer.get(node.layer) ?? 0) + 1);
+  const position = new Map(
+    lineage.nodes.map((node) => {
+      const offset = ((lineage.rows - (perLayer.get(node.layer) ?? 1)) * (nodeH + rowGap)) / 2;
+      return [node.id, { x: pad + node.layer * (nodeW + colGap), y: pad + offset + node.row * (nodeH + rowGap) }];
+    }),
+  );
+  const links = new Map<string, { from: string; to: string; relations: string[]; broken: boolean }>();
+  for (const edge of lineage.edges) {
+    if (edge.from === edge.to) continue;
+    const key = `${edge.from}\u0001${edge.to}`;
+    const link = links.get(key) ?? { from: edge.from, to: edge.to, relations: [], broken: false };
+    if (edge.relation && !link.relations.includes(edge.relation)) link.relations.push(edge.relation);
+    link.broken ||= edge.broken;
+    links.set(key, link);
+  }
+  const showLabels = !compact && links.size <= 16;
+  const failing = lineage.nodes.filter((node) => node.tone === "failing").length;
+  const broken = [...links.values()].filter((link) => link.broken).length;
+
+  return (
+    <div className="flex flex-col gap-xs">
+      <div className="flex flex-wrap items-center gap-m text-100 text-muted-foreground">
+        <span className="inline-flex items-center gap-xs font-semibold text-foreground">
+          <Share2 className="icon-size-100 text-primary" aria-hidden="true" />
+          Lineage graph
+        </span>
+        <span>{lineage.nodes.length} items · {links.size} links</span>
+        {broken > 0 && <span className="text-status-failing">{broken} broken</span>}
+        {failing > 0 && <span className="text-status-failing">{failing} failing</span>}
+      </div>
+      <div className="max-w-full overflow-x-auto rounded-lg border border-border bg-background/60">
+        <svg
+          width={width}
+          height={height}
+          viewBox={`0 0 ${width} ${height}`}
+          role="img"
+          aria-label={`Lineage graph with ${lineage.nodes.length} items and ${links.size} links`}
+          className="block"
+        >
+          <defs>
+            {(["ok", "broken"] as const).map((kind) => (
+              <marker
+                key={kind}
+                id={`${markerId}-${kind}`}
+                viewBox="0 0 10 10"
+                refX="9"
+                refY="5"
+                markerWidth="7"
+                markerHeight="7"
+                orient="auto-start-reverse"
+              >
+                <path d="M0,0 L10,5 L0,10 z" className={kind === "broken" ? "fill-status-failing" : "fill-muted-foreground/60"} />
+              </marker>
+            ))}
+          </defs>
+          {[...links.values()].map((link, index) => {
+            const a = position.get(link.from)!;
+            const b = position.get(link.to)!;
+            const x1 = a.x + nodeW;
+            const y1 = a.y + nodeH / 2;
+            const x2 = b.x;
+            const y2 = b.y + nodeH / 2;
+            const forward = x2 > x1;
+            const bend = forward ? (x2 - x1) / 2 : 56;
+            const drop = forward ? 0 : nodeH;
+            const d = `M${x1},${y1} C${x1 + bend},${y1 + drop} ${x2 - bend},${y2 + drop} ${x2 - 2},${y2}`;
+            const label = link.relations.join(" · ");
+            return (
+              <g key={`${link.from}-${link.to}`}>
+                <motion.path
+                  d={d}
+                  fill="none"
+                  strokeWidth={link.broken ? 1.6 : 1.3}
+                  strokeDasharray={link.broken ? "5 4" : undefined}
+                  className={link.broken ? "stroke-status-failing" : "stroke-muted-foreground/45"}
+                  markerEnd={`url(#${markerId}-${link.broken ? "broken" : "ok"})`}
+                  initial={reduceMotion ? false : { pathLength: 0, opacity: 0 }}
+                  animate={{ pathLength: 1, opacity: 1 }}
+                  transition={{ duration: 0.6, delay: 0.15 + Math.min(index, 20) * 0.04, ease: "easeOut" }}
+                >
+                  {label && <title>{label}</title>}
+                </motion.path>
+                {showLabels && label && forward && (
+                  <text
+                    x={(x1 + x2) / 2}
+                    y={(y1 + y2) / 2 - 4}
+                    textAnchor="middle"
+                    className="fill-muted-foreground text-[10px]"
+                    style={{ paintOrder: "stroke", stroke: "var(--color-background)", strokeWidth: 4 }}
+                  >
+                    {label.length > 22 ? `${label.slice(0, 21)}…` : label}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+          {lineage.nodes.map((node, index) => {
+            const { x, y } = position.get(node.id)!;
+            return (
+              <motion.foreignObject
+                key={node.id}
+                x={x}
+                y={y}
+                width={nodeW}
+                height={nodeH}
+                initial={reduceMotion ? false : { opacity: 0, scale: 0.92 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.3, delay: node.layer * 0.12 + Math.min(index, 20) * 0.015 }}
+              >
+                <div
+                  title={node.type ? `${node.label} (${node.type})` : node.label}
+                  className={cn(
+                    "flex h-full flex-col justify-center rounded-lg border bg-card px-s shadow-fabric-2",
+                    NODE_TONE[node.tone],
+                    node.layer === 0 && node.tone === "neutral" && "border-primary/50",
+                  )}
+                >
+                  <span className="flex min-w-0 items-center gap-xs">
+                    <span className={cn("h-[6px] w-[6px] shrink-0 rounded-full", NODE_DOT[node.tone])} aria-hidden="true" />
+                    <span className="truncate text-100 font-semibold text-foreground">{node.label}</span>
+                  </span>
+                  {node.type && <span className="truncate pl-[10px] text-[10px] text-muted-foreground">{node.type}</span>}
+                </div>
+              </motion.foreignObject>
+            );
+          })}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+function Block({ block, compact }: { block: ScoutBlock; compact: boolean }): ReactNode {
   switch (block.kind) {
     case "heading":
       return (
@@ -262,37 +457,23 @@ function Block({ block }: { block: ScoutBlock }): ReactNode {
       );
     case "list":
       return <ListItems items={block.items} depth={0} />;
-    case "table":
+    case "table": {
+      const lineage = scoutLineage(block.header, block.rows);
+      if (!lineage) return <TableBlock header={block.header} rows={block.rows} />;
       return (
-        <div className="max-w-full overflow-x-auto rounded-lg border border-border bg-background/60">
-          <table className="w-full border-collapse text-200">
-            <thead>
-              <tr className="bg-muted/60">
-                {block.header.map((cell, index) => (
-                  <th key={index} scope="col" className="whitespace-nowrap px-m py-s text-left text-100 font-semibold uppercase tracking-wide text-muted-foreground">
-                    <Inline text={cell} />
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {block.rows.map((row, rowIndex) => (
-                <motion.tr
-                  key={rowIndex}
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: Math.min(rowIndex, 12) * 0.035 }}
-                  className="border-t border-border transition-colors hover:bg-accent/50"
-                >
-                  {row.map((cell, index) => (
-                    <td key={index} className="px-m py-s align-middle"><Cell value={cell} header={block.header[index]} /></td>
-                  ))}
-                </motion.tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="flex flex-col gap-s">
+          <LineageGraph lineage={lineage} compact={compact} />
+          <details className="group rounded-lg border border-border bg-muted/20">
+            <summary className="cursor-pointer select-none px-m py-s text-100 font-semibold text-muted-foreground hover:text-foreground">
+              Lineage table ({block.rows.length} edges)
+            </summary>
+            <div className="p-s pt-0">
+              <TableBlock header={block.header} rows={block.rows} />
+            </div>
+          </details>
         </div>
       );
+    }
     case "code":
       return (
         <pre className="max-w-full overflow-x-auto rounded-lg border border-border bg-muted/40 p-m font-mono text-100 leading-200">
@@ -315,7 +496,7 @@ function ScoutAnswerText({ text, compact = false }: { text: string; compact?: bo
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: Math.min(index, 10) * 0.06, duration: 0.3 }}
         >
-          <Block block={block} />
+          <Block block={block} compact={compact} />
         </motion.div>
       ))}
     </div>
@@ -540,7 +721,7 @@ function Composer({ id, compact = false, className }: { id: string; compact?: bo
         }}
         placeholder={compact ? "Ask Scout…" : "Ask about health, access, labels, lineage…"}
         className={cn(
-          "flex-1 resize-none bg-transparent px-xs py-xs outline-none placeholder:text-muted-foreground",
+          "flex-1 resize-none bg-transparent px-xs py-xs outline-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0",
           compact ? "min-h-[36px] text-200" : "min-h-[44px] text-300",
         )}
       />

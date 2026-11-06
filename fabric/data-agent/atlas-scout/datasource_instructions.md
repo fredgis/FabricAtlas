@@ -26,3 +26,10 @@ Fabric Atlas governance store. All tables are in schema dbo. Each sync of a Fabr
 - "Stale" = item with itemUpdatedAt and lastRefresh older than 90 days.
 - "External user" = Principals.external = 1.
 - Domain names are not stored; refer to fabricDomainId.
+
+# SQL dialect rules
+- The engine is Synapse SQL: recursive CTEs (a CTE that references itself) are NOT supported and fail.
+- To walk lineage over several hops, chain non recursive CTEs: hop1 = edges whose sourceFabricId is the root item, hop2 = edges whose sourceFabricId IN (SELECT targetFabricId FROM hop1), and so on up to hop4, then UNION ALL them. For upstream lineage, swap source and target.
+- Lineage can contain cycles (a notebook reads then writes the same lakehouse): deduplicate edges with GROUP BY.
+- LineageEdges.broken is a bit: use MAX(CAST(broken AS int)).
+- Several items can share a display name (a Lakehouse and its SQLEndpoint): always return the item type next to the name.

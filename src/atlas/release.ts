@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.7.2";
+  "2.7.3";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,26 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.7.3",
+    date: "2026-11-07",
+    title: "Atlas Scout lineage graph",
+    sections: [
+      {
+        title: "New",
+        items: [
+          "Atlas Scout draws lineage answers as an animated graph (broken links dashed in red, failing items highlighted), with the edge table one click away.",
+        ],
+      },
+      {
+        title: "Fixed",
+        items: [
+          "Lineage questions no longer fail on recursive SQL: the agent walks up to four hops with chained queries.",
+          "The Atlas Scout prompt keeps a light background when focused; the floating bubble is slightly darker.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.7.2",
     date: "2026-11-07",

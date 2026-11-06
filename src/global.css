@@ -835,30 +835,20 @@ body,
 
 .atlas-scout-composer {
     position: relative;
-    isolation: isolate;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.atlas-scout-composer::before {
-    content: "";
-    position: absolute;
-    inset: -1px;
-    z-index: -1;
-    border-radius: inherit;
-    background: color-mix(in srgb, var(--color-primary) 45%, transparent);
-    opacity: 0;
-    transition: opacity 0.25s ease;
-}
-
-.atlas-scout-composer:focus-within::before {
-    opacity: 1;
+.atlas-scout-composer:focus-within {
+    border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-border));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 
 .atlas-scout-bubble {
     background: radial-gradient(
       circle at 30% 25%,
-      color-mix(in srgb, var(--color-fabric-teal) 70%, white),
-      var(--color-fabric-teal) 55%,
-      color-mix(in srgb, var(--color-fabric-teal) 80%, black)
+      color-mix(in srgb, var(--color-fabric-teal) 55%, white),
+      color-mix(in srgb, var(--color-fabric-teal) 88%, black) 55%,
+      color-mix(in srgb, var(--color-fabric-teal) 65%, black)
     );
 }
 

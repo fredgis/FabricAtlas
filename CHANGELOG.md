@@ -8,6 +8,17 @@ release tag was published.
 
 ## [Unreleased]
 
+## [2.7.3] - 2026-11-07
+
+### Added
+
+- Atlas Scout draws lineage answers as an animated graph (broken links dashed in red, failing items highlighted) with a collapsible edge table.
+
+### Fixed
+
+- Atlas Scout lineage questions: the agent no longer uses unsupported recursive CTEs and walks lineage up to four hops; new lineage example query.
+- Atlas Scout prompt no longer turns dark green on focus; floating bubble slightly darker.
+
 ## [2.7.2] - 2026-11-07
 
 ### Added
@@ -905,7 +916,8 @@ release tag was published.
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.7.2...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.7.3...HEAD
+[2.7.3]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.3
 [2.7.2]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.2
 [2.7.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.1
 [2.7.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.0

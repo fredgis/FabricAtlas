@@ -217,6 +217,132 @@ export function classifyScoutCell(raw: string, header = ""): ScoutCell {
   return { kind: "text", text: raw };
 }
 
+export interface ScoutLineageNode {
+  id: string;
+  label: string;
+  type: string;
+  tone: ScoutTone | "neutral";
+  layer: number;
+  row: number;
+}
+
+export interface ScoutLineageEdge {
+  from: string;
+  to: string;
+  relation: string;
+  broken: boolean;
+}
+
+export interface ScoutLineage {
+  nodes: ScoutLineageNode[];
+  edges: ScoutLineageEdge[];
+  layers: number;
+  rows: number;
+}
+
+const normalizeHeader = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+const plainCell = (value: string | undefined) => (value ?? "").replace(/\*\*|__|`/g, "").trim();
+const TRUTHY = /^(1|true|yes|broken|y)$/i;
+
+function findColumn(header: string[], names: string[]): number {
+  const normalized = header.map(normalizeHeader);
+  for (const name of names) {
+    const index = normalized.indexOf(name);
+    if (index >= 0) return index;
+  }
+  return -1;
+}
+
+/**
+ * Turns a lineage edge table (Source | Relation | Target ...) into a layered graph.
+ * Returns null when the table is not lineage. Cycles are allowed: layers come from a
+ * breadth-first walk starting at the first source, so back edges simply point left.
+ */
+export function scoutLineage(header: string[], rows: string[][]): ScoutLineage | null {
+  const source = findColumn(header, ["source", "sourceitem", "sourcename", "from", "upstream", "upstreamitem"]);
+  const target = findColumn(header, ["target", "targetitem", "targetname", "to", "downstream", "downstreamitem"]);
+  if (source < 0 || target < 0 || !rows.length) return null;
+  const sourceType = findColumn(header, ["sourcetype", "sourceitemtype", "fromtype"]);
+  const targetType = findColumn(header, ["targettype", "targetitemtype", "totype"]);
+  const relation = findColumn(header, ["relation", "relationship", "relationtype", "edgetype", "link"]);
+  const broken = findColumn(header, ["broken", "isbroken", "brokenedge"]);
+  const health = findColumn(header, ["targethealth", "targetstatus", "health", "status"]);
+  const failed = header.map(normalizeHeader).findIndex((name) => name.includes("failed") || name.includes("failure"));
+
+  const nodes = new Map<string, ScoutLineageNode>();
+  const node = (label: string, type: string) => {
+    const id = `${label}\u0000${type}`;
+    if (!nodes.has(id)) nodes.set(id, { id, label, type, tone: "neutral", layer: -1, row: 0 });
+    return nodes.get(id)!;
+  };
+  const edges: ScoutLineageEdge[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const from = plainCell(row[source]);
+    const to = plainCell(row[target]);
+    if (!from || !to) continue;
+    const a = node(from, plainCell(row[sourceType]));
+    const b = node(to, plainCell(row[targetType]));
+    const edge = { from: a.id, to: b.id, relation: plainCell(row[relation]), broken: TRUTHY.test(plainCell(row[broken])) };
+    const key = `${edge.from}\u0001${edge.to}\u0001${edge.relation}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      edges.push(edge);
+    }
+    const status = plainCell(row[health]).toLowerCase();
+    const failedRuns = Number(plainCell(row[failed]).replace(",", "."));
+    if (edge.broken || STATUS_TONES[status] === "failing" || failedRuns > 0) b.tone = "failing";
+    else if (b.tone === "neutral" && STATUS_TONES[status] === "healthy") b.tone = "healthy";
+  }
+  if (!edges.length) return null;
+
+  const outgoing = new Map<string, string[]>();
+  const incoming = new Set<string>();
+  for (const edge of edges) {
+    outgoing.set(edge.from, [...(outgoing.get(edge.from) ?? []), edge.to]);
+    if (edge.from !== edge.to) incoming.add(edge.to);
+  }
+  const walk = (start: ScoutLineageNode) => {
+    start.layer = 0;
+    const queue = [start];
+    while (queue.length) {
+      const current = queue.shift()!;
+      for (const next of outgoing.get(current.id) ?? []) {
+        const target = nodes.get(next)!;
+        if (target.layer < 0) {
+          target.layer = current.layer + 1;
+          queue.push(target);
+        }
+      }
+    }
+  };
+  walk(nodes.get(edges[0].from)!);
+  for (const candidate of nodes.values()) if (candidate.layer < 0 && !incoming.has(candidate.id)) walk(candidate);
+  for (const candidate of nodes.values()) if (candidate.layer < 0) walk(candidate);
+
+  // Order each layer by the average row of its parents to limit crossings.
+  const layers = Math.max(...[...nodes.values()].map((item) => item.layer)) + 1;
+  let maxRows = 0;
+  for (let layer = 0; layer < layers; layer += 1) {
+    const members = [...nodes.values()].filter((item) => item.layer === layer);
+    const weight = (item: ScoutLineageNode) => {
+      const parents = edges
+        .filter((edge) => edge.to === item.id)
+        .map((edge) => nodes.get(edge.from)!)
+        .filter((parent) => parent.layer < layer);
+      return parents.length ? parents.reduce((sum, parent) => sum + parent.row, 0) / parents.length : 0;
+    };
+    members
+      .map((item) => ({ item, weight: weight(item) }))
+      .sort((a, b) => a.weight - b.weight)
+      .forEach(({ item }, index) => {
+        item.row = index;
+      });
+    maxRows = Math.max(maxRows, members.length);
+  }
+  return { nodes: [...nodes.values()], edges, layers, rows: maxRows };
+}
+
 export type SqlToken = { kind: "keyword" | "string" | "number" | "comment" | "text"; text: string };
 
 const SQL_KEYWORDS = new Set(

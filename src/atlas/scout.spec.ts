@@ -7,7 +7,7 @@ import {
   scoutBaseUrl,
   ScoutError,
 } from "./scout";
-import { classifyScoutCell, parseScoutInline, parseScoutMarkdown, splitScoutLabel, tokenizeSql } from "./scout-markdown";
+import { classifyScoutCell, parseScoutInline, parseScoutMarkdown, scoutLineage, splitScoutLabel, tokenizeSql } from "./scout-markdown";
 
 const endpoint = {
   workspaceId: "6bf4c521-7412-4e6b-8867-68253bbfb18a",
@@ -213,5 +213,38 @@ describe("Atlas Scout rich rendering helpers", () => {
       { kind: "text", text: " state = " },
       { kind: "string", text: "'Failed'" },
     ]);
+  });
+});
+
+describe("scoutLineage", () => {
+  const header = ["Source", "Source type", "Relation", "Target", "Target type", "Broken", "Target health", "Failed runs (14d)"];
+
+  it("ignores tables without source and target columns", () => {
+    expect(scoutLineage(["Workspace", "Score"], [["Sales", "80"]])).toBeNull();
+  });
+
+  it("lays out edges in layers and keeps items with the same name but different types apart", () => {
+    const graph = scoutLineage(header, [
+      ["LH_Sales", "Lakehouse", "SQL endpoint", "LH_Sales", "SQLEndpoint", "0", "unknown", "0"],
+      ["LH_Sales", "SQLEndpoint", "Direct Lake", "**Sales Model**", "SemanticModel", "1", "failing", "3"],
+    ])!;
+    expect(graph.nodes.map((node) => [node.label, node.type, node.layer])).toEqual([
+      ["LH_Sales", "Lakehouse", 0],
+      ["LH_Sales", "SQLEndpoint", 1],
+      ["Sales Model", "SemanticModel", 2],
+    ]);
+    expect(graph.edges[1].broken).toBe(true);
+    expect(graph.nodes[2].tone).toBe("failing");
+    expect(graph.layers).toBe(3);
+  });
+
+  it("survives cycles and deduplicates repeated edges", () => {
+    const graph = scoutLineage(header, [
+      ["LH", "Lakehouse", "notebook reads", "NB", "Notebook", "0", "unknown", "0"],
+      ["NB", "Notebook", "writes", "LH", "Lakehouse", "0", "unknown", "0"],
+      ["NB", "Notebook", "writes", "LH", "Lakehouse", "0", "unknown", "0"],
+    ])!;
+    expect(graph.edges).toHaveLength(2);
+    expect(graph.nodes.map((node) => node.layer)).toEqual([0, 1]);
   });
 });
