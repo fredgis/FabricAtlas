@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.7.7";
+  "2.7.8";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,20 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.7.8",
+    date: "2026-11-08",
+    title: "Every Scout starter answers",
+    sections: [
+      {
+        title: "Fixed",
+        items: [
+          "\"Used most but not endorsed\" ranks semantic models and reports by reach (downstream items and principals with access), since Fabric has no view counts in Atlas.",
+          "\"Shared with external users or guests\" runs instead of failing on a reserved SQL keyword.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.7.7",
     date: "2026-11-06",

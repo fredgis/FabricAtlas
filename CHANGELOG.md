@@ -8,6 +8,13 @@ release tag was published.
 
 ## [Unreleased]
 
+## [2.7.8] - 2026-11-08
+
+### Fixed
+
+- Scout starter "used most but not endorsed" answers: Atlas has no view counts, so Scout ranks semantic models and reports by reach (downstream items and principals with access) and says so.
+- Scout starter "shared with external users or guests" no longer fails: the agent brackets the reserved `external` column.
+
 ## [2.7.7] - 2026-11-06
 
 ### Fixed
@@ -947,7 +954,8 @@ release tag was published.
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.7.7...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.7.8...HEAD
+[2.7.8]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.8
 [2.7.7]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.7
 [2.7.6]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.6
 [2.7.5]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.5
