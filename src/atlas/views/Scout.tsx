@@ -928,27 +928,27 @@ export function ScoutDock({ onExpand }: { onExpand: () => void }) {
             exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.95 }}
             transition={{ type: "spring", stiffness: 260, damping: 24 }}
             style={{ transformOrigin: "bottom right" }}
-            className="flex h-[min(600px,calc(100vh-120px))] w-[min(400px,calc(100vw-32px))] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-fabric-16"
+            className="flex h-[min(600px,calc(100vh-120px))] w-[min(400px,calc(100vw-32px))] flex-col overflow-hidden rounded-2xl border border-primary/25 bg-card shadow-fabric-16"
           >
-            <header className="atlas-scout-hero flex items-center gap-s border-b border-border px-m py-s">
+            <header className="atlas-scout-dock-header flex items-center gap-s px-m py-s text-white">
               <ScoutOrb size={32} busy={busy} />
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="text-300 font-semibold leading-tight">Atlas Scout</span>
-                <span className="text-100 text-muted-foreground">Governance answers from the Atlas store</span>
+                <span className="text-100 text-white/80">Governance answers from the Atlas store</span>
               </div>
               {turns.length > 0 && (
-                <button type="button" onClick={reset} aria-label="New conversation" title="New conversation" className="rounded-md p-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+                <button type="button" onClick={reset} aria-label="New conversation" title="New conversation" className="rounded-md p-xs text-white/80 transition-colors hover:bg-white/15 hover:text-white">
                   <RotateCcw className="icon-size-100" aria-hidden="true" />
                 </button>
               )}
-              <button type="button" onClick={onExpand} aria-label="Open full Atlas Scout" title="Open full view" className="rounded-md p-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+              <button type="button" onClick={onExpand} aria-label="Open full Atlas Scout" title="Open full view" className="rounded-md p-xs text-white/80 transition-colors hover:bg-white/15 hover:text-white">
                 <Maximize2 className="icon-size-100" aria-hidden="true" />
               </button>
-              <button type="button" onClick={() => setOpen(false)} aria-label="Close Atlas Scout" className="rounded-md p-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+              <button type="button" onClick={() => setOpen(false)} aria-label="Close Atlas Scout" className="rounded-md p-xs text-white/80 transition-colors hover:bg-white/15 hover:text-white">
                 <X className="icon-size-100" aria-hidden="true" />
               </button>
             </header>
-            <div className="flex-1 overflow-y-auto p-m">
+            <div className="atlas-scout-dock-body flex-1 overflow-y-auto p-m">
               {turns.length === 0 ? (
                 <div className="flex flex-col gap-s">
                   <p className="text-200 leading-300 text-muted-foreground">
@@ -962,9 +962,9 @@ export function ScoutDock({ onExpand }: { onExpand: () => void }) {
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.1 + index * 0.06 }}
                       onClick={() => void ask(question)}
-                      className="flex items-center gap-s rounded-lg border border-border bg-card px-m py-s text-left text-200 transition-colors hover:border-primary/40 hover:bg-accent/40"
+                      className="flex items-center gap-s rounded-lg border border-primary/20 bg-card px-m py-s text-left text-200 shadow-fabric-2 transition-colors hover:border-primary/50 hover:bg-primary/[0.05]"
                     >
-                      <Sparkles className="icon-size-100 shrink-0 text-primary/70" aria-hidden="true" />
+                      <Sparkles className="icon-size-100 shrink-0 text-primary" aria-hidden="true" />
                       {question}
                     </motion.button>
                   ))}
@@ -974,8 +974,8 @@ export function ScoutDock({ onExpand }: { onExpand: () => void }) {
               )}
               <div ref={bottomRef} />
             </div>
-            <div className="border-t border-border p-s">
-              <Composer id="atlas-scout-dock-question" compact className="border-none bg-transparent p-0" />
+            <div className="border-t border-border bg-card p-s">
+              <Composer id="atlas-scout-dock-question" compact className="atlas-scout-composer rounded-xl border-border bg-background p-xs" />
             </div>
           </motion.section>
         )}

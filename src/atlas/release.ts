@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.7.3";
+  "2.7.4";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,17 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.7.4",
+    date: "2026-11-07",
+    title: "Atlas Scout bubble window",
+    sections: [
+      {
+        title: "Improved",
+        items: ["The floating Atlas Scout window has a teal header, a white body and a clearer prompt field."],
+      },
+    ],
+  },
   {
     version: "2.7.3",
     date: "2026-11-07",

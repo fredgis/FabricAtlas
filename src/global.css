@@ -843,6 +843,16 @@ body,
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 
+.atlas-scout-dock-header {
+    background:
+      radial-gradient(circle at 88% 0%, color-mix(in srgb, var(--color-fabric-purple) 35%, transparent), transparent 55%),
+      linear-gradient(120deg, color-mix(in srgb, var(--color-fabric-teal) 92%, black), color-mix(in srgb, var(--color-fabric-teal) 72%, white));
+}
+
+.atlas-scout-dock-body {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--color-fabric-teal) 6%, var(--color-card)), var(--color-card) 45%);
+}
+
 .atlas-scout-bubble {
     background: radial-gradient(
       circle at 30% 25%,
