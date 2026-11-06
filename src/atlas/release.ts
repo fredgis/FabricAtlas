@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.7.4";
+  "2.7.5";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,20 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.7.5",
+    date: "2026-11-07",
+    title: "Atlas Scout fixes",
+    sections: [
+      {
+        title: "Fixed",
+        items: [
+          "Lineage answers draw as a graph even when the agent writes the table without outer pipes.",
+          "Asking a new question after Stop no longer fails: the stopped run is cancelled and Scout continues in a fresh thread if needed.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.7.4",
     date: "2026-11-07",

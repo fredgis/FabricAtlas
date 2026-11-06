@@ -8,6 +8,13 @@ release tag was published.
 
 ## [Unreleased]
 
+## [2.7.5] - 2026-11-07
+
+### Fixed
+
+- Atlas Scout tables without outer pipes (lineage answers) render as tables and lineage graphs.
+- Asking after Stop no longer fails with 'run is active': the run is cancelled and Scout falls back to a fresh thread.
+
 ## [2.7.4] - 2026-11-07
 
 ### Changed
@@ -922,7 +929,8 @@ release tag was published.
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.7.4...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.7.5...HEAD
+[2.7.5]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.5
 [2.7.4]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.4
 [2.7.3]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.3
 [2.7.2]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.2

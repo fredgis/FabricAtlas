@@ -248,3 +248,50 @@ describe("scoutLineage", () => {
     expect(graph.nodes.map((node) => node.layer)).toEqual([0, 1]);
   });
 });
+
+describe("Atlas Scout stop and resume", () => {
+  it("cancels the run on stop and moves to a fresh thread if the old run is still active", async () => {
+    const calls: string[] = [];
+    const client = createScoutClient({
+      endpoint,
+      getToken: async () => "token",
+      wait: async (_ms, signal) => {
+        if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+      },
+      fetch: async (url, init) => {
+        const path = new URL(url).pathname.split("/openai")[1];
+        calls.push(`${init?.method} ${path}`);
+        if (path === "/assistants") return json({ id: "asst" });
+        if (path === "/threads") return json({ id: "t2" });
+        if (path === "/threads/t1/messages") return json({ error: { message: "Can't add messages to thread_t1 while a run run_r1 is active." } }, 400);
+        if (path === "/threads/t2/messages" && init?.method === "POST") return json({ id: "m" });
+        if (path.endsWith("/runs")) return json({ id: "r1", status: "queued" });
+        if (path.endsWith("/cancel")) return json({ status: "cancelling" });
+        if (path.endsWith("/runs/r1")) return json({ status: "completed" });
+        if (path === "/threads/t2/messages") return json({ data: [{ role: "assistant", content: [{ text: { value: "ok" } }] }] });
+        if (path.endsWith("/steps")) return json({ data: [] });
+        if (init?.method === "DELETE") return json({});
+        throw new Error(`unexpected ${path}`);
+      },
+    });
+    const answer = await client.ask("Again", "t1");
+    expect(answer.threadId).toBe("t2");
+    expect(calls).toContain("DELETE /threads/t1");
+
+    calls.length = 0;
+    const controller = new AbortController();
+    const pending = client.ask("Stop me", "t2", controller.signal, (phase) => {
+      if (phase === "thinking") controller.abort();
+    });
+    await expect(pending).rejects.toThrow();
+    expect(calls).toContain("POST /threads/t2/runs/r1/cancel");
+  });
+});
+
+describe("Scout markdown tables", () => {
+  it("parses tables written without leading and trailing pipes", () => {
+    const blocks = parseScoutMarkdown("Lineage:\nSource | Relation | Target\n--- | --- | ---\nLH | writes | SM\nSM | binds | RP\n\nDone.");
+    expect(blocks[1]).toEqual({ kind: "table", header: ["Source", "Relation", "Target"], rows: [["LH", "writes", "SM"], ["SM", "binds", "RP"]] });
+    expect(blocks[2]).toEqual({ kind: "paragraph", text: "Done." });
+  });
+});

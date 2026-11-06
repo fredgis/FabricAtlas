@@ -178,14 +178,39 @@ export function createScoutClient(options: ScoutClientOptions) {
     if (!content) throw new ScoutError("Ask Atlas Scout a question.");
     onPhase?.("connecting");
     assistantId ??= (await call<{ id: string }>("POST", "/assistants", { model: "not used" }, signal)).id;
-    const thread = threadId ?? (await call<{ id: string }>("POST", "/threads", {}, signal)).id;
-    await call("POST", `/threads/${thread}/messages`, { role: "user", content }, signal);
+    let thread = threadId ?? (await call<{ id: string }>("POST", "/threads", {}, signal)).id;
+    try {
+      await call("POST", `/threads/${thread}/messages`, { role: "user", content }, signal);
+    } catch (error) {
+      // A stopped question can leave its run active on the thread: continue in a fresh thread.
+      if (!threadId || !(error instanceof ScoutError) || !/run .* is active/i.test(error.message)) throw error;
+      void endThread(thread);
+      thread = (await call<{ id: string }>("POST", "/threads", {}, signal)).id;
+      await call("POST", `/threads/${thread}/messages`, { role: "user", content }, signal);
+    }
     const run = await call<{ id: string; status: string }>(
       "POST",
       `/threads/${thread}/runs`,
       { assistant_id: assistantId },
       signal,
     );
+    const cancelRun = () => {
+      void call("POST", `/threads/${thread}/runs/${run.id}/cancel`).catch(() => undefined);
+    };
+    signal?.addEventListener("abort", cancelRun, { once: true });
+    try {
+      return await waitForAnswer(thread, run, signal, onPhase);
+    } finally {
+      signal?.removeEventListener("abort", cancelRun);
+    }
+  }
+
+  async function waitForAnswer(
+    thread: string,
+    run: { id: string; status: string },
+    signal?: AbortSignal,
+    onPhase?: (phase: ScoutPhase) => void,
+  ): Promise<ScoutAnswer> {
     onPhase?.("thinking");
     const deadline = Date.now() + timeoutMs;
     let polls = 0;

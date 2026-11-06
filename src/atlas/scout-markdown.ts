@@ -125,12 +125,12 @@ export function parseScoutMarkdown(source: string): ScoutBlock[] {
       }
       continue;
     }
-    if (trimmed.startsWith("|") && TABLE_SEPARATOR.test(lines[index + 1]?.trim() ?? "")) {
+    if (trimmed.includes("|") && TABLE_SEPARATOR.test(lines[index + 1]?.trim() ?? "")) {
       flushParagraph();
       const header = tableCells(trimmed);
       const rows: string[][] = [];
       index += 2;
-      while (index < lines.length && lines[index].trim().startsWith("|")) {
+      while (index < lines.length && lines[index].includes("|") && !LIST_ITEM.test(lines[index])) {
         rows.push(tableCells(lines[index]));
         index += 1;
       }
