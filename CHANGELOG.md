@@ -8,7 +8,7 @@ release tag was published.
 
 ## [Unreleased]
 
-## [2.8.0] - 2026-11-06
+## [2.7.1] - 2026-11-06
 
 ### Added
 
@@ -892,8 +892,8 @@ release tag was published.
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.8.0...HEAD
-[2.8.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.8.0
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.7.1...HEAD
+[2.7.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.1
 [2.7.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.0
 [2.6.4]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.6.4
 [2.6.3]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.6.3
