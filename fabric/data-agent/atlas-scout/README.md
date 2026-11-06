@@ -2,8 +2,9 @@
 
 Atlas Scout is a read-only Fabric Data Agent that answers governance questions in
 plain language over the Fabric Atlas SQL database. The **Atlas Scout** tab of the
-app (Govern group) is a chat client for this agent: it shows the answer, the SQL
-the agent ran and the raw result tables.
+app (Govern group) and the floating Scout bubble are chat clients for this agent.
+They render the answer (findings, priority pills, gauges, tables and lineage
+graphs), and show the SQL the agent ran and the raw result tables.
 
 This folder versions everything that defines the agent:
 
@@ -11,7 +12,7 @@ This folder versions everything that defines the agent:
 |---|---|
 | `ai_instructions.md` | Agent instructions: role, Health / Protect / Trust skills, answer format |
 | `datasource_instructions.md` | Schema guidance for the Atlas SQL database |
-| `fewshots.json` | Example questions and their reference SQL (`{question: query}`) |
+| `fewshots.json` | Example questions and their reference SQL (`{question: query}`), including lineage walks |
 | `provision.py` | Creates or updates the agent, attaches every table and publishes it |
 
 ## Provision or update the agent

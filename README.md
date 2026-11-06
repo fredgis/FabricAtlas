@@ -91,17 +91,53 @@ walks through the same setup and copies a ready-to-use `.vscode/mcp.json`.
 
 ## Atlas Scout (Fabric Data Agent)
 
-**Govern → Atlas Scout** is an animated chat over a Fabric Data Agent that reads
-the Atlas SQL database. Ask governance questions in plain language ("Which
-items fail and what is their blast radius?"); Scout answers with rendered
-tables, health gauges and status pills, and shows the SQL and raw results it
-used. The agent definition (instructions, example queries, provisioning
-script) is versioned in
-[`fabric/data-agent/atlas-scout`](fabric/data-agent/atlas-scout/README.md).
+Atlas Scout lets anyone ask governance questions in plain language. It is a
+chat client for a published Fabric Data Agent that reads the Atlas SQL
+database, so every answer comes from the same validated snapshots as the rest
+of the app.
 
-v1 is read-only and sees every synchronized workspace in the Atlas store;
-per-user scoping is planned. First use asks for consent to
-`DataAgent.Execute.All` unless an administrator granted it tenant-wide.
+<img src="docs/screenshots/atlas-scout-home-v2.png" alt="Atlas Scout home with the animated header and six starter questions grouped by Health, Protect, Trust and Ownership" width="100%">
+
+- **Two entry points.** Open the full page from **Govern → Atlas Scout**, or
+  use the floating Scout bubble at the bottom right of every page for a quick
+  question without leaving the current view.
+- **Governance skills.** The agent follows the OneLake catalog pillars
+  (Health, Protect, Trust) plus Ownership. It can build a workspace
+  scorecard, find failures and their blast radius, list external exposure,
+  measure label and endorsement coverage, and find orphan items.
+- **Rich answers.** Markdown is rendered into headings, numbered findings,
+  priority pills, health gauges and sortable tables. Every answer can show
+  the SQL the agent ran and the raw result rows.
+- **Lineage drawn as a graph.** When an answer contains source and target
+  columns, Scout draws an animated lineage graph. Broken links and failing
+  items are highlighted, and the edge table stays one click away.
+- **Live progress and Stop.** Scout shows each step (secure session,
+  understanding, querying the Atlas store, writing the answer). Stop cancels
+  the agent run, and the next question continues in a fresh thread if needed.
+
+<img src="docs/screenshots/atlas-scout-lineage-v2.png" alt="Atlas Scout drawing the downstream lineage of the LH_Healthcare_Clinical lakehouse as a graph, followed by a prioritized finding" width="100%">
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/atlas-scout-dock-v2.png" alt="Floating Atlas Scout window over the workspace overview with suggested questions"></td>
+    <td width="50%"><img src="docs/screenshots/atlas-scout-dock-progress-v2.png" alt="Floating Atlas Scout window showing live progress while the agent queries the Atlas store"></td>
+  </tr>
+  <tr>
+    <td align="center"><em>Floating Scout with suggested questions</em></td>
+    <td align="center"><em>Live progress while the agent queries the store</em></td>
+  </tr>
+</table>
+
+The agent definition (instructions, example queries and provisioning script)
+is versioned in
+[`fabric/data-agent/atlas-scout`](fabric/data-agent/atlas-scout/README.md).
+Set `RAYFIN_PUBLIC_ATLAS_SCOUT_AGENT_ID` in `rayfin/.env` to enable the chat;
+without it, Scout explains how to connect an agent.
+
+v1 is read-only and sees every synchronized workspace in the Atlas store,
+regardless of the user's workspace roles. Per-user scoping is planned. First
+use asks for consent to `DataAgent.Execute.All` unless an administrator granted
+it tenant-wide.
 
 ## Technical presentation
 
@@ -155,6 +191,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Access | Effective recorded access, principal type and role filters, OneLake data access roles (RLS/CLS), sensitive external shares, personal decisions, What-if simulation and evidence-based departure packs |
 | Operations | Job history, observed incidents, inferred downstream impact, Full or Incremental sync (one shared choice; a notice explains when a full scan is required because this browser holds no previous full snapshot or the 7-day full rescan is due), rescanned/reused counts and real run duration, Open in Fabric cards for Govern and Admin monitoring, configuration and team notes |
 | Security | Fabric brokered authentication, synchronizer-only publication, metadata-only storage and user-scoped personal state |
+| AI assistant | Atlas Scout chat over a published Fabric Data Agent: full page and floating bubble, governance skills, rendered findings, SQL and raw results, lineage graphs, live progress and Stop |
 | Extensibility | Typed Rayfin Functions, minimal Python compatibility and an optional read-only local Atlas MCP |
 
 Detailed feature and coverage notes are in the
@@ -216,7 +253,7 @@ security, Purview DLP or actual data access.
 
 ## Product screenshots
 
-These screens come from Fabric Atlas 2.0 and a live FGI-MAIN
+These screens come from Fabric Atlas 2.x and a live FGI-MAIN
 metadata snapshot. Counts change when the workspace is synchronized again.
 
 ### Workspace overview
@@ -465,13 +502,14 @@ contracts or a separate product decision.
 | Scheduled synchronization | Disabled. Sync still needs a browser-held delegated identity | A supported unattended trigger and identity for every required API |
 | Durable server execution | Additive commands and checkpoints are implemented as a fail-closed probe | Distributed claim or transaction primitive plus live browser-closure recovery |
 | Python compatibility | Limited to Power BI scanner, PBIR-Legacy pages, Kusto live metadata and rollback | Documented Power BI and Kusto audiences for Rayfin Functions |
+| Atlas Scout security | Read-only, but every agent user sees every synchronized workspace | Row-level filtering or per-workspace scope in the Atlas SQL database |
 | Atlas MCP | Read-only stdio server implemented and disabled by default | Public client, `Item.Execute.All`, reviewed token exchange and live validation |
 | OneLake security and Purview DLP | OneLake data access roles (RLS/CLS) collected since 2.6; Purview DLP remains a portal link | Public read APIs for Purview restriction evidence |
 | Fabric policies (preview) | Read-only listing of Policy items; enforcement always Unknown | A public API exposing policy rules and evaluation results |
 | Report visual usage | Not collected | A supported report definition path with sensitivity and permission handling |
 | Shared action plans and notifications | Optional Teams webhook for new critical findings; no shared action plans | Reviewed team workflow and ownership model |
 | Generated Power BI posture report (PBIP) | Not implemented; JSON and snapshot export, the Teams card and webhook cover sharing in 2.6 | A reviewed report template fed by the published snapshot |
-| 2.6 release line | See [the latest release](https://github.com/fredgis/FabricAtlas/releases/latest) and [CHANGELOG.md](CHANGELOG.md) | Patch releases for verified fixes; larger workflows depend on the contracts above |
+| 2.7 release line | See [the latest release](https://github.com/fredgis/FabricAtlas/releases/latest) and [CHANGELOG.md](CHANGELOG.md) | Patch releases for verified fixes; larger workflows depend on the contracts above |
 
 ## Quickstart
 

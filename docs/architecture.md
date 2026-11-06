@@ -332,6 +332,21 @@ Activation remains gated by a dedicated public client, delegated
 `Item.Execute.All`, reviewed external Entra exchange and live Conditional
 Access validation.
 
+## Atlas Scout
+
+Atlas Scout is an optional chat over a published Fabric Data Agent whose only
+data source is the Atlas SQL database. The browser calls the agent's
+OpenAI-compatible endpoint with a delegated `DataAgent.Execute.All` token. It
+creates a thread, posts the question, polls the run and reads the answer, the
+SQL steps and the result rows. Stop cancels the active run; if the server still
+reports it active, the next question moves to a fresh thread.
+
+The client (`src/atlas/scout.ts`) never writes to Atlas. Answer Markdown is
+parsed by `src/atlas/scout-markdown.ts`, which also detects lineage tables and
+lays them out as a graph. The agent definition lives in
+`fabric/data-agent/atlas-scout/`. v1 has no row-level scope: every agent user
+sees every synchronized workspace.
+
 ## Security boundary
 
 Atlas stores governance metadata, not business content.
@@ -382,6 +397,8 @@ See [Installation and deployment](installation.md) for the complete workflow.
 | `src/atlas/source-provenance-snapshot.ts` | Shortcut, mirroring and materialized lake view projection |
 | `src/atlas/views/` | Product screens |
 | `src/mcp/` and `src/atlas/mcp/` | Local read-only MCP |
+| `src/atlas/scout.ts`, `src/atlas/views/Scout.tsx` | Atlas Scout Data Agent client and chat UI |
+| `fabric/data-agent/atlas-scout/` | Atlas Scout agent instructions, examples and provisioning |
 | `rayfin/data/` | Entities and row policies |
 | `rayfin/functions/` | Typed Rayfin Functions |
 | `fabric/udf/atlas_sync_functions/` | Python compatibility collector |
