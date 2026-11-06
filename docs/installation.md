@@ -167,6 +167,14 @@ RAYFIN_PUBLIC_ATLAS_PREVIOUS_SYNC_WRITERS=<former-user@example.com>
 RAYFIN_PUBLIC_ATLAS_SENSITIVITY_RANKS='{"<label-id>":3}'
 ```
 
+Optional Atlas Scout chat (Fabric Data Agent, see
+[`fabric/data-agent/atlas-scout`](../fabric/data-agent/atlas-scout/README.md)):
+
+```dotenv
+RAYFIN_PUBLIC_ATLAS_SCOUT_AGENT_ID=<data-agent-id>
+RAYFIN_PUBLIC_ATLAS_SCOUT_WORKSPACE_ID=<optional-agent-workspace-id>
+```
+
 Build-time option (default 90 days) for the `item-inactive` rule:
 
 ```dotenv

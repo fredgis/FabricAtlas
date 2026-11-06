@@ -8,6 +8,19 @@ release tag was published.
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-11-06
+
+### Added
+
+- Atlas Scout (Govern → Atlas Scout): animated chat over a Fabric Data Agent that reads the Atlas SQL database. Answers render as tables with health gauges, status pills and numbered actions, with an expandable Evidence panel showing the SQL and raw results the agent used.
+- Live progress (secure session, understanding, querying, writing), elapsed time, Stop button and conversation threads reused across follow-up questions.
+- Agent definition versioned in `fabric/data-agent/atlas-scout`: instructions with the Health / Protect / Trust governance skills, 17 example queries and an idempotent `provision.py` that creates, configures and publishes the agent without touching the Atlas database.
+- New optional runtime values `RAYFIN_PUBLIC_ATLAS_SCOUT_AGENT_ID` and `RAYFIN_PUBLIC_ATLAS_SCOUT_WORKSPACE_ID`.
+
+### Security
+
+- Scout v1 is read-only and sees every synchronized workspace in the Atlas store, whatever the user's workspace roles. First use asks for consent to `DataAgent.Execute.All`.
+
 ## [2.7.0] - 2026-10-29
 
 ### Added
@@ -879,7 +892,8 @@ release tag was published.
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.7.0...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.8.0...HEAD
+[2.8.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.8.0
 [2.7.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.0
 [2.6.4]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.6.4
 [2.6.3]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.6.3

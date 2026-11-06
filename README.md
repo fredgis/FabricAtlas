@@ -89,6 +89,20 @@ permissions or Atlas data. See [Atlas MCP](docs/atlas-mcp.md) for the remaining
 identity gates, tool contracts and limitations. Inside the app, **System → MCP**
 walks through the same setup and copies a ready-to-use `.vscode/mcp.json`.
 
+## Atlas Scout (Fabric Data Agent)
+
+**Govern → Atlas Scout** is an animated chat over a Fabric Data Agent that reads
+the Atlas SQL database. Ask governance questions in plain language ("Which
+items fail and what is their blast radius?"); Scout answers with rendered
+tables, health gauges and status pills, and shows the SQL and raw results it
+used. The agent definition (instructions, example queries, provisioning
+script) is versioned in
+[`fabric/data-agent/atlas-scout`](fabric/data-agent/atlas-scout/README.md).
+
+v1 is read-only and sees every synchronized workspace in the Atlas store;
+per-user scoping is planned. First use asks for consent to
+`DataAgent.Execute.All` unless an administrator granted it tenant-wide.
+
 ## Technical presentation
 
 The [Fabric Atlas development and architecture presentation](prez/Fabric-Atlas-Dev-Architecture.pdf)

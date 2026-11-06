@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.7.0";
+  "2.8.0";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,28 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.8.0",
+    date: "2026-11-06",
+    title: "Atlas Scout",
+    sections: [
+      {
+        title: "New",
+        items: [
+          "Atlas Scout: ask governance questions in plain language. A Fabric Data Agent reads the Atlas store and answers with tables, health gauges and status pills.",
+          "Every answer shows its evidence: the SQL the agent ran and the raw results, with copy.",
+          "Live progress, Stop and follow-up questions in the same conversation.",
+          "The agent definition and its provisioning script are versioned in fabric/data-agent/atlas-scout.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "Scout v1 is read-only and sees every synchronized workspace in the Atlas store. First use asks for consent to DataAgent.Execute.All.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.7.0",
     date: "2026-10-29",

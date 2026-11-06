@@ -1,0 +1,52 @@
+# Atlas Scout — Fabric Data Agent
+
+Atlas Scout is a read-only Fabric Data Agent that answers governance questions in
+plain language over the Fabric Atlas SQL database. The **Atlas Scout** tab of the
+app (Govern group) is a chat client for this agent: it shows the answer, the SQL
+the agent ran and the raw result tables.
+
+This folder versions everything that defines the agent:
+
+| File | Purpose |
+|---|---|
+| `ai_instructions.md` | Agent instructions: role, Health / Protect / Trust skills, answer format |
+| `datasource_instructions.md` | Schema guidance for the Atlas SQL database |
+| `fewshots.json` | Example questions and their reference SQL (`{question: query}`) |
+| `provision.py` | Creates or updates the agent, attaches every table and publishes it |
+
+## Provision or update the agent
+
+```powershell
+pip install requests azure-identity
+az login --tenant <tenant-id>
+python fabric/data-agent/atlas-scout/provision.py `
+  --workspace-id <workspace-id> `
+  --database-id <atlas-sql-database-item-id> `
+  [--agent-id <existing-agent-id>] [--dry-run]
+```
+
+The script only writes the Data Agent item. The Atlas SQL database is read,
+never modified. Every table is exposed to the agent; the schema is explicit and
+the instructions carry the remaining business rules.
+
+## Connect the app
+
+Add the agent id to the git-ignored `rayfin/.env`, then rebuild and deploy:
+
+```dotenv
+RAYFIN_PUBLIC_ATLAS_SCOUT_AGENT_ID=<agent-id>
+# Optional, defaults to the Atlas workspace
+RAYFIN_PUBLIC_ATLAS_SCOUT_WORKSPACE_ID=<agent-workspace-id>
+```
+
+The browser calls the agent's published OpenAI-compatible endpoint
+(`/v1/workspaces/{ws}/dataagents/{id}/aiassistant/openai`) with a delegated
+token for `DataAgent.Execute.All`. On first use the user sees a consent pop-up
+unless an Entra administrator granted tenant-wide consent to the Atlas SPA.
+
+## Security scope (v1)
+
+Scout v1 answers over the whole Atlas store: every user who can run the agent
+sees every synchronized workspace, regardless of their own workspace roles.
+Row-level filtering and per-workspace scope are tracked as a follow-up issue.
+Share the agent and the Atlas SQL database only with the governance audience.

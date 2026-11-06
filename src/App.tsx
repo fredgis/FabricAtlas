@@ -33,6 +33,7 @@ import {
   Search,
   Settings2,
   ShieldCheck,
+  Sparkles,
   Sun,
   UserRound,
   Waypoints,
@@ -96,6 +97,7 @@ const governanceLoader = () => import("./atlas/views/GovernanceCenter");
 const jobsLoader = () => import("./atlas/views/Jobs");
 const workspaceLoader = () => import("./atlas/views/WorkspaceHub");
 const mcpLoader = () => import("./atlas/views/Mcp");
+const scoutLoader = () => import("./atlas/views/Scout");
 const aboutLoader = () => import("./atlas/views/About");
 
 const OverviewView = lazy(() =>
@@ -134,6 +136,9 @@ const WorkspaceHubView = lazy(() =>
 const McpView = lazy(() =>
   mcpLoader().then((module) => ({ default: module.McpView })),
 );
+const ScoutView = lazy(() =>
+  scoutLoader().then((module) => ({ default: module.ScoutView })),
+);
 const AboutView = lazy(() =>
   aboutLoader().then((module) => ({ default: module.AboutView })),
 );
@@ -149,6 +154,7 @@ const VIEW_LOADERS: Partial<Record<Tab, () => Promise<unknown>>> = {
   jobs: jobsLoader,
   workspace: workspaceLoader,
   mcp: mcpLoader,
+  scout: scoutLoader,
   about: aboutLoader,
 };
 
@@ -171,6 +177,7 @@ const NAV_GROUPS: {
     items: [
       { id: "governance", label: "Governance Center", icon: ShieldCheck },
       { id: "access", label: "Access Review", icon: KeyRound },
+      { id: "scout", label: "Atlas Scout", icon: Sparkles },
     ],
   },
   {
@@ -800,6 +807,7 @@ function App() {
                 />
               )}
               {tab === "mcp" && <McpView />}
+              {tab === "scout" && <ScoutView />}
               {tab === "about" && <AboutView />}
               </Suspense>
             </motion.div>
