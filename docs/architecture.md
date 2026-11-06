@@ -338,12 +338,14 @@ Atlas Scout is an optional chat over a published Fabric Data Agent whose only
 data source is the Atlas SQL database. The browser calls the agent's
 OpenAI-compatible endpoint with a delegated `DataAgent.Execute.All` token. It
 creates a thread, posts the question, polls the run and reads the answer, the
-SQL steps and the result rows. Stop cancels the active run; if the server still
-reports it active, the next question moves to a fresh thread.
+SQL steps and the result rows. Stop cancels the active run. If posting a
+question reports a run that is still active, on a reused or a brand new thread,
+the client cancels that run and retries once in a fresh thread.
 
 The client (`src/atlas/scout.ts`) never writes to Atlas. Answer Markdown is
-parsed by `src/atlas/scout-markdown.ts`, which also detects lineage tables and
-lays them out as a graph. The agent definition lives in
+parsed by `src/atlas/scout-markdown.ts`, which also detects lineage tables
+(item or object level) and lays them out as a graph. The agent can query every
+Atlas table, including the object inventory stored as JSON in `ConfigEntries`. The agent definition lives in
 `fabric/data-agent/atlas-scout/`. v1 has no row-level scope: every agent user
 sees every synchronized workspace.
 

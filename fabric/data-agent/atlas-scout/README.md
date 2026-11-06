@@ -12,8 +12,38 @@ This folder versions everything that defines the agent:
 |---|---|
 | `ai_instructions.md` | Agent instructions: role, Health / Protect / Trust skills, answer format |
 | `datasource_instructions.md` | Schema guidance for the Atlas SQL database |
-| `fewshots.json` | Example questions and their reference SQL (`{question: query}`), including lineage walks |
+| `fewshots.json` | Example questions and their reference SQL (`{question: query}`), including lineage walks and object-level queries |
 | `provision.py` | Creates or updates the agent, attaches every table and publishes it |
+
+## What Scout can query
+
+Every table of the Atlas SQL database is attached to the agent:
+
+- **Items and health:** workspaces, items, job runs, item-level lineage,
+  findings, endorsements, sensitivity labels and access assignments.
+- **Governance context:** domains, OneLake data access roles and tenant
+  settings.
+- **Object inventory:** the JSON documents synchronized in `ConfigEntries`
+  (tables, columns, semantic model measures and their DAX dependencies,
+  relationships, ontology bindings and object-level lineage edges).
+  `datasource_instructions.md` explains how to read them with `OPENJSON` and
+  `JSON_VALUE`.
+
+Answers that return `Source` and `Target` columns are drawn as a lineage graph
+in the app, for items and for objects. Example questions:
+
+- *Show the downstream lineage of LH_Healthcare_Clinical.*
+- *List the measures of a semantic model with their DAX dependencies.*
+- *Draw the relationships between the tables of a semantic model.*
+- *Which tables feed the AcuteCareOperationsOntology?*
+- *Show the object-level lineage of fact_sales*
+- *Which tables do notebooks read and write?*
+- *Which OneLake roles exist and who is in them?*
+
+The Data Agent runtime did not retrieve the few-shot examples in our tests, so
+the business rules and the SQL recipes the agent relies on live in
+`ai_instructions.md` and `datasource_instructions.md`. `fewshots.json` stays
+as the reference SQL for each pattern.
 
 ## Provision or update the agent
 

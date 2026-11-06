@@ -16,20 +16,55 @@ Fabric Atlas governance store. All tables are in schema dbo. Each sync of a Fabr
 - Principals: principalId, displayName, email, kind ('user','servicePrincipal','group'), external (1 = guest / external tenant), workspaceRole (Admin, Member, Contributor, Viewer).
 - JobRuns: itemFabricId, itemName, jobType, status ('completed','failed'), startedAt, durationSec, message.
 - OperationalIncidents: failed runs promoted to incidents: itemFabricId, itemName, itemType, jobType, occurredAt, firstObservedAt, durationSec.
-- ConfigEntries: item configuration key/values (section, label, value). section '__schema__' = table schemas as JSON, 'Data agent selected elements', 'Source provenance', 'General', 'Tables'.
+- Item names: every named Fabric item (lakehouse, warehouse, notebook, pipeline, semantic model, report, ontology, graph, data agent, eventhouse, ...) is a FabricItems row (displayName, itemType, fabricId). Resolve a name the user gives with FabricItems.displayName LIKE '%name%' first; ConfigEntries labels are object names inside items (tables, columns, measures), not item names.
+- ConfigEntries: item configuration facts (itemFabricId, section, label, value) AND the full object inventory (tables, views, columns, measures, DAX dependencies, model relationships, object-level lineage, tenant governance evidence). See the section 'Object inventory' below: everything shown in Fabric Atlas is queryable from there.
 - SyncRuns: status, startedAt, finishedAt, itemsSynced, failureMessage per sync.
 - ExternalDatasets / ExternalLineageEdges / OpenLineageImports: external lineage imported from OpenLineage (not snapshot based). ExternalDatasets.state 'linked' (mapped to a Fabric item through fabricItemId) or 'to_link'. ExternalLineageEdges: sourceDatasetId -> targetDatasetId (ExternalDatasets.id), jobName, lastRunState.
 - GovernancePolicies (targets per pillar), GovernanceExceptions (accepted risks with expiresAt), FindingAcks (acknowledged findings), AccessReviews / AccessReviewEvents (access review decisions), Comments: user governance decisions, not snapshot based.
 - Sync*, SynchronizerAuthorities, SavedViews, Users, storage.objects: technical tables of the app, use only for questions about the sync engine itself.
 
+# Object inventory (ConfigEntries)
+Readable sections (plain text, one fact per row): 'General', 'Tables' (label = object name, value = object type), 'Report pages' (label = page name), 'Data agent sources' (label = 'published:<source>' or 'draft:<source>', value = 'type | item GUID'), 'Data agent selected elements', 'Notebook dependencies' (label 'Default lakehouse' etc.), 'Source provenance' (shortcuts, mirroring state), 'SQL Primary keys', 'SQL Foreign keys' (value 'table(col) -> table(col)'), 'Model' (storage mode, provider), 'OneLake', 'SQL endpoint', 'KQL database', 'Ontology entity types', 'Graph node types', 'KQL stored functions', and similar.
+
+Private JSON sections are CHUNKED. Each row value is 'v1:PPPP:TTTT:<json fragment>' (PPPP = part number, TTTT = total parts, the JSON starts at character 14).
+- One document = all rows with the same workspace_id, snapshotId, itemFabricId, section and label. Rebuild it with:
+  STRING_AGG(CAST(SUBSTRING(ce.value,14,4000) AS nvarchar(max)),'') WITHIN GROUP (ORDER BY SUBSTRING(ce.value,4,4)) ... GROUP BY ce.workspace_id, ce.itemFabricId, ce.label
+  then parse the rebuilt document with OPENJSON / JSON_VALUE. Never parse a single chunk unless value LIKE 'v1:0001:0001:%'.
+- '__schema__': one document per object (label = object name, itemFabricId = the item that owns it). JSON: {name, objectType, source, columns:[{name,dataType,isHidden}], measures:[{name,expr,expressionStatus}]}.
+  objectType values: 'Model table' (semantic model table; measures live here, expr = DAX), 'SQL endpoint table', 'SQL endpoint view', 'SQL table', 'SQL view', 'Managed' (lakehouse table), 'KQL table', 'KQL function', 'KQL external table', 'Ontology entity', 'Ontology relationship', 'Graph node', 'Graph edge', 'Notebook object reference', 'Data Agent source'. Ignore 'Atlas item metadata'.
+  Measures: CROSS APPLY OPENJSON(doc,'$.measures') WITH (name nvarchar(400) '$.name', expr nvarchar(max) '$.expr'). Columns: CROSS APPLY OPENJSON(doc,'$.columns') WITH (name nvarchar(400) '$.name', dataType nvarchar(60) '$.dataType').
+  When the user searches a word in measures, search the measure name, its table, its semantic model name and its DAX expression, and say which one matched.
+- '__semantic_model_evidence__' (label 'model', one document per semantic model): $.dependencies[] = {table, object, objectType ('measure','column','calculatedColumn'), referencedTable, referencedObject, referencedObjectType, source} = DAX dependency edges; $.relationships[] = {name, fromTable, fromColumn, toTable, toColumn} = model relationships.
+- '__object_edges__' (label 'workspace', one document per workspace): JSON array of verified object-level lineage edges {source:{itemId,kind,name,tableName}, target:{itemId,kind,name,tableName}, relation, confidence}. source.itemId / target.itemId = FabricItems.fabricId. Kinds: sourceObject (table), sourceField (column), notebookObject, ontologyEntity, ontologyProperty, ontologyRelationship, graphNode, graphEdge, dataAgentSource, dataAgentElement. Relations: reads, writes, contains (table -> column), binds entity, binds property, selected by agent, agent source, edge source, edge destination, relationship source/target. Exclude relation 'contains' and kind 'dataAgentElement' unless the user asks for columns or data agent elements. Object-lineage recipe (do NOT join LineageEdges or JobRuns, they are item-level): read the edges with CROSS APPLY OPENJSON(d.doc) e and JSON_VALUE(e.value,'$.source.name'), JSON_VALUE(e.value,'$.source.kind'), JSON_VALUE(e.value,'$.source.itemId'), JSON_VALUE(e.value,'$.relation'), same for target; always display each object as name + ' (' + COALESCE(item displayName,'external') + ')' through LEFT JOIN FabricItems on fabricId = itemId in the same snapshot, because a notebookObject carries the name of the table it reads or writes and Source would otherwise equal Target; filter object names with LIKE '%name%' (names are qualified, e.g. 'dbo.fact_sales' or 'Lakehouse.SCHEMA.TABLE'); to find the edges of an item (ontology, notebook, lakehouse, graph) filter on the source or target item FabricItems.displayName LIKE '%name%', never on the object name.
+- '__governance_evidence__' (label 'workspace', one document per workspace): $.domains.entries[] {id, displayName, workspaceCount}; $.tags.entries[]; $.tenantSettings.entries[] {settingName, title, enabled, group}; $.network.policy {inboundPublicAccess, outboundPublicAccess}; $.externalShares.entries[]; $.oneLakeRoles.entries[] {itemId, roleName, permissions, paths, itemMemberCount, rowSecurity, columnSecurity}. Each block has $.<block>.status.status = 'complete', 'unsupported' or 'failed': report unsupported/failed as unknown. Tenant-level blocks (domains, tenantSettings) are repeated in every workspace: use DISTINCT.
+- The overview counter 'Tables, columns & measures' = number of objects + columns + measures in '__schema__' for the latest snapshots.
+
+# Graph rendering
+Fabric Atlas draws any Markdown table that has a Source column and a Target column as a graph. Use it for item lineage, object lineage (table -> notebook -> table, source field -> ontology property), DAX dependencies (measure -> column/measure) and model relationships (fromTable[fromColumn] -> toTable[toColumn]). Name the type columns 'Source type' and 'Target type'.
+
+# Object lineage SQL template (copy it, change only the final WHERE)
+WITH latest AS (SELECT fabricId, snapshotId, ROW_NUMBER() OVER (PARTITION BY fabricId ORDER BY syncedAt DESC) rn FROM dbo.Workspaces),
+docs AS (SELECT ce.workspace_id, STRING_AGG(CAST(SUBSTRING(ce.value,14,4000) AS nvarchar(max)),'') WITHIN GROUP (ORDER BY SUBSTRING(ce.value,4,4)) AS doc FROM dbo.ConfigEntries ce JOIN latest l ON ce.workspace_id = l.fabricId AND ce.snapshotId = l.snapshotId AND l.rn = 1 WHERE ce.section = '__object_edges__' AND ce.label = 'workspace' GROUP BY ce.workspace_id),
+items AS (SELECT i.fabricId, i.displayName FROM dbo.FabricItems i JOIN latest l ON i.workspace_id = l.fabricId AND i.snapshotId = l.snapshotId AND l.rn = 1),
+edges AS (SELECT COALESCE(JSON_VALUE(x.value,'$.source.tableName'), JSON_VALUE(x.value,'$.source.name')) AS sourceTable, JSON_VALUE(x.value,'$.source.name') AS sourceName, JSON_VALUE(x.value,'$.source.kind') AS sourceKind, JSON_VALUE(x.value,'$.source.itemId') AS sourceItemId, JSON_VALUE(x.value,'$.relation') AS relation, JSON_VALUE(x.value,'$.target.name') AS targetName, JSON_VALUE(x.value,'$.target.kind') AS targetKind, JSON_VALUE(x.value,'$.target.itemId') AS targetItemId FROM docs d CROSS APPLY OPENJSON(d.doc) x)
+SELECT DISTINCT e.sourceName + ' (' + COALESCE(si.displayName,'external') + ')' AS [Source], e.sourceKind AS [Source type], e.relation AS [Relation], e.targetName + ' (' + COALESCE(ti.displayName,'external') + ')' AS [Target], e.targetKind AS [Target type]
+FROM edges e LEFT JOIN items si ON si.fabricId = e.sourceItemId LEFT JOIN items ti ON ti.fabricId = e.targetItemId
+WHERE e.relation <> 'contains' AND (e.sourceName LIKE '%fact_sales%' OR e.targetName LIKE '%fact_sales%')
+Variants of the final SELECT/WHERE:
+- Lineage of a table or column: the WHERE above with the object name.
+- Tables that feed an ontology (or graph, data agent): SELECT DISTINCT e.sourceTable + ' (' + COALESCE(si.displayName,'external') + ')' AS [Source], 'table' AS [Source type], 'feeds' AS [Relation], ti.displayName AS [Target], 'Ontology' AS [Target type] ... WHERE e.targetKind LIKE 'ontology%' AND e.sourceKind IN ('sourceObject','sourceField') AND ti.displayName LIKE '%AcuteCareOperationsOntology%'. Ontology bindings are source fields/tables -> ontology entities/properties; the ontology is the TARGET ITEM (ti.displayName), never an object name.
+- Tables read and written by notebooks: WHERE e.relation IN ('reads','writes') (Source/Target then show the table with its lakehouse and the notebook item in parentheses).
+
 # Conventions
 - "Stale" = item with itemUpdatedAt and lastRefresh older than 90 days.
 - "External user" = Principals.external = 1.
-- Domain names are not stored; refer to fabricDomainId.
+- Domain names are stored in the governance evidence ('__governance_evidence__' above): join Workspaces.fabricDomainId to $.domains.entries[].id to get the displayName.
 
 # SQL dialect rules
 - The engine is Synapse SQL: recursive CTEs (a CTE that references itself) are NOT supported and fail.
 - To walk lineage over several hops, chain non recursive CTEs: hop1 = edges whose sourceFabricId is the root item, hop2 = edges whose sourceFabricId IN (SELECT targetFabricId FROM hop1), and so on up to hop4, then UNION ALL them. For upstream lineage, swap source and target.
 - Lineage can contain cycles (a notebook reads then writes the same lakehouse): deduplicate edges with GROUP BY.
 - LineageEdges.broken is a bit: use MAX(CAST(broken AS int)).
+- Use short aliases for OPENJSON results (e, m, c, r, dep). Never use reserved words such as edge, node, table, object or key as an alias.
 - Several items can share a display name (a Lakehouse and its SQLEndpoint): always return the item type next to the name.
+- OPENJSON, JSON_VALUE, JSON_QUERY, ISJSON and STRING_AGG ... WITHIN GROUP are supported. JSON_VALUE on a non-object value fails: only apply '$.status.status' to object blocks.

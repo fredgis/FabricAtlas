@@ -288,6 +288,36 @@ describe("Atlas Scout stop and resume", () => {
   });
 });
 
+describe("Atlas Scout stale runs", () => {
+  it("cancels a stale run and retries in a fresh thread on a new conversation", async () => {
+    const calls: string[] = [];
+    let threads = 0;
+    const client = createScoutClient({
+      endpoint,
+      getToken: async () => "token",
+      wait: async () => undefined,
+      fetch: async (url, init) => {
+        const path = new URL(url).pathname.split("/openai")[1];
+        calls.push(`${init?.method} ${path}`);
+        if (path === "/assistants") return json({ id: "asst" });
+        if (path === "/threads") return json({ id: `t${++threads}` });
+        if (path === "/threads/t1/messages") return json({ error: { message: "Can't add messages to thread_t1 while a run run_old is active." } }, 400);
+        if (path === "/threads/t2/messages" && init?.method === "POST") return json({ id: "m" });
+        if (path.endsWith("/runs")) return json({ id: "r2", status: "queued" });
+        if (path.endsWith("/cancel")) return json({ status: "cancelling" });
+        if (path.endsWith("/runs/r2")) return json({ status: "completed" });
+        if (path === "/threads/t2/messages") return json({ data: [{ role: "assistant", content: [{ text: { value: "ok" } }] }] });
+        if (path.endsWith("/steps")) return json({ data: [] });
+        if (init?.method === "DELETE") return json({});
+        throw new Error(`unexpected ${path}`);
+      },
+    });
+    const answer = await client.ask("First question");
+    expect(answer).toMatchObject({ threadId: "t2", text: "ok" });
+    expect(calls).toContain("POST /threads/t1/runs/run_old/cancel");
+  });
+});
+
 describe("Scout markdown tables", () => {
   it("parses tables written without leading and trailing pipes", () => {
     const blocks = parseScoutMarkdown("Lineage:\nSource | Relation | Target\n--- | --- | ---\nLH | writes | SM\nSM | binds | RP\n\nDone.");

@@ -144,8 +144,10 @@ def main() -> int:
         {
             "instructions": ds_instructions,
             "description": "Fabric Atlas governance store: immutable snapshots of Fabric workspaces "
-            "(items, lineage, access, jobs, incidents, governance scores) plus OpenLineage external "
-            "lineage and governance decisions.",
+            "(items, item lineage, access, jobs, incidents, governance scores), the full object inventory in "
+            "ConfigEntries (tables, columns, measures with DAX, DAX dependencies, model relationships, "
+            "object-level lineage table -> notebook -> table and table -> ontology, domains, tenant settings, "
+            "OneLake roles), OpenLineage external lineage and governance decisions.",
         },
     )
     tables = select_all_tables(fabric, f"{ds}/elements")

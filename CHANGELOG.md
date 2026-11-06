@@ -8,6 +8,17 @@ release tag was published.
 
 ## [Unreleased]
 
+## [2.7.6] - 2026-11-07
+
+### Added
+
+- Atlas Scout queries the whole object inventory (tables, columns, measures and DAX dependencies, relationships, ontology bindings, object-level lineage, domains, OneLake roles, tenant settings) and draws dependencies as graphs.
+
+### Fixed
+
+- Object-level lineage answers name each object with its item, so tables, notebooks and ontologies no longer collapse into a loop.
+- The first question of a new conversation no longer fails with 'run is active': Scout cancels the stale run and retries in a fresh thread.
+
 ## [2.7.5] - 2026-11-07
 
 ### Fixed
@@ -929,7 +940,8 @@ release tag was published.
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.7.5...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.7.6...HEAD
+[2.7.6]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.6
 [2.7.5]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.5
 [2.7.4]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.4
 [2.7.3]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.3

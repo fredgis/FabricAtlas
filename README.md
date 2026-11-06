@@ -105,15 +105,25 @@ of the app.
   (Health, Protect, Trust) plus Ownership. It can build a workspace
   scorecard, find failures and their blast radius, list external exposure,
   measure label and endorsement coverage, and find orphan items.
+- **Everything in the store is queryable.** Besides items, runs, findings and
+  access, Scout reads the object inventory captured by the sync: tables,
+  columns, measures with their DAX dependencies, relationships, ontology
+  bindings and object-level lineage, plus domains, OneLake roles and tenant
+  settings. Try for example:
+  - *Which tables feed the AcuteCareOperationsOntology?*
+  - *Show the object-level lineage of fact_sales*
+  - *Which tables do notebooks read and write?*
 - **Rich answers.** Markdown is rendered into headings, numbered findings,
   priority pills, health gauges and sortable tables. Every answer can show
   the SQL the agent ran and the raw result rows.
 - **Lineage drawn as a graph.** When an answer contains source and target
-  columns, Scout draws an animated lineage graph. Broken links and failing
+  columns, Scout draws an animated lineage graph, for item lineage as well as
+  table, column, measure and ontology dependencies. Broken links and failing
   items are highlighted, and the edge table stays one click away.
 - **Live progress and Stop.** Scout shows each step (secure session,
   understanding, querying the Atlas store, writing the answer). Stop cancels
-  the agent run, and the next question continues in a fresh thread if needed.
+  the agent run. If the service still reports a run as active, even on a new
+  conversation, Scout cancels it and continues in a fresh thread.
 
 <img src="docs/screenshots/atlas-scout-lineage-v2.png" alt="Atlas Scout drawing the downstream lineage of the LH_Healthcare_Clinical lakehouse as a graph, followed by a prioritized finding" width="100%">
 

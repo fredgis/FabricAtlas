@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.7.5";
+  "2.7.6";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,26 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.7.6",
+    date: "2026-11-07",
+    title: "Atlas Scout queries everything",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Atlas Scout queries the whole object inventory: tables, columns, measures with DAX dependencies, relationships, ontology bindings, object-level lineage, domains, OneLake roles and tenant settings, and draws dependencies as graphs.",
+        ],
+      },
+      {
+        title: "Fixed",
+        items: [
+          "Object-level lineage answers name each object with its item, so tables, notebooks and ontologies no longer collapse into a loop.",
+          "The first question of a new conversation no longer fails with 'run is active': Scout cancels the stale run and retries in a fresh thread.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.7.5",
     date: "2026-11-07",

@@ -179,21 +179,29 @@ export function createScoutClient(options: ScoutClientOptions) {
     onPhase?.("connecting");
     assistantId ??= (await call<{ id: string }>("POST", "/assistants", { model: "not used" }, signal)).id;
     let thread = threadId ?? (await call<{ id: string }>("POST", "/threads", {}, signal)).id;
-    try {
-      await call("POST", `/threads/${thread}/messages`, { role: "user", content }, signal);
-    } catch (error) {
-      // A stopped question can leave its run active on the thread: continue in a fresh thread.
-      if (!threadId || !(error instanceof ScoutError) || !/run .* is active/i.test(error.message)) throw error;
-      void endThread(thread);
-      thread = (await call<{ id: string }>("POST", "/threads", {}, signal)).id;
-      await call("POST", `/threads/${thread}/messages`, { role: "user", content }, signal);
+    let run: { id: string; status: string } | undefined;
+    for (let attempt = 0; !run; attempt += 1) {
+      try {
+        await call("POST", `/threads/${thread}/messages`, { role: "user", content }, signal);
+        run = await call<{ id: string; status: string }>(
+          "POST",
+          `/threads/${thread}/runs`,
+          { assistant_id: assistantId },
+          signal,
+        );
+      } catch (error) {
+        // A stopped or stale run can stay active on a thread, even a brand new one handed back by the
+        // service: cancel it and continue in a fresh thread.
+        const active = error instanceof ScoutError ? /\b(run_[\w-]+)\b[^.]*\bis active/i.exec(error.message) : null;
+        if (!active || attempt >= 2) throw error;
+        const stale = thread;
+        void call("POST", `/threads/${stale}/runs/${active[1]}/cancel`)
+          .catch(() => undefined)
+          .then(() => endThread(stale));
+        if (attempt > 0) await wait(pollIntervalMs, signal);
+        thread = (await call<{ id: string }>("POST", "/threads", {}, signal)).id;
+      }
     }
-    const run = await call<{ id: string; status: string }>(
-      "POST",
-      `/threads/${thread}/runs`,
-      { assistant_id: assistantId },
-      signal,
-    );
     const cancelRun = () => {
       void call("POST", `/threads/${thread}/runs/${run.id}/cancel`).catch(() => undefined);
     };
