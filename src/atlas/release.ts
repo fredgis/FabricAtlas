@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.7.1";
+  "2.7.2";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,28 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.7.2",
+    date: "2026-11-07",
+    title: "Atlas Scout polish",
+    sections: [
+      {
+        title: "New",
+        items: [
+          "A floating Atlas Scout bubble in the bottom-right corner opens a compact chat from any tab; it shares the conversation with the Atlas Scout tab.",
+        ],
+      },
+      {
+        title: "Improved",
+        items: [
+          "Softer Atlas Scout colors in light and dark themes.",
+          "Answers render nested and correctly numbered lists, with labels in bold and statuses as pills.",
+          "Score columns render as gauges; internal step names such as Audit are no longer shown.",
+          "Removed the animated orb next to each answer; the header animation stays.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.7.1",
     date: "2026-11-06",

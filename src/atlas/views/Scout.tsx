@@ -13,29 +13,25 @@ import {
   Globe,
   Loader2,
   Lock,
+  Maximize2,
   RotateCcw,
   Send,
   Sparkles,
   Square,
   UserRound,
+  X,
   type LucideIcon,
 } from "lucide-react";
-import { ATLAS_CONFIG } from "../config";
-import { acquireScoutToken } from "../live-sync";
-import {
-  createScoutClient,
-  isScoutConfigured,
-  ScoutError,
-  type ScoutClient,
-  type ScoutEvidence,
-  type ScoutPhase,
-} from "../scout";
+import type { ScoutEvidence, ScoutPhase } from "../scout";
+import { useScoutChat, type ScoutChatTurn } from "../scout-chat-context";
 import {
   classifyScoutCell,
   parseScoutInline,
   parseScoutMarkdown,
   tokenizeSql,
+  splitScoutLabel,
   type ScoutBlock,
+  type ScoutListItem,
   type ScoutTone,
 } from "../scout-markdown";
 import { useAtlas } from "../store";
@@ -107,16 +103,6 @@ const TONE_PILL: Record<ScoutTone, string> = {
   failing: "border-status-failing/30 bg-status-failing/10 text-status-failing",
 };
 
-interface ChatTurn {
-  id: number;
-  question: string;
-  phase: ScoutPhase;
-  startedAt: number;
-  answer?: string;
-  evidence?: ScoutEvidence;
-  error?: string;
-  durationMs?: number;
-}
 
 function ScoutOrb({ size, busy = false }: { size: number; busy?: boolean }) {
   return (
@@ -184,8 +170,8 @@ function SqlCode({ sql }: { sql: string }) {
   );
 }
 
-function Cell({ value }: { value: string }) {
-  const cell = classifyScoutCell(value);
+function Cell({ value, header }: { value: string; header?: string }) {
+  const cell = classifyScoutCell(value, header);
   if (cell.kind === "percent") {
     const tone = cell.value >= 80 ? "bg-status-healthy" : cell.value >= 50 ? "bg-status-warning" : "bg-status-failing";
     return (
@@ -213,34 +199,69 @@ function Cell({ value }: { value: string }) {
   return <Inline text={cell.text} />;
 }
 
+function ItemText({ text }: { text: string }) {
+  const split = splitScoutLabel(text);
+  if (!split) return <Inline text={text} />;
+  const status = split.value ? classifyScoutCell(split.value) : null;
+  return (
+    <>
+      <span className="font-semibold text-foreground">{split.label}</span>
+      {split.value && <span className="text-muted-foreground">: </span>}
+      {status?.kind === "status" ? (
+        <span className={cn("inline-flex rounded-full border px-s py-[1px] align-middle text-100 font-semibold", TONE_PILL[status.tone])}>
+          {status.text}
+        </span>
+      ) : (
+        split.value && <Inline text={split.value} />
+      )}
+    </>
+  );
+}
+
+function ListItems({ items, depth }: { items: ScoutListItem[]; depth: number }) {
+  return (
+    <ul className={cn("flex flex-col", depth === 0 ? "gap-s" : "gap-xxs")}>
+      {items.map((item, index) => {
+        const section = depth === 0 && item.children.length > 0;
+        return (
+          <li key={index} className="flex flex-col gap-xxs">
+            <div className="flex gap-s">
+              <span
+                className={cn(
+                  "mt-[3px] flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full text-[10px] font-semibold",
+                  item.ordered ? "bg-primary/10 text-primary" : "bg-transparent",
+                )}
+                aria-hidden="true"
+              >
+                {item.ordered ? item.number : <span className={cn("rounded-full", depth === 0 ? "h-[6px] w-[6px] bg-primary/60" : "h-[5px] w-[5px] bg-muted-foreground/50")} />}
+              </span>
+              <span className={cn("min-w-0", section && "font-semibold text-foreground")}>
+                <ItemText text={item.text} />
+              </span>
+            </div>
+            {item.children.length > 0 && (
+              <div className="ml-[8px] border-l border-border pl-l">
+                <ListItems items={item.children} depth={depth + 1} />
+              </div>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function Block({ block }: { block: ScoutBlock }): ReactNode {
   switch (block.kind) {
     case "heading":
       return (
         <div className={cn("flex items-center gap-s font-semibold", block.level <= 2 ? "text-400" : "text-300")}>
-          <span className="h-[14px] w-[3px] rounded-full bg-gradient-to-b from-fabric-purple to-fabric-teal" aria-hidden="true" />
+          <span className="h-[14px] w-[3px] rounded-full bg-primary/50" aria-hidden="true" />
           <Inline text={block.text} />
         </div>
       );
     case "list":
-      return (
-        <ol className="flex flex-col gap-xs">
-          {block.items.map((item, index) => (
-            <li key={index} className="flex gap-s">
-              <span
-                className={cn(
-                  "mt-[3px] flex h-[18px] min-w-[18px] items-center justify-center rounded-full text-[10px] font-bold",
-                  block.ordered ? "bg-primary/10 text-primary" : "bg-transparent",
-                )}
-                aria-hidden="true"
-              >
-                {block.ordered ? index + 1 : <span className="h-[6px] w-[6px] rounded-full bg-fabric-teal" />}
-              </span>
-              <span><Inline text={item} /></span>
-            </li>
-          ))}
-        </ol>
-      );
+      return <ListItems items={block.items} depth={0} />;
     case "table":
       return (
         <div className="max-w-full overflow-x-auto rounded-lg border border-border bg-background/60">
@@ -264,7 +285,7 @@ function Block({ block }: { block: ScoutBlock }): ReactNode {
                   className="border-t border-border transition-colors hover:bg-accent/50"
                 >
                   {row.map((cell, index) => (
-                    <td key={index} className="px-m py-s align-middle"><Cell value={cell} /></td>
+                    <td key={index} className="px-m py-s align-middle"><Cell value={cell} header={block.header[index]} /></td>
                   ))}
                 </motion.tr>
               ))}
@@ -283,10 +304,10 @@ function Block({ block }: { block: ScoutBlock }): ReactNode {
   }
 }
 
-function ScoutAnswerText({ text }: { text: string }) {
+function ScoutAnswerText({ text, compact = false }: { text: string; compact?: boolean }) {
   const blocks = useMemo(() => parseScoutMarkdown(text), [text]);
   return (
-    <div className="flex flex-col gap-m text-300 leading-400 text-foreground/90">
+    <div className={cn("flex flex-col text-foreground/90", compact ? "gap-s text-200 leading-300" : "gap-m text-300 leading-400")}>
       {blocks.map((block, index) => (
         <motion.div
           key={index}
@@ -429,91 +450,145 @@ function NotConfigured({ reason }: { reason: string }) {
   );
 }
 
-const clockNow = () => Date.now();
-
-export function ScoutView() {
-  const { currentUser, isPreview } = useAtlas();
+function TurnList({ turns, compact = false }: { turns: ScoutChatTurn[]; compact?: boolean }) {
   const reduceMotion = useReducedMotion();
-  const configured = isScoutConfigured({ workspaceId: ATLAS_CONFIG.scoutWorkspaceId, agentId: ATLAS_CONFIG.scoutAgentId });
-  const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const enter = reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 };
+  return (
+    <div className={cn("flex flex-col", compact ? "gap-m" : "gap-l")} aria-live="polite">
+      <AnimatePresence initial={false}>
+        {turns.map((turn) => (
+          <motion.div key={turn.id} layout initial={enter} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-s">
+            <motion.div
+              initial={reduceMotion ? false : { opacity: 0, x: 16 }}
+              animate={{ opacity: 1, x: 0 }}
+              className={cn(
+                "max-w-[85%] self-end rounded-2xl rounded-br-sm border border-primary/15 bg-primary/[0.07] text-foreground",
+                compact ? "px-m py-xs text-200" : "px-l py-s text-300",
+              )}
+            >
+              {turn.question}
+            </motion.div>
+            {turn.answer !== undefined ? (
+              <Card className={cn("flex flex-col gap-m", compact ? "p-m text-200" : "p-l")}>
+                <ScoutAnswerText text={turn.answer} compact={compact} />
+                {turn.evidence && <Evidence evidence={turn.evidence} />}
+                {turn.durationMs !== undefined && (
+                  <span className="text-100 text-muted-foreground">
+                    Answered in {(turn.durationMs / 1000).toFixed(1)}s from the Atlas store
+                  </span>
+                )}
+              </Card>
+            ) : turn.error ? (
+              <motion.div
+                role="alert"
+                initial={reduceMotion ? false : { x: -6 }}
+                animate={{ x: [-6, 6, -3, 0] }}
+                className="flex items-start gap-s rounded-lg border border-status-failing/30 bg-status-failing/10 px-m py-s text-200 leading-300"
+              >
+                <AlertTriangle className="icon-size-200 mt-[2px] shrink-0 text-status-failing" aria-hidden="true" />
+                {turn.error}
+              </motion.div>
+            ) : (
+              <Thinking phase={turn.phase} startedAt={turn.startedAt} />
+            )}
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function Composer({ id, compact = false, className }: { id: string; compact?: boolean; className?: string }) {
+  const { ask, stop, busy } = useScoutChat();
   const [draft, setDraft] = useState("");
-  const [busy, setBusy] = useState(false);
-  const threadRef = useRef<string | undefined>(undefined);
-  const abortRef = useRef<AbortController | null>(null);
-  const nextId = useRef(1);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const started = turns.length > 0;
-
-  // The provider may pass a fresh currentUser object on every render; key the client on the
-  // identity values so re-renders never abort an in-flight question.
-  const { id: userId, name: userName, email: userEmail } = currentUser;
-  const client = useMemo<ScoutClient | null>(
-    () =>
-      configured && !isPreview
-        ? createScoutClient({
-            endpoint: { workspaceId: ATLAS_CONFIG.scoutWorkspaceId, agentId: ATLAS_CONFIG.scoutAgentId },
-            getToken: (signal) => acquireScoutToken({ id: userId, name: userName, email: userEmail }, signal),
-          })
-        : null,
-    [configured, isPreview, userId, userName, userEmail],
-  );
-
-  useEffect(
-    () => () => {
-      abortRef.current?.abort();
-      if (threadRef.current) void client?.endThread(threadRef.current);
-    },
-    [client],
-  );
+  const asked = useRef(false);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView?.({ block: "end", behavior: reduceMotion ? "auto" : "smooth" });
-  }, [turns, busy, reduceMotion]);
+    if (!busy && asked.current) inputRef.current?.focus();
+  }, [busy]);
 
-  const update = (id: number, patch: Partial<ChatTurn>) =>
-    setTurns((current) => current.map((turn) => (turn.id === id ? { ...turn, ...patch } : turn)));
-
-  const ask = async (question: string) => {
-    const text = question.trim();
-    if (!client || !text || busy) return;
-    const id = nextId.current++;
-    const startedAt = clockNow();
-    setTurns((current) => [...current, { id, question: text, phase: "connecting", startedAt }]);
+  const submit = () => {
+    if (!draft.trim() || busy) return;
+    asked.current = true;
+    void ask(draft);
     setDraft("");
-    setBusy(true);
-    const controller = new AbortController();
-    abortRef.current = controller;
-    try {
-      const answer = await client.ask(text, threadRef.current, controller.signal, (phase) => update(id, { phase }));
-      threadRef.current = answer.threadId;
-      update(id, { answer: answer.text, evidence: answer.evidence, durationMs: clockNow() - startedAt });
-    } catch (error) {
-      const message = controller.signal.aborted
-        ? "Stopped."
-        : error instanceof ScoutError
-          ? error.message
-          : error instanceof Error && /consent|AADSTS65001|interaction_required|popup/i.test(error.message)
-            ? "Consent to DataAgent.Execute.All is required. Allow pop-ups for Atlas and retry, or ask an Entra admin to grant tenant-wide consent."
-            : error instanceof Error
-              ? error.message
-              : "Atlas Scout failed.";
-      update(id, { error: message });
-    } finally {
-      if (abortRef.current === controller) abortRef.current = null;
-      setBusy(false);
-      inputRef.current?.focus();
-    }
   };
 
-  const reset = () => {
-    abortRef.current?.abort();
-    if (threadRef.current) void client?.endThread(threadRef.current);
-    threadRef.current = undefined;
-    setTurns([]);
-    setBusy(false);
-  };
+  return (
+    <form
+      className={cn("flex items-end gap-s rounded-2xl border border-border bg-card p-s", className)}
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit();
+      }}
+    >
+      <label htmlFor={id} className="sr-only">Ask Atlas Scout</label>
+      {!compact && <Sparkles className="icon-size-200 mb-[11px] ml-s shrink-0 text-primary/70" aria-hidden="true" />}
+      <textarea
+        ref={inputRef}
+        id={id}
+        value={draft}
+        rows={compact ? 1 : 2}
+        maxLength={2000}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            submit();
+          }
+        }}
+        placeholder={compact ? "Ask Scout…" : "Ask about health, access, labels, lineage…"}
+        className={cn(
+          "flex-1 resize-none bg-transparent px-xs py-xs outline-none placeholder:text-muted-foreground",
+          compact ? "min-h-[36px] text-200" : "min-h-[44px] text-300",
+        )}
+      />
+      {busy ? (
+        <button
+          type="button"
+          onClick={stop}
+          aria-label="Stop"
+          className={cn(
+            "inline-flex items-center justify-center rounded-xl border border-border bg-background transition-colors hover:bg-accent",
+            compact ? "h-[34px] w-[34px]" : "h-[40px] w-[40px]",
+          )}
+        >
+          <Square className="icon-size-100 fill-current" aria-hidden="true" />
+        </button>
+      ) : (
+        <motion.button
+          type="submit"
+          disabled={!draft.trim()}
+          whileTap={{ scale: 0.9 }}
+          aria-label="Send question"
+          className={cn(
+            "inline-flex items-center justify-center rounded-xl bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-35",
+            compact ? "h-[34px] w-[34px]" : "h-[40px] w-[40px]",
+          )}
+        >
+          <Send className={compact ? "icon-size-100" : "icon-size-200"} aria-hidden="true" />
+        </motion.button>
+      )}
+    </form>
+  );
+}
 
+function useAutoScroll(dependency: unknown) {
+  const reduceMotion = useReducedMotion();
+  const bottomRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView?.({ block: "end", behavior: reduceMotion ? "auto" : "smooth" });
+  }, [dependency, reduceMotion]);
+  return bottomRef;
+}
+
+export function ScoutView() {
+  const { isPreview } = useAtlas();
+  const { configured, turns, busy, ask, reset } = useScoutChat();
+  const reduceMotion = useReducedMotion();
+  const started = turns.length > 0;
+  const bottomRef = useAutoScroll(turns);
   const enter = reduceMotion ? { opacity: 0 } : { opacity: 0, y: 16 };
 
   return (
@@ -545,8 +620,8 @@ export function ScoutView() {
               transition={{ delay: 0.25 }}
               className={cn("flex flex-wrap items-center gap-s", !started && "justify-center sm:justify-start")}
             >
-              <h1 className={cn("font-semibold tracking-tight", started ? "text-500" : "text-[2.25rem] leading-tight")}>
-                <span className="bg-gradient-to-r from-fabric-purple via-fabric-blue to-fabric-teal bg-clip-text text-transparent">Atlas Scout</span>
+              <h1 className={cn("font-semibold tracking-tight text-foreground", started ? "text-500" : "text-[2.25rem] leading-tight")}>
+                Atlas Scout
               </h1>
               <span className="inline-flex items-center gap-xxs rounded-full border border-status-healthy/30 bg-status-healthy/10 px-s py-[2px] text-100 font-semibold text-status-healthy">
                 <Database className="h-[12px] w-[12px]" aria-hidden="true" />
@@ -633,102 +708,123 @@ export function ScoutView() {
             )}
           </AnimatePresence>
 
-          <div className="flex flex-col gap-l" aria-live="polite">
-            <AnimatePresence initial={false}>
-              {turns.map((turn) => (
-                <motion.div key={turn.id} layout initial={enter} animate={{ opacity: 1, y: 0 }} className="flex flex-col gap-m">
-                  <motion.div
-                    initial={reduceMotion ? false : { opacity: 0, x: 24 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="max-w-[85%] self-end rounded-2xl rounded-br-sm bg-gradient-to-br from-primary to-fabric-blue px-l py-s text-300 text-primary-foreground shadow-fabric-2"
-                  >
-                    {turn.question}
-                  </motion.div>
-                  <div className="flex items-start gap-m">
-                    <ScoutOrb size={36} busy={turn.answer === undefined && !turn.error} />
-                    <div className="min-w-0 flex-1">
-                      {turn.answer !== undefined ? (
-                        <Card className="flex flex-col gap-m p-l">
-                          <ScoutAnswerText text={turn.answer} />
-                          {turn.evidence && <Evidence evidence={turn.evidence} />}
-                          {turn.durationMs !== undefined && (
-                            <span className="text-100 text-muted-foreground">
-                              Answered in {(turn.durationMs / 1000).toFixed(1)}s from the Atlas store
-                            </span>
-                          )}
-                        </Card>
-                      ) : turn.error ? (
-                        <motion.div
-                          role="alert"
-                          initial={reduceMotion ? false : { x: -6 }}
-                          animate={{ x: [-6, 6, -3, 0] }}
-                          className="flex items-start gap-s rounded-lg border border-status-failing/30 bg-status-failing/10 px-m py-s text-200 leading-300"
-                        >
-                          <AlertTriangle className="icon-size-200 mt-[2px] shrink-0 text-status-failing" aria-hidden="true" />
-                          {turn.error}
-                        </motion.div>
-                      ) : (
-                        <Thinking phase={turn.phase} startedAt={turn.startedAt} />
-                      )}
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-            <div ref={bottomRef} />
-          </div>
+          <TurnList turns={turns} />
+          <div ref={bottomRef} />
 
-          <motion.form
-            initial={enter}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6 }}
-            className="atlas-scout-composer sticky bottom-0 mt-auto flex items-end gap-s rounded-2xl border border-border bg-card p-s shadow-fabric-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void ask(draft);
-            }}
-          >
-            <label htmlFor="atlas-scout-question" className="sr-only">Ask Atlas Scout</label>
-            <Sparkles className="icon-size-200 mb-[11px] ml-s shrink-0 text-fabric-purple" aria-hidden="true" />
-            <textarea
-              ref={inputRef}
-              id="atlas-scout-question"
-              value={draft}
-              rows={2}
-              maxLength={2000}
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  void ask(draft);
-                }
-              }}
-              placeholder="Ask about health, access, labels, lineage…"
-              className="min-h-[44px] flex-1 resize-none bg-transparent px-xs py-xs text-300 outline-none placeholder:text-muted-foreground"
-            />
-            {busy ? (
-              <button
-                type="button"
-                onClick={() => abortRef.current?.abort()}
-                aria-label="Stop"
-                className="inline-flex h-[40px] w-[40px] items-center justify-center rounded-xl border border-border bg-background transition-colors hover:bg-accent"
-              >
-                <Square className="icon-size-100 fill-current" aria-hidden="true" />
-              </button>
-            ) : (
-              <motion.button
-                type="submit"
-                disabled={!draft.trim()}
-                whileTap={{ scale: 0.9 }}
-                aria-label="Send question"
-                className="inline-flex h-[40px] w-[40px] items-center justify-center rounded-xl bg-gradient-to-br from-fabric-purple to-fabric-blue text-white shadow-fabric-2 transition-opacity disabled:opacity-35"
-              >
-                <Send className="icon-size-200" aria-hidden="true" />
-              </motion.button>
-            )}
-          </motion.form>
+          <motion.div initial={enter} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} className="sticky bottom-0 mt-auto">
+            <Composer id="atlas-scout-question" className="atlas-scout-composer shadow-fabric-4" />
+          </motion.div>
         </>
       )}
+    </div>
+  );
+}
+
+const DOCK_SUGGESTIONS = [
+  "Which items are failing and what do they break downstream?",
+  "Which items have no owner or no description?",
+  "Which workspaces have the lowest governance score?",
+];
+
+/** Collapsed Atlas Scout bubble (bottom-right) that opens a compact chat on any page. */
+export function ScoutDock({ onExpand }: { onExpand: () => void }) {
+  const { available, turns, busy, ask, reset } = useScoutChat();
+  const reduceMotion = useReducedMotion();
+  const [open, setOpen] = useState(false);
+  const bottomRef = useAutoScroll(open ? turns : null);
+  if (!available) return null;
+
+  return (
+    <div className="fixed bottom-l right-l z-50 flex flex-col items-end gap-m">
+      <AnimatePresence>
+        {open && (
+          <motion.section
+            key="scout-dock"
+            role="dialog"
+            aria-label="Atlas Scout"
+            initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 24, scale: 0.92 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.95 }}
+            transition={{ type: "spring", stiffness: 260, damping: 24 }}
+            style={{ transformOrigin: "bottom right" }}
+            className="flex h-[min(600px,calc(100vh-120px))] w-[min(400px,calc(100vw-32px))] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-fabric-16"
+          >
+            <header className="atlas-scout-hero flex items-center gap-s border-b border-border px-m py-s">
+              <ScoutOrb size={32} busy={busy} />
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="text-300 font-semibold leading-tight">Atlas Scout</span>
+                <span className="text-100 text-muted-foreground">Governance answers from the Atlas store</span>
+              </div>
+              {turns.length > 0 && (
+                <button type="button" onClick={reset} aria-label="New conversation" title="New conversation" className="rounded-md p-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+                  <RotateCcw className="icon-size-100" aria-hidden="true" />
+                </button>
+              )}
+              <button type="button" onClick={onExpand} aria-label="Open full Atlas Scout" title="Open full view" className="rounded-md p-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+                <Maximize2 className="icon-size-100" aria-hidden="true" />
+              </button>
+              <button type="button" onClick={() => setOpen(false)} aria-label="Close Atlas Scout" className="rounded-md p-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+                <X className="icon-size-100" aria-hidden="true" />
+              </button>
+            </header>
+            <div className="flex-1 overflow-y-auto p-m">
+              {turns.length === 0 ? (
+                <div className="flex flex-col gap-s">
+                  <p className="text-200 leading-300 text-muted-foreground">
+                    Ask a governance question in plain language. Try one of these:
+                  </p>
+                  {DOCK_SUGGESTIONS.map((question, index) => (
+                    <motion.button
+                      key={question}
+                      type="button"
+                      initial={reduceMotion ? false : { opacity: 0, x: 12 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.1 + index * 0.06 }}
+                      onClick={() => void ask(question)}
+                      className="flex items-center gap-s rounded-lg border border-border bg-card px-m py-s text-left text-200 transition-colors hover:border-primary/40 hover:bg-accent/40"
+                    >
+                      <Sparkles className="icon-size-100 shrink-0 text-primary/70" aria-hidden="true" />
+                      {question}
+                    </motion.button>
+                  ))}
+                </div>
+              ) : (
+                <TurnList turns={turns} compact />
+              )}
+              <div ref={bottomRef} />
+            </div>
+            <div className="border-t border-border p-s">
+              <Composer id="atlas-scout-dock-question" compact className="border-none bg-transparent p-0" />
+            </div>
+          </motion.section>
+        )}
+      </AnimatePresence>
+      <motion.button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-label={open ? "Close Atlas Scout" : "Open Atlas Scout"}
+        aria-expanded={open}
+        initial={reduceMotion ? false : { scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        whileHover={reduceMotion ? undefined : { scale: 1.06 }}
+        whileTap={{ scale: 0.94 }}
+        transition={{ type: "spring", stiffness: 300, damping: 20, delay: 0.4 }}
+        className="atlas-scout-bubble relative flex h-[56px] w-[56px] items-center justify-center rounded-full text-white shadow-fabric-8"
+      >
+        {busy && <span className="atlas-scout-bubble-pulse absolute inset-0 rounded-full" aria-hidden="true" />}
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.span
+            key={open ? "close" : "open"}
+            initial={{ rotate: -90, opacity: 0 }}
+            animate={{ rotate: 0, opacity: 1 }}
+            exit={{ rotate: 90, opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="flex"
+          >
+            {open ? <X className="icon-size-200" aria-hidden="true" /> : <Sparkles className="icon-size-300" aria-hidden="true" />}
+          </motion.span>
+        </AnimatePresence>
+      </motion.button>
     </div>
   );
 }

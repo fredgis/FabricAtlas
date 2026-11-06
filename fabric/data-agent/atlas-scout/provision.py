@@ -151,9 +151,15 @@ def main() -> int:
     tables = select_all_tables(fabric, f"{ds}/elements")
     print(f"Tables selected: {tables}")
 
-    fabric.call("DELETE", f"{ds}/fewshots/deleteAll")
+    # deleteAll is rejected once examples exist, so reconcile one by one instead.
+    existing = (fabric.call("GET", f"{ds}/fewshots") or {}).get("value", [])
+    current = {shot["question"]: shot for shot in existing}
+    for question, shot in current.items():
+        if fewshots.get(question) != shot.get("query"):
+            fabric.call("DELETE", f"{ds}/fewshots/{shot['id']}")
     for question, query in fewshots.items():
-        fabric.call("POST", f"{ds}/fewshots", {"question": question, "query": query})
+        if current.get(question, {}).get("query") != query:
+            fabric.call("POST", f"{ds}/fewshots", {"question": question, "query": query})
     print(f"Example queries: {len(fewshots)}")
 
     fabric.call("POST", f"{base}/staging/publish", {"publishedDescription": AGENT_DESCRIPTION})

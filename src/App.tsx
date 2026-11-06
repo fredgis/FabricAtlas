@@ -44,6 +44,7 @@ import { useThemeContext } from "@/hooks/theme.context";
 import { useAtlas } from "./atlas/store";
 import { ExternalLineageProvider } from "./atlas/external-lineage-store";
 import { CommandPalette } from "./atlas/components/CommandPalette";
+import { ScoutChatProvider } from "./atlas/scout-chat";
 import { SyncRunCompact, SyncRunProgressLine } from "./atlas/components/SyncRunStatus";
 import {
   navigationForSearch,
@@ -138,6 +139,9 @@ const McpView = lazy(() =>
 );
 const ScoutView = lazy(() =>
   scoutLoader().then((module) => ({ default: module.ScoutView })),
+);
+const ScoutDock = lazy(() =>
+  scoutLoader().then((module) => ({ default: module.ScoutDock })),
 );
 const AboutView = lazy(() =>
   aboutLoader().then((module) => ({ default: module.AboutView })),
@@ -577,6 +581,7 @@ function App() {
 
   return (
     <ExternalLineageProvider>
+    <ScoutChatProvider>
     <WorkspaceSwitchContext.Provider value={switchWorkspace}>
     <Dialog.Root open={navOpen} onOpenChange={setNavOpen}>
     <div className="atlas-shell-canvas relative flex h-screen overflow-hidden text-foreground">
@@ -838,6 +843,11 @@ function App() {
             : { availability: catalogAvailability, search: searchOneLakeCatalog }
         }
       />
+      {tab !== "scout" && !isPreview && (
+        <Suspense fallback={null}>
+          <ScoutDock onExpand={() => nav("scout")} />
+        </Suspense>
+      )}
     </div>
       {navOpen && (
         <Dialog.Portal>
@@ -868,6 +878,7 @@ function App() {
       )}
     </Dialog.Root>
     </WorkspaceSwitchContext.Provider>
+    </ScoutChatProvider>
     </ExternalLineageProvider>
   );
 }

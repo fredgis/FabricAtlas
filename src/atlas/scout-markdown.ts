@@ -4,9 +4,17 @@
 export type ScoutBlock =
   | { kind: "heading"; level: number; text: string }
   | { kind: "paragraph"; text: string }
-  | { kind: "list"; ordered: boolean; items: string[] }
+  | { kind: "list"; ordered: boolean; items: ScoutListItem[] }
   | { kind: "table"; header: string[]; rows: string[][] }
   | { kind: "code"; language: string; text: string };
+
+export interface ScoutListItem {
+  text: string;
+  ordered: boolean;
+  /** Display number for ordered items, renumbered sequentially among siblings. */
+  number?: number;
+  children: ScoutListItem[];
+}
 
 export type ScoutInline = { kind: "text" | "strong" | "code"; text: string };
 
@@ -20,7 +28,66 @@ function tableCells(line: string): string[] {
 }
 
 const TABLE_SEPARATOR = /^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
-const LIST_ITEM = /^\s*(?:([-*+])|(\d+)[.)])\s+(.*)$/;
+const LIST_ITEM = /^(\s*)(?:([-*+])|(\d+)[.)])\s+(.*)$/;
+const CONTINUATION = /^\s{2,}\S/;
+// The agent sometimes prints its method steps as bare lines ("Audit", "Explain:").
+const STEP_LABEL = /^\**(audit|explain|recommend|recommendations?)\**\s*:?\**\s*$/i;
+
+function indentWidth(value: string): number {
+  return value.replace(/\t/g, "    ").length;
+}
+
+function renumber(items: ScoutListItem[]): ScoutListItem[] {
+  let next: number | undefined;
+  for (const item of items) {
+    if (item.ordered) {
+      next ??= item.number ?? 1;
+      item.number = next;
+      next += 1;
+    }
+    renumber(item.children);
+  }
+  return items;
+}
+
+/** Parses a (possibly nested, possibly blank-line separated) list starting at `start`. */
+function parseList(lines: string[], start: number): { block: ScoutBlock; end: number } {
+  const root: ScoutListItem = { text: "", ordered: false, children: [] };
+  const stack: { item: ScoutListItem; indent: number }[] = [{ item: root, indent: -1 }];
+  let index = start;
+  while (index < lines.length) {
+    const line = lines[index];
+    const match = LIST_ITEM.exec(line);
+    if (match) {
+      const indent = indentWidth(match[1]);
+      while (stack.length > 1 && stack[stack.length - 1].indent >= indent) stack.pop();
+      const node: ScoutListItem = { text: match[4].trim(), ordered: !match[2], children: [] };
+      if (match[3]) node.number = Number(match[3]);
+      stack[stack.length - 1].item.children.push(node);
+      stack.push({ item: node, indent });
+      index += 1;
+      continue;
+    }
+    if (!line.trim()) {
+      let next = index + 1;
+      while (next < lines.length && !lines[next].trim()) next += 1;
+      if (next < lines.length && (LIST_ITEM.test(lines[next]) || CONTINUATION.test(lines[next]))) {
+        index = next;
+        continue;
+      }
+      break;
+    }
+    if (CONTINUATION.test(line) && stack.length > 1) {
+      const last = stack[stack.length - 1].item;
+      last.text = `${last.text} ${line.trim()}`;
+      index += 1;
+      continue;
+    }
+    break;
+  }
+  const items = renumber(root.children);
+  return { block: { kind: "list", ordered: items[0]?.ordered ?? false, items }, end: index - 1 };
+}
 
 export function parseScoutMarkdown(source: string): ScoutBlock[] {
   const lines = source.replace(/\r\n?/g, "\n").split("\n");
@@ -53,7 +120,9 @@ export function parseScoutMarkdown(source: string): ScoutBlock[] {
     const heading = /^(#{1,6})\s+(.*)$/.exec(trimmed);
     if (heading) {
       flushParagraph();
-      blocks.push({ kind: "heading", level: heading[1].length, text: heading[2].trim() });
+      if (!STEP_LABEL.test(heading[2].trim())) {
+        blocks.push({ kind: "heading", level: heading[1].length, text: heading[2].trim() });
+      }
       continue;
     }
     if (trimmed.startsWith("|") && TABLE_SEPARATOR.test(lines[index + 1]?.trim() ?? "")) {
@@ -69,27 +138,28 @@ export function parseScoutMarkdown(source: string): ScoutBlock[] {
       blocks.push({ kind: "table", header, rows });
       continue;
     }
-    const item = LIST_ITEM.exec(line);
-    if (item) {
+    if (LIST_ITEM.test(line)) {
       flushParagraph();
-      const ordered = !item[1];
-      const previous = blocks[blocks.length - 1];
-      if (previous?.kind === "list" && previous.ordered === ordered) {
-        previous.items.push(item[3].trim());
-      } else {
-        blocks.push({ kind: "list", ordered, items: [item[3].trim()] });
-      }
+      const list = parseList(lines, index);
+      blocks.push(list.block);
+      index = list.end;
       continue;
     }
-    const previous = blocks[blocks.length - 1];
-    if (!paragraph.length && previous?.kind === "list" && /^\s{2,}/.test(line)) {
-      previous.items[previous.items.length - 1] += ` ${trimmed}`;
+    if (STEP_LABEL.test(trimmed)) {
+      flushParagraph();
       continue;
     }
     paragraph.push(trimmed);
   }
   flushParagraph();
   return blocks;
+}
+
+/** Splits "Label: value" list items so the view can emphasise the label. */
+export function splitScoutLabel(text: string): { label: string; value: string } | null {
+  const match = /^\**([A-Za-z][\w /&().'-]{0,40}?)\**\s*:\**\s+(.*)$|^\**([A-Za-z][\w /&().'-]{0,40}?)\**\s*:\**\s*$/.exec(text);
+  if (!match) return null;
+  return match[1] !== undefined ? { label: match[1].trim(), value: match[2] } : { label: match[3].trim(), value: "" };
 }
 
 export type ScoutTone = "healthy" | "warning" | "failing";
@@ -125,13 +195,21 @@ const STATUS_TONES: Record<string, ScoutTone> = {
   promoted: "healthy",
 };
 
+const SCORE_HEADER = /score|health|protect|trust|coverage/i;
+
 /** Classifies a table cell so the view can render gauges, pills and numbers. */
-export function classifyScoutCell(raw: string): ScoutCell {
+export function classifyScoutCell(raw: string, header = ""): ScoutCell {
   const text = raw.replace(/\*\*/g, "").trim();
   const percent = /^(-?\d+(?:[.,]\d+)?)\s?%$/.exec(text);
   if (percent) {
     const value = Math.max(0, Math.min(100, Number(percent[1].replace(",", "."))));
     return { kind: "percent", value, text };
+  }
+  // Pillar and overall scores are on a 0-100 scale; render them as gauges too.
+  const score = /^(\d+(?:[.,]\d+)?)(?:\s*\/\s*100)?$/.exec(text);
+  if (score && SCORE_HEADER.test(header)) {
+    const value = Number(score[1].replace(",", "."));
+    if (value <= 100) return { kind: "percent", value, text: String(Math.round(value)) };
   }
   const tone = STATUS_TONES[text.toLowerCase()];
   if (tone) return { kind: "status", tone, text };

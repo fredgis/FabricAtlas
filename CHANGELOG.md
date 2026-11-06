@@ -8,6 +8,19 @@ release tag was published.
 
 ## [Unreleased]
 
+## [2.7.2] - 2026-11-07
+
+### Added
+
+- Floating Atlas Scout bubble (bottom-right) opening a compact chat from any tab; it shares the conversation with the Atlas Scout tab.
+
+### Changed
+
+- Softer Atlas Scout colors.
+- Scout answers render nested, correctly numbered lists with bold labels and status pills; score columns render as gauges.
+- Internal step labels (Audit, Explain, Recommend) are no longer shown, and the per-answer orb is removed.
+- Data Agent instructions add formatting rules; the provisioning script reconciles example queries instead of deleting them all.
+
 ## [2.7.1] - 2026-11-06
 
 ### Added
@@ -892,7 +905,8 @@ release tag was published.
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.7.1...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.7.2...HEAD
+[2.7.2]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.2
 [2.7.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.1
 [2.7.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.0
 [2.6.4]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.6.4

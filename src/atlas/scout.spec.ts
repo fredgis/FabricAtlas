@@ -7,7 +7,7 @@ import {
   scoutBaseUrl,
   ScoutError,
 } from "./scout";
-import { classifyScoutCell, parseScoutInline, parseScoutMarkdown, tokenizeSql } from "./scout-markdown";
+import { classifyScoutCell, parseScoutInline, parseScoutMarkdown, splitScoutLabel, tokenizeSql } from "./scout-markdown";
 
 const endpoint = {
   workspaceId: "6bf4c521-7412-4e6b-8867-68253bbfb18a",
@@ -125,9 +125,52 @@ describe("Atlas Scout markdown", () => {
       { kind: "heading", level: 2, text: "Scorecard" },
       { kind: "paragraph", text: "Two workspaces." },
       { kind: "table", header: ["Workspace", "Score"], rows: [["Sales", "82"]] },
-      { kind: "list", ordered: true, items: ["Fix labels", "Add owners"] },
+      {
+        kind: "list",
+        ordered: true,
+        items: [
+          { text: "Fix labels", ordered: true, number: 1, children: [] },
+          { text: "Add owners", ordered: true, number: 2, children: [] },
+        ],
+      },
       { kind: "code", language: "sql", text: "SELECT 1" },
     ]);
+  });
+
+  it("nests indented lists, renumbers items split by blank lines and drops step labels", () => {
+    const blocks = parseScoutMarkdown(
+      "Audit\n\n1. Missing labels\n   - Evidence: 12 items\n   - Priority: High\n\n1. Orphan items\n   - Action: assign owners\n\n**Recommend:**\nDone.",
+    );
+    expect(blocks).toEqual([
+      {
+        kind: "list",
+        ordered: true,
+        items: [
+          {
+            text: "Missing labels",
+            ordered: true,
+            number: 1,
+            children: [
+              { text: "Evidence: 12 items", ordered: false, children: [] },
+              { text: "Priority: High", ordered: false, children: [] },
+            ],
+          },
+          {
+            text: "Orphan items",
+            ordered: true,
+            number: 2,
+            children: [{ text: "Action: assign owners", ordered: false, children: [] }],
+          },
+        ],
+      },
+      { kind: "paragraph", text: "Done." },
+    ]);
+  });
+
+  it("splits label/value list items", () => {
+    expect(splitScoutLabel("**Priority:** High")).toEqual({ label: "Priority", value: "High" });
+    expect(splitScoutLabel("Evidence: 2 / 83 endorsed")).toEqual({ label: "Evidence", value: "2 / 83 endorsed" });
+    expect(splitScoutLabel("Fix labels on Sales")).toBeNull();
   });
 
   it("keeps markup as plain text segments", () => {
@@ -148,6 +191,12 @@ describe("Atlas Scout rich rendering helpers", () => {
     expect(classifyScoutCell("Certified")).toMatchObject({ kind: "status", tone: "healthy" });
     expect(classifyScoutCell("1,204")).toEqual({ kind: "number", text: "1,204" });
     expect(classifyScoutCell("Sales Lakehouse")).toEqual({ kind: "text", text: "Sales Lakehouse" });
+  });
+
+  it("renders 0-100 scores as gauges only under score-like headers", () => {
+    expect(classifyScoutCell("72", "Health score")).toEqual({ kind: "percent", value: 72, text: "72" });
+    expect(classifyScoutCell("72", "Items")).toEqual({ kind: "number", text: "72" });
+    expect(classifyScoutCell("640", "Score")).toEqual({ kind: "number", text: "640" });
   });
 
   it("tokenizes SQL keywords, strings and numbers", () => {
