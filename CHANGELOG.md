@@ -8,6 +8,8 @@ release tag was published.
 
 ## [Unreleased]
 
+## [2.7.11] - 2026-11-07
+
 ### Added
 
 - **Ask Scout** button in the Catalog item drawer opens the Scout dock with a question about that item (#92).

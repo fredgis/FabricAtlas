@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.7.10";
+  "2.7.11";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,20 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.7.11",
+    date: "2026-11-07",
+    title: "Ask Scout and identity sheet",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Catalog item drawer: Ask Scout opens the Scout bubble with a question about that item (owner, health, upstream and downstream impact, access, findings).",
+          "Catalog item drawer: Export identity sheet downloads a Markdown one-pager with identity, ownership, trust, lineage, access, findings and recent jobs. Missing evidence shows as Not collected, never as zero.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.7.10",
     date: "2026-11-07",
