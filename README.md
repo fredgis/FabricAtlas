@@ -96,6 +96,8 @@ chat client for a published Fabric Data Agent that reads the Atlas SQL
 database, so every answer comes from the same validated snapshots as the rest
 of the app.
 
+https://github.com/user-attachments/assets/672017c7-7d79-4788-9083-77eac489a853
+
 <img src="docs/screenshots/atlas-scout-home-v2.png" alt="Atlas Scout home with the animated header and six starter questions grouped by Health, Protect, Trust and Ownership" width="100%">
 
 - **Three entry points.** Open the full page from **Govern → Atlas Scout**,
