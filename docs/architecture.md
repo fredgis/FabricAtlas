@@ -365,7 +365,9 @@ parsed by `src/atlas/scout-markdown.ts`, which also detects lineage tables
 (item or object level) and lays them out as a graph. The agent can query every
 Atlas table, including the object inventory stored as JSON in `ConfigEntries`. The agent definition lives in
 `fabric/data-agent/atlas-scout/`. v1 has no row-level scope: every agent user
-sees every synchronized workspace.
+sees every synchronized workspace. The Scout page, the floating bubble and the
+Catalog drawer's **Ask Scout** button share one conversation
+(`src/atlas/scout-chat.tsx`).
 
 ## Security boundary
 
@@ -416,6 +418,7 @@ See [Installation and deployment](installation.md) for the complete workflow.
 | `src/atlas/item-relations-evidence.ts` | Beta relation contract and semantics |
 | `src/atlas/openlineage.ts`, `src/atlas/external-lineage*.ts` | OpenLineage import, export and external-lineage linking |
 | `src/atlas/sync-brief.ts` | Latest-sync summary and Markdown export |
+| `src/atlas/item-passport.ts` | Item identity sheet export and the Ask Scout item question |
 | `src/atlas/source-provenance-snapshot.ts` | Shortcut, mirroring and materialized lake view projection |
 | `src/atlas/views/` | Product screens |
 | `src/mcp/` and `src/atlas/mcp/` | Local read-only MCP |

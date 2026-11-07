@@ -6,7 +6,7 @@ author: "Fabric Atlas project"
 lang: en-GB
 ---
 
-> This paper documents Fabric Atlas 2.7.10. FGI-MAIN is used as the real
+> This paper documents Fabric Atlas 2.7.11. FGI-MAIN is used as the real
 > deployment example. Most figures were captured on 28 October 2026 with
 > release 2.6.4; the Atlas Scout and external lineage figures were captured
 > with release 2.7.
@@ -435,6 +435,7 @@ contract is unavailable.
 | Catalog facets | The Catalog filters by type, owner, endorsement, sensitivity label, domain and tag, with a tag scope selector |
 | Search snippets | Workspace search shows a short description excerpt beside each matching item |
 | Request access | Items the signed-in user cannot open link to the Fabric request-access flow instead of a dead end |
+| Identity sheet | The Catalog item drawer exports a Markdown one-pager with identity, ownership, trust, lineage, access, findings and recent jobs |
 | My items | A personal scope filters catalog and findings to items the signed-in user owns |
 | Snapshot export | Governance › Export snapshot downloads the active validated snapshot with a fingerprinted manifest for offline review |
 
@@ -485,7 +486,8 @@ Atlas Scout lets anyone ask governance questions in plain language. It is a
 chat client for a published Fabric Data Agent that reads the Atlas SQL
 database, so every answer comes from the same validated snapshots as the rest
 of the app. The full page opens from Govern › Atlas Scout, and a floating
-Scout bubble is available on every page.
+Scout bubble is available on every page. The Catalog item drawer has an
+**Ask Scout** button that opens the bubble with a question about that item.
 
 ![Atlas Scout home with starter questions grouped by Health, Protect, Trust and Ownership.](screenshots/atlas-scout-home-v2.png){ width=100% }
 
@@ -1007,6 +1009,7 @@ build identifier, source repository, release history and clone command.
 | `src/atlas/scout.ts` | Atlas Scout client for the published Fabric Data Agent |
 | `src/atlas/openlineage.ts` | OpenLineage import, export and external-lineage linking |
 | `src/atlas/sync-brief.ts` | Latest-sync summary and Markdown export |
+| `src/atlas/item-passport.ts` | Item identity sheet export and the Ask Scout item question |
 | `src/atlas/backend.ts` | Workspace-scoped persistence and trusted snapshot loading |
 | `src/atlas/lineage.ts` | Lineage normalization, traversal and layout |
 | `src/atlas/item-relations-evidence.ts` | Preview contracts and relation semantics |

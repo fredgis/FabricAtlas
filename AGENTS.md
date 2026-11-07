@@ -77,6 +77,7 @@ src/
     history.ts      snapshot history and comparison
     item-metadata.ts           item metadata projection
     live-sync.ts    snapshot contracts and compatibility UDF client
+    item-passport.ts item identity sheet and Ask Scout item question
     lineage.ts      lineage normalization and layout
     model.ts        shared types and preview data
     openlineage.ts  OpenLineage import and export

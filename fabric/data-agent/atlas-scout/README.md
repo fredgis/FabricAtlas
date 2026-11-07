@@ -2,7 +2,8 @@
 
 Atlas Scout is a read-only Fabric Data Agent that answers governance questions in
 plain language over the Fabric Atlas SQL database. The **Atlas Scout** tab of the
-app (Govern group) and the floating Scout bubble are chat clients for this agent.
+app (Govern group), the floating Scout bubble and the **Ask Scout** button of the
+Catalog item drawer are chat clients for this agent.
 They render the answer (findings, priority pills, gauges, tables and lineage
 graphs), and show the SQL the agent ran and the raw result tables.
 
