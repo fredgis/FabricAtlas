@@ -6,7 +6,7 @@ author: "Fabric Atlas project"
 lang: en-GB
 ---
 
-> This paper documents Fabric Atlas 2.7.11. FGI-MAIN is used as the real
+> This paper documents Fabric Atlas 2.7.12. FGI-MAIN is used as the real
 > deployment example. Most figures were captured on 28 October 2026 with
 > release 2.6.4; the Atlas Scout and external lineage figures were captured
 > with release 2.7.
@@ -509,7 +509,8 @@ draws a lineage graph and highlights broken links and failing items.
 Scout shows each step of the run: secure session, understanding, querying the
 Atlas store and writing the answer. Stop cancels the agent run. If the service
 still reports a run as active, Scout cancels it and continues in a fresh
-thread.
+thread. Scout waits up to five minutes for an answer: an item question runs
+four or five SQL steps in sequence, about 30 seconds each.
 
 ![Floating Scout window with suggested questions.](screenshots/atlas-scout-dock-v2.png){ width=80% }
 

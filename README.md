@@ -155,7 +155,7 @@ it tenant-wide.
 The [Fabric Atlas development and architecture presentation](prez/Fabric-Atlas-Dev-Architecture.pdf)
 opens with an implemented solution overview (release timeline, key achievements,
 major features and the whitepaper) and the agentic transformation (evidence
-store, Atlas MCP, Atlas Scout and its guardrails), then documents the 2.7.11
+store, Atlas MCP, Atlas Scout and its guardrails), then documents the 2.7.12
 architecture, the
 Atlas Scout data agent path, OpenLineage import and export, the Rayfin-first
 collector path, manifest-last publication, current entity groups and the exact
