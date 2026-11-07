@@ -8,6 +8,21 @@ release tag was published.
 
 ## [Unreleased]
 
+## [2.7.10] - 2026-11-07
+
+### Added
+
+- Sync Brief in Governance Center > Changes: items added or removed, new external or elevated access, lineage edges added or removed, jobs failed or recovered, changed measures and schema objects, new high-priority findings (pre-existing ones counted apart) and the largest downstream impact. Each entry opens its target. Copy as Markdown or download. Built from the existing snapshots: no new entity, no resync. Missing metadata shows as Unavailable, never as zero (#40).
+
+### Security
+
+- Synchronizer-only Functions reject other callers with an explicit NOT_AUTHORIZED (403) error. A test parses every Function and fails if one reads the application token before the synchronizer check (#46).
+
+### Changed
+
+- docs/local-development.md documents Local Network Access, approved origins (ATLAS_DEV_ALLOWED_ORIGINS), the Edge profile and the dev security boundary. The dev server preflight handling moved to a tested helper (#48).
+- docs/installation.md explains synchronizer authorization, rotation and a manual negative check (#46).
+
 ## [2.7.9] - 2026-11-09
 
 ### Security
@@ -964,7 +979,8 @@ release tag was published.
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.7.9...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.7.10...HEAD
+[2.7.10]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.10
 [2.7.9]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.9
 [2.7.8]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.8
 [2.7.7]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.7

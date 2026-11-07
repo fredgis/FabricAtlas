@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.7.9";
+  "2.7.10";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,31 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.7.10",
+    date: "2026-11-07",
+    title: "Sync Brief",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Governance Center > Changes opens with a Sync Brief: items added or removed, new external or elevated access, lineage edges, failed or recovered jobs, changed measures and schema objects, new high-priority findings and the largest downstream impact. Copy it as Markdown or download it. Missing metadata shows as Unavailable, not zero.",
+        ],
+      },
+      {
+        title: "Security",
+        items: [
+          "A non-synchronizer calling a synchronizer-only Function gets an explicit 403 NOT_AUTHORIZED error. A test checks that every Function reading the application token checks the synchronizer first.",
+        ],
+      },
+      {
+        title: "Changed",
+        items: [
+          "Local development docs cover Local Network Access, approved origins and the Edge profile. The installation guide explains how to rotate the synchronizer.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.7.9",
     date: "2026-11-09",

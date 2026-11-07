@@ -169,7 +169,7 @@ Fabric Atlas collects that metadata without copying business data.
   `Ctrl+K`.
 - Trace trusted item and object lineage, raw Item Relations Preview evidence
   and DAX dependencies through Semantic X-Ray.
-- Compare validated snapshots, review changes and export impact evidence.
+- Compare validated snapshots, review changes and export impact evidence. The Sync Brief summarizes the latest sync and exports it as Markdown.
 - Review effective recorded access, run local What-if scenarios and generate
   departure packs that separate ownership, privileged access, identity
   references and unknown evidence.
@@ -591,6 +591,9 @@ npm run build
 
 `npm run typecheck` runs `tsc -b --force` with strict checking and `noEmit`.
 The project does not enable TypeScript's `noCheck` option.
+
+To run the app inside the Fabric portal or drive it with Playwright, see
+[Local development](docs/local-development.md).
 
 The production build still reports large application and radar chunks. Vite
 also reports that the dynamic Rayfin client import cannot form a separate chunk
