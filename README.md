@@ -579,6 +579,10 @@ The complete Entra, UDF and deployment steps are in
 
 ## Development
 
+Use Node 24 (pinned in `.nvmrc`). Newer Node versions ship a built-in
+`localStorage` that breaks the jsdom test environment, so the test suite only
+passes on Node 24.
+
 ```powershell
 npm test
 npm run lint

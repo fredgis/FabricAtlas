@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.7.8";
+  "2.7.9";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,19 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.7.9",
+    date: "2026-11-09",
+    title: "External dataset deletes restricted",
+    sections: [
+      {
+        title: "Security",
+        items: [
+          "Only the person who first imported an external dataset (or the synchronizer) can delete it. Deleting an import leaves datasets created by others in place instead of failing.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.7.8",
     date: "2026-11-08",

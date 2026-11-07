@@ -8,6 +8,16 @@ release tag was published.
 
 ## [Unreleased]
 
+## [2.7.9] - 2026-11-09
+
+### Security
+
+- Only the creator of an external dataset (or the synchronizer) can delete it. Deleting an OpenLineage import skips orphan datasets created by someone else instead of failing.
+
+### Changed
+
+- The README states that tests require Node 24 (pinned in `.nvmrc`).
+
 ## [2.7.8] - 2026-11-08
 
 ### Fixed
@@ -954,7 +964,8 @@ release tag was published.
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.7.8...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.7.9...HEAD
+[2.7.9]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.9
 [2.7.8]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.8
 [2.7.7]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.7
 [2.7.6]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.6
