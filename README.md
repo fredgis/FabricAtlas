@@ -40,7 +40,7 @@ The screenshots use FGI-MAIN as one example deployment. Its counts and findings
 are not product defaults or a reference architecture.
 
 <a href="docs/fabric-atlas-whitepaper.pdf">
-  <img src="docs/assets/fabric-atlas-whitepaper-hero.png" alt="Fabric Atlas 2.0 whitepaper preview with the cover, Lineage Evidence, X-Ray, coverage and multi-workspace pages" width="100%">
+  <img src="docs/assets/fabric-atlas-whitepaper-hero.png" alt="Fabric Atlas whitepaper preview with the cover, Lineage Evidence, X-Ray, coverage and multi-workspace pages" width="100%">
 </a>
 
 [Read the PDF](docs/fabric-atlas-whitepaper.pdf) ·
@@ -169,7 +169,8 @@ Fabric Atlas collects that metadata without copying business data.
   `Ctrl+K`.
 - Trace trusted item and object lineage, raw Item Relations Preview evidence
   and DAX dependencies through Semantic X-Ray.
-- Compare validated snapshots, review changes and export impact evidence. The Sync Brief summarizes the latest sync and exports it as Markdown.
+- Compare validated snapshots, review changes and export impact evidence. The
+  Sync Brief summarizes the latest sync and exports it as Markdown.
 - Review effective recorded access, run local What-if scenarios and generate
   departure packs that separate ownership, privileged access, identity
   references and unknown evidence.
@@ -310,7 +311,24 @@ marked as Beta rather than authoritative lineage.
 
 ### External lineage (OpenLineage)
 
-Import OpenLineage files (NDJSON or JSON) produced by sources outside Fabric, such as databases, ETL tools and streams, from **External lineage**. Give each import a name. Datasets whose namespace and name exactly match a Fabric item are linked automatically. You can link the other datasets manually to any catalog item. On **Map & lineage**, the **External lineage** toggle adds a dashed *External* lane with the imported jobs and datasets and link points on Fabric items. **Impact** follows the lineage across these link points: the inspector and the impact report list the external upstream and downstream datasets and the jobs between them. Fabric Atlas can also export a workspace's lineage as OpenLineage static `JobEvent` / `DatasetEvent` records. These records carry the custom `fabricAtlas_item` facet ([schema](docs/openlineage/FabricAtlasItemFacet.json)). Sample files are in [`samples/openlineage`](samples/openlineage). For more detail, see [docs/external-lineage.md](docs/external-lineage.md).
+Import OpenLineage files (NDJSON or JSON) produced by sources outside Fabric,
+such as databases, ETL tools and streams, from **External lineage**. Give each
+import a name. Datasets whose namespace and name exactly match a Fabric item
+are linked automatically. You can link the other datasets manually to any
+catalog item.
+
+On **Map & lineage**, the **External lineage** toggle adds a dashed *External*
+lane with the imported jobs and datasets and link points on Fabric items.
+**Impact** follows the lineage across these link points: the inspector and the
+impact report list the external upstream and downstream datasets and the jobs
+between them.
+
+Fabric Atlas can also export a workspace's lineage as OpenLineage static
+`JobEvent` / `DatasetEvent` records. These records carry the custom
+`fabricAtlas_item` facet
+([schema](docs/openlineage/FabricAtlasItemFacet.json)). Sample files are in
+[`samples/openlineage`](samples/openlineage). For more detail, see
+[docs/external-lineage.md](docs/external-lineage.md).
 
 ![Fabric Atlas Map with the External lineage lane](docs/screenshots/external-lineage-map-v2.png)
 
@@ -340,7 +358,8 @@ upstream and downstream dependencies instead of an empty graph.
 Governance Radar, findings, snapshot changes, history, coverage, posture and
 Policies & AI evidence are grouped into one governance workspace.
 
-Since 2.2 (extended in 2.6), the action queue aligns with the OneLake catalog governance view:
+Since 2.2 (extended in 2.6), the action queue aligns with the OneLake catalog
+governance view:
 
 - **Fix in Fabric** opens the affected item, or its workspace when the item
   type has no direct portal route.
@@ -355,8 +374,22 @@ Since 2.2 (extended in 2.6), the action queue aligns with the OneLake catalog go
 - **Why** explains each finding with its evidence and a deterministic
   priority score; **Export snapshot** downloads the validated snapshot.
 
+The complete rule set evaluated on every validated snapshot:
+
 | Rule | Severity | Trigger |
 |---|---|---|
+| `broken-lineage` | Critical | Lineage edge marked broken or pointing to an unresolved item |
+| `failing-item` / `stale-item` | Critical / Medium | Item explicitly reported as failing or stale |
+| `failed-job` | High | Failed run in the recorded job history |
+| `external-access` | High | Guest or external principal with recorded effective access. Restriction evidence is not evaluated |
+| `broad-access` | High | Access through an organization link or broad grant |
+| `service-principal-access` | Medium | Service principal with recorded effective access |
+| `item-only-access` | Low | Principal with access only through item-level grants |
+| `excess-workspace-admins` | Medium | More than two principals with explicit workspace Admin roles or grants |
+| `missing-owner` | Medium | Item without an owner while owner metadata exists elsewhere in the snapshot |
+| `missing-sensitivity` | Low | Item without a sensitivity label while label metadata exists elsewhere in the snapshot |
+| `domain-default-label-below` | High | Item labeled below its domain's default sensitivity label |
+| `workspace-outbound-network` | Low | Outbound access protection off while the workspace holds Confidential or higher items. Unknown never raises it |
 | `certified-missing-description` | Medium | Certified item without a description |
 | `certified-missing-sensitivity` | High | Certified item without a sensitivity label (replaces `missing-sensitivity` for certified items) |
 | `endorsed-inactive` | Low | Endorsed item whose last recorded run is older than 90 days |
@@ -595,9 +628,7 @@ The project does not enable TypeScript's `noCheck` option.
 To run the app inside the Fabric portal or drive it with Playwright, see
 [Local development](docs/local-development.md).
 
-The production build still reports large application and radar chunks. Vite
-also reports that the dynamic Rayfin client import cannot form a separate chunk
-because several persistence modules import the same client statically. Bundle
+The production build still reports a large application chunk. Bundle
 splitting remains a measured performance task, not a release claim.
 
 | Path | Purpose |
@@ -695,6 +726,13 @@ original Microsoft copyright headers. See [NOTICE](NOTICE).
 - [Architecture](docs/architecture.md)
 - [Data model](docs/data-model.md)
 - [External lineage (OpenLineage)](docs/external-lineage.md)
+- [Lineage depth](docs/lineage-depth.md)
+- [Item Relations evidence](docs/item-relations-evidence.md)
+- [Access-policy evidence](docs/access-policy-evidence.md)
+- [Catalog search](docs/catalog-search.md)
+- [Observability](docs/observability.md)
+- [Read-only Atlas MCP](docs/atlas-mcp.md)
+- [Local development](docs/local-development.md)
 - [Power BI metadata replacement and blocker](docs/powerbi-scanner-replacement.md)
 - [Optional Power BI scanner Secret Store setup](docs/powerbi-scanner-secret-store.md)
 - [Security policy](.github/SECURITY.md)

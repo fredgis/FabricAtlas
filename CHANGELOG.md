@@ -23,7 +23,7 @@ release tag was published.
 - docs/local-development.md documents Local Network Access, approved origins (ATLAS_DEV_ALLOWED_ORIGINS), the Edge profile and the dev security boundary. The dev server preflight handling moved to a tested helper (#48).
 - docs/installation.md explains synchronizer authorization, rotation and a manual negative check (#46).
 
-## [2.7.9] - 2026-11-09
+## [2.7.9] - 2026-11-07
 
 ### Security
 
@@ -33,7 +33,7 @@ release tag was published.
 
 - The README states that tests require Node 24 (pinned in `.nvmrc`).
 
-## [2.7.8] - 2026-11-08
+## [2.7.8] - 2026-11-06
 
 ### Fixed
 
@@ -47,7 +47,7 @@ release tag was published.
 - Object-level lineage of a table always shows its columns and flows: Scout no longer answers that no lineage was found for tables such as fact_sales.
 - Atlas Scout continues in a fresh thread when the conversation thread has expired (no more 'Data Agent was not found'), and asks once more when Fabric loses its own tool call (submit_tool_outputs NotFound).
 
-## [2.7.6] - 2026-11-07
+## [2.7.6] - 2026-11-06
 
 ### Added
 
@@ -58,20 +58,20 @@ release tag was published.
 - Object-level lineage answers name each object with its item, so tables, notebooks and ontologies no longer collapse into a loop.
 - The first question of a new conversation no longer fails with 'run is active': Scout cancels the stale run and retries in a fresh thread.
 
-## [2.7.5] - 2026-11-07
+## [2.7.5] - 2026-11-06
 
 ### Fixed
 
 - Atlas Scout tables without outer pipes (lineage answers) render as tables and lineage graphs.
 - Asking after Stop no longer fails with 'run is active': the run is cancelled and Scout falls back to a fresh thread.
 
-## [2.7.4] - 2026-11-07
+## [2.7.4] - 2026-11-06
 
 ### Changed
 
 - Floating Atlas Scout window: teal header, white body and a clearer prompt field.
 
-## [2.7.3] - 2026-11-07
+## [2.7.3] - 2026-11-06
 
 ### Added
 
@@ -82,7 +82,7 @@ release tag was published.
 - Atlas Scout lineage questions: the agent no longer uses unsupported recursive CTEs and walks lineage up to four hops; new lineage example query.
 - Atlas Scout prompt no longer turns dark green on focus; floating bubble slightly darker.
 
-## [2.7.2] - 2026-11-07
+## [2.7.2] - 2026-11-06
 
 ### Added
 

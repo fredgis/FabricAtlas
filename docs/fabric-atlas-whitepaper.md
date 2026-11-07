@@ -1,13 +1,15 @@
 ---
 title: "Fabric Atlas"
 subtitle: "Workspace intelligence and governance for Microsoft Fabric"
-date: "October 2026"
+date: "November 2026"
 author: "Fabric Atlas project"
 lang: en-GB
 ---
 
-> This paper documents Fabric Atlas 2.6.4. FGI-MAIN is used as the real
-> deployment example, captured on 28 October 2026 with release 2.6.4.
+> This paper documents Fabric Atlas 2.7.10. FGI-MAIN is used as the real
+> deployment example. Most figures were captured on 28 October 2026 with
+> release 2.6.4; the Atlas Scout and external lineage figures were captured
+> with release 2.7.
 > Counts and findings describe that workspace at that point in time. They are
 > not product defaults, limits or benchmarks.
 
@@ -36,6 +38,12 @@ priority, tenant-setting drift, OneLake data access roles, external-share
 evidence, incremental synchronization, optional Teams notifications and
 reviewed AI description suggestions. Each new signal follows the same rule:
 evidence that cannot be collected stays Unknown.
+
+Version 2.7 adds Atlas Scout, a plain-language governance chat over a
+published Fabric Data Agent that reads the Atlas SQL database. It also adds
+OpenLineage import and export for lineage outside Fabric, a Sync Brief that
+summarizes the latest synchronization, and notebook object lineage built from
+direct literal table references.
 
 The browser coordinates those collectors, isolates item failures, validates
 every response and publishes the workspace manifest last. Each selected
@@ -469,6 +477,85 @@ suggest descriptions for undocumented items and tables. Only names, schema and
 DAX expressions are sent, capped at 24,000 characters and 50 targets per
 request, and every suggestion requires human review before use.
 
+## What's new in 2.7
+
+### Atlas Scout
+
+Atlas Scout lets anyone ask governance questions in plain language. It is a
+chat client for a published Fabric Data Agent that reads the Atlas SQL
+database, so every answer comes from the same validated snapshots as the rest
+of the app. The full page opens from Govern › Atlas Scout, and a floating
+Scout bubble is available on every page.
+
+![Atlas Scout home with starter questions grouped by Health, Protect, Trust and Ownership.](screenshots/atlas-scout-home-v2.png){ width=100% }
+
+The agent follows the OneLake catalog pillars (Health, Protect, Trust) plus
+Ownership. It can build a workspace scorecard, find failures and their blast
+radius, list external exposure, measure label and endorsement coverage and
+find orphan items. Besides items, runs, findings and access, it reads the
+object inventory captured by the sync: tables, columns, measures with their
+DAX dependencies, relationships, ontology bindings and object-level lineage,
+plus domains, OneLake roles and tenant settings.
+
+Answers are rendered as headings, numbered findings, priority pills, health
+gauges and sortable tables. Every answer can show the SQL the agent ran and
+the raw result rows. When an answer contains source and target columns, Scout
+draws a lineage graph and highlights broken links and failing items.
+
+![Atlas Scout drawing the downstream lineage of a lakehouse, followed by a prioritized finding.](screenshots/atlas-scout-lineage-v2.png){ width=100% }
+
+Scout shows each step of the run: secure session, understanding, querying the
+Atlas store and writing the answer. Stop cancels the agent run. If the service
+still reports a run as active, Scout cancels it and continues in a fresh
+thread.
+
+![Floating Scout window with suggested questions.](screenshots/atlas-scout-dock-v2.png){ width=80% }
+
+![Floating Scout window showing live progress while the agent queries the store.](screenshots/atlas-scout-dock-progress-v2.png){ width=80% }
+
+The agent definition, instructions, example queries and provisioning script
+are versioned in `fabric/data-agent/atlas-scout`. Scout v1 is read-only and
+sees every synchronized workspace in the Atlas store, regardless of the user's
+workspace roles. First use asks for consent to `DataAgent.Execute.All` unless
+an administrator granted it tenant-wide.
+
+### External lineage (OpenLineage)
+
+Atlas imports OpenLineage files (NDJSON or JSON) produced by sources outside
+Fabric, such as databases, ETL tools and streams. Datasets whose namespace and
+name exactly match a Fabric item are linked automatically; others can be
+linked manually to any catalog item. Imports are stored outside the immutable
+snapshot as `OpenLineageImport`, `ExternalDataset` and `ExternalLineageEdge`
+rows and never keep the raw file.
+
+On Map & lineage, an External lane shows the imported jobs and datasets with
+link points on Fabric items. Impact follows the lineage across those link
+points, and the impact report lists external upstream and downstream datasets
+and the jobs between them. Atlas can also export a workspace's lineage as
+static OpenLineage `JobEvent` and `DatasetEvent` records carrying the custom
+`fabricAtlas_item` facet.
+
+![Map & lineage with the External lineage lane.](screenshots/external-lineage-map-v2.png){ width=100% }
+
+### Sync Brief
+
+The Sync Brief compares the latest validated snapshot with the previous one.
+It lists items added or removed, new external or elevated access, lineage
+edges added or removed, jobs that failed or recovered, changed measures and
+schema objects, new high-priority findings and the largest downstream impact.
+A section without evidence is marked unavailable rather than empty. The brief
+exports as Markdown for sharing outside Atlas.
+
+### Notebook object lineage
+
+Notebook Object Lineage shows direct literal table references found in the
+notebook definition, with read and write direction. The collector parses the
+definition in memory and publishes only bounded object names, operations and
+source item IDs. It never stores notebook cells, source code, SQL text,
+credentials or dynamically constructed references. When no direct object name
+can be resolved, the view falls back to the notebook's verified item-level
+dependencies.
+
 ## Access review and departure planning
 
 ### Review matrix
@@ -744,6 +831,9 @@ reads and controlled cleanup without being allowed to publish.
 | FindingAck | Personal Governance Radar acknowledgement or mute |
 | GovernancePolicy | Shared posture targets |
 | GovernanceException | Shared, time-bounded exception with reason and scope |
+| OpenLineageImport | One imported OpenLineage file: name, counts and result |
+| ExternalDataset | External dataset, optionally linked to a Fabric item |
+| ExternalLineageEdge | External input-to-output edge through a job |
 
 ## Security and data boundaries
 
@@ -913,7 +1003,10 @@ build identifier, source repository, release history and clone command.
 | `src/atlas/model.ts` | Shared UI data model |
 | `src/atlas/store.tsx` | Hydration, workspace switching, synchronization and notes |
 | `src/atlas/browser-collector-sync.ts` | Browser-serialized Rayfin collection and compatibility planning |
-| `src/atlas/live-sync.ts` | Snapshot contracts, Python compatibility invocation and merge logic |
+| `src/atlas/live-sync.ts` | Snapshot contracts, compatibility UDF invocation and merge logic |
+| `src/atlas/scout.ts` | Atlas Scout client for the published Fabric Data Agent |
+| `src/atlas/openlineage.ts` | OpenLineage import, export and external-lineage linking |
+| `src/atlas/sync-brief.ts` | Latest-sync summary and Markdown export |
 | `src/atlas/backend.ts` | Workspace-scoped persistence and trusted snapshot loading |
 | `src/atlas/lineage.ts` | Lineage normalization, traversal and layout |
 | `src/atlas/item-relations-evidence.ts` | Preview contracts and relation semantics |
@@ -922,10 +1015,12 @@ build identifier, source repository, release history and clone command.
 | `rayfin/functions/` | Typed metadata collectors and durable-execution probes |
 | `rayfin/data/` | Persisted entities and row policies |
 | `fabric/udf/atlas_sync_functions/` | Minimal Python compatibility collector and rollback |
+| `fabric/data-agent/atlas-scout/` | Atlas Scout agent definition and provisioning script |
 
 The repository validates release changes with:
 
 ```powershell
+npm run typecheck
 npm test
 npm run lint
 npm run build
@@ -943,6 +1038,8 @@ npm run build
 | Purview DLP and Fabric policies | Purview shown as unavailable; Fabric policies listed with enforcement Unknown | Public read APIs for policy evaluation results |
 | Report visual usage | Not collected | Supported report definition path with sensitivity and permission handling |
 | Shared actions and notifications | Optional Teams alert for new Critical findings; no shared assignments | Reviewed ownership model for shared actions |
+| Atlas Scout scope | Read-only, but every agent user sees every synchronized workspace | Row-level filtering or per-workspace scope in the Atlas SQL database |
+| Power BI posture report (PBIP) | Not implemented; JSON and snapshot export, Sync Brief and Teams card cover sharing | Reviewed report template fed by the published snapshot |
 
 ## Conclusion
 
@@ -985,17 +1082,22 @@ Within those limits, Atlas answers four recurring questions:
 | 16 | Metadata coverage |
 | 17 | Governance posture |
 | 18 | Policies & AI |
-| 19 | Access Review matrix |
-| 20 | Principal-centred review |
-| 21 | Read-only access What-if |
-| 22 | Departure pack |
-| 23 | Jobs & health |
-| 24 | Multi-workspace scope |
-| 25 | Synchronization |
-| 26 | Configuration |
-| 27 | Team notes |
-| 28 | Architecture and metadata flow |
-| 29 | Immutable snapshot lifecycle |
+| 19 | Atlas Scout home |
+| 20 | Atlas Scout lineage answer |
+| 21 | Floating Scout with suggested questions |
+| 22 | Floating Scout live progress |
+| 23 | External lineage lane on the Map |
+| 24 | Access Review matrix |
+| 25 | Principal-centred review |
+| 26 | Read-only access What-if |
+| 27 | Departure pack |
+| 28 | Jobs & health |
+| 29 | Multi-workspace scope |
+| 30 | Synchronization |
+| 31 | Configuration |
+| 32 | Team notes |
+| 33 | Architecture and metadata flow |
+| 34 | Immutable snapshot lifecycle |
 
 ## Appendix B: glossary
 

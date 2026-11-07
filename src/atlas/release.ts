@@ -83,7 +83,7 @@ export const RELEASES: AtlasRelease[] = [
   },
   {
     version: "2.7.9",
-    date: "2026-11-09",
+    date: "2026-11-07",
     title: "External dataset deletes restricted",
     sections: [
       {
@@ -96,7 +96,7 @@ export const RELEASES: AtlasRelease[] = [
   },
   {
     version: "2.7.8",
-    date: "2026-11-08",
+    date: "2026-11-06",
     title: "Every Scout starter answers",
     sections: [
       {
@@ -124,7 +124,7 @@ export const RELEASES: AtlasRelease[] = [
   },
   {
     version: "2.7.6",
-    date: "2026-11-07",
+    date: "2026-11-06",
     title: "Atlas Scout queries everything",
     sections: [
       {
@@ -144,7 +144,7 @@ export const RELEASES: AtlasRelease[] = [
   },
   {
     version: "2.7.5",
-    date: "2026-11-07",
+    date: "2026-11-06",
     title: "Atlas Scout fixes",
     sections: [
       {
@@ -158,7 +158,7 @@ export const RELEASES: AtlasRelease[] = [
   },
   {
     version: "2.7.4",
-    date: "2026-11-07",
+    date: "2026-11-06",
     title: "Atlas Scout bubble window",
     sections: [
       {
@@ -169,7 +169,7 @@ export const RELEASES: AtlasRelease[] = [
   },
   {
     version: "2.7.3",
-    date: "2026-11-07",
+    date: "2026-11-06",
     title: "Atlas Scout lineage graph",
     sections: [
       {
@@ -189,7 +189,7 @@ export const RELEASES: AtlasRelease[] = [
   },
   {
     version: "2.7.2",
-    date: "2026-11-07",
+    date: "2026-11-06",
     title: "Atlas Scout polish",
     sections: [
       {
