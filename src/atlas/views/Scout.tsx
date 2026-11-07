@@ -518,7 +518,7 @@ function Evidence({ evidence }: { evidence: ScoutEvidence }) {
       <button
         type="button"
         aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => setOpen(!open)}
         className="flex w-full items-center gap-s px-m py-s text-left text-200 font-semibold text-muted-foreground transition-colors hover:text-foreground"
       >
         <Code2 className="icon-size-100 text-fabric-purple" aria-hidden="true" />
@@ -909,9 +909,8 @@ const DOCK_SUGGESTIONS = [
 
 /** Collapsed Atlas Scout bubble (bottom-right) that opens a compact chat on any page. */
 export function ScoutDock({ onExpand }: { onExpand: () => void }) {
-  const { available, turns, busy, ask, reset } = useScoutChat();
+  const { available, turns, busy, ask, reset, dockOpen: open, setDockOpen: setOpen } = useScoutChat();
   const reduceMotion = useReducedMotion();
-  const [open, setOpen] = useState(false);
   const bottomRef = useAutoScroll(open ? turns : null);
   if (!available) return null;
 
@@ -982,7 +981,7 @@ export function ScoutDock({ onExpand }: { onExpand: () => void }) {
       </AnimatePresence>
       <motion.button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => setOpen(!open)}
         aria-label={open ? "Close Atlas Scout" : "Open Atlas Scout"}
         aria-expanded={open}
         initial={reduceMotion ? false : { scale: 0, opacity: 0 }}

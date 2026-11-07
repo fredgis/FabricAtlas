@@ -8,6 +8,11 @@ release tag was published.
 
 ## [Unreleased]
 
+### Added
+
+- **Ask Scout** button in the Catalog item drawer opens the Scout dock with a question about that item (#92).
+- **Export identity sheet** in the Catalog item drawer downloads a Markdown one-pager with identity, ownership, trust, lineage, access, findings and recent jobs (#93).
+
 ## [2.7.10] - 2026-11-07
 
 ### Added

@@ -21,6 +21,9 @@ export interface ScoutChat {
   ask: (question: string) => Promise<void>;
   stop: () => void;
   reset: () => void;
+  /** Whether the floating Scout dock is expanded; shared so any view can open it. */
+  dockOpen: boolean;
+  setDockOpen: (open: boolean) => void;
 }
 
 export const ScoutChatContext = createContext<ScoutChat | null>(null);

@@ -98,9 +98,10 @@ of the app.
 
 <img src="docs/screenshots/atlas-scout-home-v2.png" alt="Atlas Scout home with the animated header and six starter questions grouped by Health, Protect, Trust and Ownership" width="100%">
 
-- **Two entry points.** Open the full page from **Govern → Atlas Scout**, or
+- **Three entry points.** Open the full page from **Govern → Atlas Scout**,
   use the floating Scout bubble at the bottom right of every page for a quick
-  question without leaving the current view.
+  question without leaving the current view, or click **Ask Scout** in a
+  Catalog item drawer to ask about that item directly.
 - **Governance skills.** The agent follows the OneLake catalog pillars
   (Health, Protect, Trust) plus Ownership. It can build a workspace
   scorecard, find failures and their blast radius, list external exposure,
@@ -196,7 +197,7 @@ Fabric Atlas collects that metadata without copying business data.
 | Area | Included in Fabric Atlas 2.7 |
 |---|---|
 | Workspaces and sync | Shared workspace scope, independent validated snapshots, persisted per-workspace run status, active-workspace switching, staged progress and last-known-good fallback |
-| Catalog and search | Item Catalog with facets and tag scope, Collection status with the reason for each missing section (for example schema-enabled Lakehouses, whose tables come only from the SQL analytics endpoint), alphabetized Asset Catalog, `Ctrl+K` search with description snippets, Request access link, SQL/KQL/semantic/Ontology 2.0/graph/Data Agent inventory |
+| Catalog and search | Item Catalog with facets and tag scope, Collection status with the reason for each missing section (for example schema-enabled Lakehouses, whose tables come only from the SQL analytics endpoint), alphabetized Asset Catalog, `Ctrl+K` search with description snippets, Request access link, Markdown identity sheet export per item, SQL/KQL/semantic/Ontology 2.0/graph/Data Agent inventory |
 | Lineage and impact | Trusted Atlas graph, connected type-filter context, stable Impact mode, Item Relations Preview, Evidence, Changes, X-Ray, notebook and semantic object lineage, exportable impact reports, and [external lineage](docs/external-lineage.md): OpenLineage import, link to Fabric items and NDJSON export |
 | Governance | Findings with Fix in Fabric links, Why panel and priority score, My items, OneLake catalog pillars (Health, Protect, Trust), JSON and snapshot export, Teams Adaptive Card and optional webhook, Fabric domain names, filter and per-domain posture, tenant settings drift, a closed six-pillar Governance Radar, snapshot comparison, history, item-family Coverage, posture targets, Policies & AI, read-only Fabric policies and optional AI description suggestions |
 | Access | Effective recorded access, principal type and role filters, OneLake data access roles (RLS/CLS), sensitive external shares, personal decisions, What-if simulation and evidence-based departure packs |

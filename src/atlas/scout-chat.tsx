@@ -22,6 +22,7 @@ export function ScoutChatProvider({ children }: { children: ReactNode }) {
   const configured = isScoutConfigured({ workspaceId: ATLAS_CONFIG.scoutWorkspaceId, agentId: ATLAS_CONFIG.scoutAgentId });
   const [turns, setTurns] = useState<ScoutChatTurn[]>([]);
   const [busy, setBusy] = useState(false);
+  const [dockOpen, setDockOpen] = useState(false);
   const threadRef = useRef<string | undefined>(undefined);
   const abortRef = useRef<AbortController | null>(null);
   const busyRef = useRef(false);
@@ -90,8 +91,8 @@ export function ScoutChatProvider({ children }: { children: ReactNode }) {
   }, [client]);
 
   const value = useMemo<ScoutChat>(
-    () => ({ available: client !== null, configured, turns, busy, ask, stop, reset }),
-    [client, configured, turns, busy, ask, stop, reset],
+    () => ({ available: client !== null, configured, turns, busy, ask, stop, reset, dockOpen, setDockOpen }),
+    [client, configured, turns, busy, ask, stop, reset, dockOpen],
   );
 
   return <ScoutChatContext.Provider value={value}>{children}</ScoutChatContext.Provider>;
