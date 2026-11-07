@@ -8,6 +8,12 @@ release tag was published.
 
 ## [Unreleased]
 
+## [2.7.12] - 2026-11-07
+
+### Fixed
+
+- Atlas Scout waits up to 5 minutes for an answer instead of 3: an item question from **Ask Scout** runs 4-5 SQL steps and could exceed the old limit.
+
 ## [2.7.11] - 2026-11-07
 
 ### Added
