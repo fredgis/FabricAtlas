@@ -153,10 +153,13 @@ it tenant-wide.
 ## Technical presentation
 
 The [Fabric Atlas development and architecture presentation](prez/Fabric-Atlas-Dev-Architecture.pdf)
-documents the Rayfin-first collector path, manifest-last publication, current
-entity groups, local MCP and the exact Rayfin platform gaps that keep Python
-compatibility and browser-driven synchronization in place. The editable deck,
-PDF and PlantUML sources are in [`prez/`](prez/).
+opens with an implemented solution overview (release timeline, key achievements,
+major features and the whitepaper), then documents the 2.7.11 architecture, the
+Atlas Scout data agent path, OpenLineage import and export, the Rayfin-first
+collector path, manifest-last publication, current entity groups and the exact
+Rayfin platform gaps that keep Python compatibility and browser-driven
+synchronization in place. The editable deck (with the whitepaper PDF embedded),
+PDF export and PlantUML sources are in [`prez/`](prez/).
 
 ## What it does
 
