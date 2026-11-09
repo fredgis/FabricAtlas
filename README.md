@@ -112,11 +112,13 @@ https://github.com/user-attachments/assets/672017c7-7d79-4788-9083-77eac489a853
 - **Everything in the store is queryable.** Besides items, runs, findings and
   access, Scout reads the object inventory captured by the sync: tables,
   columns, measures with their DAX dependencies, relationships, ontology
-  bindings and object-level lineage, plus domains, OneLake roles and tenant
-  settings. Try for example:
+  bindings and object-level lineage, plus domains, OneLake roles, tenant
+  settings and the tenant connection inventory with its owners. Try for
+  example:
   - *Which tables feed the AcuteCareOperationsOntology?*
   - *Show the object-level lineage of fact_sales*
   - *Which tables do notebooks read and write?*
+  - *Which Fabric connections does Tom Berg own, and which items use them?*
 - **Rich answers.** Markdown is rendered into headings, numbered findings,
   priority pills, health gauges and sortable tables. Every answer can show
   the SQL the agent ran and the raw result rows.
