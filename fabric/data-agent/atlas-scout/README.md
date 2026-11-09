@@ -63,7 +63,12 @@ python fabric/data-agent/atlas-scout/provision.py `
 
 The script only writes the Data Agent item. The Atlas SQL database is read,
 never modified. Every table is exposed to the agent; the schema is explicit and
-the instructions carry the remaining business rules.
+the instructions carry the remaining business rules. Agent and data source
+instructions are each limited to 15,000 characters.
+
+The agent keeps its own copy of the table list. After a release adds, renames
+or drops a table, it can still show the old list for an hour or more: remove
+the data source in the agent's staging version, then run the script again.
 
 ## Connect the app
 

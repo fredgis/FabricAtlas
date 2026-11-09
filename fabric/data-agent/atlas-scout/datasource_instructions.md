@@ -21,7 +21,7 @@ Fabric Atlas governance store. All tables are in schema dbo. Each sync of a Fabr
 - SyncRuns: status, startedAt, finishedAt, itemsSynced, failureMessage per sync.
 - ExternalDatasets (state 'linked' via fabricItemId or 'to_link') / ExternalLineageEdges (sourceDatasetId -> targetDatasetId, jobName, lastRunState): OpenLineage imports, not snapshot based.
 - GovernancePolicies, GovernanceExceptions (expiresAt), FindingAcks, AccessReviews / AccessReviewEvents, Comments: user decisions, not snapshot based.
-- Tenant connections, not snapshot based (current = latest ConnectionInventories with status 'complete'; join inventoryId): ConnectionEntries (connectionId, displayName, connectorType, connectivityType, path, credentialType, rolesStatus, ownerCount, pendingOwnerCount, lastCredentialUsedAt), ConnectionRoleAssignments (connectionId, principalId, principalType, role 'Owner','PendingOwner','User').
+- Tenant connections, no snapshot (current = latest ConnectionInventories with status 'complete'; join inventoryId): ConnectionEntries (connectionId, displayName, connectorType, connectivityType, path, credentialType, rolesStatus, ownerCount, pendingOwnerCount, lastCredentialUsedAt), ConnectionRoleAssignments (connectionId, principalId, principalType, role 'Owner','PendingOwner','User'). Owner checks: rolesStatus = 'complete' only ('personal' = no roles by design).
 
 # Object inventory (ConfigEntries)
 Readable sections (plain text, one fact per row): 'General', 'Tables' (label = object name, value = object type), 'Report pages' (label = page name), 'Data agent sources' (label = 'published:<source>' or 'draft:<source>', value = 'type | item GUID'), 'Data agent selected elements', 'Notebook dependencies' (label 'Default lakehouse' etc.), 'Source provenance' (shortcuts, mirroring; value 'connection=<connectionId>; consumer=<item GUID>'), 'SQL Primary keys', 'SQL Foreign keys' (value 'table(col) -> table(col)'), 'Model' (storage mode, provider), 'OneLake', 'SQL endpoint', 'KQL database', 'Ontology entity types', 'Graph node types', 'KQL stored functions', and similar.
@@ -46,7 +46,7 @@ SELECT DISTINCT e.sourceName + ' (' + COALESCE(si.displayName,'external') + ')' 
 FROM edges e LEFT JOIN items si ON si.fabricId = e.sourceItemId LEFT JOIN items ti ON ti.fabricId = e.targetItemId
 WHERE e.sourceName LIKE '%fact_sales%' OR e.targetName LIKE '%fact_sales%' OR e.sourceTable LIKE '%fact_sales%'
 Variants of the final SELECT/WHERE:
-- Lineage of a table or column: the WHERE above with the object name. Keep the 'contains' edges (table -> columns): for many tables they are the only edges. Matching is case-insensitive.
+- Lineage of a table or column: the WHERE above with the object name. Keep the 'contains' edges (table -> columns): for many tables they are the only edges.
 - Tables that feed an ontology (or graph, data agent): SELECT DISTINCT e.sourceTable + ' (' + COALESCE(si.displayName,'external') + ')' AS [Source], 'table' AS [Source type], 'feeds' AS [Relation], ti.displayName AS [Target], 'Ontology' AS [Target type] ... WHERE e.targetKind LIKE 'ontology%' AND e.sourceKind IN ('sourceObject','sourceField') AND ti.displayName LIKE '%AcuteCareOperationsOntology%'. Ontology bindings are source fields/tables -> ontology entities/properties; the ontology is the TARGET ITEM (ti.displayName), never an object name.
 - Tables read and written by notebooks: WHERE e.relation IN ('reads','writes').
 
@@ -80,8 +80,8 @@ NULL owner/label = not set. Access = item grants.
 # SQL dialect rules
 - Synapse SQL: recursive CTEs are NOT supported.
 - Multi-hop lineage: chain non recursive CTEs hop1..hop4 (hop2 = edges whose sourceFabricId IN (SELECT targetFabricId FROM hop1)), then UNION ALL; swap source and target for upstream.
-- Lineage can contain cycles: deduplicate edges with GROUP BY.
+- Lineage can have cycles: deduplicate edges with GROUP BY.
 - LineageEdges.broken is a bit: use MAX(CAST(broken AS int)).
-- Short aliases (e, m, c, r, dep); never reserved words (edge, node, table, object, key) as alias.
+- Never use reserved words (edge, node, table, object, key) as aliases.
 - Display names can repeat (Lakehouse / SQLEndpoint): return the item type too.
 - OPENJSON, JSON_VALUE, JSON_QUERY, ISJSON and STRING_AGG ... WITHIN GROUP are supported. JSON_VALUE on a non-object value fails: only apply '$.status.status' to object blocks.

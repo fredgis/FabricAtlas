@@ -8,6 +8,10 @@ release tag was published.
 
 ## [Unreleased]
 
+### Fixed
+
+- Atlas Scout answers questions about Fabric connections and their owners. It no longer rewrites them per workspace snapshot, which made it give up on owner questions, and it reports personal connections (usable by their creator only, without roles) separately instead of as connections without an owner.
+
 ## [2.8.2] - 2026-11-09
 
 ### Fixed
