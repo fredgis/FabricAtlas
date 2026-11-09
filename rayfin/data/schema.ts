@@ -28,7 +28,7 @@ import { OpenLineageImport } from './OpenLineageImport.js';
 import { ExternalDataset } from './ExternalDataset.js';
 import { ExternalLineageEdge } from './ExternalLineageEdge.js';
 import { ConnectionInventory } from './ConnectionInventory.js';
-import { FabricConnection } from './FabricConnection.js';
+import { ConnectionEntry } from './ConnectionEntry.js';
 import { ConnectionRoleAssignment } from './ConnectionRoleAssignment.js';
 
 /**
@@ -66,7 +66,7 @@ export type AtlasSchema = {
   ExternalDataset: ExternalDataset;
   ExternalLineageEdge: ExternalLineageEdge;
   ConnectionInventory: ConnectionInventory;
-  FabricConnection: FabricConnection;
+  ConnectionEntry: ConnectionEntry;
   ConnectionRoleAssignment: ConnectionRoleAssignment;
 };
 
@@ -101,6 +101,6 @@ export const schema = [
   ExternalDataset,
   ExternalLineageEdge,
   ConnectionInventory,
-  FabricConnection,
+  ConnectionEntry,
   ConnectionRoleAssignment,
 ];

@@ -55,6 +55,9 @@ business data or credentials.
   review state user-scoped.
 - Never store connection secrets: keep connection endpoints without URL user
   info, query string or fragment.
+- Never name a Rayfin entity with a name ending in `Connection`: Data API
+  Builder reads that GraphQL type as a pagination type and every create and
+  read of the entity fails with an internal server error.
 - Keep team notes append-only unless a reviewed update/delete policy and UX are
   introduced together.
 - Keep grouped lists collapsed by default unless the user is actively searching.

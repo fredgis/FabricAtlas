@@ -1343,7 +1343,7 @@ function connectionEvidence(
             id: "atlas-connection-inventory",
             label: "Tenant connection inventory (admin connections API, Preview)",
             authority: "non-authoritative" as const,
-            entities: ["ConnectionInventory", "FabricConnection", "ConnectionRoleAssignment"],
+            entities: ["ConnectionInventory", "ConnectionEntry", "ConnectionRoleAssignment"],
             observedAt: inventory.collectedAt,
             maturity: "preview" as const,
           }]

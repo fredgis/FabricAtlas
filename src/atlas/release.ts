@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.8.1";
+  "2.8.2";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,20 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.8.2",
+    date: "2026-11-09",
+    title: "Connections are stored",
+    sections: [
+      {
+        title: "Fixed",
+        items: [
+          "The connection inventory is stored again. Every write failed with an internal server error because Data API Builder reads an entity whose name ends in Connection as a pagination type; the entity is renamed ConnectionEntry.",
+          "After the update, open Connections and select Collect connections.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.8.1",
     date: "2026-11-09",

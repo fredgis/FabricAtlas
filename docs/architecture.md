@@ -221,7 +221,7 @@ the newly published snapshot.
 | `ExternalDataset` | External dataset keyed by namespace and name, optionally linked to a Fabric item |
 | `ExternalLineageEdge` | External input-to-output edge through a job, merged with snapshot lineage at read time |
 | `ConnectionInventory` | Manifest of one tenant connection inventory, written last, outside workspace snapshots |
-| `FabricConnection` | One Fabric connection of an inventory: connector, endpoint without query string, authentication, recency, owner counts |
+| `ConnectionEntry` | One Fabric connection of an inventory: connector, endpoint without query string, authentication, recency, owner counts |
 | `ConnectionRoleAssignment` | One role (Owner, PendingOwner, User, UserWithReshare) of a principal on a connection |
 | `SyncRootRun`, `SyncJob`, `SyncTask` and `SyncCommand` | Fail-closed durable-execution probe; never publishes a snapshot |
 | `SyncPayloadManifest` and `SyncPayloadChunk` | Hashed, chunked payloads for the durable-execution probe |

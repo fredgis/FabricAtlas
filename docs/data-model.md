@@ -526,9 +526,13 @@ first. Every authenticated Atlas user can read the inventory; only the
 synchronizer can write or delete it. Restricting reads to administrators is
 tracked in [#98](https://github.com/fredgis/FabricAtlas/issues/98).
 
-## FabricConnection
+## ConnectionEntry
 
-One connection of an inventory. Fabric never returns secrets.
+One connection of an inventory, in the `ConnectionEntries` table. Fabric never
+returns secrets. The entity was named `FabricConnection` in 2.8.0 and 2.8.1;
+Data API Builder reads a GraphQL type whose name ends in `Connection` as a
+pagination type, so no row could be written. An entity name must not end in
+`Connection`.
 
 `inventoryId`, `writerEmail`, `connectionId`, `displayName`,
 `connectivityType`, `connectorType?`, `path?`, `gatewayId?`, `privacyLevel?`,

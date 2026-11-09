@@ -42,7 +42,7 @@ function property(entity: ts.ClassDeclaration, name: string): ts.CallExpression 
 
 describe('durable synchronization data policies', () => {
   const EXTERNAL_LINEAGE = ['OpenLineageImport', 'ExternalDataset', 'ExternalLineageEdge'];
-  const CONNECTIONS = ['ConnectionInventory', 'FabricConnection', 'ConnectionRoleAssignment'];
+  const CONNECTIONS = ['ConnectionInventory', 'ConnectionEntry', 'ConnectionRoleAssignment'];
 
   it('registers three additive entities in both the schema type and runtime registry', () => {
     const path = resolve('rayfin', 'data', 'schema.ts');
@@ -54,6 +54,9 @@ describe('durable synchronization data policies', () => {
       .initializer as ts.ArrayLiteralExpression;
     const names = schemaList.elements.map((element) => element.getText());
     expect(names).toHaveLength(32);
+    // Data API Builder reads a GraphQL type ending in "Connection" as a pagination
+    // type, so creates and reads of such an entity fail with an internal error.
+    expect(names.filter((name) => name.endsWith('Connection'))).toEqual([]);
     expect(names.slice(-6, -3)).toEqual(EXTERNAL_LINEAGE);
     expect(names.slice(-3)).toEqual(CONNECTIONS);
     expect(names).toContain('AccessPolicyEvidence');

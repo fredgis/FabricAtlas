@@ -8,6 +8,16 @@ release tag was published.
 
 ## [Unreleased]
 
+## [2.8.2] - 2026-11-09
+
+### Fixed
+
+- The connection inventory could never be stored: every write failed with `GraphQL errors: Internal server error`. Data API Builder reads a GraphQL type whose name ends in `Connection` as a pagination type, so creating or reading a `FabricConnection` row failed and the transaction rolled back. The entity is renamed `ConnectionEntry` (table `ConnectionEntries`); a test now rejects any entity name ending in `Connection`.
+
+### Upgrade notes
+
+- Deploy with `npx rayfin up --force`: the rename drops the `FabricConnections` table, which is always empty because no row could be written. Then open Connections and select **Collect connections**, and run the Atlas Scout provisioning script again so the agent reads `ConnectionEntries`.
+
 ## [2.8.1] - 2026-11-09
 
 ### Added
@@ -1027,7 +1037,8 @@ release tag was published.
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.8.1...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.8.2...HEAD
+[2.8.2]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.8.2
 [2.8.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.8.1
 [2.8.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.8.0
 [2.7.12]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.12

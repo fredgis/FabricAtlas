@@ -46,7 +46,7 @@ describe('OperationalIncident entity', () => {
     const schema = readFileSync(resolve('rayfin', 'data', 'schema.ts'), 'utf8').replace(/\r\n/g, '\n');
     expect(schema).toContain('OperationalIncident: OperationalIncident;');
     expect(schema).toContain('OperationalIncident,\n  OpenLineageImport,\n  ExternalDataset,\n  ExternalLineageEdge,\n');
-    expect(schema.trim().endsWith('ExternalLineageEdge,\n  ConnectionInventory,\n  FabricConnection,\n  ConnectionRoleAssignment,\n];')).toBe(true);
+    expect(schema.trim().endsWith('ExternalLineageEdge,\n  ConnectionInventory,\n  ConnectionEntry,\n  ConnectionRoleAssignment,\n];')).toBe(true);
   });
 
   it('shares reads with the app audience and limits writes to the synchronizer', () => {

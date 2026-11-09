@@ -25,7 +25,7 @@ Every table of the Atlas SQL database is attached to the agent:
 - **Governance context:** domains, OneLake data access roles and tenant
   settings.
 - **Connections:** the tenant connection inventory (`ConnectionInventories`,
-  `FabricConnections`, `ConnectionRoleAssignments`), joined to the items that
+  `ConnectionEntries`, `ConnectionRoleAssignments`), joined to the items that
   use a connection through the `Source provenance` rows of `ConfigEntries`.
 - **Object inventory:** the JSON documents synchronized in `ConfigEntries`
   (tables, columns, semantic model measures and their DAX dependencies,

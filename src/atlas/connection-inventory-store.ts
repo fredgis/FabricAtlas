@@ -19,7 +19,7 @@ import {
  */
 
 export const CONNECTION_INVENTORY_ENTITY = "ConnectionInventory";
-export const FABRIC_CONNECTION_ENTITY = "FabricConnection";
+export const CONNECTION_ENTRY_ENTITY = "ConnectionEntry";
 export const CONNECTION_ROLE_ENTITY = "ConnectionRoleAssignment";
 
 const WRITE_BATCH_SIZE = 16;
@@ -86,7 +86,7 @@ export class ConnectionInventoryUnavailableError extends Error {
 export function connectionStoreApi(data: unknown): ConnectionStoreApi | undefined {
   const source = (data ?? {}) as Record<string, ConnectionEntityApi | undefined>;
   const inventory = source[CONNECTION_INVENTORY_ENTITY];
-  const connections = source[FABRIC_CONNECTION_ENTITY];
+  const connections = source[CONNECTION_ENTRY_ENTITY];
   const roles = source[CONNECTION_ROLE_ENTITY];
   const usable = (api: ConnectionEntityApi | undefined): api is ConnectionEntityApi =>
     typeof api?.select === "function" && typeof api.create === "function" && typeof api.delete === "function";

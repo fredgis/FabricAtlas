@@ -7,6 +7,9 @@ export type ConnectionRolesStatus = 'complete' | 'skipped' | 'failed' | 'persona
  * One Fabric connection of a `ConnectionInventory`. Only documented,
  * credential-free metadata is stored: Fabric never returns secrets, and the
  * endpoint path is kept without user info, query string or fragment.
+ *
+ * The name must not end with `Connection`: Data API Builder treats such a
+ * GraphQL type as a pagination type, so every create and read fails.
  */
 @entity()
 @authenticated('read')
@@ -17,7 +20,7 @@ export type ConnectionRolesStatus = 'complete' | 'skipped' | 'failed' | 'persona
   policy: (claims, item) =>
     syncWriterEmailPolicy(claims, item.writerEmail),
 })
-export class FabricConnection {
+export class ConnectionEntry {
   @uuid() id!: string;
   @uuid() inventoryId!: string;
   @text({ max: 160 }) writerEmail!: string;
