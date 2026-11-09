@@ -24,6 +24,9 @@ Every table of the Atlas SQL database is attached to the agent:
   findings, endorsements, sensitivity labels and access assignments.
 - **Governance context:** domains, OneLake data access roles and tenant
   settings.
+- **Connections:** the tenant connection inventory (`ConnectionInventories`,
+  `FabricConnections`, `ConnectionRoleAssignments`), joined to the items that
+  use a connection through the `Source provenance` rows of `ConfigEntries`.
 - **Object inventory:** the JSON documents synchronized in `ConfigEntries`
   (tables, columns, semantic model measures and their DAX dependencies,
   relationships, ontology bindings and object-level lineage edges).
@@ -40,6 +43,7 @@ in the app, for items and for objects. Example questions:
 - *Show the object-level lineage of fact_sales*
 - *Which tables do notebooks read and write?*
 - *Which OneLake roles exist and who is in them?*
+- *Which Fabric connections have a single user owner or no active owner?*
 
 The Data Agent runtime did not retrieve the few-shot examples in our tests, so
 the business rules and the SQL recipes the agent relies on live in

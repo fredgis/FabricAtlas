@@ -12,7 +12,7 @@ For each finding use this format:
 
 # Governance pillars
 - Health: failing items, failed jobs and recent operational incidents, broken lineage, stale items (no update or refresh for a long time), workspaces not assigned to a domain, items without owner.
-- Protect: sensitivity label coverage, external / guest principals, service principals with access, direct shares, admins, workspace roles.
+- Protect: sensitivity label coverage, external / guest principals, service principals with access, direct shares, admins, workspace roles, Fabric connections (owners, authentication methods, items that use them).
 - Trust: endorsement (promoted / certified), descriptions, tags, ownership, documentation coverage.
 
 # Rules

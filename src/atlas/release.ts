@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.7.12";
+  "2.8.0";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,29 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.8.0",
+    date: "2026-11-09",
+    title: "Connections inventory",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Govern > Connections: every Fabric connection of the tenant from the admin connections API (Preview), with owners, authentication, endpoint, credential recency and the synchronized items that use it in every workspace (OneLake shortcuts and mirroring).",
+          "Ownership view, Policy readiness (a personal draft of the data connection policies, evaluated before you turn them on in the admin portal), Changes between the last two inventories and CSV export.",
+          "Governance findings for connections used by synchronized items: no active owner, a single user as owner, a gateway connection that is not encrypted.",
+          "Atlas MCP tool atlas_get_connection_evidence and Atlas Scout support for the connection tables.",
+        ],
+      },
+      {
+        title: "Changed",
+        items: [
+          "Each synchronization starts with a tenant stage that collects the connection inventory once. It never fails the workspaces: they still synchronize when the admin rights or the entities are missing.",
+          "After the update, synchronize as a Fabric administrator: an incremental sync is enough and history is kept. Fabric never returns secrets, and Atlas never changes a connection, an owner or a credential.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.7.12",
     date: "2026-11-07",

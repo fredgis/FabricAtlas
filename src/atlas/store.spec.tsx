@@ -44,6 +44,9 @@ const governanceExceptionBackend = vi.hoisted(() => ({
 const workspaceScopeBackend = vi.hoisted(() => ({
   loadWorkspaceScopes: vi.fn(),
 }));
+const connectionSyncBackend = vi.hoisted(() => ({
+  syncTenantConnections: vi.fn(),
+}));
 const currentUser = {
   id: "user-1",
   name: "admin@example.com",
@@ -56,6 +59,7 @@ vi.mock("./finding-acks", () => findingAckBackend);
 vi.mock("./governance-policy", () => governancePolicyBackend);
 vi.mock("./governance-exceptions", () => governanceExceptionBackend);
 vi.mock("./workspace-scope", () => workspaceScopeBackend);
+vi.mock("./connection-sync", () => connectionSyncBackend);
 
 function Harness() {
   const atlas = useAtlas();
@@ -255,6 +259,9 @@ describe("AtlasProvider synchronization", () => {
         persisted: false,
       },
     ]);
+    connectionSyncBackend.syncTenantConnections
+      .mockReset()
+      .mockResolvedValue({ status: "skipped", reason: "not-deployed" });
     backend.loadFromDb.mockReset();
     backend.loadCommentsFromDb.mockReset().mockResolvedValue([]);
     backend.loadHistoryFromDb.mockReset();
@@ -618,6 +625,49 @@ describe("AtlasProvider synchronization", () => {
         expect(screen.getByTestId("hydrating")).toHaveTextContent("false"),
       );
     }
+
+    it("collects tenant connections once per batch before the workspaces", async () => {
+      const order: string[] = [];
+      connectionSyncBackend.syncTenantConnections.mockImplementation(async () => {
+        order.push("tenant");
+        return { status: "skipped", reason: "not-deployed" };
+      });
+      backend.runFabricSync.mockImplementation(
+        async (_isPreview: boolean, _user: unknown, _report: unknown, _signal: AbortSignal, target: string) => {
+          order.push(target);
+          const data = structuredClone(SAMPLE_DATA);
+          data.workspace.fabricId = target;
+          return data;
+        },
+      );
+      await renderReady();
+
+      fireEvent.click(screen.getByRole("button", { name: "Sync both" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("queue")).toHaveTextContent(
+          "11111111:completed,aaaaaaaa:completed",
+        ),
+      );
+      expect(connectionSyncBackend.syncTenantConnections).toHaveBeenCalledTimes(1);
+      expect(connectionSyncBackend.syncTenantConnections.mock.calls[0][0]).toBe(currentUser);
+      expect(order).toEqual(["tenant", ATLAS_CONFIG.workspaceId, SECOND]);
+    });
+
+    it("keeps synchronizing workspaces when the tenant connection stage throws", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      connectionSyncBackend.syncTenantConnections.mockRejectedValue(new Error("tenant boom"));
+      backend.runFabricSync.mockResolvedValue(structuredClone(SAMPLE_DATA));
+      await renderReady();
+
+      fireEvent.click(screen.getByRole("button", { name: "Sync" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("has-data")).toHaveTextContent("true"),
+      );
+      expect(backend.runFabricSync).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId("sync-error")).toHaveTextContent("");
+      expect(warn).toHaveBeenCalledWith("[atlas] tenant connection stage failed", { type: "Error" });
+      warn.mockRestore();
+    });
 
     it("runs selected workspaces one at a time and keeps going after a failure", async () => {
       const pending = new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();

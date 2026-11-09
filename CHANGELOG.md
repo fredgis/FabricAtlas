@@ -8,6 +8,25 @@ release tag was published.
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-11-09
+
+### Added
+
+- **Connections** page (Govern > Connections): every Fabric connection of the tenant from the admin connections API (Preview), collected once per synchronization by the new `tenantCollectConnections` Function with the synchronizer's token. Inventory with owners, authentication, endpoint, credential recency and the synchronized items that use each connection across workspaces (OneLake shortcuts and mirroring); ownership view; Policy readiness, a personal draft of the data connection policies (authentication allowlist, blocked kinds with endpoint exceptions) evaluated before enforcement; Changes between the last two inventories; CSV export (#97).
+- Three entities, `ConnectionInventory`, `FabricConnection` and `ConnectionRoleAssignment`, stored outside workspace snapshots and pruned with the snapshot retention count. Fabric never returns secrets; endpoints are stored without user info, query string or fragment.
+- Governance findings in a new **Connections** category, for connections used by synchronized items: no active owner (high), a single user as owner (medium), a gateway connection set to NotEncrypted (medium).
+- Item configuration and the item identity sheet name the connection behind a shortcut or a mirrored database.
+- Atlas MCP tool `atlas_get_connection_evidence` and Atlas Scout instructions and examples for the three connection tables.
+
+### Changed
+
+- A synchronization starts with a tenant stage that collects the connection inventory once per batch. It never fails the batch: workspaces still synchronize when the Function, the entities or the admin rights are missing.
+
+### Upgrade notes
+
+- Run `npx rayfin up`, then synchronize as a Fabric administrator. An incremental sync is enough; history is kept. The first 2.8 snapshot is the comparison baseline for the radar.
+- The inventory is readable by every Atlas user, which assumes a dedicated governance workspace. Restricting it to Atlas administrators is tracked in #98.
+
 ## [2.7.12] - 2026-11-07
 
 ### Fixed
@@ -992,7 +1011,8 @@ release tag was published.
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.7.12...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.8.0...HEAD
+[2.8.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.8.0
 [2.7.12]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.12
 [2.7.11]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.11
 [2.7.10]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.10

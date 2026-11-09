@@ -69,6 +69,11 @@ import {
 import { POSTURE_TARGETS } from "./posture";
 import { withDomainDirectory } from "./governance-evidence";
 import { SyncCancelledError } from "./live-sync";
+import {
+  useConnectionInventoryState,
+  type ConnectionInventoryState,
+} from "./connection-inventory-state";
+import { syncTenantConnections } from "./connection-sync";
 import { CANCELLING_STAGE } from "./synchronization-progress";
 import {
   loadWorkspaceScopes,
@@ -166,6 +171,8 @@ export interface AtlasContextValue {
   }) => Promise<void>;
   removeGovernanceException: (id: string) => Promise<void>;
   loadHistorySnapshot: (snapshotId: string) => Promise<void>;
+  /** Tenant connection inventory (v2.8); `data.connections` holds the latest one. */
+  connectionInventory: Omit<ConnectionInventoryState, "setLatest" | "reportIssue">;
 }
 
 const AtlasContext = createContext<AtlasContextValue | null>(null);
@@ -293,6 +300,9 @@ export function AtlasProvider({
   const [historyFailedSnapshotIds, setHistoryFailedSnapshotIds] = useState(
     new Set<string>(),
   );
+  const connectionState = useConnectionInventoryState(isPreview);
+  const setLatestConnectionInventory = connectionState.setLatest;
+  const reportConnectionIssue = connectionState.reportIssue;
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
   const [savedViewsLoading, setSavedViewsLoading] = useState(!isPreview);
   const [savedViewsError, setSavedViewsError] = useState<string | undefined>();
@@ -1029,6 +1039,43 @@ export function AtlasProvider({
         );
       let lastStatus: "completed" | "failed" | "cancelled" = "cancelled";
       try {
+        if (!isPreview) {
+          // Tenant stage: one connection inventory per batch, never a reason to fail the batch.
+          setSyncProgress(2);
+          setSyncStage("Collecting tenant connections");
+          try {
+            const tenant = await syncTenantConnections(
+              currentUser,
+              crypto.randomUUID(),
+              (stage) => {
+                if (!abortController.signal.aborted) setSyncStage(stage);
+              },
+              abortController.signal,
+            );
+            if (tenant.status === "stored") {
+              setLatestConnectionInventory(tenant.inventory);
+            } else if (
+              tenant.reason === "unsupported" ||
+              tenant.reason === "failed" ||
+              tenant.reason === "invalid-response"
+            ) {
+              reportConnectionIssue({
+                reason: tenant.reason,
+                ...(tenant.code ? { code: tenant.code } : {}),
+                at: new Date().toISOString(),
+              });
+            }
+          } catch (error) {
+            if (!(error instanceof SyncCancelledError) && !abortController.signal.aborted) {
+              console.warn("[atlas] tenant connection stage failed", {
+                type: error instanceof Error ? error.name : "unknown",
+              });
+            }
+          }
+          if (abortController.signal.aborted) {
+            settle(targets, { status: "cancelled" });
+          }
+        }
         for (let index = 0; index < targets.length; index += 1) {
           const target = targets[index];
           if (abortController.signal.aborted) {
@@ -1080,7 +1127,7 @@ export function AtlasProvider({
         }
       }
     },
-    [canSync, isPreview, runWorkspaceSync, workspaceScopes],
+    [canSync, currentUser, isPreview, reportConnectionIssue, runWorkspaceSync, setLatestConnectionInventory, workspaceScopes],
   );
 
   const sync = useCallback(async () => {
@@ -1538,11 +1585,48 @@ export function AtlasProvider({
 
   const hasData = data.items.length > 0 || !!data.workspace.snapshotId;
 
+  const connectionInventoryView = connectionState.inventory;
   const enrichedData = useMemo<AtlasData>(() => {
     const directory = Object.values(workspaceSyncStatuses).flatMap((status) => status.domains ?? []);
     const evidence = withDomainDirectory(data.governanceEvidence, directory);
-    return evidence === data.governanceEvidence ? data : { ...data, governanceEvidence: evidence };
-  }, [data, workspaceSyncStatuses]);
+    const withEvidence = evidence === data.governanceEvidence ? data : { ...data, governanceEvidence: evidence };
+    return connectionInventoryView ? { ...withEvidence, connections: connectionInventoryView } : withEvidence;
+  }, [connectionInventoryView, data, workspaceSyncStatuses]);
+
+  const {
+    inventory: connectionInventoryLatest,
+    issue: connectionInventoryIssue,
+    loading: connectionInventoryLoading,
+    error: connectionInventoryError,
+    unavailable: connectionInventoryUnavailable,
+    previous: connectionInventoryPrevious,
+    previousLoading: connectionInventoryPreviousLoading,
+    previousError: connectionInventoryPreviousError,
+    previousAvailable: connectionInventoryPreviousAvailable,
+    reload: reloadConnectionInventory,
+    loadPrevious: loadPreviousConnectionInventory,
+  } = connectionState;
+  const connectionInventory = useMemo(
+    () => ({
+      inventory: connectionInventoryLatest,
+      issue: connectionInventoryIssue,
+      loading: connectionInventoryLoading,
+      error: connectionInventoryError,
+      unavailable: connectionInventoryUnavailable,
+      previous: connectionInventoryPrevious,
+      previousLoading: connectionInventoryPreviousLoading,
+      previousError: connectionInventoryPreviousError,
+      previousAvailable: connectionInventoryPreviousAvailable,
+      reload: reloadConnectionInventory,
+      loadPrevious: loadPreviousConnectionInventory,
+    }),
+    [
+      connectionInventoryLatest, connectionInventoryIssue, connectionInventoryLoading, connectionInventoryError,
+      connectionInventoryUnavailable,
+      connectionInventoryPrevious, connectionInventoryPreviousLoading, connectionInventoryPreviousError,
+      connectionInventoryPreviousAvailable, reloadConnectionInventory, loadPreviousConnectionInventory,
+    ],
+  );
 
   const value = useMemo<AtlasContextValue>(
     () => ({
@@ -1607,8 +1691,9 @@ export function AtlasProvider({
       saveGovernanceException: saveSharedGovernanceException,
       removeGovernanceException: removeSharedGovernanceException,
       loadHistorySnapshot,
+      connectionInventory,
     }),
-    [enrichedData, history, hydrating, historyLoading, historyError, historyFailedSnapshotIds, savedViews, savedViewsLoading, savedViewsError, findingAcks, findingAcksLoading, findingAcksError, findingAckPendingIds, governancePolicy.targets, governancePolicyLoading, governancePolicyError, governanceExceptions, governanceExceptionsLoading, governanceExceptionsError, governanceExceptionPendingIds, commentsLoading, commentsError, syncing, syncProgress, syncStage, syncStartedAt, lastSyncedAt, isPreview, configured, canSync, hasData, requiresDeploymentSync, hydrationError, retryHydration, syncError, currentUser, workspaceScopes, workspaceScopesLoading, workspaceScopesError, workspaceSyncStatuses, activeWorkspaceId, reloadWorkspaceScopes, selectWorkspace, sync, syncWorkspaces, syncQueue, syncWorkspaceId, cancelSync, reloadComments, addComment, addSavedView, removeSavedView, saveFindingAcknowledgement, removeFindingAcknowledgement, reloadGovernancePolicy, saveGovernanceTargets, resetGovernanceTargets, reloadGovernanceExceptions, saveSharedGovernanceException, removeSharedGovernanceException, loadHistorySnapshot],
+    [connectionInventory, enrichedData, history, hydrating, historyLoading, historyError, historyFailedSnapshotIds, savedViews, savedViewsLoading, savedViewsError, findingAcks, findingAcksLoading, findingAcksError, findingAckPendingIds, governancePolicy.targets, governancePolicyLoading, governancePolicyError, governanceExceptions, governanceExceptionsLoading, governanceExceptionsError, governanceExceptionPendingIds, commentsLoading, commentsError, syncing, syncProgress, syncStage, syncStartedAt, lastSyncedAt, isPreview, configured, canSync, hasData, requiresDeploymentSync, hydrationError, retryHydration, syncError, currentUser, workspaceScopes, workspaceScopesLoading, workspaceScopesError, workspaceSyncStatuses, activeWorkspaceId, reloadWorkspaceScopes, selectWorkspace, sync, syncWorkspaces, syncQueue, syncWorkspaceId, cancelSync, reloadComments, addComment, addSavedView, removeSavedView, saveFindingAcknowledgement, removeFindingAcknowledgement, reloadGovernancePolicy, saveGovernanceTargets, resetGovernanceTargets, reloadGovernanceExceptions, saveSharedGovernanceException, removeSharedGovernanceException, loadHistorySnapshot],
   );
 
   return <AtlasContext.Provider value={value}>{children}</AtlasContext.Provider>;

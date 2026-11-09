@@ -502,6 +502,56 @@ One input → output edge through an external job.
 External edges are not part of the snapshot; they are merged with snapshot
 edges when the map is read.
 
+## ConnectionInventory
+
+One tenant connection inventory, collected once per synchronization batch by
+the `tenantCollectConnections` Function from the Fabric admin connections API
+(Preview). It is tenant-wide and stored outside workspace snapshots.
+
+`writerEmail`, `collectedAt`, `status`, `code?`, `connectionCount`,
+`roleLookupCount`, `roleLookupSkippedCount`, `roleLookupFailedCount`,
+`truncated`, `contractVersion`
+
+`status` is `complete`, `unsupported` (the admin API refused the synchronizer)
+or `failed`. The manifest is written after its rows; a reader rejects a
+manifest whose `connectionCount` does not match its rows and falls back to the
+previous inventory. Inventories beyond the snapshot retention count are pruned,
+rows first. Every authenticated Atlas user can read the inventory; only the
+synchronizer can write or delete it. Restricting reads to administrators is
+tracked in [#98](https://github.com/fredgis/FabricAtlas/issues/98).
+
+## FabricConnection
+
+One connection of an inventory. Fabric never returns secrets.
+
+`inventoryId`, `writerEmail`, `connectionId`, `displayName`,
+`connectivityType`, `connectorType?`, `path?`, `gatewayId?`, `privacyLevel?`,
+`credentialType?`, `singleSignOnType?`, `connectionEncryption?`,
+`skipTestConnection?`, `connectionCreatedAt?`, `lastBoundAt?`,
+`lastCredentialUsedAt?`, `rolesStatus`, `ownerCount`, `pendingOwnerCount`
+
+`path` keeps the endpoint without user info, query string or fragment, because
+a Web connection URL can carry a key. Personal connections that Fabric returns
+without a name are stored as `Unnamed connection (<connector>)`. `rolesStatus`
+is `complete`, `skipped` (lookup budget exhausted), `failed` or `personal`
+(only its creator can use it, so no lookup is made).
+
+## ConnectionRoleAssignment
+
+One role of a principal on a connection.
+
+`inventoryId`, `writerEmail`, `connectionId`, `principalId`, `principalType`,
+`principalName?`, `role`
+
+`role` is `Owner`, `PendingOwner`, `User` or `UserWithReshare`. The admin API
+returns principal IDs and types; Atlas names them from the principals of the
+synchronized workspaces, the signed-in user and the configured synchronizers.
+
+The items that use a connection are not stored here: they come from the
+`Source provenance` rows of `ConfigEntry` in each workspace snapshot
+(`connection=<connectionId>; consumer=<item GUID>`), written for OneLake
+shortcuts and mirrored databases.
+
 ## Snapshot history
 
 History does not require another table. Atlas uses trusted `Workspace`

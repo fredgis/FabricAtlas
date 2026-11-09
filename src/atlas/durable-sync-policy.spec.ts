@@ -42,6 +42,7 @@ function property(entity: ts.ClassDeclaration, name: string): ts.CallExpression 
 
 describe('durable synchronization data policies', () => {
   const EXTERNAL_LINEAGE = ['OpenLineageImport', 'ExternalDataset', 'ExternalLineageEdge'];
+  const CONNECTIONS = ['ConnectionInventory', 'FabricConnection', 'ConnectionRoleAssignment'];
 
   it('registers three additive entities in both the schema type and runtime registry', () => {
     const path = resolve('rayfin', 'data', 'schema.ts');
@@ -52,12 +53,14 @@ describe('durable synchronization data policies', () => {
       statement.declarationList.declarations).find((declaration) => declaration.name.getText() === 'schema')!
       .initializer as ts.ArrayLiteralExpression;
     const names = schemaList.elements.map((element) => element.getText());
-    expect(names).toHaveLength(29);
-    expect(names.slice(-3)).toEqual(EXTERNAL_LINEAGE);
+    expect(names).toHaveLength(32);
+    expect(names.slice(-6, -3)).toEqual(EXTERNAL_LINEAGE);
+    expect(names.slice(-3)).toEqual(CONNECTIONS);
     expect(names).toContain('AccessPolicyEvidence');
     expect(names).toContain('OperationalIncident');
     const priorNames = names.filter((name) =>
-      name !== 'AccessPolicyEvidence' && name !== 'OperationalIncident' && !EXTERNAL_LINEAGE.includes(name));
+      name !== 'AccessPolicyEvidence' && name !== 'OperationalIncident' && !EXTERNAL_LINEAGE.includes(name)
+      && !CONNECTIONS.includes(name));
     expect(priorNames.slice(-9, -6)).toEqual(ENTITIES);
     expect(priorNames.at(-6)).toBe('WorkspaceScope');
     expect(priorNames.at(-5)).toBe('SynchronizerAuthority');
