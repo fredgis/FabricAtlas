@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.8.0";
+  "2.8.1";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,26 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.8.1",
+    date: "2026-11-09",
+    title: "Collect connections on demand",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Collect connections on the Connections page: the synchronizer collects the tenant inventory on demand, without synchronizing the workspaces.",
+        ],
+      },
+      {
+        title: "Fixed",
+        items: [
+          "A collection that stores nothing (admin API refused, no delegated Fabric token, Function or database failure) is recorded and explained on the Connections page, even after a reload. The last complete inventory stays visible.",
+          "The Connections navigation item no longer shows a New badge.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.8.0",
     date: "2026-11-09",

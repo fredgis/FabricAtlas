@@ -43,7 +43,10 @@ function envelope(status: "complete" | "unsupported", code?: string) {
 }
 
 describe("tenant connection stage", () => {
-  let store: ConnectionStoreApi & { inventory: ReturnType<typeof memoryEntity> };
+  let store: ConnectionStoreApi & {
+    inventory: ReturnType<typeof memoryEntity>;
+    connections: ReturnType<typeof memoryEntity>;
+  };
 
   beforeEach(() => {
     ATLAS_CONFIG.syncAdminSubject = SUBJECT;
@@ -70,24 +73,42 @@ describe("tenant connection stage", () => {
     expect(store.inventory.rows).toEqual([expect.objectContaining({ writerEmail: "sync@contoso.com", connectionCount: 1 })]);
   });
 
-  it("keeps the stored inventory when the admin API refuses the synchronizer", async () => {
+  it("records a refused collection as an attempt without connections", async () => {
     const result = await syncTenantConnections(identity, crypto.randomUUID(), undefined, undefined, {
       collect: vi.fn().mockResolvedValue(envelope("unsupported", "authorization-failed")),
       store,
       token: async () => undefined,
     });
 
-    expect(result).toEqual({ status: "skipped", reason: "unsupported", code: "authorization-failed" });
-    expect(store.inventory.rows).toEqual([]);
+    expect(result).toEqual({ status: "skipped", reason: "unsupported", code: "authorization-failed", delegated: false });
+    expect(store.inventory.rows).toEqual([
+      expect.objectContaining({ status: "unsupported", code: "authorization-failed", connectionCount: 0, writerEmail: "sync@contoso.com" }),
+    ]);
+    expect(store.connections.rows).toEqual([]);
   });
 
   it("never throws for a failed call or a caller who is not the synchronizer", async () => {
     const failed = await syncTenantConnections(identity, crypto.randomUUID(), undefined, undefined, {
+      collect: vi.fn().mockRejectedValue(new Error("Function timed out with eyJhbGciOiJIUzI1.eyJzdWIiOiIxMjM0NTY3.SflKxwRJSMeKKF2QT4fw")),
+      store,
+      token: async () => "delegated",
+    });
+    expect(failed).toEqual({
+      status: "skipped",
+      reason: "failed",
+      code: "invoke-failed",
+      message: "Function timed out with [token]",
+      delegated: true,
+    });
+    expect(store.inventory.rows).toEqual([expect.objectContaining({ status: "failed", code: "invoke-failed" })]);
+
+    store.inventory.create = vi.fn().mockRejectedValue(new Error("database offline"));
+    const unrecorded = await syncTenantConnections(identity, crypto.randomUUID(), undefined, undefined, {
       collect: vi.fn().mockRejectedValue(new Error("404")),
       store,
       token: async () => undefined,
     });
-    expect(failed).toEqual({ status: "skipped", reason: "failed" });
+    expect(unrecorded).toMatchObject({ status: "skipped", reason: "failed", code: "invoke-failed", message: "404" });
 
     const collect = vi.fn();
     const other = await syncTenantConnections({ ...identity, id: "someone-else" }, crypto.randomUUID(), undefined, undefined, {

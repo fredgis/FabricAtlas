@@ -3,6 +3,7 @@ import { configuredSyncWriters } from "./config";
 import {
   connectionStoreApi,
   persistConnectionInventory,
+  recordConnectionAttempt,
   type ConnectionStoreApi,
 } from "./connection-inventory-store";
 import { parseConnectionEnvelope, type ConnectionInventoryView } from "./connections";
@@ -26,7 +27,33 @@ export type TenantConnectionSyncResult =
       status: "skipped";
       reason: "not-deployed" | "not-synchronizer" | "invalid-response" | "unsupported" | "failed";
       code?: string;
+      /** Short error text for the administrator; tokens are removed. */
+      message?: string;
+      /** False when no delegated Fabric token could be obtained for the admin API. */
+      delegated?: boolean;
     };
+
+const TOKEN_LIKE = /[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g;
+
+/** Error text safe to show and store: no token, one line, bounded. */
+export function connectionErrorText(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  return text.replace(TOKEN_LIKE, "[token]").replace(/\s+/g, " ").trim().slice(0, 240) || "Unknown error";
+}
+
+async function recordAttempt(
+  store: ConnectionStoreApi,
+  writerEmail: string,
+  status: "unsupported" | "failed",
+  code: string | undefined,
+  collectedAt = new Date().toISOString(),
+): Promise<void> {
+  try {
+    await recordConnectionAttempt(store, { collectedAt, status, ...(code ? { code } : {}) }, writerEmail);
+  } catch (error) {
+    console.warn("[atlas] connection collection attempt not recorded", { message: connectionErrorText(error) });
+  }
+}
 
 function synchronizerEmail(identity: SyncIdentity): string | undefined {
   const subject = identity.id?.trim();
@@ -68,6 +95,7 @@ export async function syncTenantConnections(
   progress?.("Collecting tenant connections");
   const token = await (dependencies.token ?? (() => acquireGovernanceToken(identity, signal)))();
   assertSyncActive(signal);
+  const delegated = !!token;
   let output: unknown;
   try {
     output = await collect(
@@ -76,17 +104,28 @@ export async function syncTenantConnections(
     );
   } catch (error) {
     assertSyncActive(signal);
-    console.warn("[atlas] tenant connection inventory unavailable", {
-      type: error instanceof Error ? error.name : "unknown",
-    });
-    return { status: "skipped", reason: "failed" };
+    const message = connectionErrorText(error);
+    console.warn("[atlas] tenant connection inventory unavailable", { message, delegated });
+    await recordAttempt(store, writerEmail, "failed", "invoke-failed");
+    return { status: "skipped", reason: "failed", code: "invoke-failed", message, delegated };
   }
   assertSyncActive(signal);
   const inventory = parseConnectionEnvelope(output);
-  if (!inventory) return { status: "skipped", reason: "invalid-response" };
-  // A refused or failed collection is not stored, so it never hides the last complete inventory.
+  if (!inventory) {
+    await recordAttempt(store, writerEmail, "failed", "invalid-response");
+    return { status: "skipped", reason: "invalid-response", code: "invalid-response", delegated };
+  }
+  // A refused or failed collection stores a manifest without rows: it explains the
+  // empty page after a reload and never hides the last complete inventory.
   if (inventory.status !== "complete") {
-    return { status: "skipped", reason: inventory.status, ...(inventory.code ? { code: inventory.code } : {}) };
+    console.warn("[atlas] tenant connection inventory refused", { code: inventory.code, delegated });
+    await recordAttempt(store, writerEmail, inventory.status, inventory.code, inventory.collectedAt);
+    return {
+      status: "skipped",
+      reason: inventory.status,
+      ...(inventory.code ? { code: inventory.code } : {}),
+      delegated,
+    };
   }
   try {
     const result = await persistConnectionInventory(store, inventory, writerEmail, {
@@ -97,9 +136,9 @@ export async function syncTenantConnections(
     return { status: "stored", inventory: result.inventory };
   } catch (error) {
     assertSyncActive(signal);
-    console.warn("[atlas] connection inventory storage failed", {
-      type: error instanceof Error ? error.name : "unknown",
-    });
-    return { status: "skipped", reason: "failed" };
+    const message = connectionErrorText(error);
+    console.warn("[atlas] connection inventory storage failed", { message });
+    await recordAttempt(store, writerEmail, "failed", "store-failed");
+    return { status: "skipped", reason: "failed", code: "store-failed", message, delegated };
   }
 }

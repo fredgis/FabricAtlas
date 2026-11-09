@@ -73,7 +73,11 @@ import {
   useConnectionInventoryState,
   type ConnectionInventoryState,
 } from "./connection-inventory-state";
-import { syncTenantConnections } from "./connection-sync";
+import {
+  connectionErrorText,
+  syncTenantConnections,
+  type TenantConnectionSyncResult,
+} from "./connection-sync";
 import { CANCELLING_STAGE } from "./synchronization-progress";
 import {
   loadWorkspaceScopes,
@@ -172,7 +176,13 @@ export interface AtlasContextValue {
   removeGovernanceException: (id: string) => Promise<void>;
   loadHistorySnapshot: (snapshotId: string) => Promise<void>;
   /** Tenant connection inventory (v2.8); `data.connections` holds the latest one. */
-  connectionInventory: Omit<ConnectionInventoryState, "setLatest" | "reportIssue">;
+  connectionInventory: Omit<ConnectionInventoryState, "setLatest" | "reportIssue"> & {
+    /** The synchronizer can collect the inventory now, outside a synchronization. */
+    canCollect: boolean;
+    collecting: boolean;
+    collectStage?: string;
+    collect: () => Promise<void>;
+  };
 }
 
 const AtlasContext = createContext<AtlasContextValue | null>(null);
@@ -303,6 +313,27 @@ export function AtlasProvider({
   const connectionState = useConnectionInventoryState(isPreview);
   const setLatestConnectionInventory = connectionState.setLatest;
   const reportConnectionIssue = connectionState.reportIssue;
+  const connectionCollectInFlight = useRef(false);
+  const [connectionCollecting, setConnectionCollecting] = useState(false);
+  const [connectionCollectStage, setConnectionCollectStage] = useState<string>();
+  const applyTenantResult = useCallback(
+    (tenant: TenantConnectionSyncResult) => {
+      if (tenant.status === "stored") {
+        setLatestConnectionInventory(tenant.inventory);
+        return;
+      }
+      if (tenant.reason === "unsupported" || tenant.reason === "failed" || tenant.reason === "invalid-response") {
+        reportConnectionIssue({
+          reason: tenant.reason,
+          ...(tenant.code ? { code: tenant.code } : {}),
+          ...(tenant.message ? { message: tenant.message } : {}),
+          ...(tenant.delegated !== undefined ? { delegated: tenant.delegated } : {}),
+          at: new Date().toISOString(),
+        });
+      }
+    },
+    [reportConnectionIssue, setLatestConnectionInventory],
+  );
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
   const [savedViewsLoading, setSavedViewsLoading] = useState(!isPreview);
   const [savedViewsError, setSavedViewsError] = useState<string | undefined>();
@@ -996,8 +1027,8 @@ export function AtlasProvider({
         return;
       }
       // Browser runs share one progress channel and one Fabric token flow, so
-      // a second request never starts while a batch is in flight.
-      if (syncInFlight.current) return;
+      // a second request never starts while a batch or a connection collection is in flight.
+      if (syncInFlight.current || connectionCollectInFlight.current) return;
       const targets = [
         ...new Set(
           workspaceIds
@@ -1052,24 +1083,13 @@ export function AtlasProvider({
               },
               abortController.signal,
             );
-            if (tenant.status === "stored") {
-              setLatestConnectionInventory(tenant.inventory);
-            } else if (
-              tenant.reason === "unsupported" ||
-              tenant.reason === "failed" ||
-              tenant.reason === "invalid-response"
-            ) {
-              reportConnectionIssue({
-                reason: tenant.reason,
-                ...(tenant.code ? { code: tenant.code } : {}),
-                at: new Date().toISOString(),
-              });
-            }
+            applyTenantResult(tenant);
           } catch (error) {
             if (!(error instanceof SyncCancelledError) && !abortController.signal.aborted) {
               console.warn("[atlas] tenant connection stage failed", {
                 type: error instanceof Error ? error.name : "unknown",
               });
+              reportConnectionIssue({ reason: "failed", message: connectionErrorText(error), at: new Date().toISOString() });
             }
           }
           if (abortController.signal.aborted) {
@@ -1127,8 +1147,31 @@ export function AtlasProvider({
         }
       }
     },
-    [canSync, currentUser, isPreview, reportConnectionIssue, runWorkspaceSync, setLatestConnectionInventory, workspaceScopes],
+    [applyTenantResult, canSync, currentUser, isPreview, reportConnectionIssue, runWorkspaceSync, workspaceScopes],
   );
+
+  /** Collects the tenant connection inventory alone, without a workspace synchronization. */
+  const collectConnections = useCallback(async () => {
+    if (isPreview || !canSync || syncInFlight.current || connectionCollectInFlight.current) return;
+    connectionCollectInFlight.current = true;
+    setConnectionCollecting(true);
+    setConnectionCollectStage("Collecting tenant connections");
+    try {
+      const tenant = await syncTenantConnections(currentUser, crypto.randomUUID(), setConnectionCollectStage);
+      // A manual collection always answers, even when the stage was skipped.
+      if (tenant.status === "skipped" && (tenant.reason === "not-deployed" || tenant.reason === "not-synchronizer")) {
+        reportConnectionIssue({ reason: "failed", code: tenant.reason, at: new Date().toISOString() });
+      } else {
+        applyTenantResult(tenant);
+      }
+    } catch (error) {
+      reportConnectionIssue({ reason: "failed", message: connectionErrorText(error), at: new Date().toISOString() });
+    } finally {
+      connectionCollectInFlight.current = false;
+      setConnectionCollecting(false);
+      setConnectionCollectStage(undefined);
+    }
+  }, [applyTenantResult, canSync, currentUser, isPreview, reportConnectionIssue]);
 
   const sync = useCallback(async () => {
     if (!canSync) {
@@ -1619,12 +1662,17 @@ export function AtlasProvider({
       previousAvailable: connectionInventoryPreviousAvailable,
       reload: reloadConnectionInventory,
       loadPrevious: loadPreviousConnectionInventory,
+      canCollect: !isPreview && canSync && !syncing,
+      collecting: connectionCollecting,
+      collectStage: connectionCollectStage,
+      collect: collectConnections,
     }),
     [
       connectionInventoryLatest, connectionInventoryIssue, connectionInventoryLoading, connectionInventoryError,
       connectionInventoryUnavailable,
       connectionInventoryPrevious, connectionInventoryPreviousLoading, connectionInventoryPreviousError,
       connectionInventoryPreviousAvailable, reloadConnectionInventory, loadPreviousConnectionInventory,
+      isPreview, canSync, syncing, connectionCollecting, connectionCollectStage, collectConnections,
     ],
   );
 

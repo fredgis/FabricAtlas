@@ -283,25 +283,82 @@ export async function readConnectionInventory(
 
 export interface LatestConnectionInventory {
   latest?: ConnectionInventoryView;
-  /** The inventory collected before `latest`, for the Changes tab. */
+  /** The complete inventory collected before `latest`, for the Changes tab. */
   previous?: ConnectionInventorySummary;
+  /** Newest collection that stored no connection (refused or failed), when it is newer than `latest`. */
+  lastAttempt?: ConnectionInventorySummary;
 }
 
-/** Newest readable inventory; falls back to an older one when the newest is incomplete. */
+/**
+ * Newest readable complete inventory; falls back to an older one when the
+ * newest is incomplete. A refused or failed collection is a manifest without
+ * rows: it never replaces an inventory, it only explains the latest attempt.
+ */
 export async function readLatestConnectionInventory(
   api: ConnectionStoreApi,
   signal?: AbortSignal,
 ): Promise<LatestConnectionInventory> {
   const summaries = await listConnectionInventories(api, signal);
-  for (let index = 0; index < summaries.length; index += 1) {
+  const complete = summaries.filter((summary) => summary.status === "complete");
+  let latest: ConnectionInventoryView | undefined;
+  let previous: ConnectionInventorySummary | undefined;
+  for (let index = 0; index < complete.length; index += 1) {
     try {
-      const latest = await readConnectionInventory(api, summaries[index], signal);
-      return { latest, ...(summaries[index + 1] ? { previous: summaries[index + 1] } : {}) };
+      latest = await readConnectionInventory(api, complete[index], signal);
+      previous = complete[index + 1];
+      break;
     } catch (error) {
       if (signal?.aborted) throw error;
     }
   }
-  return {};
+  const newest = summaries[0];
+  const lastAttempt = newest && newest.status !== "complete" &&
+    (!latest || Date.parse(newest.collectedAt) > Date.parse(latest.collectedAt))
+    ? newest
+    : undefined;
+  return {
+    ...(latest ? { latest } : {}),
+    ...(previous ? { previous } : {}),
+    ...(lastAttempt ? { lastAttempt } : {}),
+  };
+}
+
+/**
+ * Records a collection that produced no inventory (the admin API refused the
+ * synchronizer, the Function failed or the rows could not be written), so the
+ * page can explain why it is empty after a reload. Only the newest attempt is
+ * kept. Best effort: the caller decides what to do when it fails.
+ */
+export async function recordConnectionAttempt(
+  api: ConnectionStoreApi,
+  attempt: { collectedAt: string; status: "unsupported" | "failed"; code?: string },
+  writerEmail: string,
+): Promise<void> {
+  const writer = writerEmail.trim().toLowerCase();
+  if (!writer) throw new Error("A synchronizer email is required to record a connection collection.");
+  const id = crypto.randomUUID();
+  const collectedAt = isoTime(attempt.collectedAt) ?? new Date().toISOString();
+  const code = attempt.code?.replace(/[^a-z0-9-]/gi, "-").toLowerCase().slice(0, 80);
+  await createRow(api.inventory, INVENTORY_FIELDS, {
+    id,
+    writerEmail: writer,
+    collectedAt: new Date(collectedAt),
+    status: attempt.status,
+    ...optional("code", code || undefined),
+    connectionCount: 0,
+    roleLookupCount: 0,
+    roleLookupSkippedCount: 0,
+    roleLookupFailedCount: 0,
+    truncated: false,
+    contractVersion: CONNECTION_CONTRACT_VERSION,
+  });
+  try {
+    for (const summary of await listConnectionInventories(api)) {
+      if (summary.status !== "complete" && summary.id !== id) await api.inventory.delete({ id: summary.id });
+    }
+  } catch {
+    // An older attempt left behind is harmless: readers only show the newest one.
+  }
 }
 
 async function createRow(api: ConnectionEntityApi, fields: readonly string[], row: Row): Promise<void> {
@@ -429,7 +486,10 @@ export async function persistConnectionInventory(
   try {
     const summaries = await listConnectionInventories(api, options.signal);
     const retained = Math.max(1, options.retained ?? ATLAS_CONFIG.snapshotRetentionCount);
-    const expired = summaries.filter((summary) => summary.id !== id).slice(Math.max(0, retained - 1));
+    // Failed attempts are older than this inventory, so they no longer explain anything.
+    const attempts = summaries.filter((summary) => summary.status !== "complete");
+    const older = summaries.filter((summary) => summary.status === "complete" && summary.id !== id);
+    const expired = [...older.slice(Math.max(0, retained - 1)), ...attempts];
     for (const summary of expired.reverse()) {
       const filter = { inventoryId: { eq: summary.id }, writerEmail: { eq: summary.writerEmail } };
       const [connectionRowsToDelete, roleRowsToDelete] = await Promise.all([

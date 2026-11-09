@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import * as Tabs from "@radix-ui/react-tabs";
-import { Cable, ChevronDown, Clock3, Download, History, Info, Search, ShieldAlert, UserRound } from "lucide-react";
+import { Cable, ChevronDown, Clock3, Download, History, Info, RefreshCw, Search, ShieldAlert, UserRound } from "lucide-react";
 import { Card, cn } from "../ui";
 import { PageHelp } from "../components/PageHeader";
-import { SECONDARY_BUTTON } from "../components/button-styles";
+import { PRIMARY_BUTTON, SECONDARY_BUTTON } from "../components/button-styles";
 import { useAtlas } from "../store";
 import type { AtlasFocusRequest, AtlasNavigation } from "../navigation";
 import {
@@ -24,9 +24,11 @@ import {
   usedByLabel,
   type ConnectionBadge,
   type ConnectionFlag,
+  type ConnectionInventoryView,
   type FabricConnectionRecord,
   type PolicyDraft,
 } from "../connections";
+import type { ConnectionCollectionIssue } from "../connection-inventory-state";
 import { ConnectionDirectoryContext, useConnectionUsages, useInventoryChanges } from "../connection-usage-state";
 import { configuredSyncWriters } from "../config";
 import { downloadText } from "../download";
@@ -89,6 +91,39 @@ function shortDateTime(value: string): string {
   return Number.isNaN(date.getTime())
     ? value
     : date.toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+const FAILURE_CAUSES: Record<string, string> = {
+  "invoke-failed": "Atlas could not call its tenantCollectConnections Function",
+  "invalid-response": "the Function returned an unexpected response",
+  "store-failed": "the connections could not be written to the Atlas database",
+  "not-deployed": "the tenantCollectConnections Function or the connection tables are not deployed. Run npx rayfin up",
+  "not-synchronizer": "only the configured Atlas synchronizer can collect the inventory",
+};
+
+/** Explains a collection that stored nothing, with the cause Atlas can tell apart. */
+function collectionIssueText(
+  issue: ConnectionCollectionIssue,
+  inventory: ConnectionInventoryView | undefined,
+): string {
+  const when = shortDateTime(issue.at);
+  const kept = inventory ? ` Atlas still shows the inventory of ${shortDateTime(inventory.collectedAt)}.` : "";
+  const error = issue.message ? ` Error: ${issue.message}` : "";
+  if (issue.reason === "unsupported") {
+    if (issue.code === "endpoint-unsupported") {
+      return `The connection collection of ${when} stored nothing: the admin connections API is not available in this tenant.${kept}`;
+    }
+    const cause = issue.delegated === false
+      ? "this browser could not get a delegated Fabric token (Tenant.Read.All), and the Atlas app identity is not allowed on Fabric admin APIs. Collect again and complete the Microsoft sign-in window"
+      : issue.delegated === true
+        ? "Fabric refused the synchronizer's token. The synchronizer must be a Fabric administrator and Tenant.Read.All must be granted to Atlas"
+        : "Fabric refused the admin connections API. The synchronizer must be a Fabric administrator and grant Atlas a delegated Fabric token (Tenant.Read.All)";
+    return `The connection collection of ${when} stored nothing: ${cause}.${kept}`;
+  }
+  const code = issue.code ?? (issue.reason === "invalid-response" ? "invalid-response" : undefined);
+  const cause = (code && FAILURE_CAUSES[code])
+    ?? (code ? `the admin connections API call failed (${code})` : "the collection failed");
+  return `The connection collection of ${when} stored nothing: ${cause}.${error}${kept}`;
 }
 
 function Kpi({
@@ -318,16 +353,11 @@ export function ConnectionsView({
     if (connectionInventory.error && !inventory) {
       return { tone: "warning" as const, text: `The connection inventory could not be read: ${connectionInventory.error}` };
     }
-    const issue = connectionInventory.issue;
-    if (issue) {
-      const kept = inventory ? ` Atlas still shows the inventory of ${shortDateTime(inventory.collectedAt)}.` : "";
-      return {
-        tone: "warning" as const,
-        text: issue.reason === "unsupported"
-          ? `The last synchronization could not read the admin connections API: the synchronizer must be a Fabric administrator.${kept}`
-          : `The last synchronization could not refresh the connection inventory (${issue.code ?? issue.reason}).${kept}`,
-      };
+    if (connectionInventory.collecting) {
+      return { tone: "info" as const, text: `${connectionInventory.collectStage ?? "Collecting tenant connections"}…` };
     }
+    const issue = connectionInventory.issue;
+    if (issue) return { tone: "warning" as const, text: collectionIssueText(issue, inventory) };
     if (!inventory) return undefined;
     if (inventory.status === "unsupported") {
       return {
@@ -346,6 +376,22 @@ export function ConnectionsView({
     return parts.length ? { tone: "info" as const, text: `Note: ${parts.join("; ")}.` } : undefined;
   })();
 
+  const collectButton = (className: string) =>
+    connectionInventory.canCollect || connectionInventory.collecting ? (
+      <button
+        type="button"
+        className={className}
+        onClick={() => void connectionInventory.collect()}
+        disabled={connectionInventory.collecting || !connectionInventory.canCollect}
+      >
+        <RefreshCw
+          className={cn("size-4", connectionInventory.collecting && "motion-safe:animate-spin")}
+          aria-hidden="true"
+        />
+        {connectionInventory.collecting ? "Collecting…" : "Collect connections"}
+      </button>
+    ) : null;
+
   const first = filtered.length ? currentPage * PAGE_SIZE + 1 : 0;
   const last = Math.min(filtered.length, (currentPage + 1) * PAGE_SIZE);
 
@@ -358,7 +404,8 @@ export function ConnectionsView({
               <div className="flex items-center gap-s">
                 <h1 className="font-heading text-500 font-semibold leading-500">Connections</h1>
                 <PageHelp title="Connections">
-                  Atlas reads the Fabric admin connections API (Preview) once per synchronization. It stores names,
+                  Atlas reads the Fabric admin connections API (Preview) once per synchronization, or on demand with
+                  Collect connections. It stores names,
                   connector types, endpoints without query strings, authentication methods, recency and role
                   assignments. Fabric never returns secrets. Links to items come from the shortcut and mirroring
                   evidence of every synchronized workspace.
@@ -369,6 +416,7 @@ export function ConnectionsView({
             {inventory && (
               <div className="flex flex-wrap items-center gap-s">
                 <ScopeToggle scope={scope} used={usedCount} total={rows.length} onChange={resetPage(setScope)} />
+                {collectButton(SECONDARY_BUTTON)}
                 <button type="button" className={SECONDARY_BUTTON} onClick={exportCsv} disabled={!filtered.length}>
                   <Download className="size-4" aria-hidden="true" />
                   Export CSV
@@ -419,9 +467,12 @@ export function ConnectionsView({
                 <Cable className="icon-size-500 text-muted-foreground" aria-hidden="true" />
                 <h2 className="mt-l text-400 font-semibold">No connection inventory yet</h2>
                 <p className="mt-s max-w-[560px] text-300 text-muted-foreground">
-                  The next synchronization collects it. The synchronizer must be a Fabric administrator: the admin
-                  connections API refuses other accounts.
+                  {connectionInventory.canCollect || connectionInventory.collecting
+                    ? "Collect it now, or let the next synchronization collect it. "
+                    : "The synchronizer collects it during the next synchronization. "}
+                  The synchronizer must be a Fabric administrator: the admin connections API refuses other accounts.
                 </p>
+                {collectButton(cn(PRIMARY_BUTTON, "mt-xl"))}
               </EmptyCard>
             )
           ) : (

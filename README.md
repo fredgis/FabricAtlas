@@ -436,8 +436,10 @@ restriction layers were evaluated, and includes a read-only What-if simulator.
 ### Connections
 
 Connections lists every Fabric connection of the tenant from the admin
-connections API (Preview), read once per synchronization by the synchronizer.
-For each connection it shows the owners, the authentication method, when the
+connections API (Preview), read once per synchronization by the synchronizer,
+who can also refresh it alone with **Collect connections**. When a collection
+stores nothing, the page says why (admin API refused, no delegated Fabric
+token, Function or database error), even after a reload. For each connection it shows the owners, the authentication method, when the
 credentials were last used and the synchronized items that use it (OneLake
 shortcuts and mirrored databases, in every synchronized workspace). Ownership
 flags single out connections owned by one user or by a pending owner only. The

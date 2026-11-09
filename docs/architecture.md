@@ -78,8 +78,11 @@ Synchronization is serialized in the synchronizer's browser tab.
 A failed or cancelled run preserves the previous validated snapshot.
 A failed workspace does not stop another selected workspace from
 synchronizing. The tenant stage never fails the batch: when the admin
-connections API refuses the synchronizer or the call fails, nothing is stored,
-the last complete inventory stays visible and the workspaces still synchronize.
+connections API refuses the synchronizer or the call fails, Atlas records the
+attempt and its error code without connections, the last complete inventory
+stays visible and the workspaces still synchronize. The synchronizer can also
+run the tenant stage alone with **Collect connections** on the Connections
+page.
 
 ### Collector ownership
 

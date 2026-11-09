@@ -46,6 +46,7 @@ const workspaceScopeBackend = vi.hoisted(() => ({
 }));
 const connectionSyncBackend = vi.hoisted(() => ({
   syncTenantConnections: vi.fn(),
+  connectionErrorText: (error: unknown) => (error instanceof Error ? error.message : String(error)),
 }));
 const currentUser = {
   id: "user-1",
@@ -178,6 +179,15 @@ function Harness() {
       >
         Save governance exception
       </button>
+      <button type="button" onClick={() => void atlas.connectionInventory.collect()}>
+        Collect connections
+      </button>
+      <span data-testid="can-collect">{String(atlas.connectionInventory.canCollect)}</span>
+      <span data-testid="connection-issue">
+        {atlas.connectionInventory.issue
+          ? `${atlas.connectionInventory.issue.code}:${String(atlas.connectionInventory.issue.delegated)}`
+          : ""}
+      </span>
       <span data-testid="hydrating">{String(atlas.hydrating)}</span>
       <span data-testid="history-loading">{String(atlas.historyLoading)}</span>
       <span data-testid="history-count">{atlas.history.snapshots.length}</span>
@@ -651,6 +661,30 @@ describe("AtlasProvider synchronization", () => {
       expect(connectionSyncBackend.syncTenantConnections).toHaveBeenCalledTimes(1);
       expect(connectionSyncBackend.syncTenantConnections.mock.calls[0][0]).toBe(currentUser);
       expect(order).toEqual(["tenant", ATLAS_CONFIG.workspaceId, SECOND]);
+    });
+
+    it("collects the connection inventory alone and keeps why it stored nothing", async () => {
+      connectionSyncBackend.syncTenantConnections.mockResolvedValue({
+        status: "skipped",
+        reason: "unsupported",
+        code: "authorization-failed",
+        delegated: false,
+      });
+      await renderReady();
+      expect(screen.getByTestId("can-collect")).toHaveTextContent("true");
+
+      fireEvent.click(screen.getByRole("button", { name: "Collect connections" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("connection-issue")).toHaveTextContent("authorization-failed:false"),
+      );
+      expect(connectionSyncBackend.syncTenantConnections).toHaveBeenCalledTimes(1);
+      expect(connectionSyncBackend.syncTenantConnections.mock.calls[0][0]).toBe(currentUser);
+      expect(backend.runFabricSync).not.toHaveBeenCalled();
+      expect(JSON.parse(localStorage.getItem("atlas.connections.lastIssue.v1") ?? "{}")).toMatchObject({
+        reason: "unsupported",
+        code: "authorization-failed",
+        delegated: false,
+      });
     });
 
     it("keeps synchronizing workspaces when the tenant connection stage throws", async () => {

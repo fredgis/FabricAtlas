@@ -8,6 +8,22 @@ release tag was published.
 
 ## [Unreleased]
 
+## [2.8.1] - 2026-11-09
+
+### Added
+
+- **Collect connections** button on the Connections page: the synchronizer collects the tenant connection inventory on demand, without synchronizing workspaces.
+
+### Fixed
+
+- A connection collection that stores nothing (admin API refused, no delegated Fabric token, Function or database failure) is recorded as a `ConnectionInventory` manifest without connections, with its error code, and the Connections page explains it after a reload. Before, the reason was kept in memory only, so a reload left an empty page without explanation. The last complete inventory stays visible, and the next complete inventory removes the recorded attempt.
+- The Connections navigation item no longer shows a "New" badge.
+- Atlas Scout instructions and examples read the latest **complete** connection inventory, so a recorded attempt never hides the connections.
+
+### Upgrade notes
+
+- Run `npx rayfin up`. No schema change and no synchronization needed: open Connections and select **Collect connections**. Run the Atlas Scout provisioning script again to update an existing agent.
+
 ## [2.8.0] - 2026-11-09
 
 ### Added
@@ -1011,7 +1027,8 @@ release tag was published.
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.8.0...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.8.1...HEAD
+[2.8.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.8.1
 [2.8.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.8.0
 [2.7.12]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.12
 [2.7.11]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.7.11

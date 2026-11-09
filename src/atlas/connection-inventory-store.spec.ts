@@ -3,6 +3,7 @@ import { ATLAS_CONFIG } from "./config";
 import {
   persistConnectionInventory,
   readLatestConnectionInventory,
+  recordConnectionAttempt,
   type ConnectionEntityApi,
   type ConnectionStoreApi,
 } from "./connection-inventory-store";
@@ -123,5 +124,31 @@ describe("connection inventory store", () => {
 
     const { latest } = await readLatestConnectionInventory(api);
     expect(latest?.id).toBe(older.inventory.id);
+  });
+
+  it("records a collection that stored nothing without hiding the last inventory", async () => {
+    const api = store();
+    await recordConnectionAttempt(api, { collectedAt: "2026-11-07T08:00:00.000Z", status: "unsupported", code: "authorization-failed" }, WRITER);
+    expect(await readLatestConnectionInventory(api)).toEqual({
+      lastAttempt: expect.objectContaining({ status: "unsupported", code: "authorization-failed", connectionCount: 0 }),
+    });
+
+    const stored = await persistConnectionInventory(api, inventory("2026-11-08T08:00:00.000Z"), WRITER);
+    expect(api.inventory.rows.map((row) => row.status)).toEqual(["complete"]);
+
+    await recordConnectionAttempt(api, { collectedAt: "2026-11-09T08:00:00.000Z", status: "unsupported", code: "authorization-failed" }, WRITER);
+    await recordConnectionAttempt(api, { collectedAt: "2026-11-09T09:00:00.000Z", status: "failed", code: "invoke-failed" }, WRITER);
+    expect(api.inventory.rows).toHaveLength(2);
+    const read = await readLatestConnectionInventory(api);
+    expect(read.latest?.id).toBe(stored.inventory.id);
+    expect(read.previous).toBeUndefined();
+    expect(read.lastAttempt).toMatchObject({ status: "failed", code: "invoke-failed", collectedAt: "2026-11-09T09:00:00.000Z" });
+
+    const next = await persistConnectionInventory(api, inventory("2026-11-10T08:00:00.000Z"), WRITER);
+    const after = await readLatestConnectionInventory(api);
+    expect(after.latest?.id).toBe(next.inventory.id);
+    expect(after.previous?.id).toBe(stored.inventory.id);
+    expect(after.lastAttempt).toBeUndefined();
+    expect(api.inventory.rows.every((row) => row.status === "complete")).toBe(true);
   });
 });

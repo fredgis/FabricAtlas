@@ -187,7 +187,7 @@ const NAV_GROUPS: {
     items: [
       { id: "governance", label: "Governance Center", icon: ShieldCheck },
       { id: "access", label: "Access Review", icon: KeyRound },
-      { id: "connections", label: "Connections", icon: Cable, badge: "New" },
+      { id: "connections", label: "Connections", icon: Cable },
       { id: "scout", label: "Atlas Scout", icon: Sparkles },
     ],
   },

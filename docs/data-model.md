@@ -504,19 +504,25 @@ edges when the map is read.
 
 ## ConnectionInventory
 
-One tenant connection inventory, collected once per synchronization batch by
-the `tenantCollectConnections` Function from the Fabric admin connections API
-(Preview). It is tenant-wide and stored outside workspace snapshots.
+One tenant connection inventory, collected once per synchronization batch, or
+on demand with **Collect connections**, by the `tenantCollectConnections`
+Function from the Fabric admin connections API (Preview). It is tenant-wide and
+stored outside workspace snapshots.
 
 `writerEmail`, `collectedAt`, `status`, `code?`, `connectionCount`,
 `roleLookupCount`, `roleLookupSkippedCount`, `roleLookupFailedCount`,
 `truncated`, `contractVersion`
 
 `status` is `complete`, `unsupported` (the admin API refused the synchronizer)
-or `failed`. The manifest is written after its rows; a reader rejects a
-manifest whose `connectionCount` does not match its rows and falls back to the
-previous inventory. Inventories beyond the snapshot retention count are pruned,
-rows first. Every authenticated Atlas user can read the inventory; only the
+or `failed`. Only a `complete` inventory has rows. The manifest is written
+after its rows; a reader rejects a manifest whose `connectionCount` does not
+match its rows and falls back to the previous complete inventory. An
+`unsupported` or `failed` manifest records a collection that stored nothing,
+with its `code` (for example `authorization-failed`, `invoke-failed` or
+`store-failed`): the page explains it while the last complete inventory stays
+visible. Only the newest attempt is kept, and the next complete inventory
+removes it. Inventories beyond the snapshot retention count are pruned, rows
+first. Every authenticated Atlas user can read the inventory; only the
 synchronizer can write or delete it. Restricting reads to administrators is
 tracked in [#98](https://github.com/fredgis/FabricAtlas/issues/98).
 
