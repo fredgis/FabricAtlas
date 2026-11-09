@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fabric Atlas · Connections (mockup)</title>
+<style>
+:root{
+  --bg:#f5f5f5;--fg:#242424;--card:#fff;--primary:#117865;--brand-fg:#0c695a;--secondary:#fafafa;
+  --muted:#f0f0f0;--muted-fg:#616161;--border:#e0e0e0;--input:#d1d1d1;
+  --purple:#742774;--magenta:#b146c2;--blue:#0078d4;--teal:#117865;
+  --healthy:#0e700e;
+  --w-bg:#fff8eb;--w-fg:#835b00;--d-bg:#fcf0f0;--d-fg:#a4262c;--s-bg:#edf6ef;--s-fg:#28623c;--i-bg:#edf4fc;--i-fg:#245f96;
+  --sh2:0 0 2px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.14);
+  --sh4:0 0 2px rgba(0,0,0,.12),0 2px 4px rgba(0,0,0,.14);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:"Segoe UI","Segoe UI Web (West European)",-apple-system,sans-serif;font-size:14px;color:var(--fg);background:var(--bg);-webkit-font-smoothing:antialiased}
+.num{font-family:Bahnschrift,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+.mono{font-family:Consolas,monospace}
+svg.i{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+
+/* shell */
+.spectrum{position:fixed;top:0;left:0;right:0;height:3px;z-index:10;background:linear-gradient(90deg,var(--purple),var(--magenta) 34%,var(--blue) 67%,var(--teal))}
+.app{display:flex;height:100vh;padding-top:3px}
+aside{width:224px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.brand{display:flex;align-items:center;gap:11px;padding:16px 14px 13px}
+.brand-mark{width:34px;height:34px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:var(--sh4);background:linear-gradient(145deg,var(--purple),var(--blue) 56%,var(--teal))}
+.brand-t{font-size:15px;font-weight:600;line-height:1}
+.brand-s{font-size:11px;color:var(--muted-fg);margin-top:3px}
+nav{flex:1;padding:0 10px 10px}
+.ng{margin-top:12px}.ng:first-child{margin-top:0}
+.ngl{padding:0 10px 5px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-fg)}
+.ni{position:relative;display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:4px;font-size:13px;font-weight:500;color:rgba(36,36,36,.75);margin-bottom:2px}
+.ni.active{background:rgba(17,120,101,.1);color:var(--brand-fg)}
+.ni.active:before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:3px;border-radius:9px;background:var(--primary)}
+.nb{margin-left:auto;border-radius:2px;background:rgba(17,120,101,.1);padding:0 5px;font-size:10px;font-weight:600;color:var(--brand-fg)}
+.wscard{margin:12px;border:1px solid var(--border);background:var(--secondary);border-radius:6px;padding:11px;font-size:12px;color:var(--muted-fg)}
+.wscard .k{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+.wscard .v{font-size:13px;font-weight:700;color:var(--fg);margin-top:2px}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--healthy)}
+main{flex:1;min-width:0;display:flex;flex-direction:column}
+header{height:52px;flex-shrink:0;background:var(--card);box-shadow:var(--sh2);display:flex;align-items:center;gap:12px;padding:0 20px;z-index:2}
+.crumb{font-size:13px;color:var(--muted-fg);display:flex;align-items:center;gap:6px}
+.crumb b{color:var(--fg);font-weight:600}
+.dom{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--input);border-radius:4px;background:var(--card);font-size:12px;color:var(--fg);margin-left:8px}
+.hsp{flex:1}
+.search{display:flex;align-items:center;gap:8px;height:32px;width:260px;padding:0 10px;border-radius:4px;background:var(--secondary);border:1px solid var(--border);font-size:13px;color:var(--muted-fg)}
+kbd{margin-left:auto;font-family:"Segoe UI";font-size:11px;border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;padding:0 5px;background:#fff;color:var(--muted-fg)}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:4px;font-size:13px;font-weight:600;border:1px solid var(--input);background:var(--card);color:var(--fg);white-space:nowrap}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn.sm{height:28px;padding:0 10px;font-size:12px}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted-fg)}
+.canvas{flex:1;overflow:hidden;padding:20px 24px 24px;position:relative;
+  background:radial-gradient(circle at 92% -8%,rgba(116,39,116,.05),transparent 28%),var(--bg)}
+
+/* page header */
+.ph{display:flex;align-items:flex-start;gap:16px;margin-bottom:14px}
+.ph h1{margin:0;font-size:20px;line-height:28px;font-weight:600;display:flex;align-items:center;gap:8px}
+.help{width:20px;height:20px;border-radius:50%;border:1px solid var(--input);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--muted-fg);background:var(--card)}
+.ph .obj{font-size:12px;color:var(--muted-fg);margin-top:2px;max-width:760px}
+.toolbar{margin-left:auto;display:flex;gap:8px;align-items:center}
+.seg{display:inline-flex;border:1px solid var(--input);border-radius:4px;overflow:hidden;background:var(--card)}
+.seg span{padding:0 10px;height:30px;display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--muted-fg);border-right:1px solid var(--input)}
+.seg span:last-child{border-right:0}.seg span.on{background:rgba(17,120,101,.1);color:var(--brand-fg)}
+.tabsrow{display:flex;align-items:flex-end;border-bottom:1px solid var(--border);margin-bottom:16px}
+.tabs{display:flex;gap:4px}
+.tab{position:relative;padding:8px 12px;font-size:13px;font-weight:600;color:var(--muted-fg);display:flex;align-items:center;gap:6px}
+.tab.on{color:var(--brand-fg)}
+.tab.on:after{content:"";position:absolute;left:8px;right:8px;bottom:-1px;height:2px;border-radius:2px;background:var(--brand-fg)}
+.tab .c{font-size:11px;font-weight:600;background:var(--muted);color:var(--muted-fg);border-radius:9px;padding:0 6px}
+.src{margin-left:auto;padding-bottom:8px;font-size:11.5px;color:var(--muted-fg);display:flex;align-items:center;gap:6px}
+
+.card{background:var(--card);border-radius:8px;box-shadow:var(--sh2)}
+.grid{display:grid;gap:16px}
+.kpi{padding:13px 16px}
+.kpi .l{font-size:12px;color:var(--muted-fg);display:flex;align-items:center;gap:6px}
+.kpi .v{font-size:28px;line-height:34px;font-weight:600;margin-top:4px}
+.kpi .d{font-size:12px;color:var(--muted-fg)}
+.kpi.warn .v{color:var(--d-fg)}
+
+.filters{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border)}
+.input{height:30px;border:1px solid var(--input);border-radius:4px;display:flex;align-items:center;padding:0 10px;font-size:12.5px;background:#fff;gap:8px;color:var(--muted-fg)}
+.sel{height:30px;border:1px solid var(--input);border-radius:4px;display:inline-flex;align-items:center;padding:0 8px 0 10px;font-size:12.5px;background:#fff;gap:6px;color:var(--fg);white-space:nowrap}
+.sel em{font-style:normal;color:var(--muted-fg)}
+
+table{width:100%;border-collapse:collapse;font-size:12.5px;table-layout:fixed}
+th{background:var(--secondary);text-align:left;font-size:12px;font-weight:600;color:var(--muted-fg);padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle;overflow:hidden}
+tr:last-child td{border-bottom:0}
+tr.on td{background:rgba(17,120,101,.06)}
+tr.on td:first-child{box-shadow:inset 3px 0 0 var(--primary)}
+.cn{display:flex;align-items:center;gap:9px;min-width:0}
+.cn b{font-weight:600;font-size:12.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cn .m{font-size:11px;color:var(--muted-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.glyph{width:30px;height:24px;border-radius:4px;background:var(--muted);color:var(--muted-fg);font-size:9.5px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;letter-spacing:.02em}
+.ep{font-family:Consolas,monospace;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.ow{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.ow small{font-size:11px;color:var(--muted-fg)}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:1px 6px;border-radius:4px;white-space:nowrap;line-height:16px}
+.b-w{background:var(--w-bg);color:var(--w-fg)}.b-d{background:var(--d-bg);color:var(--d-fg)}.b-s{background:var(--s-bg);color:var(--s-fg)}.b-i{background:var(--i-bg);color:var(--i-fg)}.b-m{background:var(--muted);color:var(--muted-fg)}
+.flags{display:flex;flex-wrap:wrap;gap:4px}
+.muted{color:var(--muted-fg)}.s11{font-size:11px}.s12{font-size:12px}
+.row{display:flex;align-items:center;gap:8px}
+.tfoot{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-top:1px solid var(--border);font-size:12px;color:var(--muted-fg)}
+
+/* detail panel */
+.panel{padding:16px 16px 14px;overflow:hidden}
+.p-h{display:flex;gap:10px;align-items:flex-start}
+.p-h h2{margin:0;font-size:15px;font-weight:600;line-height:20px}
+.p-h .m{font-size:12px;color:var(--muted-fg)}
+.sect{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted-fg);margin:14px 0 7px;display:flex;align-items:center;gap:6px}
+.sect .tail{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:500}
+.epbox{font-family:Consolas,monospace;font-size:12px;background:var(--secondary);border:1px solid var(--border);border-radius:4px;padding:7px 10px;color:var(--fg)}
+.kv{display:grid;grid-template-columns:142px 1fr;gap:5px 10px;font-size:12px}
+.kv dt{color:var(--muted-fg)}.kv dd{margin:0}
+.li{display:flex;align-items:center;gap:8px;font-size:12px;padding:5px 0;border-bottom:1px dashed var(--border)}
+.li:last-child{border-bottom:0}
+.li .r{margin-left:auto}
+.ic{width:24px;height:24px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;background:var(--muted);color:var(--muted-fg);flex-shrink:0}
+.ic.lh{background:rgba(12,105,90,.1);color:#0c695a}
+.link{color:var(--brand-fg);font-weight:600;font-size:12px;display:inline-flex;align-items:center;gap:4px}
+.note{display:flex;gap:8px;padding:9px 11px;border-radius:6px;font-size:12px;line-height:17px}
+.steps{margin:0;padding-left:18px;font-size:12px;line-height:18px}
+.steps li{margin-bottom:2px}
+.wm{position:absolute;right:24px;bottom:6px;font-size:11px;color:#8a8a8a}
+</style>
+</head>
+<body>
+<div class="spectrum"></div>
+<div class="app">
+<aside>
+  <div class="brand"><span class="brand-mark" data-i="compass" data-s="19"></span>
+    <div><div class="brand-t">Fabric Atlas</div><div class="brand-s">Workspace governance</div></div></div>
+  <nav id="nav"></nav>
+  <div class="wscard"><div class="k">Fabric workspace</div><div class="v">Finance-Gold</div>
+    <div class="s11" style="margin-top:4px">Domain · Finance &amp; Risk</div>
+    <div class="row s11" style="margin-top:6px;gap:6px"><span class="dot"></span>148 Fabric items</div>
+    <div class="muted" style="font-size:10px;margin-top:2px">Latest validated snapshot</div></div>
+</aside>
+<main>
+  <header>
+    <div class="crumb">Fabric · <b>Finance-Gold</b><span class="dom"><span data-i="layers" data-s="14"></span>Domain: Finance &amp; Risk<span data-i="chev" data-s="14"></span></span></div>
+    <div class="hsp"></div>
+    <div class="search"><span data-i="search" data-s="16"></span>Search workspace<kbd>Ctrl K</kbd></div>
+    <span class="btn primary"><span data-i="refresh" data-s="16"></span>Sync</span>
+    <span class="btn ghost" style="padding:0 8px"><span data-i="rows" data-s="16"></span></span>
+  </header>
+  <div class="canvas">
+    <div class="ph">
+      <div><h1>Connections <span class="help">?</span></h1>
+        <div class="obj">Every Fabric connection in the tenant: who owns it, how it authenticates and which synchronized items use it. Read-only. Atlas never changes a connection, an owner or a credential.</div></div>
+      <div class="toolbar">
+        <span class="seg"><span>Used by synced items <b class="num">63</b></span><span class="on">Whole tenant <b class="num">214</b></span></span>
+        <span class="btn"><span data-i="download" data-s="16"></span>Export CSV</span>
+      </div>
+    </div>
+
+    <div class="tabsrow">
+      <div class="tabs">
+        <span class="tab on">Inventory <span class="c">214</span></span>
+        <span class="tab">Ownership <span class="c">41</span></span>
+        <span class="tab">Policy readiness <span class="c">46</span></span>
+        <span class="tab">Changes <span class="c">6</span></span>
+      </div>
+      <div class="src"><span data-i="info" data-s="14"></span>Fabric admin connections API (Preview) · synchronizer's Tenant.Read.All token · 9 Nov 08:12 · no secret is returned</div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:16px">
+      <div class="card kpi"><div class="l"><span data-i="cable" data-s="14"></span>Connections</div><div class="v num">214</div><div class="d">171 cloud · 43 through a gateway</div></div>
+      <div class="card kpi"><div class="l"><span data-i="user" data-s="14"></span>Single owner</div><div class="v num">37</div><div class="d">12 used by synchronized items</div></div>
+      <div class="card kpi"><div class="l"><span data-i="clock" data-s="14"></span>Pending owner</div><div class="v num">4</div><div class="d">Credentials not re-entered yet</div></div>
+      <div class="card kpi"><div class="l"><span data-i="history" data-s="14"></span>Credentials unused 90+ days</div><div class="v num">22</div><div class="d">Check dependencies before deleting</div></div>
+      <div class="card kpi warn"><div class="l"><span data-i="shieldalert" data-s="14"></span>Fail the draft allowlist</div><div class="v num">46</div><div class="d">Cloud connections only, not enforced</div></div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1fr 404px;align-items:start">
+      <div class="card">
+        <div class="filters">
+          <div class="input" style="width:250px"><span data-i="search" data-s="14"></span>Search name, endpoint or owner</div>
+          <span class="sel"><em>Connector</em> All<span data-i="chev" data-s="14"></span></span>
+          <span class="sel"><em>Connectivity</em> All<span data-i="chev" data-s="14"></span></span>
+          <span class="sel"><em>Authentication</em> All<span data-i="chev" data-s="14"></span></span>
+          <span class="sel"><em>Flag</em> Any<span data-i="chev" data-s="14"></span></span>
+          <span class="s12 muted" style="margin-left:auto">Sorted by flags</span>
+        </div>
+        <table>
+          <colgroup><col style="width:24%"><col style="width:25%"><col style="width:11%"><col style="width:15%"><col style="width:7%"><col style="width:18%"></colgroup>
+          <tr><th>Connection</th><th>Endpoint</th><th>Authentication</th><th>Owners</th><th>Used by</th><th>Flags</th></tr>
+          <tr>
+            <td><div class="cn"><span class="glyph">BLOB</span><div style="min-width:0"><b>blob-partner-drop</b><div class="m">Azure Blob Storage · Cloud</div></div></div></td>
+            <td><span class="ep">partnerdrop.blob.core.windows.net/in</span></td>
+            <td>SAS</td>
+            <td><span class="ow">Amira Haddad <small>pending</small></span></td>
+            <td class="muted">None</td>
+            <td><div class="flags"><span class="badge b-w">Pending owner</span><span class="badge b-m">Unused 147 d</span><span class="badge b-d">Fails allowlist</span></div></td></tr>
+          <tr>
+            <td><div class="cn"><span class="glyph">ADLS</span><div style="min-width:0"><b>adls-archive-2023</b><div class="m">Azure Data Lake Storage · Personal cloud</div></div></div></td>
+            <td><span class="ep">contosoarch.dfs.core.windows.net/2023</span></td>
+            <td>Key</td>
+            <td><span class="ow">Marc Petit</span></td>
+            <td class="muted">None</td>
+            <td><div class="flags"><span class="badge b-w">Single owner</span><span class="badge b-m">Unused 211 d</span><span class="badge b-d">Fails allowlist</span></div></td></tr>
+          <tr class="on">
+            <td><div class="cn"><span class="glyph">ADLS</span><div style="min-width:0"><b>adls-finance-landing</b><div class="m">Azure Data Lake Storage · Cloud</div></div></div></td>
+            <td><span class="ep">contosofin.dfs.core.windows.net/landing</span></td>
+            <td>Key</td>
+            <td><span class="ow">Julien Martin</span></td>
+            <td class="num">3 items</td>
+            <td><div class="flags"><span class="badge b-w">Single owner</span><span class="badge b-d">Fails allowlist</span></div></td></tr>
+          <tr>
+            <td><div class="cn"><span class="glyph">ORA</span><div style="min-width:0"><b>oracle-cbs</b><div class="m">Oracle · VNet gateway</div></div></div></td>
+            <td><span class="ep">cbs-db.contoso.local:1521/CBS</span></td>
+            <td>Basic</td>
+            <td><span class="ow">Paul Girard</span></td>
+            <td class="num">1 item</td>
+            <td><div class="flags"><span class="badge b-w">Single owner</span><span class="badge b-d">Not encrypted</span></div></td></tr>
+          <tr>
+            <td><div class="cn"><span class="glyph">WEB</span><div style="min-width:0"><b>web-ecb-rates</b><div class="m">Web · Cloud</div></div></div></td>
+            <td><span class="ep">data-api.ecb.europa.eu</span></td>
+            <td>Anonymous</td>
+            <td><span class="ow">Finance Analysts <small>group</small></span></td>
+            <td class="num">1 item</td>
+            <td><div class="flags"><span class="badge b-d">Fails allowlist</span></div></td></tr>
+          <tr>
+            <td><div class="cn"><span class="glyph">HANA</span><div style="min-width:0"><b>sap-hana-erp</b><div class="m">SAP HANA · On-premises gateway</div></div></div></td>
+            <td><span class="ep">hana-erp.contoso.local:30015</span></td>
+            <td>Basic</td>
+            <td><span class="ow">Sophie Leroy</span></td>
+            <td class="num">2 items</td>
+            <td><div class="flags"><span class="badge b-w">Single owner</span></div></td></tr>
+          <tr>
+            <td><div class="cn"><span class="glyph">SF</span><div style="min-width:0"><b>salesforce-crm</b><div class="m">Salesforce · Cloud</div></div></div></td>
+            <td><span class="ep">login.salesforce.com</span></td>
+            <td>OAuth 2.0</td>
+            <td><span class="ow">2 users</span></td>
+            <td class="muted">None</td>
+            <td><div class="flags"><span class="badge b-i">Check OAuth issuer</span></div></td></tr>
+          <tr>
+            <td><div class="cn"><span class="glyph">SPO</span><div style="min-width:0"><b>sharepoint-finance</b><div class="m">SharePoint Online · Cloud</div></div></div></td>
+            <td><span class="ep">contoso.sharepoint.com/sites/finance</span></td>
+            <td>OAuth 2.0</td>
+            <td><span class="ow">3 owners</span></td>
+            <td class="num">4 items</td>
+            <td><div class="flags"><span class="badge b-i">Check OAuth issuer</span></div></td></tr>
+          <tr>
+            <td><div class="cn"><span class="glyph">SQL</span><div style="min-width:0"><b>sql-finance-prod</b><div class="m">Azure SQL Database · Cloud</div></div></div></td>
+            <td><span class="ep">contoso-fin.database.windows.net;finance</span></td>
+            <td>Service principal</td>
+            <td><span class="ow">Finance Data Team <small>group</small></span></td>
+            <td class="num">1 item</td>
+            <td><span class="s12 muted">None</span></td></tr>
+          <tr>
+            <td><div class="cn"><span class="glyph">SNOW</span><div style="min-width:0"><b>snowflake-mkt</b><div class="m">Snowflake · Cloud</div></div></div></td>
+            <td><span class="ep">contoso.snowflakecomputing.com</span></td>
+            <td>Key pair</td>
+            <td><span class="ow">svc-fabric-ingest <small>app</small></span></td>
+            <td class="num">2 items</td>
+            <td><span class="s12 muted">None</span></td></tr>
+          <tr>
+            <td><div class="cn"><span class="glyph">ADLS</span><div style="min-width:0"><b>adls-curated</b><div class="m">Azure Data Lake Storage · Cloud</div></div></div></td>
+            <td><span class="ep">contosodl.dfs.core.windows.net/curated</span></td>
+            <td>Workspace identity</td>
+            <td><span class="ow">Platform Admins <small>group</small></span></td>
+            <td class="num">6 items</td>
+            <td><span class="s12 muted">None</span></td></tr>
+        </table>
+        <div class="tfoot"><span>1 to 11 of 214 connections</span><span class="row"><span class="btn sm">Previous</span><span class="btn sm">Next</span></span></div>
+      </div>
+
+      <div class="card panel">
+        <div class="p-h"><span class="glyph" style="width:36px;height:30px;font-size:10.5px">ADLS</span>
+          <div style="min-width:0"><h2>adls-finance-landing</h2><div class="m">Azure Data Lake Storage · Shareable cloud connection</div></div></div>
+        <div class="row" style="gap:6px;margin-top:10px"><span class="badge b-w">Single owner</span><span class="badge b-d">Key is not in the draft allowlist</span></div>
+
+        <div class="sect">Endpoint</div>
+        <div class="epbox">https://contosofin.dfs.core.windows.net/landing</div>
+
+        <div class="sect">Connection</div>
+        <dl class="kv" style="margin:0">
+          <dt>Authentication</dt><dd>Key (account key), no single sign-on</dd>
+          <dt>Privacy level</dt><dd>Organizational</dd>
+          <dt>Created</dt><dd>11 Mar 2024</dd>
+          <dt>Last bound to an item</dt><dd>2 Oct 2026</dd>
+          <dt>Credentials last used</dt><dd>8 Nov 2026, 23:40</dd>
+        </dl>
+
+        <div class="sect">Role assignments<span class="tail">admin API</span></div>
+        <div class="li"><span class="ic"><span data-i="user" data-s="14"></span></span><span><b>Julien Martin</b> <span class="muted">· User</span></span><span class="r badge b-s">Owner</span></div>
+        <div class="li"><span class="ic"><span data-i="users" data-s="14"></span></span><span><b>Finance Engineers</b> <span class="muted">· Group</span></span><span class="r badge b-m">User</span></div>
+
+        <div class="sect">Used by synchronized items<span class="tail">OneLake shortcuts API</span></div>
+        <div class="li"><span class="ic lh"><span data-i="db" data-s="14"></span></span><span><b>lh_bronze</b> <span class="muted">· Finance-Bronze</span></span><span class="r mono s11 muted">Files/landing/sap</span></div>
+        <div class="li"><span class="ic lh"><span data-i="db" data-s="14"></span></span><span><b>lh_bronze</b> <span class="muted">· Finance-Bronze</span></span><span class="r mono s11 muted">Tables/risk_raw</span></div>
+        <div class="li"><span class="ic lh"><span data-i="db" data-s="14"></span></span><span><b>lh_silver</b> <span class="muted">· Finance-Silver</span></span><span class="r mono s11 muted">Files/ref/rates</span></div>
+        <div style="margin-top:6px"><span class="link"><span data-i="way" data-s="14"></span>9 downstream items in Map &amp; lineage</span></div>
+
+        <div class="sect">Before a handover</div>
+        <ol class="steps">
+          <li>Add a second owner, ideally a group or a service principal.</li>
+          <li>The new owner re-enters the credentials. The Owner role does not move them.</li>
+          <li>Check the 3 shortcuts above after the change.</li>
+        </ol>
+        <div class="row" style="margin-top:10px;gap:8px"><span class="btn sm"><span data-i="copy" data-s="14"></span>Copy admin API request</span><span class="btn sm"><span data-i="external" data-s="14"></span>Manage connections</span></div>
+      </div>
+    </div>
+    <div class="wm">Mockup · illustrative data</div>
+  </div>
+</main>
+</div>
+<script>
+const P={
+compass:'<circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>',
+chart:'<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
+way:'<circle cx="12" cy="4.5" r="2.5"/><path d="m10.2 6.3-3.9 3.9"/><circle cx="4.5" cy="12" r="2.5"/><path d="M7 12h10"/><circle cx="19.5" cy="12" r="2.5"/><path d="m13.8 17.7 3.9-3.9"/><circle cx="12" cy="19.5" r="2.5"/>',
+globe:'<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+tree:'<path d="M20 10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2.5a1 1 0 0 1-.8-.4l-.9-1.2A1 1 0 0 0 15 3h-2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"/><path d="M20 21a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1h-2.9a1 1 0 0 1-.88-.55l-.42-.85a1 1 0 0 0-.92-.6H13a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"/><path d="M3 5a2 2 0 0 0 2 2h3"/><path d="M3 3v13a2 2 0 0 0 2 2h3"/>',
+boxes:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+shield:'<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+shieldalert:'<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/>',
+key:'<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5"/>',
+cable:'<path d="M17 21v-2a1 1 0 0 1-1-1v-1a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1a1 1 0 0 1-1 1"/><path d="M19 15V6.5a1 1 0 0 0-7 0v11a1 1 0 0 1-7 0V9"/><path d="M21 21v-2h-4"/><path d="M3 5h4V3"/><path d="M7 5a1 1 0 0 1 1 1v1a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1V3"/>',
+sparkles:'<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/><path d="M4 17v2"/><path d="M5 18H3"/>',
+user:'<circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/>',
+users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+activity:'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+settings:'<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
+plug:'<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>',
+info:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+search:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+refresh:'<path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/>',
+rows:'<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 12h18"/><path d="M3 7.5h18"/><path d="M3 16.5h18"/>',
+layers:'<path d="m12 2 10 5-10 5L2 7Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>',
+chev:'<path d="m6 9 6 6 6-6"/>',
+download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
+clock:'<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+history:'<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
+db:'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>',
+copy:'<rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+external:'<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>'
+};
+const ic=(n,s=17)=>`<svg class="i" viewBox="0 0 24 24" width="${s}" height="${s}">${P[n]||''}</svg>`;
+const NAV=[["Explore",[["chart","Overview"],["way","Map & lineage"],["globe","External lineage"],["tree","Catalog"],["boxes","Asset Catalog"]]],
+["Govern",[["shield","Governance Center"],["key","Access Review"],["cable","Connections","New"],["sparkles","Atlas Scout"],["user","My items"]]],
+["Operate",[["activity","Jobs & health"],["settings","Workspace Hub"]]],
+["System",[["plug","MCP"],["info","About"]]]];
+document.getElementById('nav').innerHTML=NAV.map(([g,items])=>`<div class="ng"><div class="ngl">${g}</div>${items.map(([i,l,b])=>`<div class="ni ${l==='Connections'?'active':''}">${ic(i)}${l.replace('&','&amp;')}${b?`<span class="nb">${b}</span>`:''}</div>`).join('')}</div>`).join('');
+document.querySelectorAll('[data-i]').forEach(e=>e.innerHTML=ic(e.dataset.i,+(e.dataset.s||17)));
+</script>
+</body>
+</html>
