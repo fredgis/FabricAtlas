@@ -8,6 +8,13 @@ release tag was published.
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-11-09
+
+### Added
+
+- The departure pack checks the principal against the owners of every Fabric connection in the tenant inventory, matched on the Entra object ID or, when Fabric returns it, the user principal name; never on a display name. An **Owned connections** tile sits next to Blast radius, and a **Connections** section lists each connection with the principal's role (sole owner, co-owner, pending owner or user), the other owners, the synchronized items that use it in every synchronized workspace and the action to take before or after the departure. Connections whose owners are unknown or that are personal are counted, not guessed.
+- A connection that the departure would leave without an owner while synchronized items use it counts as an urgent orphan risk, in the dialog and in the Markdown departure pack, which gains a **Connections** section.
+
 ### Fixed
 
 - Atlas Scout answers questions about Fabric connections and their owners. It no longer rewrites them per workspace snapshot, which made it give up on owner questions, and it reports personal connections (usable by their creator only, without roles) separately instead of as connections without an owner.
@@ -1041,7 +1048,8 @@ release tag was published.
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.8.2...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.9.0...HEAD
+[2.9.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.9.0
 [2.8.2]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.8.2
 [2.8.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.8.1
 [2.8.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.8.0

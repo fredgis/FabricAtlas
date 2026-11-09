@@ -556,6 +556,8 @@ One role of a principal on a connection.
 `role` is `Owner`, `PendingOwner`, `User` or `UserWithReshare`. The admin API
 returns principal IDs and types; Atlas names them from the principals of the
 synchronized workspaces, the signed-in user and the configured synchronizers.
+The departure pack matches a principal to these roles on the Entra object ID,
+or on the user principal name when Fabric returns it, never on a display name.
 
 The items that use a connection are not stored here: they come from the
 `Source provenance` rows of `ConfigEntry` in each workspace snapshot

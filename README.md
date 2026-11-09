@@ -157,13 +157,13 @@ it tenant-wide.
 
 The [Fabric Atlas development and architecture presentation](prez/Fabric-Atlas-Dev-Architecture.pdf)
 opens with an implemented solution overview (release timeline, key achievements,
-major features including the 2.8 connection inventory, and the whitepaper) and
-the agentic transformation (evidence store, Atlas MCP, Atlas Scout and its
-guardrails), then documents the 2.8.0 architecture, the
-Atlas Scout data agent path, OpenLineage import and export, the Rayfin-first
-collector path, manifest-last publication, current entity groups and the exact
-Rayfin platform gaps that keep Python compatibility and browser-driven
-synchronization in place. The editable deck (with the whitepaper PDF embedded),
+major features including the 2.8 connection inventory and its 2.9 departure
+pack check, and the whitepaper) and the agentic transformation (evidence store,
+Atlas MCP, Atlas Scout and its guardrails), then documents the 2.9.0
+architecture, the Atlas Scout data agent path, OpenLineage import and export,
+the Rayfin-first collector path, manifest-last publication, current entity
+groups and the exact Rayfin platform gaps that keep Python compatibility and
+browser-driven synchronization in place. The editable deck (with the whitepaper PDF embedded),
 PDF export and PlantUML sources are in [`prez/`](prez/).
 
 ## What it does
@@ -182,7 +182,8 @@ Fabric Atlas collects that metadata without copying business data.
   Sync Brief summarizes the latest sync and exports it as Markdown.
 - Review effective recorded access, run local What-if scenarios and generate
   departure packs that separate ownership, privileged access, identity
-  references and unknown evidence.
+  references and unknown evidence, and check the person against the owners of
+  every Fabric connection.
 - Track findings, item-family Coverage, Policies & AI and six governance
   posture pillars.
 - Act on findings: open the item in Fabric, filter to items you own, see the
@@ -205,13 +206,13 @@ Fabric Atlas collects that metadata without copying business data.
 
 ## Capabilities
 
-| Area | Included in Fabric Atlas 2.8 |
+| Area | Included in Fabric Atlas 2.9 |
 |---|---|
 | Workspaces and sync | Shared workspace scope, independent validated snapshots, persisted per-workspace run status, active-workspace switching, staged progress and last-known-good fallback |
 | Catalog and search | Item Catalog with facets and tag scope, Collection status with the reason for each missing section (for example schema-enabled Lakehouses, whose tables come only from the SQL analytics endpoint), alphabetized Asset Catalog, `Ctrl+K` search with description snippets, Request access link, Markdown identity sheet export per item, SQL/KQL/semantic/Ontology 2.0/graph/Data Agent inventory |
 | Lineage and impact | Trusted Atlas graph, connected type-filter context, stable Impact mode, Item Relations Preview, Evidence, Changes, X-Ray, notebook and semantic object lineage, exportable impact reports, and [external lineage](docs/external-lineage.md): OpenLineage import, link to Fabric items and NDJSON export |
 | Governance | Findings with Fix in Fabric links, Why panel and priority score, My items, OneLake catalog pillars (Health, Protect, Trust), JSON and snapshot export, Teams Adaptive Card and optional webhook, Fabric domain names, filter and per-domain posture, tenant settings drift, a closed six-pillar Governance Radar, snapshot comparison, history, item-family Coverage, posture targets, Policies & AI, read-only Fabric policies and optional AI description suggestions |
-| Access | Effective recorded access, principal type and role filters, OneLake data access roles (RLS/CLS), sensitive external shares, personal decisions, What-if simulation and evidence-based departure packs |
+| Access | Effective recorded access, principal type and role filters, OneLake data access roles (RLS/CLS), sensitive external shares, personal decisions, What-if simulation and evidence-based departure packs, including the Fabric connections the principal owns |
 | Connections | Tenant connection inventory from the Fabric admin connections API (Preview), owners and pending owners, authentication and single sign-on, credential recency, items that use each connection across synchronized workspaces, ownership and gateway encryption findings, draft data connection policy simulation, changes between inventories and CSV export |
 | Operations | Job history, observed incidents, inferred downstream impact, Full or Incremental sync (one shared choice; a notice explains when a full scan is required because this browser holds no previous full snapshot or the 7-day full rescan is due), rescanned/reused counts and real run duration, Open in Fabric cards for Govern and Admin monitoring, configuration and team notes |
 | Security | Fabric brokered authentication, synchronizer-only publication, metadata-only storage and user-scoped personal state |
@@ -439,12 +440,15 @@ Connections lists every Fabric connection of the tenant from the admin
 connections API (Preview), read once per synchronization by the synchronizer,
 who can also refresh it alone with **Collect connections**. When a collection
 stores nothing, the page says why (admin API refused, no delegated Fabric
-token, Function or database error), even after a reload. For each connection it shows the owners, the authentication method, when the
-credentials were last used and the synchronized items that use it (OneLake
-shortcuts and mirrored databases, in every synchronized workspace). Ownership
-flags single out connections owned by one user or by a pending owner only. The
-Policy readiness tab tests a draft authentication allowlist and blocked
-connection kinds before an administrator turns them on in the admin portal.
+token, Function or database error), even after a reload. For each connection
+it shows the owners, the authentication method, when the credentials were last
+used and the synchronized items that use it (OneLake shortcuts and mirrored
+databases, in every synchronized workspace). Ownership flags single out
+connections owned by one user or by a pending owner only. The Policy readiness
+tab tests a draft authentication allowlist and blocked connection kinds before
+an administrator turns them on in the admin portal. The departure pack of a
+person checks them against these owners: a connection that would be left
+without an owner while synchronized items use it is an urgent orphan risk.
 Fabric never returns secrets, and Atlas never changes a connection, an owner or
 a credential.
 
@@ -585,7 +589,7 @@ contracts or a separate product decision.
 | Report visual usage | Not collected | A supported report definition path with sensitivity and permission handling |
 | Shared action plans and notifications | Optional Teams webhook for new critical findings; no shared action plans | Reviewed team workflow and ownership model |
 | Generated Power BI posture report (PBIP) | Not implemented; JSON and snapshot export, the Teams card and webhook cover sharing in 2.6 | A reviewed report template fed by the published snapshot |
-| 2.8 release line | See [the latest release](https://github.com/fredgis/FabricAtlas/releases/latest) and [CHANGELOG.md](CHANGELOG.md) | Patch releases for verified fixes; larger workflows depend on the contracts above |
+| 2.9 release line | See [the latest release](https://github.com/fredgis/FabricAtlas/releases/latest) and [CHANGELOG.md](CHANGELOG.md) | Patch releases for verified fixes; larger workflows depend on the contracts above |
 
 ## Quickstart
 

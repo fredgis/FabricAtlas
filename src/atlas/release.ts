@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.8.2";
+  "2.9.0";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,26 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "2.9.0",
+    date: "2026-11-09",
+    title: "Connections in the departure pack",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "The departure pack checks the principal against the owners of every Fabric connection: an Owned connections tile next to Blast radius and a Connections section with the principal's role, the other owners, the items that use the connection and the action to take.",
+          "A connection that the departure would leave without an owner while synchronized items use it counts as an urgent orphan risk, in the dialog and in the Markdown departure pack.",
+        ],
+      },
+      {
+        title: "Fixed",
+        items: [
+          "Atlas Scout answers questions about connection owners and reports personal connections separately instead of as connections without an owner.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.8.2",
     date: "2026-11-09",
