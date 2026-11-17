@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fabric Atlas · Send Sync Brief to Teams (mockup)</title>
+<style>
+:root{
+  --bg:#f5f5f5;--fg:#242424;--card:#fff;--primary:#117865;--brand-fg:#0c695a;--secondary:#fafafa;
+  --muted:#f0f0f0;--muted-fg:#616161;--border:#e0e0e0;--input:#d1d1d1;
+  --purple:#742774;--magenta:#b146c2;--blue:#0078d4;--teal:#117865;
+  --healthy:#0e700e;--failing:#bc2f32;
+  --w-bg:#fff8eb;--w-fg:#835b00;--d-bg:#fcf0f0;--d-fg:#a4262c;--s-bg:#edf6ef;--s-fg:#28623c;--i-bg:#edf4fc;--i-fg:#245f96;
+  --sh2:0 0 2px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.14);
+  --sh4:0 0 2px rgba(0,0,0,.12),0 2px 4px rgba(0,0,0,.14);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:"Segoe UI","Segoe UI Web (West European)",-apple-system,sans-serif;font-size:14px;color:var(--fg);background:var(--bg);-webkit-font-smoothing:antialiased}
+.num{font-family:Bahnschrift,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+.mono{font-family:Consolas,monospace}
+svg.i{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+
+.spectrum{position:fixed;top:0;left:0;right:0;height:3px;z-index:10;background:linear-gradient(90deg,var(--purple),var(--magenta) 34%,var(--blue) 67%,var(--teal))}
+.app{display:flex;height:100vh;padding-top:3px}
+aside{width:224px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.brand{display:flex;align-items:center;gap:11px;padding:16px 14px 13px}
+.brand-mark{width:34px;height:34px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:var(--sh4);background:linear-gradient(145deg,var(--purple),var(--blue) 56%,var(--teal))}
+.brand-t{font-size:15px;font-weight:600;line-height:1}
+.brand-s{font-size:11px;color:var(--muted-fg);margin-top:3px}
+nav{flex:1;padding:0 10px 10px}
+.ng{margin-top:12px}.ng:first-child{margin-top:0}
+.ngl{padding:0 10px 5px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-fg)}
+.ni{position:relative;display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:4px;font-size:13px;font-weight:500;color:rgba(36,36,36,.75);margin-bottom:2px}
+.ni.active{background:rgba(17,120,101,.1);color:var(--brand-fg)}
+.ni.active:before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:3px;border-radius:9px;background:var(--primary)}
+.wscard{margin:12px;border:1px solid var(--border);background:var(--secondary);border-radius:6px;padding:11px;font-size:12px;color:var(--muted-fg)}
+.wscard .k{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+.wscard .v{font-size:13px;font-weight:700;color:var(--fg);margin-top:2px}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--healthy)}
+
+main{flex:1;min-width:0;display:flex;flex-direction:column}
+header{height:52px;flex-shrink:0;background:var(--card);box-shadow:var(--sh2);display:flex;align-items:center;gap:10px;padding:0 20px;z-index:2}
+.crumb{font-size:13px;color:var(--muted-fg);display:flex;align-items:center;gap:6px}
+.crumb b{color:var(--fg);font-weight:600}
+.dom{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--input);border-radius:4px;background:var(--card);font-size:12px;color:var(--fg)}
+.hsp{flex:1}
+.search{display:flex;align-items:center;gap:8px;height:32px;width:230px;padding:0 10px;border-radius:4px;background:var(--secondary);border:1px solid var(--border);font-size:12.5px;color:var(--muted-fg)}
+kbd{margin-left:auto;font-family:"Segoe UI";font-size:11px;border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;padding:0 5px;background:#fff;color:var(--muted-fg)}
+.btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:4px;font-size:12.5px;font-weight:600;border:1px solid var(--input);background:var(--card);color:var(--fg);white-space:nowrap}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn.teams{background:rgba(17,120,101,.1);border-color:rgba(17,120,101,.45);color:var(--brand-fg);box-shadow:0 0 0 2px rgba(17,120,101,.15)}
+.btn.sm{height:28px;padding:0 10px;font-size:12px}
+.syncmeta{font-size:12px;color:var(--muted-fg)}
+
+.canvas{flex:1;overflow:hidden;padding:18px 24px 20px;position:relative;
+  background:radial-gradient(circle at 92% -8%,rgba(116,39,116,.05),transparent 28%),var(--bg)}
+.card{background:var(--card);border-radius:8px;box-shadow:var(--sh2);border:1px solid var(--border)}
+.ph{display:flex;align-items:flex-start;gap:16px;padding:14px 18px;border-bottom:1px solid var(--border)}
+.ph h1{margin:0;font-size:19px;line-height:26px;font-weight:600}
+.ph .obj{font-size:12px;color:var(--muted-fg);margin-top:2px}
+.toolbar{margin-left:auto;display:flex;gap:8px;align-items:center}
+
+.tabsrow{display:flex;align-items:center;border-bottom:1px solid var(--border);padding:0 14px;background:var(--card)}
+.tab{position:relative;padding:9px 13px;font-size:13px;font-weight:600;color:var(--muted-fg);display:flex;align-items:center;gap:6px}
+.tab.on{color:var(--brand-fg)}
+.tab.on:after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;border-radius:2px;background:var(--brand-fg)}
+.tab .c{font-size:11px;font-weight:600;background:var(--muted);color:var(--muted-fg);border-radius:9px;padding:0 6px}
+
+.grid{display:grid;gap:14px}
+.brief-hdr{display:flex;align-items:center;gap:10px;padding:11px 14px;background:var(--secondary);border-bottom:1px solid var(--border)}
+.brief-hdr h2{margin:0;font-size:14.5px;font-weight:600}
+.brief-sub{padding:8px 14px;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted-fg);display:flex;align-items:center;justify-content:space-between}
+.bgrid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border)}
+.bsec{background:var(--card);padding:11px 14px}
+.bsec h3{margin:0;font-size:12.5px;font-weight:600;display:flex;align-items:center;justify-content:space-between}
+.cnt{font-size:11px;font-weight:600;padding:1px 7px;border-radius:4px;background:rgba(17,120,101,.1);color:var(--brand-fg)}
+.cnt.na{background:var(--muted);color:var(--muted-fg)}
+.blist{margin:7px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px;font-size:12px}
+.blist li{display:flex;align-items:center;gap:6px;line-height:17px}
+.blist b{font-weight:600}
+.arr{margin-left:auto;color:var(--brand-fg);display:inline-flex}
+
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 7px;border-radius:4px;white-space:nowrap}
+.b-s{background:var(--s-bg);color:var(--s-fg);border:1px solid rgba(40,98,60,.22)}
+.b-d{background:var(--d-bg);color:var(--d-fg)}
+.b-i{background:var(--i-bg);color:var(--i-fg)}
+
+/* Adaptive Card preview */
+.ac-shell{padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.ac-card{border:1px solid #d2d0ce;border-left:4px solid var(--primary);border-radius:6px;padding:13px 14px;background:#fcfcfc;box-shadow:var(--sh2);display:flex;flex-direction:column;gap:8px}
+.ac-hdr{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--muted-fg)}
+.ac-title{font-size:14px;font-weight:700;color:var(--fg)}
+.ac-facts{display:grid;grid-template-columns:168px 1fr;gap:4px 8px;font-size:12px;background:#fff;border:1px solid var(--border);border-radius:5px;padding:8px 10px}
+.ac-facts dt{color:var(--muted-fg);font-weight:500}.ac-facts dd{margin:0;font-weight:600}
+.ac-item{font-size:11.5px;line-height:16px;padding-left:8px;border-left:2px solid rgba(188,47,50,.5)}
+.ac-actions{display:flex;gap:8px;padding-top:4px}
+.muted{color:var(--muted-fg)}.s11{font-size:11px}.s12{font-size:12px}
+.wm{position:absolute;right:24px;bottom:5px;font-size:11px;color:#8a8a8a}
+</style>
+</head>
+<body>
+<div class="spectrum"></div>
+<div class="app">
+<aside>
+  <div class="brand"><span class="brand-mark" data-i="compass" data-s="19"></span>
+    <div><div class="brand-t">Fabric Atlas</div><div class="brand-s">Workspace governance</div></div></div>
+  <nav id="nav"></nav>
+  <div class="wscard"><div class="k">Fabric workspace</div><div class="v">Finance-Gold</div>
+    <div class="s11" style="margin-top:4px">Domain · Finance &amp; Risk</div>
+    <div style="display:flex;align-items:center;gap:6px;margin-top:6px" class="s11"><span class="dot"></span>148 Fabric items</div>
+    <div class="muted" style="font-size:10px;margin-top:2px">Latest validated snapshot</div></div>
+</aside>
+<main>
+  <header>
+    <div class="crumb">Fabric · <span class="dom"><span data-i="layers" data-s="13"></span>Domain: Finance &amp; Risk<span data-i="chev" data-s="13"></span></span> · <b>Finance-Gold</b> · Governance Center</div>
+    <div class="hsp"></div>
+    <div class="search"><span data-i="search" data-s="15"></span>Search workspace<kbd>Ctrl K</kbd></div>
+    <span class="btn"><span data-i="download" data-s="14"></span>Export JSON</span>
+    <span class="syncmeta">synced 8m ago</span>
+    <span class="btn primary"><span data-i="refresh" data-s="14"></span>Sync</span>
+  </header>
+
+  <div class="canvas">
+    <div class="card" style="margin-bottom:13px;overflow:hidden">
+      <div class="ph">
+        <div>
+          <h1>Governance Center</h1>
+          <div class="obj">Posture, findings and changes in this workspace.</div>
+        </div>
+        <div class="toolbar">
+          <span class="btn sm"><span data-i="send" data-s="13"></span>Test Teams webhook</span>
+          <span class="badge b-s"><span data-i="check" data-s="12"></span>Webhook configured</span>
+        </div>
+      </div>
+      <div class="tabsrow">
+        <span class="tab">Posture</span>
+        <span class="tab">Findings <span class="c">18</span></span>
+        <span class="tab on">Changes</span>
+        <span class="tab">History</span>
+        <span class="tab">Coverage</span>
+        <span class="tab">Policies &amp; AI</span>
+        <span class="tab">Tenant settings <span class="c">4</span></span>
+      </div>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1fr 412px;align-items:start">
+      <div class="card" style="overflow:hidden">
+        <div class="brief-hdr">
+          <div style="min-width:0;flex:1">
+            <h2>Sync Brief</h2>
+            <div class="s12 muted">What changed between validated snapshots <span class="mono">snap_09f4</span> (17 Nov 09:00) → <span class="mono">snap_4c21</span> (17 Nov 16:18).</div>
+          </div>
+          <span class="btn sm"><span data-i="copy" data-s="13"></span>Copy Markdown</span>
+          <span class="btn sm"><span data-i="download" data-s="13"></span>Download</span>
+          <span class="btn sm teams"><span data-i="send" data-s="13"></span>Send to Teams</span>
+        </div>
+        <div class="brief-sub">
+          <span>Tenant settings drift: <b style="color:var(--fg)">compared</b> · Pre-existing high-priority findings: <b style="color:var(--fg)" class="num">5</b></span>
+          <span class="badge b-s"><span data-i="check" data-s="12"></span>Brief posted to Teams · 16:19</span>
+        </div>
+        <div class="bgrid">
+          <div class="bsec">
+            <h3>Items added or removed <span class="cnt num">3</span></h3>
+            <ul class="blist">
+              <li><div><b>+ rp_exec_margin_flash</b> <span class="muted">— Report added in Finance-Gold</span></div><span class="arr" data-i="arrow" data-s="13"></span></li>
+              <li><div><b>+ nb_fx_revaluation</b> <span class="muted">— Notebook added</span></div><span class="arr" data-i="arrow" data-s="13"></span></li>
+              <li><div><b>− df_legacy_budget_v1</b> <span class="muted">— Dataflow Gen2 removed</span></div></li>
+            </ul>
+          </div>
+          <div class="bsec">
+            <h3>New external or elevated access <span class="cnt num">2</span></h3>
+            <ul class="blist">
+              <li><div><b>ext_auditor@partner.eu</b> <span class="muted">— Guest granted View on rp_board_pack_q4</span></div><span class="arr" data-i="arrow" data-s="13"></span></li>
+              <li><div><b>svc-finops-sync</b> <span class="muted">— Contributor role added at workspace</span></div><span class="arr" data-i="arrow" data-s="13"></span></li>
+            </ul>
+          </div>
+          <div class="bsec">
+            <h3>New high-priority findings <span class="cnt num">2</span></h3>
+            <ul class="blist">
+              <li><div><b>Confidential report shared externally</b> <span class="muted">— rp_board_pack_q4 (Critical)</span></div><span class="arr" data-i="arrow" data-s="13"></span></li>
+              <li><div><b>Failed Refresh: sm_finance_consolidated</b> <span class="muted">— timeout at 15:42 (High)</span></div><span class="arr" data-i="arrow" data-s="13"></span></li>
+            </ul>
+          </div>
+          <div class="bsec">
+            <h3>Jobs failed or recovered <span class="cnt num">2</span></h3>
+            <ul class="blist">
+              <li><div><b>sm_finance_consolidated</b> <span class="muted">— Refresh moved Completed → Failed</span></div><span class="arr" data-i="arrow" data-s="13"></span></li>
+              <li><div><b>pl_daily_ledger_close</b> <span class="muted">— Pipeline recovered Failed → Completed</span></div><span class="arr" data-i="arrow" data-s="13"></span></li>
+            </ul>
+          </div>
+          <div class="bsec">
+            <h3>Lineage edges &amp; schema objects <span class="cnt num">4</span></h3>
+            <ul class="blist">
+              <li><div><b>sm_finance_consolidated → rp_exec_margin_flash</b> <span class="muted">— edge added</span></div><span class="arr" data-i="arrow" data-s="13"></span></li>
+              <li><div><b>Measure [Gross Margin %]</b> <span class="muted">— DAX expression updated (+2 more)</span></div><span class="arr" data-i="arrow" data-s="13"></span></li>
+            </ul>
+          </div>
+          <div class="bsec">
+            <h3>Tenant connection changes <span class="cnt na">Unavailable</span></h3>
+            <div class="s12 muted" style="margin-top:6px">Previous snapshot predates connection inventory baseline — never reported as 0.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card ac-shell">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted-fg)">Delivered Adaptive Card 1.5</div>
+            <div style="font-size:14px;font-weight:600;margin-top:2px">Teams channel preview (<span class="mono">teamsNotify</span>)</div>
+          </div>
+          <span class="badge b-i">4.2 KB / 28 KB max</span>
+        </div>
+
+        <div class="ac-card">
+          <div class="ac-hdr">
+            <span><b style="color:var(--brand-fg)">Fabric Atlas</b> · Workflows webhook</span>
+            <span>Today 16:19</span>
+          </div>
+          <div class="ac-title">Sync Brief · Finance-Gold</div>
+          <div class="s12 muted">Compared validated snapshots · 17 Nov 09:00 → 17 Nov 16:18 UTC</div>
+
+          <dl class="ac-facts">
+            <dt>Items (+added / −removed)</dt><dd class="num">+2 / −1</dd>
+            <dt>External or elevated grants</dt><dd class="num" style="color:var(--d-fg)">2 new</dd>
+            <dt>New high/critical findings</dt><dd class="num" style="color:var(--d-fg)">2 new <span class="muted" style="font-weight:400">(5 pre-existing)</span></dd>
+            <dt>Jobs failed / recovered</dt><dd class="num">1 failed · 1 recovered</dd>
+            <dt>Connection inventory diff</dt><dd class="muted">Unavailable</dd>
+            <dt>Largest downstream impact</dt><dd>sm_finance_consolidated (14)</dd>
+          </dl>
+
+          <div style="font-size:11px;font-weight:600;color:var(--muted-fg);margin-top:2px">TOP NEW HIGHLIGHTS</div>
+          <div class="ac-item"><b>[Critical]</b> rp_board_pack_q4 (Highly Confidential) shared with guest</div>
+          <div class="ac-item"><b>[High]</b> sm_finance_consolidated refresh failed at 15:42</div>
+
+          <div class="ac-actions">
+            <span class="btn primary sm"><span data-i="external" data-s="12"></span>Open Changes in Fabric Atlas</span>
+          </div>
+        </div>
+
+        <div style="background:var(--secondary);border:1px solid var(--border);border-radius:6px;padding:9px 11px;font-size:11.5px;line-height:16px;color:var(--muted-fg)">
+          <b style="color:var(--fg)">Zero new secret or entity:</b> reuses <span class="mono">ATLAS_TEAMS_WEBHOOK_URL</span> inside Rayfin Function <span class="mono">teamsNotify</span>. The webhook URL never leaves the server; truncated lists cap cleanly under <span class="mono">TEAMS_CARD_MAX_BYTES</span> (28 KB).
+        </div>
+      </div>
+    </div>
+    <div class="wm">Mockup · illustrative data</div>
+  </div>
+</main>
+</div>
+<script>
+const P={
+compass:'<circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>',
+chart:'<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
+way:'<circle cx="12" cy="4.5" r="2.5"/><path d="m10.2 6.3-3.9 3.9"/><circle cx="4.5" cy="12" r="2.5"/><path d="M7 12h10"/><circle cx="19.5" cy="12" r="2.5"/><path d="m13.8 17.7 3.9-3.9"/><circle cx="12" cy="19.5" r="2.5"/>',
+globe:'<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+tree:'<path d="M20 10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2.5a1 1 0 0 1-.8-.4l-.9-1.2A1 1 0 0 0 15 3h-2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"/><path d="M20 21a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1h-2.9a1 1 0 0 1-.88-.55l-.42-.85a1 1 0 0 0-.92-.6H13a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"/><path d="M3 5a2 2 0 0 0 2 2h3"/><path d="M3 3v13a2 2 0 0 0 2 2h3"/>',
+boxes:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+shield:'<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+key:'<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5"/>',
+cable:'<path d="M17 21v-2a1 1 0 0 1-1-1v-1a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1a1 1 0 0 1-1 1"/><path d="M19 15V6.5a1 1 0 0 0-7 0v11a1 1 0 0 1-7 0V9"/><path d="M21 21v-2h-4"/><path d="M3 5h4V3"/><path d="M7 5a1 1 0 0 1 1 1v1a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1V3"/>',
+sparkles:'<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>',
+user:'<circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/>',
+activity:'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+settings:'<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
+plug:'<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>',
+info:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+search:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+refresh:'<path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/>',
+layers:'<path d="m12 2 10 5-10 5L2 7Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>',
+chev:'<path d="m6 9 6 6 6-6"/>',
+download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
+copy:'<rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+external:'<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+send:'<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+check:'<path d="M20 6 9 17l-5-5"/>',
+arrow:'<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>'
+};
+const ic=(n,s=17)=>`<svg class="i" viewBox="0 0 24 24" width="${s}" height="${s}">${P[n]||''}</svg>`;
+const NAV=[["Explore",[["chart","Overview"],["way","Map & lineage"],["globe","External lineage"],["tree","Catalog"],["boxes","Asset Catalog"]]],
+["Govern",[["shield","Governance Center"],["key","Access Review"],["cable","Connections"],["sparkles","Atlas Scout"],["user","My items"]]],
+["Operate",[["activity","Jobs & health"],["settings","Workspace Hub"]]],
+["System",[["plug","MCP"],["info","About"]]]];
+document.getElementById('nav').innerHTML=NAV.map(([g,items])=>`<div class="ng"><div class="ngl">${g}</div>${items.map(([i,l])=>`<div class="ni ${l==='Governance Center'?'active':''}">${ic(i)}${l.replace('&','&amp;')}</div>`).join('')}</div>`).join('');
+document.querySelectorAll('[data-i]').forEach(e=>e.innerHTML=ic(e.dataset.i,+(e.dataset.s||17)));
+</script>
+</body>
+</html>

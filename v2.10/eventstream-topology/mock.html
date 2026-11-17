@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fabric Atlas · Eventstream topology lineage (mockup)</title>
+<style>
+:root{
+  --bg:#f5f5f5;--fg:#242424;--card:#fff;--primary:#117865;--brand-fg:#0c695a;--secondary:#fafafa;
+  --muted:#f0f0f0;--muted-fg:#616161;--border:#e0e0e0;--input:#d1d1d1;
+  --purple:#742774;--magenta:#b146c2;--blue:#0078d4;--teal:#117865;
+  --healthy:#0e700e;
+  --w-bg:#fff8eb;--w-fg:#835b00;--d-bg:#fcf0f0;--d-fg:#a4262c;--s-bg:#edf6ef;--s-fg:#28623c;--i-bg:#edf4fc;--i-fg:#245f96;
+  --sh2:0 0 2px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.14);
+  --sh4:0 0 2px rgba(0,0,0,.12),0 2px 4px rgba(0,0,0,.14);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:"Segoe UI","Segoe UI Web (West European)",-apple-system,sans-serif;font-size:14px;color:var(--fg);background:var(--bg);-webkit-font-smoothing:antialiased}
+.num{font-family:Bahnschrift,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+.mono{font-family:Consolas,monospace}
+svg.i{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+
+.spectrum{position:fixed;top:0;left:0;right:0;height:3px;z-index:10;background:linear-gradient(90deg,var(--purple),var(--magenta) 34%,var(--blue) 67%,var(--teal))}
+.app{display:flex;height:100vh;padding-top:3px}
+aside{width:224px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.brand{display:flex;align-items:center;gap:11px;padding:16px 14px 13px}
+.brand-mark{width:34px;height:34px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:var(--sh4);background:linear-gradient(145deg,var(--purple),var(--blue) 56%,var(--teal))}
+.brand-t{font-size:15px;font-weight:600;line-height:1}
+.brand-s{font-size:11px;color:var(--muted-fg);margin-top:3px}
+nav{flex:1;padding:0 10px 10px}
+.ng{margin-top:12px}.ng:first-child{margin-top:0}
+.ngl{padding:0 10px 5px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-fg)}
+.ni{position:relative;display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:4px;font-size:13px;font-weight:500;color:rgba(36,36,36,.75);margin-bottom:2px}
+.ni.active{background:rgba(17,120,101,.1);color:var(--brand-fg)}
+.ni.active:before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:3px;border-radius:9px;background:var(--primary)}
+.wscard{margin:12px;border:1px solid var(--border);background:var(--secondary);border-radius:6px;padding:11px;font-size:12px;color:var(--muted-fg)}
+.wscard .k{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+.wscard .v{font-size:13px;font-weight:700;color:var(--fg);margin-top:2px}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--healthy)}
+
+main{flex:1;min-width:0;display:flex;flex-direction:column}
+header{height:52px;flex-shrink:0;background:var(--card);box-shadow:var(--sh2);display:flex;align-items:center;gap:10px;padding:0 20px;z-index:2}
+.crumb{font-size:13px;color:var(--muted-fg);display:flex;align-items:center;gap:6px}
+.crumb b{color:var(--fg);font-weight:600}
+.dom{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--input);border-radius:4px;background:var(--card);font-size:12px;color:var(--fg)}
+.hsp{flex:1}
+.search{display:flex;align-items:center;gap:8px;height:32px;width:230px;padding:0 10px;border-radius:4px;background:var(--secondary);border:1px solid var(--border);font-size:12.5px;color:var(--muted-fg)}
+kbd{margin-left:auto;font-family:"Segoe UI";font-size:11px;border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;padding:0 5px;background:#fff;color:var(--muted-fg)}
+.btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:4px;font-size:12.5px;font-weight:600;border:1px solid var(--input);background:var(--card);color:var(--fg);white-space:nowrap}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn.sm{height:28px;padding:0 10px;font-size:12px}
+
+.canvas{flex:1;overflow:hidden;padding:16px 22px 18px;display:flex;flex-direction:column;position:relative;background:var(--bg)}
+.topcard{background:var(--card);border:1px solid var(--border);border-radius:8px 8px 0 0;padding:12px 18px 0;box-shadow:var(--sh2)}
+.tabsrow{display:flex;align-items:center;border-bottom:1px solid var(--border);margin-top:8px}
+.tab{position:relative;padding:7px 12px;font-size:13px;font-weight:600;color:var(--muted-fg)}
+.tab.on{color:var(--brand-fg)}
+.tab.on:after{content:"";position:absolute;left:8px;right:8px;bottom:-1px;height:2px;border-radius:2px;background:var(--brand-fg)}
+
+.bar{display:flex;align-items:center;gap:8px;padding:9px 14px;background:var(--card);border-left:1px solid var(--border);border-right:1px solid var(--border);border-bottom:1px solid var(--border)}
+.seg{display:inline-flex;border:1px solid var(--input);border-radius:5px;overflow:hidden;background:var(--secondary)}
+.seg span{padding:0 10px;height:28px;display:inline-flex;align-items:center;font-size:12px;font-weight:600;color:var(--muted-fg)}
+.seg span.on{background:var(--card);color:var(--fg);box-shadow:var(--sh2)}
+.toggle{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid rgba(17,120,101,.35);background:rgba(17,120,101,.08);color:var(--brand-fg)}
+.tdot{width:10px;height:10px;border-radius:50%;background:var(--primary)}
+
+.mapwrap{flex:1;min-height:0;display:grid;grid-template-columns:1fr 376px;background:var(--card);border:1px solid var(--border);border-top:0;border-radius:0 0 8px 8px;overflow:hidden;box-shadow:var(--sh2)}
+.stage{position:relative;background:radial-gradient(#dcdcdc 1px,transparent 1px) 0 0/18px 18px,#fafafa;overflow:hidden}
+.lanes{position:absolute;inset:0;display:grid;grid-template-columns:repeat(3,1fr);pointer-events:none}
+.lane{border-right:1px dashed #e2e2e2;padding:10px 14px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7a7a7a}
+.lane:last-child{border-right:0}
+
+.gnode{position:absolute;width:214px;background:#fff;border:1px solid #d4d4d4;border-radius:8px;padding:9px 11px;box-shadow:var(--sh2);display:flex;align-items:center;gap:9px;z-index:2}
+.gnode.sel{border:2px solid var(--primary);box-shadow:0 0 0 4px rgba(17,120,101,.14),var(--sh4)}
+.gnode.ext{border-style:dashed;border-color:#8a6d9b;background:#fdfbfe}
+.gnode b{font-size:12.5px;font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gnode .sub{font-size:11px;color:var(--muted-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.port{position:absolute;width:8px;height:8px;border-radius:50%;background:#fff;border:2px solid var(--primary);top:50%;transform:translateY(-50%)}
+.port.l{left:-5px}.port.r{right:-5px}
+.port.u{border-color:var(--purple)}
+
+.tg{width:28px;height:28px;border-radius:6px;color:#fff;font-size:10.5px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.tg.es{background:#047f94}.tg.kq{background:#0e8376}.tg.lh{background:#27845d}.tg.sm{background:#926f16}.tg.ac{background:#d97706}.tg.cn{background:#742774}
+
+.legend{position:absolute;left:14px;bottom:14px;background:rgba(255,255,255,.95);border:1px solid var(--border);border-radius:7px;padding:9px 12px;font-size:11.5px;box-shadow:var(--sh2);z-index:3}
+.drawer{border-left:1px solid var(--border);background:#fff;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:4px;white-space:nowrap}
+.b-s{background:var(--s-bg);color:var(--s-fg);border:1px solid rgba(40,98,60,.22)}
+.b-i{background:var(--i-bg);color:var(--i-fg);border:1px solid rgba(36,95,150,.22)}
+.b-m{background:var(--muted);color:var(--muted-fg);border:1px solid var(--border)}
+.sect{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted-fg);display:flex;justify-content:space-between;align-items:center}
+.toporow{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:5px;font-size:11.5px;background:var(--secondary)}
+.impgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.imp{border:1px solid var(--border);border-radius:6px;padding:7px 9px;background:var(--secondary)}
+.imp .v{font-size:18px;font-weight:700}
+.muted{color:var(--muted-fg)}.s11{font-size:11px}.s12{font-size:12px}
+.wm{position:absolute;right:392px;bottom:24px;font-size:11px;color:#8a8a8a;z-index:3}
+</style>
+</head>
+<body>
+<div class="spectrum"></div>
+<div class="app">
+<aside>
+  <div class="brand"><span class="brand-mark" data-i="compass" data-s="19"></span>
+    <div><div class="brand-t">Fabric Atlas</div><div class="brand-s">Workspace governance</div></div></div>
+  <nav id="nav"></nav>
+  <div class="wscard"><div class="k">Fabric workspace</div><div class="v">Finance-Gold</div>
+    <div class="s11" style="margin-top:4px">Domain · Finance &amp; Risk</div>
+    <div style="display:flex;align-items:center;gap:6px;margin-top:6px" class="s11"><span class="dot"></span>148 Fabric items</div>
+    <div class="muted" style="font-size:10px;margin-top:2px">Latest validated snapshot</div></div>
+</aside>
+<main>
+  <header>
+    <div class="crumb">Fabric · <span class="dom"><span data-i="layers" data-s="13"></span>Domain: Finance &amp; Risk<span data-i="chev" data-s="13"></span></span> · <b>Finance-Gold</b> · Map &amp; lineage</div>
+    <div class="hsp"></div>
+    <div class="search"><span data-i="search" data-s="15"></span>Search workspace<kbd>Ctrl K</kbd></div>
+    <span class="btn"><span data-i="download" data-s="14"></span>Export JSON</span>
+    <span class="btn primary"><span data-i="refresh" data-s="14"></span>Sync</span>
+  </header>
+
+  <div class="canvas">
+    <div class="topcard">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:19px;font-weight:600">Map &amp; lineage</div>
+          <div class="s12 muted">Trace item and object dependencies across batch and real-time Fabric items.</div>
+        </div>
+        <div style="display:flex;gap:14px;font-size:12px;color:var(--muted-fg)">
+          <span>Items <b class="num" style="color:var(--fg)">148</b></span>
+          <span>Relationships <b class="num" style="color:var(--fg)">99</b></span>
+          <span>Source <b style="color:var(--fg)">Atlas snapshot</b></span>
+        </div>
+      </div>
+      <div class="tabsrow">
+        <span class="tab on">Graph</span>
+        <span class="tab">Evidence</span>
+        <span class="tab">Changes</span>
+        <span class="tab">X-Ray</span>
+      </div>
+    </div>
+
+    <div class="bar">
+      <div class="seg"><span class="on">Item Lineage</span><span>Object Lineage</span></div>
+      <div class="search" style="height:28px;width:190px;background:#fff"><span data-i="search" data-s="13"></span>es_payments_realtime</div>
+      <span class="toggle"><span class="tdot"></span>Data flow relations</span>
+      <span class="toggle"><span class="tdot" style="background:var(--purple)"></span>Impact mode</span>
+      <span class="badge b-s" style="margin-left:auto">Eventstream definition adapter · Collected</span>
+    </div>
+
+    <div class="mapwrap">
+      <div class="stage">
+        <div class="lanes">
+          <div class="lane">Sources &amp; connections</div>
+          <div class="lane">Stream (Eventstream)</div>
+          <div class="lane">Destinations &amp; consumers</div>
+        </div>
+
+        <svg id="edges" style="position:absolute;inset:0;width:100%;height:100%;z-index:1"></svg>
+
+        <!-- Upstream nodes -->
+        <div class="gnode ext" style="left:24px;top:148px;width:206px">
+          <span class="tg cn">CN</span>
+          <div style="min-width:0"><b>eh-adyen-webhooks</b><div class="sub">Azure Event Hubs · Connection</div></div>
+          <span id="p-s1" class="port r u"></span>
+        </div>
+        <div class="gnode ext" style="left:24px;top:314px;width:206px">
+          <span class="tg cn">EP</span>
+          <div style="min-width:0"><b>CustomEndpoint · pos_in</b><div class="sub">Source type only · keys dropped</div></div>
+          <span id="p-s2" class="port r u"></span>
+        </div>
+
+        <!-- Center selected Eventstream -->
+        <div class="gnode sel" style="left:282px;top:232px;width:214px">
+          <span id="p-es-in" class="port l u"></span>
+          <span class="tg es">ES</span>
+          <div style="min-width:0"><b>es_payments_realtime</b><div class="sub">Eventstream · 2 in → 3 out</div></div>
+          <span id="p-es-out" class="port r"></span>
+        </div>
+
+        <!-- Downstream Fabric items -->
+        <div class="gnode" style="left:552px;top:98px;width:208px">
+          <span id="p-d1" class="port l"></span>
+          <span class="tg kq">KQ</span>
+          <div style="min-width:0"><b>kq_payments_hot</b><div class="sub">KQL Database · Finance-RT</div></div>
+        </div>
+        <div class="gnode" style="left:552px;top:232px;width:208px">
+          <span id="p-d2" class="port l"></span>
+          <span class="tg lh">LH</span>
+          <div style="min-width:0"><b>lh_finance_bronze</b><div class="sub">Lakehouse · dbo.payment_events</div></div>
+        </div>
+        <div class="gnode" style="left:552px;top:366px;width:208px">
+          <span id="p-d3" class="port l"></span>
+          <span class="tg ac">AC</span>
+          <div style="min-width:0"><b>act_high_value_alert</b><div class="sub">Activator · Finance-Gold</div></div>
+        </div>
+
+        <div class="legend">
+          <div style="font-weight:600;margin-bottom:4px">Sources and paths (<span class="mono">eventstream.json</span>)</div>
+          <div style="display:flex;gap:14px;color:var(--muted-fg)">
+            <span><span style="color:#117865;font-weight:700">━━</span> Verified destination item ID</span>
+            <span><span style="color:#742774;font-weight:700">┄┄</span> Connection / external source</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="drawer">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <span class="tg es" style="width:34px;height:34px;font-size:12px">ES</span>
+          <div style="min-width:0;flex:1">
+            <div style="font-size:15px;font-weight:700">es_payments_realtime</div>
+            <div class="s11 muted" style="letter-spacing:.05em;text-transform:uppercase">Eventstream · Finance-Gold</div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <span class="badge b-s">Lineage: Collected</span>
+          <span class="badge b-i">Objects: Partial (topology)</span>
+        </div>
+
+        <div class="impgrid">
+          <div class="imp"><div class="v num" style="color:var(--purple)">2</div><div class="s11 muted">Sources</div></div>
+          <div class="imp"><div class="v num" style="color:var(--primary)">3</div><div class="s11 muted">Destinations</div></div>
+          <div class="imp"><div class="v num">2</div><div class="s11 muted">Operators</div></div>
+        </div>
+
+        <div class="sect"><span>Projected topology</span><span class="mono s11" style="text-transform:none">eventstream.json</span></div>
+        <div class="toporow"><span class="badge b-m">Source</span><b>AzureEventHub</b><span class="mono s11 muted" style="margin-left:auto">conn:eh-adyen…</span></div>
+        <div class="toporow"><span class="badge b-m">Operator</span><b>Filter + GroupBy</b><span class="s11 muted" style="margin-left:auto">SQL expression dropped</span></div>
+        <div class="toporow"><span class="badge b-s">Dest</span><b>kq_payments_hot</b><span class="mono s11 muted" style="margin-left:auto">table: raw_auth</span></div>
+        <div class="toporow"><span class="badge b-s">Dest</span><b>lh_finance_bronze</b><span class="mono s11 muted" style="margin-left:auto">dbo.payment_events</span></div>
+        <div class="toporow"><span class="badge b-s">Dest</span><b>act_high_value_alert</b><span class="mono s11 muted" style="margin-left:auto">Reflex item ID</span></div>
+
+        <div style="background:var(--secondary);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:11px;line-height:15.5px;color:var(--muted-fg)">
+          <b style="color:var(--fg)">Metadata boundary:</b> <span class="mono">workspaceCollectDefinitions</span> keeps source/destination types, connection IDs, target workspace/item UUIDs and table names only. Event payloads, keys and operator SQL are never stored.
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:auto">
+          <span class="btn primary sm" style="flex:1;justify-content:center"><span data-i="external" data-s="13"></span>Open in Fabric</span>
+          <span class="btn sm">Impact</span>
+        </div>
+      </div>
+    </div>
+    <div class="wm">Mockup · illustrative data</div>
+  </div>
+</main>
+</div>
+<script>
+const P={
+compass:'<circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>',
+chart:'<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
+way:'<circle cx="12" cy="4.5" r="2.5"/><path d="m10.2 6.3-3.9 3.9"/><circle cx="4.5" cy="12" r="2.5"/><path d="M7 12h10"/><circle cx="19.5" cy="12" r="2.5"/><path d="m13.8 17.7 3.9-3.9"/><circle cx="12" cy="19.5" r="2.5"/>',
+globe:'<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+tree:'<path d="M20 10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2.5a1 1 0 0 1-.8-.4l-.9-1.2A1 1 0 0 0 15 3h-2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"/><path d="M20 21a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1h-2.9a1 1 0 0 1-.88-.55l-.42-.85a1 1 0 0 0-.92-.6H13a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"/><path d="M3 5a2 2 0 0 0 2 2h3"/><path d="M3 3v13a2 2 0 0 0 2 2h3"/>',
+boxes:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+shield:'<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+key:'<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5"/>',
+cable:'<path d="M17 21v-2a1 1 0 0 1-1-1v-1a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1a1 1 0 0 1-1 1"/><path d="M19 15V6.5a1 1 0 0 0-7 0v11a1 1 0 0 1-7 0V9"/><path d="M21 21v-2h-4"/><path d="M3 5h4V3"/><path d="M7 5a1 1 0 0 1 1 1v1a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1V3"/>',
+sparkles:'<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>',
+user:'<circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/>',
+activity:'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+settings:'<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
+plug:'<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>',
+info:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+search:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+refresh:'<path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/>',
+layers:'<path d="m12 2 10 5-10 5L2 7Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>',
+chev:'<path d="m6 9 6 6 6-6"/>',
+download:'<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
+external:'<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>'
+};
+const ic=(n,s=17)=>`<svg class="i" viewBox="0 0 24 24" width="${s}" height="${s}">${P[n]||''}</svg>`;
+const NAV=[["Explore",[["chart","Overview"],["way","Map & lineage"],["globe","External lineage"],["tree","Catalog"],["boxes","Asset Catalog"]]],
+["Govern",[["shield","Governance Center"],["key","Access Review"],["cable","Connections"],["sparkles","Atlas Scout"],["user","My items"]]],
+["Operate",[["activity","Jobs & health"],["settings","Workspace Hub"]]],
+["System",[["plug","MCP"],["info","About"]]]];
+document.getElementById('nav').innerHTML=NAV.map(([g,items])=>`<div class="ng"><div class="ngl">${g}</div>${items.map(([i,l])=>`<div class="ni ${l==='Map & lineage'?'active':''}">${ic(i)}${l.replace('&','&amp;')}</div>`).join('')}</div>`).join('');
+document.querySelectorAll('[data-i]').forEach(e=>e.innerHTML=ic(e.dataset.i,+(e.dataset.s||17)));
+const st=document.querySelector('.stage').getBoundingClientRect();
+const pt=id=>{const r=document.getElementById(id).getBoundingClientRect();return [r.left-st.left+r.width/2,r.top-st.top+r.height/2]};
+const curve=([x1,y1],[x2,y2],c,dash)=>{const dx=(x2-x1)*0.5;return `<path d="M ${x1} ${y1} C ${x1+dx} ${y1}, ${x2-dx} ${y2}, ${x2} ${y2}" fill="none" stroke="${c}" stroke-width="2.1" ${dash?'stroke-dasharray="4 4"':''}/>`};
+document.getElementById('edges').innerHTML=[
+  curve(pt('p-s1'),pt('p-es-in'),'#742774',true),
+  curve(pt('p-s2'),pt('p-es-in'),'#742774',true),
+  curve(pt('p-es-out'),pt('p-d1'),'#117865',false),
+  curve(pt('p-es-out'),pt('p-d2'),'#117865',false),
+  curve(pt('p-es-out'),pt('p-d3'),'#117865',false),
+].join('');
+</script>
+</body>
+</html>
