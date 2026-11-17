@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fabric Atlas · MLV OneLake_Files Provenance &amp; Dataflow Gen1 Upgrade (mockup)</title>
+<style>
+:root{
+  --bg:#f5f5f5;--fg:#242424;--card:#fff;--primary:#117865;--brand-fg:#0c695a;--secondary:#fafafa;
+  --muted:#f0f0f0;--muted-fg:#616161;--border:#e0e0e0;--input:#d1d1d1;
+  --purple:#742774;--magenta:#b146c2;--blue:#0078d4;--teal:#117865;
+  --healthy:#0e700e;
+  --w-bg:#fff8eb;--w-fg:#835b00;--d-bg:#fcf0f0;--d-fg:#a4262c;--s-bg:#edf6ef;--s-fg:#28623c;--i-bg:#edf4fc;--i-fg:#245f96;
+  --sh2:0 0 2px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.14);
+  --sh4:0 0 2px rgba(0,0,0,.12),0 2px 4px rgba(0,0,0,.14);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{font-family:"Segoe UI","Segoe UI Web (West European)",-apple-system,sans-serif;font-size:14px;color:var(--fg);background:var(--bg);-webkit-font-smoothing:antialiased}
+.num{font-family:Bahnschrift,"Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+.mono{font-family:Consolas,monospace}
+svg.i{fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+
+.spectrum{position:fixed;top:0;left:0;right:0;height:3px;z-index:10;background:linear-gradient(90deg,var(--purple),var(--magenta) 34%,var(--blue) 67%,var(--teal))}
+.app{display:flex;height:100vh;padding-top:3px}
+aside{width:224px;flex-shrink:0;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.brand{display:flex;align-items:center;gap:11px;padding:16px 14px 13px}
+.brand-mark{width:34px;height:34px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:var(--sh4);background:linear-gradient(145deg,var(--purple),var(--blue) 56%,var(--teal))}
+.brand-t{font-size:15px;font-weight:600;line-height:1}
+.brand-s{font-size:11px;color:var(--muted-fg);margin-top:3px}
+nav{flex:1;padding:0 10px 10px}
+.ng{margin-top:12px}.ng:first-child{margin-top:0}
+.ngl{padding:0 10px 5px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted-fg)}
+.ni{position:relative;display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:4px;font-size:13px;font-weight:500;color:rgba(36,36,36,.75);margin-bottom:2px}
+.ni.active{background:rgba(17,120,101,.1);color:var(--brand-fg)}
+.ni.active:before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:3px;border-radius:9px;background:var(--primary)}
+.wscard{margin:12px;border:1px solid var(--border);background:var(--secondary);border-radius:6px;padding:11px;font-size:12px;color:var(--muted-fg)}
+.wscard .k{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase}
+.wscard .v{font-size:13px;font-weight:700;color:var(--fg);margin-top:2px}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--healthy)}
+
+main{flex:1;min-width:0;display:flex;flex-direction:column}
+header{height:52px;flex-shrink:0;background:var(--card);box-shadow:var(--sh2);display:flex;align-items:center;gap:10px;padding:0 20px;z-index:2}
+.crumb{font-size:13px;color:var(--muted-fg);display:flex;align-items:center;gap:6px}
+.crumb b{color:var(--fg);font-weight:600}
+.hsp{flex:1}
+.btn{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:4px;font-size:12.5px;font-weight:600;border:1px solid var(--input);background:var(--card);color:var(--fg);white-space:nowrap}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn.sm{height:27px;padding:0 9px;font-size:12px}
+
+.canvas{flex:1;overflow:hidden;padding:16px 24px 18px;position:relative;
+  background:radial-gradient(circle at 92% -8%,rgba(116,39,116,.05),transparent 28%),var(--bg)}
+.card{background:var(--card);border-radius:8px;box-shadow:var(--sh2);border:1px solid var(--border)}
+.ph{display:flex;align-items:flex-start;gap:16px;padding:12px 18px;margin-bottom:12px}
+.ph h1{margin:0;font-size:18.5px;line-height:24px;font-weight:600}
+.ph .obj{font-size:12px;color:var(--muted-fg);margin-top:2px}
+
+.grid{display:grid;gap:12px}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:600;padding:2px 6.5px;border-radius:4px;white-space:nowrap}
+.b-s{background:var(--s-bg);color:var(--s-fg);border:1px solid rgba(40,98,60,.22)}
+.b-w{background:var(--w-bg);color:var(--w-fg);border:1px solid rgba(131,91,0,.22)}
+.b-i{background:var(--i-bg);color:var(--i-fg);border:1px solid rgba(36,95,150,.22)}
+.b-ig{background:rgba(116,39,116,.12);color:var(--purple);border:1px solid rgba(116,39,116,.25)}
+
+.tg{width:25px;height:25px;border-radius:5px;color:#fff;font-size:9.5px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.tg.lh{background:#27845d}.tg.df{background:#c336b4}.tg.sm{background:#926f16}.tg.fl{background:#0078d4}
+
+.flow{display:flex;align-items:center;gap:10px;padding:12px;background:var(--secondary);border:1px solid var(--border);border-radius:7px}
+.fbox{flex:1;background:#fff;border:1px solid var(--border);border-radius:6px;padding:9px 10px;font-size:12px}
+.fbox.hl{border:1.5px solid var(--primary);box-shadow:0 0 0 3px rgba(17,120,101,.1)}
+
+table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+th{background:var(--secondary);text-align:left;font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted-fg);padding:7px 10px;border-bottom:1px solid var(--border)}
+td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:last-child td{border-bottom:0}
+
+.sect{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted-fg);display:flex;justify-content:space-between}
+.muted{color:var(--muted-fg)}.s11{font-size:11px}.s12{font-size:12px}
+.wm{position:absolute;right:24px;bottom:5px;font-size:11px;color:#8a8a8a}
+</style>
+</head>
+<body>
+<div class="spectrum"></div>
+<div class="app">
+<aside>
+  <div class="brand"><span class="brand-mark" data-i="compass" data-s="19"></span>
+    <div><div class="brand-t">Fabric Atlas</div><div class="brand-s">Workspace governance</div></div></div>
+  <nav id="nav"></nav>
+  <div class="wscard"><div class="k">Fabric workspace</div><div class="v">Finance-Gold</div>
+    <div class="s11" style="margin-top:4px">Domain · Finance &amp; Risk</div>
+    <div style="display:flex;align-items:center;gap:6px;margin-top:6px" class="s11"><span class="dot"></span>148 Fabric items</div></div>
+</aside>
+<main>
+  <header>
+    <div class="crumb">Fabric · <b>Finance-Gold</b> · Provenance &amp; Modernization Hygiene</div>
+    <div class="hsp"></div>
+    <span class="btn primary"><span data-i="refresh" data-s="14"></span>Sync</span>
+  </header>
+
+  <div class="canvas">
+    <div class="card ph">
+      <div>
+        <h1>OneLake_Files MLV Provenance &amp; Dataflow Gen1 Modernization</h1>
+        <div class="obj">Declarative file-to-MLV bronze lineage (<span class="mono">USING OneLake_Files</span>) and admin-actionable Power BI Dataflow Gen1 → Gen2 (CI/CD) upgrade candidates.</div>
+      </div>
+      <span class="badge b-ig" style="margin-left:auto">Ignite 2026 · MLV + Data Factory</span>
+    </div>
+
+    <div class="grid" style="grid-template-columns:1fr;gap:12px">
+      <div class="card" style="padding:13px 16px;display:flex;flex-direction:column;gap:9px">
+        <div class="sect"><span>1. Source provenance · Materialized Lake View file ingestion (<span class="mono">USING OneLake_Files</span>)</span><span class="badge b-i">Preview contract</span></div>
+        <div class="flow">
+          <div class="fbox">
+            <div style="display:flex;align-items:center;gap:7px"><span class="tg fl">FL</span><div><b>Files/landing/orders</b><div class="s11 muted">OneLake folder · Parquet</div></div></div>
+            <div class="mono s11 muted" style="margin-top:5px">lh_finance_landing (id: 7a11…e90)</div>
+          </div>
+          <span style="color:var(--purple);font-weight:700;font-size:12px">┄ USING OneLake_Files ┄▶</span>
+          <div class="fbox hl">
+            <div style="display:flex;align-items:center;gap:7px"><span class="tg lh">MV</span><div><b>dbo.mlv_orders_bronze</b><div class="s11 muted">Materialized Lake View · CDF hint</div></div></div>
+            <div class="mono s11 muted" style="margin-top:5px">Parent: lh_finance_gold · Derived object</div>
+          </div>
+          <span style="color:var(--primary);font-weight:700;font-size:12px">━━ Delta table ━━▶</span>
+          <div class="fbox">
+            <div style="display:flex;align-items:center;gap:7px"><span class="tg sm">SM</span><div><b>sm_finance_consolidated</b><div class="s11 muted">DirectLake semantic model</div></div></div>
+            <div class="mono s11 muted" style="margin-top:5px">14 downstream reports</div>
+          </div>
+        </div>
+        <div class="s11 muted">Atlas keeps folder item UUID, normalized folder prefix (<span class="mono">Files/…</span>), format (<span class="mono">CSV</span>/<span class="mono">Parquet</span>) and target MLV name — never individual file names or business rows.</div>
+      </div>
+
+      <div class="card" style="overflow:hidden">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);background:var(--secondary);display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <b style="font-size:13px">2. Governance finding · <span class="mono">legacy-dataflow-gen1</span> (Upgrade Wizard &amp; API now GA)</b>
+            <div class="s11 muted">Workspace &amp; Tenant Admins can now upgrade Dataflows Gen1 owned by other users while keeping original owner &amp; connections.</div>
+          </div>
+          <span class="badge b-s">GA Upgrade API</span>
+        </div>
+        <table>
+          <colgroup><col style="width:28%"><col style="width:18%"><col style="width:20%"><col style="width:18%"><col style="width:16%"></colgroup>
+          <tr><th>Legacy Dataflow Gen1</th><th>Current owner</th><th>Downstream models</th><th>CI/CD &amp; Git support</th><th>Remediation</th></tr>
+          <tr>
+            <td><div style="display:flex;align-items:center;gap:8px"><span class="tg df">G1</span><div><b>df_gen1_fx_rates</b><div class="s11 muted">Power BI Scanner · Gen 1</div></div></div></td>
+            <td>Paul Girard</td>
+            <td class="num"><b>3 models</b> · 9 reports</td>
+            <td><span class="badge b-w">Unsupported in Gen1</span></td>
+            <td><span class="btn sm">Open in Workspace <span data-i="external" data-s="11"></span></span></td>
+          </tr>
+          <tr>
+            <td><div style="display:flex;align-items:center;gap:8px"><span class="tg df">G1</span><div><b>df_gen1_cost_centers</b><div class="s11 muted">Power BI Scanner · Gen 1</div></div></div></td>
+            <td>Former contractor</td>
+            <td class="num"><b>1 model</b> · 4 reports</td>
+            <td><span class="badge b-w">Unsupported in Gen1</span></td>
+            <td><span class="btn sm">Open in Workspace <span data-i="external" data-s="11"></span></span></td>
+          </tr>
+        </table>
+      </div>
+    </div>
+    <div class="wm">Mockup · illustrative data</div>
+  </div>
+</main>
+</div>
+<script>
+const P={
+compass:'<circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>',
+chart:'<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
+way:'<circle cx="12" cy="4.5" r="2.5"/><path d="m10.2 6.3-3.9 3.9"/><circle cx="4.5" cy="12" r="2.5"/><path d="M7 12h10"/><circle cx="19.5" cy="12" r="2.5"/><path d="m13.8 17.7 3.9-3.9"/><circle cx="12" cy="19.5" r="2.5"/>',
+globe:'<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+tree:'<path d="M20 10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2.5a1 1 0 0 1-.8-.4l-.9-1.2A1 1 0 0 0 15 3h-2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"/><path d="M20 21a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1h-2.9a1 1 0 0 1-.88-.55l-.42-.85a1 1 0 0 0-.92-.6H13a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z"/><path d="M3 5a2 2 0 0 0 2 2h3"/><path d="M3 3v13a2 2 0 0 0 2 2h3"/>',
+boxes:'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+shield:'<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+key:'<path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5"/>',
+cable:'<path d="M17 21v-2a1 1 0 0 1-1-1v-1a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1a1 1 0 0 1-1 1"/><path d="M19 15V6.5a1 1 0 0 0-7 0v11a1 1 0 0 1-7 0V9"/>',
+sparkles:'<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>',
+user:'<circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/>',
+activity:'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+settings:'<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
+plug:'<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>',
+info:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+refresh:'<path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/>',
+external:'<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>'
+};
+const ic=(n,s=17)=>`<svg class="i" viewBox="0 0 24 24" width="${s}" height="${s}">${P[n]||''}</svg>`;
+const NAV=[["Explore",[["chart","Overview"],["way","Map & lineage"],["globe","External lineage"],["tree","Catalog"],["boxes","Asset Catalog"]]],
+["Govern",[["shield","Governance Center"],["key","Access Review"],["cable","Connections"],["sparkles","Atlas Scout"],["user","My items"]]],
+["Operate",[["activity","Jobs & health"],["settings","Workspace Hub"]]],
+["System",[["plug","MCP"],["info","About"]]]];
+document.getElementById('nav').innerHTML=NAV.map(([g,items])=>`<div class="ng"><div class="ngl">${g}</div>${items.map(([i,l])=>`<div class="ni ${l==='Map & lineage'?'active':''}">${ic(i)}${l.replace('&','&amp;')}</div>`).join('')}</div>`).join('');
+document.querySelectorAll('[data-i]').forEach(e=>e.innerHTML=ic(e.dataset.i,+(e.dataset.s||17)));
+</script>
+</body>
+</html>
