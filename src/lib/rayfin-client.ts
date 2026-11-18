@@ -6,14 +6,35 @@
 //-----------------------------------------------------------------------
 
 import { RayfinClient } from "@microsoft/rayfin-client";
-import type { EntitySchema } from "@microsoft/rayfin-data";
+import { browserSession } from "@microsoft/rayfin-auth";
+import { dataService, type EntitySchema } from "@microsoft/rayfin-data";
+import { functionsService } from "@microsoft/rayfin-functions";
 import type { AppFunctionsSchema } from "../../rayfin/functions/src/types";
+
+function createAtlasClient(config: {
+    baseUrl: string;
+    publishableKey: string;
+    functionsBaseUrl?: string;
+}) {
+    return RayfinClient.create({
+        baseUrl: config.baseUrl,
+        publishableKey: config.publishableKey,
+        timeout: RAYFIN_REQUEST_TIMEOUT_MS,
+        functionsBaseUrl: config.functionsBaseUrl,
+        auth: browserSession({ storage: sessionAuthStorage() }),
+        services: {
+            // The data API stays untyped: backend.ts selects its own fields.
+            data: dataService<EntitySchema>(),
+            functions: functionsService<AppFunctionsSchema>(),
+        },
+    });
+}
 
 /**
  * Rayfin client with the existing untyped data API and the generated
  * Functions schema for `client.functions.<name>.invoke(...)`.
  */
-export type AtlasRayfinClient = RayfinClient<EntitySchema, AppFunctionsSchema>;
+export type AtlasRayfinClient = ReturnType<typeof createAtlasClient>;
 
 let _client: AtlasRayfinClient | undefined;
 const RAYFIN_REQUEST_TIMEOUT_MS = 30_000;
@@ -68,12 +89,9 @@ export function getRayfinClient(): AtlasRayfinClient {
             throw new Error(`Missing required env vars for creating rayfin client - run 'npx rayfin up'`);
         }
 
-        _client = new RayfinClient<EntitySchema, AppFunctionsSchema>({
+        _client = createAtlasClient({
             baseUrl: apiUrl,
             publishableKey,
-            authStorage: sessionAuthStorage(),
-            useProxy: false,
-            timeout: RAYFIN_REQUEST_TIMEOUT_MS,
             functionsBaseUrl: localFunctionsBaseUrl(),
         });
     }

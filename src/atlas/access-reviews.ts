@@ -268,8 +268,8 @@ export async function loadAccessReviewHistories(
   ]);
   return buildAccessReviewHistories(
     [
-      ...eventRows.map(eventEntry),
-      ...legacyRows.map(legacyEntry),
+      ...(eventRows as EventRow[]).map(eventEntry),
+      ...(legacyRows as LegacyReviewRow[]).map(legacyEntry),
     ],
     evidenceByRowKey,
   );
@@ -337,7 +337,7 @@ async function appendEvent(
       eventOrder: row.eventOrder,
       note: row.note,
       occurredAt,
-    }),
+    }) as EventRow,
   );
 }
 

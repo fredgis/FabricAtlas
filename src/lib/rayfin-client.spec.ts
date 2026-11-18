@@ -10,13 +10,22 @@ import type { AtlasRayfinClient } from "./rayfin-client";
 
 const mocks = vi.hoisted(() => ({
   config: undefined as Record<string, unknown> | undefined,
+  authOptions: undefined as Record<string, unknown> | undefined,
 }));
 
 vi.mock("@microsoft/rayfin-client", () => ({
-  RayfinClient: class {
-    constructor(config: Record<string, unknown>) {
+  RayfinClient: {
+    create(config: Record<string, unknown>) {
       mocks.config = config;
-    }
+      return {};
+    },
+  },
+}));
+
+vi.mock("@microsoft/rayfin-auth", () => ({
+  browserSession(options: Record<string, unknown>) {
+    mocks.authOptions = options;
+    return () => undefined;
   },
 }));
 
@@ -27,6 +36,7 @@ describe("Rayfin client", () => {
     vi.stubEnv("VITE_RAYFIN_PUBLISHABLE_KEY", "pk-test");
     vi.stubEnv("VITE_RAYFIN_FUNCTIONS_URL", undefined);
     mocks.config = undefined;
+    mocks.authOptions = undefined;
   });
 
   afterEach(() => {
@@ -49,9 +59,11 @@ describe("Rayfin client", () => {
     expect(mocks.config).toMatchObject({
       baseUrl: "https://example.test/api",
       publishableKey: "pk-test",
-      authStorage: window.sessionStorage,
-      useProxy: false,
     });
+    expect(mocks.config).not.toHaveProperty("useProxy");
+    expect(mocks.config?.services).toHaveProperty("data");
+    expect(mocks.config?.services).toHaveProperty("functions");
+    expect(mocks.authOptions).toMatchObject({ storage: window.sessionStorage });
   });
 
   it("still requires the API URL and publishable key", async () => {
@@ -128,6 +140,8 @@ describe("Rayfin Functions contract", () => {
       | "workspaceCollectPowerBi"
       | "workspaceCollectSqlMetadata"
       | "workspaceCollectAccessPolicyEvidence"
+      | "teamsNotify"
+      | "suggestDescriptions"
       | "searchCatalogPreview"
       | "workspaceCollectPowerBiScanner"
       | "workspaceCollectSourceProvenance"

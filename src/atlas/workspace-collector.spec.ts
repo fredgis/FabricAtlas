@@ -247,7 +247,7 @@ describe("workspaceCollectCore contract", () => {
     expect(fn?.delegateParameters).toEqual([
       expect.objectContaining({
         name: "ctx",
-        type: "RayfinContext<AtlasSchema, AudienceType.Fabric>",
+        type: "RayfinContext",
       }),
       expect.objectContaining({ name: "protocolVersion", type: "1", optional: false }),
       expect.objectContaining({ name: "workspaceId", type: "SyncUuidInput", optional: false }),

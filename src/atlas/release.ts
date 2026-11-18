@@ -28,7 +28,7 @@ export const BUILD_DATE =
 export const SNAPSHOT_CONTRACT_ID = "snapshot-v1";
 export const RAYFIN_SDK_VERSION =
   (import.meta.env.VITE_RAYFIN_SDK_VERSION as string | undefined) ??
-  "1.36.2";
+  "2.0.1";
 export const FUNCTIONS_API_VERSION = "1";
 
 export const DEPLOYMENT_ID =

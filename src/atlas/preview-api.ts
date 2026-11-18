@@ -35,7 +35,7 @@ export const PREVIEW_API_REGISTRY: Record<
     id: "fabric-app-functions",
     productName: "Fabric Apps backend Functions",
     maturity: "preview",
-    apiVersion: "Rayfin 1.36.2",
+    apiVersion: "Rayfin 2.0.1",
     documentationUrl:
       "https://learn.microsoft.com/en-us/fabric/apps/functions",
     evidenceBoundary:

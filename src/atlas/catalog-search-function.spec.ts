@@ -121,7 +121,7 @@ describe("searchCatalogPreview contract", () => {
     const fn = metadata.functions.find((candidate) => candidate.functionName === "searchCatalogPreview");
     expect(fn?.contextAudiences).toEqual(["Fabric"]);
     expect(fn?.delegateParameters).toEqual([
-      expect.objectContaining({ name: "ctx", type: "RayfinContext<AtlasSchema, AudienceType.Fabric>" }),
+      expect.objectContaining({ name: "ctx", type: "RayfinContext" }),
       expect.objectContaining({ name: "protocolVersion", type: "1" }),
       expect.objectContaining({ name: "search", type: "CatalogSearchTextInput | null", hasDefault: false }),
       expect.objectContaining({ name: "itemTypes", type: "CatalogSearchItemTypesInput", hasDefault: false }),
