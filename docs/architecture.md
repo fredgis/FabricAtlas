@@ -407,7 +407,9 @@ Unexpected collector fields are not persisted by default.
 Atlas is itself a Fabric app (Rayfin GA). Fabric enforces a fixed strict
 Content Security Policy through the tenant setting
 `EnforceStrictCspForStaticHostedFabricApps`; it allows Fabric, Power BI and
-AppBackend endpoints and cannot be customized. The browser cannot read what is
+AppBackend endpoints and cannot be customized. It blocks the MSAL token
+requests to `login.microsoftonline.com` that synchronization needs, so it must
+stay off for Atlas users (verified on 2026-11-18). The browser cannot read what is
 enforced. The equivalent Atlas policy, used for audits or a reverse proxy,
 lives in `src/atlas/csp.ts` and is shown, with a copy button, in
 **About > Production hardening**:

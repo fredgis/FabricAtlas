@@ -102,7 +102,7 @@ export const HARDENING_CHECKLIST: readonly HardeningCheck[] = [
   {
     id: "csp",
     title: "Strict Content Security Policy",
-    detail: "Enable the tenant setting \"Enforce a strict content security policy for static-hosted Fabric Apps\", first for a pilot group. Atlas only calls Fabric, Power BI and Entra sign-in hosts.",
+    detail: "Keep the tenant setting \"Enforce a strict content security policy for static-hosted Fabric Apps\" off for Atlas users: its fixed policy blocks the Entra token requests (login.microsoftonline.com) that synchronization needs. Use the recommended policy below for a reverse proxy or a security review.",
   },
   {
     id: "identity",
