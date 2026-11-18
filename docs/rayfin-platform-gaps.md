@@ -1,132 +1,67 @@
 # Rayfin platform gaps
 
-Assessment: **3 October 2026, Rayfin 1.36.2**. Re-audited on **18 November 2026
-against the installed Rayfin 2.0.1 guide and type declarations**; see
-[What Rayfin 2.0 changes](#what-rayfin-20-changes).
+Last review: **18 November 2026, Rayfin 2.0.1 (GA)**. First assessment:
+3 October 2026, Rayfin 1.36.2.
 
-Fabric Atlas is Rayfin-first since 2.1. Typed Rayfin Functions collect the catalog,
-definitions, SQL and KQL structure, Item Relations, source provenance and
-policy evidence. Python remains only where Rayfin does not expose the required
-runtime contract.
+Fabric Atlas collects almost everything with typed Rayfin Functions. Python
+(`sync_compatibility`) stays only where Rayfin lacks a usable contract, and
+scheduled sync stays off until Rayfin can run work without a browser.
 
-## What is missing
+## Summary
 
-### To remove the Python compatibility UDF
+| Gap | Rayfin 2.0.1 | Atlas today | Closes when |
+|---|---|---|---|
+| Power BI admin scanner (application identity) | New **custom audiences**: a Function can request a token for `https://analysis.windows.net/powerbi/api` as the app identity | Python UDF | A deployed probe calls `getInfo` and the scan result with that token |
+| Kusto live schema | KQL connector (`eventhouse`, renamed `kusto` on `main`) exists but its **authoring is held** and it is experimental ([source](https://github.com/microsoft/rayfin/blob/main/packages/guide/assets/docs/cli/connectors/index.md)). Custom audiences are the other path | Python UDF | Rayfin lifts the hold, or a custom-audience probe passes |
+| PBIR-Legacy report pages | No contract | Python UDF | A supported page path exists |
+| Semantic model engine metadata | `fabric-semanticmodel` connector is still `delegated` only | Static DAX references | An application-identity metadata connector exists |
+| Unattended timer or trigger | None | Sync starts in the browser | A Function can run on a schedule as the app |
+| Claim, lease and fencing across hosts | Raw SQL in Functions (`ctx.sql.execute`) allows a single-statement compare-and-set, but bypasses entity policies | Not adopted | A supported transaction or fencing contract exists |
+| OneLake security detail | No public contract for group expansion or constraint text | Partial evidence | Public API |
+| Purview DLP restriction state | No public contract | Marked unsupported | Public API |
+| Fabric Policies evaluation | No public operation | Unavailable unless a tenant contract is supplied | Public API |
 
-| Missing Rayfin capability | Atlas evidence still collected in Python | Exit condition |
-|---|---|---|
-| Documented Power BI application audience or first-party scanner connector | Admin scanner metadata, access and authoritative scanner lineage | A deployed Function can call `admin/workspaces/getInfo`, poll scan status/result and return the reviewed metadata-only projection |
-| Supported PBIR-Legacy report-page path | Page inventory for legacy reports | Rayfin Power BI collection covers both modern PBIR and PBIR-Legacy reports with application identity |
-| Documented Kusto application audience | Live Kusto schema fallback | A deployed Function receives a supported Kusto token and can run the bounded metadata command |
-
-When these three contracts exist and pass live parity, `sync_compatibility` can
-be removed.
-
-### To run synchronization without an open browser
-
-| Missing Rayfin capability | Current consequence | Exit condition |
-|---|---|---|
-| Supported unattended timer or trigger | Synchronization must be started in the browser | A Function can start a workspace run on a schedule with application identity |
-| Distributed claim or lease primitive | No safe multi-host continuation owner | One worker can claim a task slice idempotently and another cannot publish it |
-| Same-database transaction or fencing primitive | Publication cannot be atomically tied to checkpoints | Snapshot rows, task state and manifest visibility can be committed or rejected together |
-| Supported continuation contract | Closing the browser stops future slices | A durable run can resume after worker or browser interruption without replaying delegated tokens |
-
-Atlas does not store or replay browser access or refresh tokens to work around
-these gaps.
-
-### To complete access-policy evidence
-
-| Missing public contract | Current Atlas state |
-|---|---|
-| OneLake security role membership and data scope | Partial since 2.6: data access roles, direct members and RLS/CLS presence; group expansion and constraint text are not collected |
-| Purview DLP restriction state | Unsupported, Purview review required |
-| Fabric Policies evaluation operation | Unavailable unless a verified tenant contract is supplied |
-
-These policy gaps do not require Python and do not block catalog publication.
-They remain explicit coverage states.
-
-### Entity naming (found 9 November 2026)
-
-| Constraint | Atlas mitigation |
-|---|---|
-| Data API Builder reads a GraphQL type whose name ends in `Connection` as a pagination type, and the Rayfin reserved-name check does not reject such names. Every create and read of the entity then fails with an internal server error and the mutation rolls back. | The connection entity is named `ConnectionEntry` since 2.8.2, and a schema test rejects any entity name ending in `Connection` |
+Atlas never stores or replays browser tokens to work around these gaps.
 
 ## What Rayfin 2.0 changes
 
-Source: installed `@microsoft/rayfin-guide` 2.0.1 (`functions/connections`,
-`functions/index`, `known-limitations`, `cli/connectors`, `changelog/2.0.0`) and
-the `@microsoft/fabric-user-data-functions` 2.0.1 declarations. Nothing below
-is live-validated yet; each item is a candidate exit path, not a closed gap.
+- **Custom audiences** (`functions/connections`): any resource URI or app ID,
+  token issued to the app identity (the app item's owner). This is the
+  candidate replacement for the Power BI and Kusto parts of the Python UDF.
+  Not yet tested on a tenant.
+- **Raw SQL** (`ctx.sql.query` / `ctx.sql.execute`, MSSQL): runs as the app
+  and skips row policies, so Atlas does not use it for sync ownership.
+- **Caller identity** (`ctx.user.id`, `ctx.getClaims()`): available; Atlas
+  keeps the `SynchronizerAuthority` row as the authorization check.
+- **Still missing**: timer/trigger, application-identity semantic model
+  metadata, PBIR-Legacy pages, and a usable KQL connector.
 
-| Gap | Rayfin 2.0.1 contract | Status for Atlas |
-|---|---|---|
-| Power BI application audience | `AudienceType` still lists only `Sql`, `Storage`, `Fabric`, `AzureAI` and `ADO`, but Functions can now declare a **custom audience** (an application ID or `https://` resource URI) and read `ctx.Tokens["<resource>"]`. The token is issued to the app identity, which is the Fabric app item's owner | Candidate: `https://analysis.windows.net/powerbi/api` could back the admin scanner and report pages. Needs a deployed probe proving that the scanner accepts that token in the target tenant |
-| Kusto application audience | Same custom-audience mechanism; the `eventhouse` connector runs with `application` auth but its authoring is held in 2.0.1 and it stays experimental | Candidate: a cluster URI as custom audience. The connector is not usable yet |
-| Semantic model engine metadata | The `fabric-semanticmodel` connector is still `delegated` only | Unchanged |
-| PBIR-Legacy pages | No new contract | Unchanged |
-| Unattended timer or trigger | None documented | Unchanged: scheduling stays disabled |
-| Distributed claim, lease or fencing | Functions gain raw SQL on MSSQL (`ctx.sql.query` / `ctx.sql.execute`), running as the app and bypassing entity policies | Candidate: a conditional `UPDATE ... WHERE claimEpoch = @epoch` is an atomic compare-and-set inside one statement. Multi-statement transactions are not documented. Not adopted: it bypasses the row policies Atlas relies on |
-| Caller identity in Functions | `ctx.user.id` and `ctx.getClaims()` | Usable; Atlas keeps the `SynchronizerAuthority` row check as the authorization source |
+## Entity naming constraint
 
-The Python compatibility UDF therefore stays until a probe validates the
-custom Power BI and Kusto audiences end to end.
+Data API Builder treats a GraphQL type whose name ends in `Connection` as a
+pagination type, so create and read fail with an internal error. The entity is
+named `ConnectionEntry` since 2.8.2 and a schema test rejects such names.
 
-## Active Rayfin collection
+## Rayfin collection in use
 
-- `workspaceCollectCore`
-- `workspaceCollectDefinitions`
-- `workspaceCollectPowerBi`
-- `workspaceCollectItemRelations`
-- `workspaceCollectKqlMetadata`
-- `workspaceCollectSqlMetadata`
-- `workspaceCollectSourceProvenance`
-- `workspaceCollectAccessPolicyEvidence`
-- `workspaceCollectGovernance` (2.6)
-- `tenantCollectConnections` (2.8), once per synchronization batch
+`workspaceCollectCore`, `workspaceCollectDefinitions`, `workspaceCollectPowerBi`,
+`workspaceCollectItemRelations`, `workspaceCollectKqlMetadata`,
+`workspaceCollectSqlMetadata`, `workspaceCollectSourceProvenance`,
+`workspaceCollectAccessPolicyEvidence`, `workspaceCollectGovernance` (2.6) and
+`tenantCollectConnections` (2.8, once per batch). The browser merges these
+envelopes, requests only the needed compatibility plan, then publishes the
+snapshot manifest last.
 
-The browser validates and merges these bounded envelopes, requests only the
-exact compatibility plan, then publishes through the manifest-last writer.
+## Python compatibility UDF
 
-## Retained Python compatibility
+`sync_compatibility` collects only what is requested: Power BI scanner
+evidence, semantic model scanner fallback, PBIR-Legacy pages and Kusto live
+metadata. `sync_all` and `sync_items` remain rollback paths. It has a
+180-second deadline, bounded retries, page and size limits, and metadata-only
+allowlists; it never returns business rows, credentials, connection strings,
+prompts or query text.
 
-`sync_compatibility` can collect only the requested plan:
-
-- Power BI admin scanner evidence;
-- semantic-model scanner fallback when a definition is unsupported;
-- PBIR-Legacy pages;
-- Kusto live metadata.
-
-`sync_all` and `sync_items` remain explicit rollback paths.
-
-The UDF keeps:
-
-- a 180-second deadline;
-- bounded retries and `Retry-After`;
-- same-origin continuation validation;
-- page, record and response-size limits;
-- metadata-only allowlists.
-
-It never returns business rows, credentials, connection strings, prompts,
-few-shot examples or query text.
-
-## Scheduling decision
-
-Scheduled refresh stays disabled until Rayfin provides the unattended trigger,
-identity and distributed ownership contracts above.
-
-Browser-driven multi-workspace synchronization is supported now. Each workspace
-publishes an independent snapshot and a failed workspace does not invalidate
-another workspace.
-
-## Removal checklist
-
-The Python UDF can be deleted only when:
-
-1. Power BI scanner parity passes in the target tenant.
-2. PBIR-Legacy pages are covered.
-3. Kusto live schema parity passes.
-4. No compatibility collector remains in the browser plan.
-5. Failure isolation and last-known-good publication still pass.
-
-Unattended scheduling is a separate gate. Removing Python does not by itself
-provide a timer, durable continuation or distributed claim ownership.
+It can be removed when Power BI scanner parity, PBIR-Legacy pages and Kusto
+schema parity pass in the target tenant, no compatibility collector remains in
+the browser plan, and failure isolation still passes. Removing it does not
+enable scheduling, which needs the trigger and fencing contracts above.

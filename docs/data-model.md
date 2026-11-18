@@ -369,7 +369,7 @@ No additive orchestration field stores tokens, request bodies, arbitrary URLs,
 raw definitions, business rows or large collector payloads. These schemas and
 local tests do not prove distributed durability. Public v2 mutations are blocked
 until the serialization, immutable store and adapter deployment seams described
-in [rayfin-platform-gaps.md](rayfin-platform-gaps.md#to-run-synchronization-without-an-open-browser)
+in [rayfin-platform-gaps.md](rayfin-platform-gaps.md#summary)
 are resolved.
 
 ### Immutable SQL payload storage
