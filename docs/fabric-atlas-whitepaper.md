@@ -6,10 +6,11 @@ author: "Fabric Atlas project"
 lang: en-GB
 ---
 
-> This paper documents Fabric Atlas 2.7.12. FGI-MAIN is used as the real
+> This paper documents Fabric Atlas 3.0.0. FGI-MAIN is used as the real
 > deployment example. Most figures were captured on 28 October 2026 with
 > release 2.6.4; the Atlas Scout and external lineage figures were captured
-> with release 2.7.
+> with release 2.7. The 2.8, 2.9 and 3.0 sections describe the behaviour
+> verified on FGI-MAIN on 18 November 2026 without new figures.
 > Counts and findings describe that workspace at that point in time. They are
 > not product defaults, limits or benchmarks.
 
@@ -45,6 +46,19 @@ OpenLineage import and export for lineage outside Fabric, a Sync Brief that
 summarizes the latest synchronization, and notebook object lineage built from
 direct literal table references.
 
+Versions 2.8 and 2.9 add a tenant connection inventory. Atlas reads every
+Fabric connection of the tenant with its owners, authentication method and
+credential recency, links it to the synchronized items that use it, and checks
+a departing person against the owners of every connection.
+
+Version 3.0 runs on the generally available Rayfin 2.0 and adds the
+governance signals announced at Microsoft Ignite 2026: sensitivity downgrades
+along lineage, dormant data producers, Dataflow Gen1 dataflows to upgrade,
+Fabric app default identities, Eventstream topology, policy set rules, Data
+Agent telemetry tenant switches, the Sync Brief sent to Teams, a Departure Pack
+MCP tool and the Ignite item types. No new table is required: the new evidence
+travels in the existing governance evidence and item metadata.
+
 The browser coordinates those collectors, isolates item failures, validates
 every response and publishes the workspace manifest last. Each selected
 workspace has an independent snapshot. A failed refresh in one workspace
@@ -71,11 +85,12 @@ Atlas distinguishes observed facts from derived context:
 | Search | One command palette for items, objects, people, jobs and notes, with optional OneLake Catalog Preview integration |
 | Lineage | Stable source-to-consumer graphs, object expansion, evidence review and focused impact paths |
 | DAX X-Ray | Direct and transitive measure-to-column and measure-to-measure dependencies |
-| Governance | Findings with priority and Why panel, domain posture, tenant-setting drift, changes, history, coverage, posture targets and policy context |
-| Access review | Effective recorded access, principal and role filters, OneLake data access roles, external shares, local What-if scenarios and departure packs |
-| Operations | Recent jobs, observed failures, inferred downstream reach, incremental sync, snapshot export and optional Teams alerts |
+| Governance | Findings with priority and Why panel, domain posture, tenant-setting drift, changes, history, coverage, posture targets, policy set rules and Data Agent telemetry switches |
+| Access review | Effective recorded access, principal and role filters, OneLake data access roles, external shares, local What-if scenarios and departure packs that include connections and Fabric apps |
+| Connections | Tenant connection inventory with owners, authentication, credential recency, the items that use each connection and a draft data connection policy |
+| Operations | Recent jobs, observed failures, inferred downstream reach, incremental sync, snapshot export, Sync Brief and optional Teams alerts |
 | Collaboration | Shared append-only notes attached to a workspace or Fabric item |
-| MCP | Optional local read-only tools over validated Atlas snapshots |
+| MCP | Optional local read-only tools (12 in 3.0) over validated Atlas snapshots |
 
 ## Why a workspace atlas is useful
 
@@ -417,7 +432,9 @@ No sensitivity label is recorded for the displayed assets.
 Fabric Policies evaluation is stored separately from recorded grants. If the
 collector is off or the tenant contract is unavailable, Atlas labels that
 evidence unavailable. Unknown exposure does not mean not exposed, and an
-unknown control is not presented as compliant.
+unknown control is not presented as compliant. Since 3.0, the same page shows
+the authored rules of each policy set and the Data Agent observability tenant
+switches (see [What's new in 3.0](#whats-new-in-3.0)).
 
 ## Governance extensions in 2.6
 
@@ -558,6 +575,111 @@ source item IDs. It never stores notebook cells, source code, SQL text,
 credentials or dynamically constructed references. When no direct object name
 can be resolved, the view falls back to the notebook's verified item-level
 dependencies.
+
+## What's new in 2.8 and 2.9
+
+### Tenant connection inventory
+
+Version 2.8 adds a Connections page. Once per synchronization, the
+`tenantCollectConnections` Function reads every Fabric connection of the tenant
+from the admin connections API (Preview) with the synchronizer's token. Atlas
+keeps the name, connector, endpoint without user info, query string or
+fragment, authentication method, credential recency and role assignments.
+Fabric never returns secrets.
+
+Each connection is linked to the synchronized items that use it through
+OneLake shortcuts and mirrored databases, across workspaces. The page has an
+ownership view, a Policy readiness view that evaluates a personal draft of the
+data connection policies before enforcement, the changes between the last two
+inventories and a CSV export. Three entities hold the inventory outside the
+workspace snapshots: `ConnectionInventory`, `ConnectionEntry` and
+`ConnectionRoleAssignment`.
+
+A Connections finding category flags connections used by synchronized items
+that have no active owner (high), a single user as owner (medium) or a gateway
+set to `NotEncrypted` (medium). The MCP tool `atlas_get_connection_evidence`
+and Atlas Scout read the same tables.
+
+The inventory is readable by every Atlas user, which assumes a dedicated
+governance deployment. Restricting it to Atlas administrators is tracked in
+issue #98.
+
+### Connections in the departure pack
+
+Version 2.9 checks the departing principal against the owners of every
+connection, matched on the Entra object ID or, when Fabric returns it, the user
+principal name; never on a display name. A connection that the departure would
+leave without an owner while synchronized items use it is an urgent orphan
+risk. Personal connections and connections whose roles could not be read are
+counted, not guessed.
+
+## What's new in 3.0
+
+### Rayfin 2.0 generally available
+
+Fabric Atlas 3.0 runs on Rayfin 2.0.1. The client is built with explicit data,
+functions and browser-session services, and every Rayfin package and the
+Functions worker share the same 2.0.x version. The upgrade needs no schema
+change. The first synchronization after the upgrade re-reads every item, so
+that the new definitions are collected.
+
+### New governance findings
+
+| Rule | Severity | Trigger |
+|---|---|---|
+| `sensitivity-downgrade` | High or Medium | An item carries a weaker standard label, or none, than its strictest labelled upstream item, up to six lineage hops away. One finding per consumer, with every hop as evidence. Custom labels and uncollected metadata stay Unknown |
+| `dormant-producer` | High | An unendorsed or promoted lakehouse, warehouse, semantic model or database has no recorded downstream item and no modification, refresh or job run beyond the inactivity threshold. Needs complete lineage; replaces `item-inactive` on the same item |
+| `legacy-dataflow-gen1` | Low or Medium | A dataflow listed by the Power BI scanner but not by the Fabric Items API is a Dataflow Gen1. The finding names the downstream models and reports and points to the generally available upgrade wizard and API |
+| `app-default-identity` | High or Medium | A Fabric app runs as the entire tenant (High) or as one person (Medium); disabling that account breaks the app |
+| `data-agent-telemetry` | High or Medium | The tenant allows user-level (High) or cross-geo (Medium) Data Agent telemetry while an agent reads Confidential or stricter sources |
+
+None of these rules claims that an item is unused, exposed or exfiltrated.
+They report evidence and leave the decision to the owner.
+
+### New evidence
+
+* **Eventstream topology.** The definitions collector reads
+  `eventstream.json` and keeps source, stream, operator and destination names
+  and types, plus explicit item, workspace and connection identifiers.
+  Destinations become lineage edges; connection identifiers join the
+  Connections page. Operator expressions, properties, endpoints and keys are
+  dropped, and nothing is matched by name.
+* **Fabric app identity.** The governance stage reads
+  `GET /v1/workspaces/{id}/appBackends` and keeps each app's default identity.
+  The Catalog drawer shows it, and the departure pack lists apps that run as
+  the departing person.
+* **Policy set rules (Preview).** Behind the Fabric policies flag, Atlas reads
+  each policy set with `getDefinition?format=Beta`: scope, policy, conditions
+  and effects, without descriptions. A definition shows authored rules, not
+  enforcement, so activation stays Unknown. The Preview API needs the Atlas
+  identity to hold the Contributor role on the workspace that holds the
+  policy sets.
+* **Data Agent observability.** Policies & AI shows the tenant switches that
+  let Data Agents send operational metadata or user-level content to
+  Application Insights or Microsoft Foundry, and whether AI data may be
+  processed outside the capacity geography. Settings are matched on their exact
+  `settingName`; a setting the API does not return stays Unknown.
+* **Ignite 2026 item types.** The item family registry lists the 60 documented
+  Fabric item types, including PostgreSQL database and Policy set, and marks
+  Fabric apps as generally available.
+
+### Sharing and automation
+
+The Sync Brief can be sent to a Teams channel as an Adaptive Card through the
+existing `teamsNotify` Function and the `ATLAS_TEAMS_WEBHOOK_URL` secret.
+Sections without evidence say Unavailable instead of zero, and the card stays
+under 28 KB. The read-only MCP server gains `atlas_get_departure_pack`, which
+returns the departure pack for one principal identified by object ID or user
+principal name.
+
+### Production hardening
+
+About lists the Fabric app settings to review and the origins Atlas calls:
+Entra sign-in, the Fabric API, the Rayfin data and functions host and the
+compatibility UDF host. Fabric's tenant setting *Enforce a strict content
+security policy for static-hosted Fabric Apps* applies a fixed policy that
+cannot be customized; on 18 November 2026 it blocked the Entra token requests
+that synchronization needs, so it must stay off for Atlas users.
 
 ## Access review and departure planning
 
@@ -753,8 +875,11 @@ flowchart LR
 | Lakehouse, Warehouse, SQL Database and Mirrored Database objects | `workspaceCollectSqlMetadata` plus Lakehouse REST | None; missing application-identity coverage stays explicit |
 | Shortcuts, mirroring and materialized lake view provenance | `workspaceCollectSourceProvenance` | None |
 | Item Relations evidence | `workspaceCollectItemRelations` | None; the API remains Beta and non-authoritative |
+| Eventstream and policy set definitions (3.0) | `workspaceCollectDefinitions` | None; policy sets only behind the Fabric policies flag |
+| Domains, tags, tenant settings, network, external shares, OneLake roles and app identities | `workspaceCollectGovernance` | None; each section degrades to Unknown |
+| Tenant connection inventory (2.8) | `tenantCollectConnections`, once per batch | None; the admin connections API is Preview |
 | Access-policy context | `workspaceCollectAccessPolicyEvidence` | Portal-only layers remain unavailable |
-| Power BI admin scanner and scanner lineage | Python UDF | Retained because Rayfin Functions have no documented Power BI audience |
+| Power BI admin scanner, scanner lineage and Dataflow Gen1 list | Python UDF | Retained because Rayfin Functions, including Rayfin 2.0, have no documented Power BI audience |
 | PBIR-Legacy report pages | Python UDF | Retained until a supported application-identity path exists |
 | Kusto live schema | Python UDF | Retained because Rayfin Functions have no documented Kusto audience |
 
@@ -766,7 +891,9 @@ response-size limits. Item failures are isolated so one optional collector
 cannot erase valid metadata from another item.
 
 The browser publishes nothing until every required collector has completed and
-the merged snapshot passes validation.
+the merged snapshot passes validation. Snapshot rows are written with stable
+identifiers, so a write that fails with a transient network error is retried
+safely before the run is marked failed.
 
 ### Immutable snapshots
 
@@ -837,6 +964,13 @@ reads and controlled cleanup without being allowed to publish.
 | OpenLineageImport | One imported OpenLineage file: name, counts and result |
 | ExternalDataset | External dataset, optionally linked to a Fabric item |
 | ExternalLineageEdge | External input-to-output edge through a job |
+| ConnectionInventory | One tenant connection inventory run, outside workspace snapshots (2.8) |
+| ConnectionEntry | One Fabric connection without secrets (2.8) |
+| ConnectionRoleAssignment | One role of a principal on a connection (2.8) |
+
+Version 3.0 adds no entity. App identities and the Dataflow Gen1 list travel in
+the governance evidence of the snapshot; Eventstream and policy set projections
+travel in item metadata.
 
 ## Security and data boundaries
 
@@ -844,7 +978,9 @@ reads and controlled cleanup without being allowed to publish.
 
 Atlas stores workspace and item identity, documented ownership, descriptions,
 labels, tags, object schema, measure expressions, lineage, principals, grants,
-job metadata, configuration facts, snapshot summaries and team notes.
+job metadata, configuration facts, snapshot summaries, team notes and the
+tenant connection inventory (connection identity, endpoint without secrets,
+authentication method, recency and roles).
 
 ### Data Atlas excludes
 
@@ -857,6 +993,8 @@ job metadata, configuration facts, snapshot summaries and team notes.
 | Pipeline activities and expressions | The item and exposed lineage are stored, not orchestration source |
 | User Data Function source | Functions remain visible as items without copying implementation code |
 | KQL rows, query text and policy bodies | Atlas reads structural metadata only |
+| Eventstream operator expressions, endpoints and keys | Only node names, types and explicit identifiers are kept |
+| Policy set descriptions | Only scope, policy, conditions and effects are kept |
 | Mirroring source rows, source database names and target URLs | Only bounded provider, selection and replication context is retained |
 | Complete report visual field bindings | The current collection path does not expose them reliably |
 
@@ -895,6 +1033,16 @@ Atlas favours explicit failure over success-shaped fallbacks:
 * Ambiguous DAX references and ambiguous principals are omitted.
 * Personalization failures do not hide the underlying governance evidence.
 
+### Fabric app hardening
+
+Atlas is itself a Fabric app. About lists the settings an administrator
+reviews: a dedicated item identity rather than a personal account or the
+entire tenant, Secure Embed limited to the Fabric portal and Teams, and the
+synchronizer authority. The strict content security policy tenant setting must
+stay off for Atlas users because its fixed policy blocks the Entra token
+requests that synchronization needs. The equivalent Atlas policy, with every
+origin the app calls, is available for a reverse proxy or a security review.
+
 ## Deployment and operating model
 
 ### Prerequisites
@@ -922,9 +1070,11 @@ npx rayfin up --tenant <tenant-id> --workspace-id <workspace-id> --item-name fab
 ```
 
 Rayfin applies the MSSQL schema, deploys typed Functions, publishes the static
-app and writes runtime settings. The compatibility UDF must be updated by
+app and writes runtime settings. Every Rayfin package and the Functions worker
+must stay on the same 2.0.x version. The compatibility UDF must be updated by
 round-tripping its complete Fabric definition and replacing only
-`function_app.py`.
+`function_app.py`; version 3.0 needs that update so the scanner stage reports
+Dataflow Gen1.
 
 ### First sync and upgrades
 
@@ -951,8 +1101,9 @@ Atlas does not store a delegated user token to work around that limit.
 
 ## Fabric item coverage
 
-Atlas always indexes top-level items. Deeper inventory depends on item type,
-tenant settings and the endpoints Fabric exposes.
+Atlas always indexes top-level items and registers all 60 documented Fabric
+item types (verified on 17 November 2026). Deeper inventory depends on item
+type, tenant settings and the endpoints Fabric exposes.
 
 | Fabric element | Current depth | Important boundary |
 |---|---|---|
@@ -965,12 +1116,15 @@ tenant settings and the endpoints Fabric exposes.
 | Report | Item metadata, bound model, documented owner and pages | PBIR-Legacy pages use compatibility; visual field bindings are not claimed |
 | Notebook | Item metadata, lineage, access and recent runs | Source code and cells are not read |
 | Data Pipeline | Item metadata, lineage, access and recent runs | Activities and expressions are not copied |
-| Dataflow and Datamart | Item metadata, owner and official upstream IDs | Query content is not copied |
+| Dataflow and Datamart | Item metadata, owner and official upstream IDs; Dataflow Gen1 identified when the scanner lists it and the Items API does not | Query content is not copied |
+| Eventstream | Source, stream, operator and destination names and types; lineage to destination items | Operator expressions, properties, endpoints and keys are not copied |
 | Eventhouse and KQL Database | Tables, columns, functions, parameters, materialized views, lineage, access and jobs | Business rows, query text and policy bodies are not copied |
 | Ontology | Entities, properties, relationships, bindings and contextualizations | Document and resource-link payloads are excluded |
 | Graph Model | Node types, edge types, properties and source mappings | Graph instances and filter values are excluded |
 | Data Agent | Draft and published sources plus selected elements | Instructions, few-shots and prompts are excluded |
-| Fabric App, AppBackend and User Data Function | Top-level identity and exposed relationships | Internal service inventory and function source are not copied |
+| Fabric App, AppBackend and User Data Function | Top-level identity, exposed relationships and the app default identity | Internal service inventory, function source, block state, CSP and Secure Embed are not exposed by the API |
+| Policy set | Authored rules behind the Fabric policies flag | Activation and evaluation results are not exposed |
+| PostgreSQL database | Top-level identity | Schemas and tables stay Deferred until a read-only catalog stage is reviewed |
 | OneLake shortcut | Name, path, target type and bounded target identity | Target URLs, buckets, subpaths and target columns are not stored |
 
 ## Read-only Atlas MCP
@@ -979,16 +1133,19 @@ Version 2 includes an optional local stdio MCP server for deterministic,
 read-only access to validated Atlas evidence. It runs on the MCP client machine,
 not as a Rayfin Function or permanent Fabric backend service.
 
-Available tools cover:
+The twelve tools in 3.0 cover:
 
+* workspace scope and snapshot provenance;
 * catalog search;
-* item context;
-* item and object impact;
+* item impact and lineage evidence;
 * access evidence;
-* incident evidence;
+* connection evidence;
+* operational incidents;
 * snapshot comparison;
 * governance findings with priority;
-* validated snapshot export.
+* validated snapshot export;
+* the departure pack for one principal, matched on object ID or user
+  principal name only.
 
 The server is disabled by default. Activation requires a dedicated public
 client, delegated `Item.Execute.All`, a reviewed external Entra exchange
@@ -1011,6 +1168,10 @@ build identifier, source repository, release history and clone command.
 | `src/atlas/openlineage.ts` | OpenLineage import, export and external-lineage linking |
 | `src/atlas/sync-brief.ts` | Latest-sync summary and Markdown export |
 | `src/atlas/item-passport.ts` | Item identity sheet export and the Ask Scout item question |
+| `src/atlas/governance.ts` | Governance rules, including the 3.0 rules |
+| `src/atlas/data-agent-telemetry.ts` | Data Agent observability tenant switches |
+| `src/atlas/csp.ts` | Origin inventory and production hardening checklist |
+| `src/atlas/connections.ts` | Tenant connection inventory and usage |
 | `src/atlas/backend.ts` | Workspace-scoped persistence and trusted snapshot loading |
 | `src/atlas/lineage.ts` | Lineage normalization, traversal and layout |
 | `src/atlas/item-relations-evidence.ts` | Preview contracts and relation semantics |
@@ -1039,9 +1200,11 @@ npm run build
 | Python compatibility | Limited to Power BI scanner, PBIR-Legacy pages, Kusto live metadata and rollback | Documented Power BI and Kusto audiences for Rayfin Functions |
 | Atlas MCP | Implemented and disabled by default | Public client, delegated permission, reviewed exchange and live validation |
 | OneLake security | Data access roles, direct members and RLS/CLS presence for up to 40 Lakehouses | Group expansion and constraint evaluation APIs |
-| Purview DLP and Fabric policies | Purview shown as unavailable; Fabric policies listed with enforcement Unknown | Public read APIs for policy evaluation results |
+| Purview DLP and Fabric policies | Purview shown as unavailable; policy set rules read with a Preview API behind a flag, activation Unknown | Public read APIs for policy activation and evaluation results |
+| Connections | Inventory readable by every Atlas user; usage covers shortcuts and mirroring only | Administrator-only reading, pipeline and Dataflow connection parsing |
+| Strict content security policy | Fabric's fixed policy blocks Atlas sign-in tokens | A customizable policy or an allowance for Entra token requests |
 | Report visual usage | Not collected | Supported report definition path with sensitivity and permission handling |
-| Shared actions and notifications | Optional Teams alert for new Critical findings; no shared assignments | Reviewed ownership model for shared actions |
+| Shared actions and notifications | Optional Teams alert for new Critical findings and the Sync Brief; no shared assignments | Reviewed ownership model for shared actions |
 | Atlas Scout scope | Read-only, but every agent user sees every synchronized workspace | Row-level filtering or per-workspace scope in the Atlas SQL database |
 | Power BI posture report (PBIP) | Not implemented; JSON and snapshot export, Sync Brief and Teams card cover sharing | Reviewed report template fed by the published snapshot |
 
@@ -1120,6 +1283,10 @@ Within those limits, Atlas answers four recurring questions:
 | Reachable pair | Principal and item combination with recorded effective access |
 | Trusted writer | Configured immutable Entra subject allowed to publish and prune snapshots |
 | What-if | Local simulation that excludes recorded grant paths without changing Fabric |
+| Dataflow Gen1 | Dataflow listed by the Power BI scanner but not by the Fabric Items API |
+| Dormant producer | Data store or model with no recorded consumer and no activity beyond the inactivity threshold |
+| Policy set | Fabric item that holds authored policy rules for a tenant or capacity scope |
+| Sensitivity downgrade | Consumer whose label is weaker than its strictest labelled upstream item |
 
 ## References
 
@@ -1127,3 +1294,7 @@ Within those limits, Atlas answers four recurring questions:
 * Fabric Atlas releases: <https://github.com/fredgis/FabricAtlas/releases>
 * Rayfin source: <https://github.com/microsoft/rayfin>
 * Microsoft Fabric documentation: <https://learn.microsoft.com/fabric/>
+* Eventstream definition: <https://learn.microsoft.com/rest/api/fabric/articles/item-management/definitions/eventstream-definition>
+* List App Backends: <https://learn.microsoft.com/rest/api/fabric/appbackend/items/list-app-backends>
+* Get Policy Set Definition: <https://learn.microsoft.com/rest/api/fabric/policyset/items/get-policy-set-definition>
+* Content security policy for Fabric apps: <https://learn.microsoft.com/fabric/apps/content-security-policy>
