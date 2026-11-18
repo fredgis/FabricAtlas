@@ -71,6 +71,14 @@ data exists:
   definition and projects direct literal table and `Tables/...` references.
   Object and lineage coverage are Partial because code, cells, SQL text,
   credentials and dynamic references are never persisted.
+- **Dataflow Gen1 and Gen2.** Both arrive with the Atlas type `Dataflow`.
+  The Fabric Items API lists only Dataflow Gen2, while the Power BI scanner
+  lists both. The scanner compatibility stage returns the scanner dataflows
+  that the Items API did not list; Atlas stores them as Dataflow Gen1
+  evidence (ID, name, whether an owner is recorded, downstream semantic
+  models) and raises `legacy-dataflow-gen1`. When either listing is
+  incomplete, or the snapshot predates v3, the generation stays Unknown and
+  no finding is raised. Atlas never calls the Upgrade API.
 - **Eventstreams.** `workspaceCollectDefinitions` reads the documented
   `eventstream.json` part and keeps only source, stream, operator and
   destination names and types, plus explicit item, workspace and connection

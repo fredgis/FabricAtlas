@@ -200,6 +200,20 @@ export function carryForwardDomainNames<T>(current: T, previous: unknown): T {
   return { ...current, domains: { status: { status: "complete", code: "carried-forward" }, entries: before.entries } };
 }
 
+/**
+ * Gen1 needs both listings: a complete Fabric Items API inventory and a
+ * complete scanner result that reported its scanner-only dataflows.
+ */
+export function legacyDataflowEvidence(
+  itemsSection: { status?: string } | undefined,
+  scanner: Pick<RawSync, "sections" | "scannerOnlyDataflows">,
+) {
+  if (itemsSection?.status !== "complete") return { status: { status: "failed", code: "items-incomplete" }, entries: [] };
+  if (scanner.sections?.scanner?.status !== "complete") return { status: { status: "failed", code: "scanner-incomplete" }, entries: [] };
+  if (!Array.isArray(scanner.scannerOnlyDataflows)) return { status: { status: "unsupported", code: "collector-not-updated" }, entries: [] };
+  return { status: { status: "complete" }, entries: scanner.scannerOnlyDataflows.slice(0, 500) };
+}
+
 export async function collectBrowserWorkspace(
   workspaceId: string, identity: SyncIdentity, correlationId: string,
   progress?: (percent: number, stage: string) => void, signal?: AbortSignal,
@@ -635,7 +649,10 @@ export async function collectBrowserWorkspace(
       protocolVersion: 1, workspaceId, correlationId, delegatedToken: delegatedToken ?? null,
     });
     if (governance.authoritative === false && governance.workspaceId === workspaceId) {
-      raw.governanceEvidence = carryForwardDomainNames(governance, cached?.workspaceId === workspaceId ? cached.raw.governanceEvidence : undefined);
+      raw.governanceEvidence = {
+        ...carryForwardDomainNames(governance, cached?.workspaceId === workspaceId ? cached.raw.governanceEvidence : undefined),
+        legacyDataflows: legacyDataflowEvidence(core.sections?.items, scanner),
+      };
     }
   } catch {
     // Governance evidence is optional: without it, domain names, tags and policies stay Unknown.

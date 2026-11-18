@@ -59,6 +59,14 @@ export interface ExternalShareInfo {
   paths: string[];
 }
 
+/** A Power BI scanner dataflow absent from the Fabric Items API: Dataflow Gen1. */
+export interface LegacyDataflowInfo {
+  id: string;
+  displayName: string;
+  ownerKnown: boolean;
+  downstreamModelIds: string[];
+}
+
 export interface OneLakeRoleInfo {
   itemId: string;
   roleName: string;
@@ -82,6 +90,8 @@ export interface GovernanceEvidence {
   network: { status: GovernanceSectionState; policy?: NetworkPolicyInfo };
   externalShares: { status: GovernanceSectionState; entries: ExternalShareInfo[] };
   oneLakeRoles: { status: GovernanceSectionState; entries: OneLakeRoleInfo[] };
+  /** Absent before v3; a missing section means Unknown, so nothing is inferred. */
+  legacyDataflows?: { status: GovernanceSectionState; entries: LegacyDataflowInfo[] };
 }
 
 const LIMIT = 5_000;
@@ -204,6 +214,16 @@ export function parseGovernanceEvidence(value: unknown): GovernanceEvidence | un
         itemMemberCount: typeof v.itemMemberCount === "number" && v.itemMemberCount >= 0 ? Math.floor(v.itemMemberCount) : 0,
         rowSecurity: v.rowSecurity === true, columnSecurity: v.columnSecurity === true,
         ...roleConstraints(v),
+      };
+    }),
+    legacyDataflows: entries(value.legacyDataflows, (v) => {
+      const id = str(v.id, 128);
+      if (!id) return undefined;
+      return {
+        id: id.toLowerCase(),
+        displayName: str(v.displayName, 256) ?? id,
+        ownerKnown: v.ownerKnown === true,
+        downstreamModelIds: strings(v.downstreamModelIds, 50).map((entry) => entry.toLowerCase()),
       };
     }),
   };

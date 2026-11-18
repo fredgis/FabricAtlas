@@ -4289,6 +4289,43 @@ class OptionalEndpointStatusTests(unittest.TestCase):
         self.assertEqual(errors, ["reportPages: transient-upstream"])
 
 
+class ScannerOnlyDataflowTests(unittest.TestCase):
+    workspace_id = "11111111-1111-4111-8111-111111111111"
+    gen2_id = "22222222-2222-4222-8222-222222222222"
+    gen1_id = "33333333-3333-4333-8333-333333333333"
+    model_id = "44444444-4444-4444-8444-444444444444"
+
+    def test_scanner_dataflows_absent_from_the_items_api_are_reported_as_gen1(self):
+        plan = json.dumps({
+            "version": 1, "stage": "scanner",
+            "items": [
+                {"id": self.gen2_id, "type": "Dataflow", "collectors": []},
+                {"id": self.model_id, "type": "SemanticModel", "collectors": []},
+            ],
+            "schemaItemIds": [],
+        })
+        scan = {
+            "id": self.workspace_id,
+            "dataflows": [
+                {"objectId": self.gen2_id, "name": "Gen2 flow", "users": []},
+                {"objectId": self.gen1_id, "name": "Legacy flow", "configuredBy": "ana@contoso.example", "users": []},
+            ],
+            "datasets": [{
+                "id": self.model_id, "users": [], "tables": [],
+                "upstreamDataflows": [{"targetDataflowId": self.gen1_id.upper()}],
+            }],
+        }
+        with mock.patch.object(function_app, "_scan_workspace", return_value=scan):
+            result = function_app.sync_compatibility("fixture-token", self.workspace_id, plan)
+
+        self.assertEqual(result["sections"]["scanner"]["status"], "complete")
+        self.assertEqual(result["scannerOnlyDataflows"], [{
+            "id": self.gen1_id, "displayName": "Legacy flow", "ownerKnown": True,
+            "downstreamModelIds": [self.model_id],
+        }])
+        self.assertNotIn("ana@contoso.example", json.dumps(result["scannerOnlyDataflows"]))
+
+
 class StorageSchemaCompatibilityTests(unittest.TestCase):
     workspace_id = "11111111-1111-4111-8111-111111111111"
     lakehouse_id = "22222222-2222-4222-8222-222222222222"

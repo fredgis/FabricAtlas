@@ -13,6 +13,8 @@ import {
 } from "./governance";
 import { SAMPLE_DATA, type AtlasData, type Item } from "./model";
 import { searchJobId } from "./search";
+import { parseGovernanceEvidence } from "./governance-evidence";
+import { legacyDataflowEvidence } from "./browser-collector-sync";
 
 function item(
   fabricId: string,
@@ -985,5 +987,56 @@ describe("dormant producer findings", () => {
     expect(ruleIds(atlas({ workspace: workspace(), items }), "dormant-producer")).toEqual([]);
     expect(ruleIds(atlas({ workspace: workspace("failed"), items }), "item-inactive")).toEqual(["lake"]);
     expect(ruleIds(atlas({ workspace: workspace("complete"), items }), "dormant-producer")).toEqual(["lake"]);
+  });
+});
+
+describe("Dataflow Gen1 findings", () => {
+  const evidence = (legacyDataflows: unknown) =>
+    parseGovernanceEvidence({ collectedAt: "2026-11-18T00:00:00Z", legacyDataflows })!;
+  const gen1 = (overrides: Record<string, unknown> = {}) => ({
+    id: "DF1", displayName: "Legacy flow", ownerKnown: true, downstreamModelIds: [], ...overrides,
+  });
+  const findings = (data: AtlasData) =>
+    buildGovernanceFindings(data).filter((finding) => finding.id.startsWith("legacy-dataflow-gen1:"));
+
+  it("flags scanner-only dataflows and names downstream models and reports", () => {
+    const [finding] = findings(
+      atlas({
+        items: [item("model", { itemType: "SemanticModel" }), item("report", { itemType: "Report" })],
+        edges: [{ source: "model", target: "report", relation: "binds" }],
+        governanceEvidence: evidence({ status: { status: "complete" }, entries: [gen1({ downstreamModelIds: ["MODEL"] })] }),
+      }),
+    );
+    expect(finding).toMatchObject({ id: "legacy-dataflow-gen1:df1", severity: "medium", category: "operations" });
+    expect(finding.detail).toContain("feeds model and 1 report (report)");
+    expect(finding.recommendation).toContain("Upgrade wizard or API");
+  });
+
+  it("is low without downstream models and medium when the owner is unresolved", () => {
+    const low = findings(atlas({ governanceEvidence: evidence({ status: { status: "complete" }, entries: [gen1()] }) }));
+    expect(low[0].severity).toBe("low");
+    const unowned = findings(atlas({ governanceEvidence: evidence({ status: { status: "complete" }, entries: [gen1({ ownerKnown: false })] }) }));
+    expect(unowned[0].severity).toBe("medium");
+    expect(unowned[0].detail).toContain("owner is not recorded");
+  });
+
+  it("stays Unknown when the scanner or Items API listing is incomplete, or evidence predates v3", () => {
+    expect(findings(atlas({ governanceEvidence: evidence({ status: { status: "failed", code: "scanner-incomplete" }, entries: [gen1()] }) }))).toEqual([]);
+    expect(findings(atlas({ governanceEvidence: evidence({ status: { status: "failed", code: "items-incomplete" }, entries: [gen1()] }) }))).toEqual([]);
+    expect(findings(atlas({ governanceEvidence: evidence(undefined) }))).toEqual([]);
+  });
+
+  it("never fires on Dataflow Gen2 items listed by the Items API", () => {
+    expect(
+      findings(atlas({ items: [item("gen2", { itemType: "Dataflow" })], governanceEvidence: evidence({ status: { status: "complete" }, entries: [] }) })),
+    ).toEqual([]);
+  });
+
+  it("derives evidence only when both listings are complete", () => {
+    const scanner = { sections: { scanner: { status: "complete" as const } }, scannerOnlyDataflows: [gen1()] };
+    expect(legacyDataflowEvidence({ status: "complete" }, scanner).status).toEqual({ status: "complete" });
+    expect(legacyDataflowEvidence({ status: "failed" }, scanner).status.status).toBe("failed");
+    expect(legacyDataflowEvidence({ status: "complete" }, { ...scanner, sections: { scanner: { status: "failed" as const } } }).status.status).toBe("failed");
+    expect(legacyDataflowEvidence({ status: "complete" }, { sections: scanner.sections }).status).toEqual({ status: "unsupported", code: "collector-not-updated" });
   });
 });

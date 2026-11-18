@@ -30,6 +30,7 @@ const RULE_LABEL: Record<string, string> = {
   "endorsed-inactive": "Endorsed but inactive",
   "item-inactive": "Inactive items",
   "dormant-producer": "Dormant producers",
+  "legacy-dataflow-gen1": "Dataflow Gen1 to upgrade",
   "workspace-public-network": "Public network with Highly Confidential data",
   "workspace-outbound-network": "Outbound access unrestricted",
   "external-share-sensitive": "Sensitive item shared externally",

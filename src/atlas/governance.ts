@@ -833,6 +833,7 @@ export function buildGovernanceFindings(
 
   findings.push(
     ...sensitivityDowngradeFindings(data.items, data.edges, sensitivityEligibleItems),
+    ...legacyDataflowFindings(data),
     ...endorsedInactiveFindings(data.items, data.workspace.syncedAt),
     ...dormantAndInactiveFindings(data),
     ...objectDescriptionFindings(data.items, data.schema),
@@ -1204,6 +1205,48 @@ export function externalShareFindings(
       recommendation: "Confirm the external data share is still required, or revoke it in the item's External data sharing settings.",
       evidenceIds: list.map((share) => `item:${itemId}:external-share:${share.shareId}`),
       target: { kind: "item", itemId },
+    } satisfies GovernanceFinding;
+  });
+}
+
+/**
+ * Dataflow Gen1: listed by the Power BI scanner but not by the Fabric Items
+ * API. Raised only when both listings were complete in this snapshot; the GA
+ * upgrade keeps owner and connections, and Atlas never calls it.
+ */
+export function legacyDataflowFindings(
+  data: Pick<AtlasData, "workspace" | "items" | "edges" | "governanceEvidence">,
+): GovernanceFinding[] {
+  const section = data.governanceEvidence?.legacyDataflows;
+  if (section?.status.status !== "complete") return [];
+  const byId = new Map(data.items.map((item) => [item.fabricId.toLowerCase(), item]));
+  const reportsOf = (modelId: string) =>
+    data.edges
+      .filter((edge) => !edge.broken && edge.source.toLowerCase() === modelId)
+      .map((edge) => byId.get(edge.target.toLowerCase()))
+      .filter((item): item is Item => item?.itemType === "Report");
+  return section.entries.map((dataflow) => {
+    const models = dataflow.downstreamModelIds
+      .map((id) => byId.get(id))
+      .filter((item): item is Item => !!item);
+    const reports = [...new Map(models.flatMap((model) => reportsOf(model.fabricId.toLowerCase())).map((item) => [item.fabricId, item])).values()];
+    const impact = models.length
+      ? ` It feeds ${models.map((item) => item.displayName).join(", ")}${reports.length ? ` and ${reports.length} report${reports.length === 1 ? "" : "s"} (${reports.map((item) => item.displayName).join(", ")})` : ""}.`
+      : "";
+    const owner = dataflow.ownerKnown ? "" : " Its owner is not recorded.";
+    return {
+      id: findingId("legacy-dataflow-gen1", dataflow.id),
+      severity: models.length || !dataflow.ownerKnown ? "medium" : "low",
+      category: "operations",
+      title: `Dataflow Gen1 to upgrade: ${dataflow.displayName}`,
+      detail: `${dataflow.displayName} is a Dataflow Gen1: the Power BI scanner lists it but the Fabric Items API does not.${impact}${owner}`,
+      recommendation:
+        "A Workspace or Tenant Admin can upgrade it to Dataflow Gen2 (CI/CD) with the generally available Upgrade wizard or API, which keeps the original owner and data source connections.",
+      evidenceIds: [
+        `workspace:${data.workspace.fabricId}:dataflow-gen1:${dataflow.id}`,
+        ...models.map((item) => `item:${item.fabricId}:upstream-dataflow:${dataflow.id}`),
+      ],
+      target: { kind: "workspace" },
     } satisfies GovernanceFinding;
   });
 }
