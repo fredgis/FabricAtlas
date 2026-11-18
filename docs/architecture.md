@@ -190,6 +190,11 @@ flowchart LR
 
 Rows without a complete manifest remain invisible to normal hydration.
 
+Each child row has a stable identifier. A write that fails with a retryable
+error (HTTP 408, 429 or 5xx, a timeout, or a fetch-level network error with no
+status) is retried after 1, 3, 8 and 15 seconds, and skipped when a read shows
+the row already exists. Other errors fail the run.
+
 Snapshot retention defaults to 12 and can be configured from 2 to 50. Child
 rows are removed before a stale manifest. Cleanup failure does not invalidate
 the newly published snapshot.
