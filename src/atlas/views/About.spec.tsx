@@ -12,7 +12,7 @@ describe("AboutView", () => {
     expect(screen.getByText("Open source")).toBeVisible();
     expect(screen.getByText("MIT licensed")).toBeVisible();
     expect(screen.getByText("Rayfin SDK")).toBeVisible();
-    expect(screen.getByText("1.36.2")).toBeVisible();
+    expect(screen.getByText("2.0.1")).toBeVisible();
     expect(screen.getByText("Functions API")).toBeVisible();
     expect(screen.getByText("Snapshot")).toBeVisible();
     expect(
