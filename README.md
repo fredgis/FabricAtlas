@@ -38,7 +38,7 @@ governance signals announced at **Microsoft Ignite 2026**:
 - Eventstream topology in lineage, policy set rules (Preview) and Data Agent
   telemetry tenant switches;
 - the Sync Brief sent to Teams, the `atlas_get_departure_pack` MCP tool and a
-  recommended CSP for production;
+  production hardening checklist;
 - the Ignite 2026 item types, including PostgreSQL database and Policy set.
 
 See [CHANGELOG.md](CHANGELOG.md) for the details and upgrade notes.
@@ -56,7 +56,8 @@ Fabric Atlas collects that metadata without copying business data.
 - Trace trusted item and object lineage, raw Item Relations Preview evidence
   and DAX dependencies through Semantic X-Ray.
 - Compare validated snapshots, review changes and export impact evidence. The
-  Sync Brief summarizes the latest sync and exports it as Markdown.
+  Sync Brief summarizes the latest sync, exports it as Markdown and can be sent
+  to a Teams channel.
 - Review effective recorded access, run local What-if scenarios and generate
   departure packs that separate ownership, privileged access, identity
   references and unknown evidence, and check the person against the owners of
@@ -173,7 +174,7 @@ Each block below is collapsed; open the one you need.
 | Access | Effective recorded access, principal type and role filters, OneLake data access roles (RLS/CLS), sensitive external shares, personal decisions, What-if simulation and evidence-based departure packs, including the Fabric connections the principal owns and the apps that run under their identity |
 | Connections | Tenant connection inventory from the Fabric admin connections API (Preview), owners and pending owners, authentication and single sign-on, credential recency, items that use each connection across synchronized workspaces, ownership and gateway encryption findings, draft data connection policy simulation, changes between inventories and CSV export |
 | Operations | Job history, observed incidents, inferred downstream impact, Full or Incremental sync (one shared choice; a notice explains when a full scan is required because this browser holds no previous full snapshot or the 7-day full rescan is due), rescanned/reused counts and real run duration, Open in Fabric cards for Govern and Admin monitoring, configuration and team notes |
-| Security | Fabric brokered authentication, synchronizer-only publication, metadata-only storage, user-scoped personal state and a recommended CSP with a hardening checklist |
+| Security | Fabric brokered authentication, synchronizer-only publication, metadata-only storage, user-scoped personal state and a production hardening checklist with the Atlas origin inventory |
 | AI assistant | Atlas Scout chat over a published Fabric Data Agent: full page and floating bubble, governance skills, rendered findings, SQL and raw results, lineage graphs, live progress and Stop |
 | Extensibility | Typed Rayfin Functions, minimal Python compatibility and an optional read-only local Atlas MCP with 12 tools, including `atlas_get_departure_pack` |
 
@@ -349,7 +350,9 @@ governance view:
 - **Export JSON** downloads the filtered queue for ticketing tools.
 - **Teams card** downloads an Adaptive Card 1.5 with the posture and the five
   most severe findings. Since 2.6, an optional `ATLAS_TEAMS_WEBHOOK_URL`
-  secret posts new critical findings automatically after a sync.
+  secret posts new critical findings automatically after a sync; since 3.0,
+  **Send to Teams** on the *Changes* tab posts the Sync Brief to the same
+  channel. Without the secret, both report that the webhook is not configured.
 - **Why** explains each finding with its evidence and a deterministic
   priority score; **Export snapshot** downloads the validated snapshot.
 
@@ -372,7 +375,12 @@ The complete rule set evaluated on every validated snapshot:
 | `certified-missing-description` | Medium | Certified item without a description |
 | `certified-missing-sensitivity` | High | Certified item without a sensitivity label (replaces `missing-sensitivity` for certified items) |
 | `endorsed-inactive` | Low | Endorsed item whose last recorded run is older than 90 days |
-| `item-inactive` | Low | Non-endorsed item with no observed modification, refresh or job run for more than `VITE_ATLAS_INACTIVE_DAYS` (default 90). Read usage is not collected |
+| `item-inactive` | Medium | Non-endorsed item with no observed modification, refresh or job run for more than `VITE_ATLAS_INACTIVE_DAYS` (default 90). Read usage is not collected |
+| `dormant-producer` (3.0) | High | Unendorsed or promoted lakehouse, warehouse, semantic model or database with no recorded downstream item and no activity beyond the inactivity threshold; needs complete lineage. Replaces `item-inactive` on the same item |
+| `sensitivity-downgrade` (3.0) | High / Medium | Item with a weaker standard label, or none, than its strictest upstream item along lineage (up to 6 hops). High from Highly Confidential, Medium from Confidential; custom labels stay Unknown |
+| `legacy-dataflow-gen1` (3.0) | Low / Medium | Dataflow listed by the Power BI scanner but not by the Fabric Items API (Gen1). Medium when it feeds a semantic model or has no recorded owner |
+| `app-default-identity` (3.0) | High / Medium | Fabric app whose default identity is the entire tenant (High) or one user (Medium) |
+| `data-agent-telemetry` (3.0) | High / Medium | Tenant allows user-level (High) or cross-geo (Medium) Data Agent telemetry while an agent reads Confidential or stricter sources |
 | `workspace-public-network` | Low | Collected inbound policy allows public access while the workspace holds Highly Confidential items. Unknown never raises it |
 | `external-share-sensitive` | Medium / High | Active external data share on an item labeled Confidential (High when Highly Confidential) |
 | `missing-object-description` | Low | Endorsed semantic model with undocumented tables, columns or measures |
@@ -386,8 +394,10 @@ The complete rule set evaluated on every validated snapshot:
 #### Policies & AI
 
 Policies & AI lists semantic models, Data Agents, configured sources and
-protection evidence. Unknown exposure and unavailable controls stay explicit
-instead of being presented as compliant.
+protection evidence. Since 3.0 it also shows the Data Agent observability
+tenant switches and, behind the Fabric policies flag, the authored rules of
+each policy set (activation stays Unknown). Unknown exposure and unavailable
+controls stay explicit instead of being presented as compliant.
 
 ![Fabric Atlas Policies and AI](docs/screenshots/policies-ai-v2.png)
 
@@ -666,7 +676,8 @@ architecture, the Atlas Scout data agent path, OpenLineage import and export,
 the Rayfin-first collector path, manifest-last publication, current entity
 groups and the exact Rayfin platform gaps that keep Python compatibility and
 browser-driven synchronization in place. The editable deck (with the whitepaper PDF embedded),
-PDF export and PlantUML sources are in [`prez/`](prez/).
+PDF export and PlantUML sources are in [`prez/`](prez/). The deck describes
+2.9; the 3.0 changes are listed in [What's new in 3.0](#whats-new-in-30).
 
 </details>
 
@@ -732,7 +743,7 @@ contracts or a separate product decision.
 | Fabric policies (preview) | Authored policy set rules read with `getDefinition?format=Beta` behind a flag (needs Contributor on the governance workspace); activation always Unknown | A public API exposing activation and evaluation results |
 | Connections | Tenant inventory readable by every Atlas user (a dedicated governance workspace is assumed); usage covers shortcuts and mirroring only; data connection policies are simulated as a personal draft | Administrator-only reading ([#98](https://github.com/fredgis/FabricAtlas/issues/98)), pipeline and Dataflow connection parsing, a public API for the configured policies |
 | Report visual usage | Not collected | A supported report definition path with sensitivity and permission handling |
-| Shared action plans and notifications | Optional Teams webhook for new critical findings; no shared action plans | Reviewed team workflow and ownership model |
+| Shared action plans and notifications | Optional Teams webhook for new critical findings and the Sync Brief; no shared action plans | Reviewed team workflow and ownership model |
 | Generated Power BI posture report (PBIP) | Not implemented; JSON and snapshot export, the Teams card and webhook cover sharing in 2.6 | A reviewed report template fed by the published snapshot |
 | 3.0 release line | See [the latest release](https://github.com/fredgis/FabricAtlas/releases/latest) and [CHANGELOG.md](CHANGELOG.md) | Patch releases for verified fixes; larger workflows depend on the contracts above |
 
@@ -788,7 +799,11 @@ info, query string or fragment, authentication method, recency and role
 assignments. Measure DAX is retained only as explicit Semantic Model metadata.
 
 The project has been reviewed against OWASP Top 10:2025 and ASVS 5.0. Security
-hardening is part of the release process.
+hardening is part of the release process. **About > Production hardening**
+lists the Fabric app settings to apply. Keep the tenant setting *Enforce a
+strict content security policy for static-hosted Fabric Apps* off for Atlas
+users: its fixed policy blocks the Entra token requests that synchronization
+needs (see [installation](docs/installation.md#production-hardening-fabric-app-settings)).
 
 The shared authenticated read scope and append-only note behavior are described
 in **Access and collaboration scope** under [Feature reference](#feature-reference)
