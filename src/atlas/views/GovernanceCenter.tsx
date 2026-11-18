@@ -31,6 +31,8 @@ import { GovernanceExceptionControl } from "../components/GovernanceExceptionCon
 import { GovernancePolicyEditor } from "../components/GovernancePolicyEditor";
 import { HistoricalChangeDetails } from "../components/HistoricalChangeDetails";
 import { SyncBriefPanel } from "../components/SyncBriefPanel";
+import { buildSyncBriefCard, invokeTeamsNotify } from "../teams-notify";
+import { urlForNavigation } from "../routing";
 import { buildSyncBrief, syncBriefMarkdown, type SyncBriefLink } from "../sync-brief";
 import { ItemFamilyCoverageSection } from "../components/ItemFamilyCoverageSection";
 import { RadarSignalTiles } from "../components/RadarSignalTiles";
@@ -1221,6 +1223,15 @@ export function GovernanceCenterView({
               )
             }
             onOpen={(link) => onNavigate(navigationForSyncBriefLink(link))}
+            onSendTeams={() =>
+              invokeTeamsNotify(
+                buildSyncBriefCard(
+                  syncBrief,
+                  data.workspace.displayName,
+                  `${window.location.origin}${urlForNavigation(window.location, { tab: "governance", focus: { requestId: "teams-sync-brief", governanceSection: "changes" } })}`,
+                ),
+              )
+            }
           />
           <ChangesSection
             changes={filteredChanges}

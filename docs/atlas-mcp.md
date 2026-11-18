@@ -90,6 +90,7 @@ research note that the local Fabric MCP server never touches a live tenant.
 | `atlas_list_workspaces` | Which workspaces may Atlas MCP read? | Core `list_workspaces` | Only the administrator-selected Atlas scope |
 | `atlas_get_governance_findings` | Which governance findings are open, and how do I fix them? | None | Deterministic findings with severity, Microsoft governance pillar, evidence IDs, owner status and a Fabric portal fix link |
 | `atlas_export_snapshot` | What exactly is in the snapshot I am reading? | None | Manifest with counts and section status, plus paged section rows with identity values withheld |
+| `atlas_get_departure_pack` | What breaks if this person or service principal leaves? | None | Sole and shared ownership, orphan risk with blast radius, deterministic reassignment candidates and connection ownership, with strict identity matching |
 
 Atlas MCP does not duplicate live resource management, role changes, DAX
 queries, data answers or OneLake file access. Use the Microsoft servers for
@@ -115,6 +116,7 @@ properties. All limits are fixed in `ATLAS_MCP_LIMITS`.
 | `atlas_get_snapshot_changes` | `workspaceId?`, `domains?`, `limit` (≤100) | Changes between the two most recent validated snapshots |
 | `atlas_get_governance_findings` | `workspaceId?`, `severities?`, `categories?`, `pillars?`, `domain?`, `rule?`, `itemId?`, `owner` (`any`, `known`, `unknown`, `workspace`), `limit` (≤100), `offset` | Findings sorted by severity then ID, with pillar, evidence IDs (≤10), `ownerStatus` and `fixUrl`; texts truncated to 500 characters; `countsBySeverity`, `totalFindings` and `nextOffset` |
 | `atlas_export_snapshot` | `workspaceId?`, `section?` (`items`, `edges`, `principals`, `grants`, `jobs`, `config`), `limit` (≤200), `offset` | The snapshot manifest (the same one the UI export writes); with `section`, one page of rows where emails, `configuredBy`, `modifiedBy`, `endorsementBy`, job messages and email-like strings are replaced by `[withheld]` |
+| `atlas_get_departure_pack` | `workspaceId?`, `principal` (Entra object ID or UPN, ≤100), `limit` (≤100), `offset` | `resolution` (`resolved`, `ambiguous`, `unresolved`) and `matchedOn`. A display name never resolves: matching principals come back as `candidates` (≤10) and the pack is `blocked`. Resolved: `summary` counts, ownership rows (sole first, with downstream consumers and the reassignment `reasonCode` and candidate), privileged access to review, connections where the principal holds a role (status, urgency, suggested action) and `connectionCoverage`. Owner emails are never returned; a missing connection inventory is reported as unknown, not zero |
 
 Every result uses the same envelope:
 
@@ -305,5 +307,5 @@ tool error when Entra sign-in failed.
 [directory]: https://learn.microsoft.com/en-us/rest/api/fabric/articles/mcp-servers/fabric-mcp-servers-list
 
 Other sources: [Fabric MCP servers overview](https://learn.microsoft.com/en-us/rest/api/fabric/articles/mcp-servers/what-is-fabric-mcp-server)
-(ms.date 2026-09-17) and the Rayfin 1.36.2 guide
+(ms.date 2026-09-17) and the Rayfin guide (reviewed with 1.36.2, unchanged in 2.0.1)
 `node_modules/@microsoft/rayfin-guide/assets/docs/auth/direct-entra-auth.md`.

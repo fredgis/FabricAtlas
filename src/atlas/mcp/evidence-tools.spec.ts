@@ -63,6 +63,7 @@ const SAMPLE_ARGUMENTS: Record<AtlasMcpToolName, Record<string, unknown>> = {
   atlas_get_governance_findings: {},
   atlas_get_connection_evidence: {},
   atlas_export_snapshot: { section: "items" },
+  atlas_get_departure_pack: { principal: ANA },
 };
 
 describe("Atlas MCP envelope", () => {
@@ -871,5 +872,110 @@ describe("connection evidence", () => {
     expect(value.connections).toEqual([]);
     expect(envelope.coverage.status).toBe("unavailable");
     expect(JSON.stringify(envelope.coverage)).toContain("connection details are unknown");
+  });
+});
+describe("atlas_get_departure_pack", () => {
+  const CONNECTION = "e0000000-0000-4000-8000-000000000011";
+
+  it("resolves an object ID and returns sole ownership with blast radius, without emails", async () => {
+    const { runtime: tools } = runtime();
+    const envelope = await callAtlasMcpTool("atlas_get_departure_pack", { principal: ANA }, tools);
+    const value = result(envelope);
+
+    expect(value).toMatchObject({
+      resolution: "resolved",
+      matchedOn: "object-id",
+      subject: { principalId: ANA, displayName: "Ana Silva", kind: "user" },
+      kind: "person-offboarding",
+      blocked: false,
+    });
+    expect(value.summary.soleOwned).toBe(1);
+    expect(value.ownership[0]).toMatchObject({
+      item: { itemId: LAKEHOUSE, itemType: "Lakehouse" },
+      status: "sole",
+    });
+    expect(value.ownership[0].downstreamConsumers).toBeGreaterThan(0);
+    expect(value.ownership[0].reassignment).toEqual(
+      expect.objectContaining({ reasonCode: expect.any(String) }),
+    );
+    expect(value.connectionCoverage.status).toBe("unavailable");
+    expect(JSON.stringify(envelope.coverage.notes)).toContain("connection ownership is unknown");
+    expect(JSON.stringify(envelope.result)).not.toContain("@contoso.example");
+  });
+
+  it("resolves a user principal name case-insensitively", async () => {
+    const { runtime: tools } = runtime();
+    const value = result(
+      await callAtlasMcpTool("atlas_get_departure_pack", { principal: "ANA@Contoso.example" }, tools),
+    );
+    expect(value).toMatchObject({ resolution: "resolved", matchedOn: "upn" });
+  });
+
+  it("never resolves a display name and returns candidate IDs instead", async () => {
+    const { runtime: tools } = runtime();
+    const envelope = await callAtlasMcpTool("atlas_get_departure_pack", { principal: "Ana Silva" }, tools);
+    expect(result(envelope)).toEqual(
+      expect.objectContaining({
+        resolution: "ambiguous",
+        matchedOn: "display-name",
+        blocked: true,
+        candidates: [{ principalId: ANA, displayName: "Ana Silva", kind: "user" }],
+      }),
+    );
+    expect(result(envelope).ownership).toBeUndefined();
+    expect(envelope.coverage.status).toBe("unavailable");
+
+    const unknown = result(
+      await callAtlasMcpTool("atlas_get_departure_pack", { principal: "nobody@contoso.example" }, tools),
+    );
+    expect(unknown).toMatchObject({ resolution: "unresolved", blocked: true, candidates: [] });
+  });
+
+  it("reports connections the principal solely owns from the tenant inventory", async () => {
+    const { source } = fakeSource();
+    const tools: AtlasMcpToolRuntime = {
+      source: {
+        ...source,
+        loadConnectionInventory: async () => ({
+          collectedAt: "2026-10-02T08:00:00.000Z",
+          status: "complete",
+          truncated: false,
+          roleLookups: { done: 1, skipped: 0, failed: 0 },
+          connections: [{
+            id: CONNECTION,
+            displayName: "adls-landing",
+            connectivityType: "ShareableCloud",
+            rolesStatus: "complete",
+            roles: [{ principalId: ANA, principalType: "User", role: "Owner" }],
+          }],
+        }),
+      },
+      itemRelationsEnabled: false,
+      now: () => NOW,
+    };
+    const envelope = await callAtlasMcpTool("atlas_get_departure_pack", { principal: ANA }, tools);
+    const value = result(envelope);
+    expect(value.connections).toEqual([
+      expect.objectContaining({ connectionId: CONNECTION, status: "sole-owner", match: "object-id", otherOwners: 0 }),
+    ]);
+    expect(value.connectionCoverage).toMatchObject({ status: "available", checked: 1, unknown: 0 });
+    expect(envelope.sources.map((entry) => entry.id)).toContain("atlas-connection-inventory");
+  });
+
+  it("rejects a missing principal and unsupported arguments", async () => {
+    const { runtime: tools } = runtime();
+    expect((await callAtlasMcpTool("atlas_get_departure_pack", {}, tools)).error?.code).toBe("invalid-arguments");
+    expect(
+      (await callAtlasMcpTool("atlas_get_departure_pack", { principal: ANA, revoke: true }, tools)).error?.code,
+    ).toBe("invalid-arguments");
+  });
+
+  it("pages ownership rows with limit and offset", async () => {
+    const { runtime: tools } = runtime();
+    const value = result(
+      await callAtlasMcpTool("atlas_get_departure_pack", { principal: ANA, limit: 1, offset: 5 }, tools),
+    );
+    expect(value.ownership).toEqual([]);
+    expect(value.nextOffset).toBeNull();
   });
 });

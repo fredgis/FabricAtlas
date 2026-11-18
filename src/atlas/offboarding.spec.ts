@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildOffboardingReport } from "./offboarding";
+import { parseGovernanceEvidence } from "./governance-evidence";
 import type { ConnectionRole, FabricConnectionRecord } from "./connections";
 import type { AtlasData, Item, Principal } from "./model";
 
@@ -235,5 +236,35 @@ describe("buildOffboardingReport", () => {
     expect(report.ownershipUnknown.map((entry) => entry.fabricId)).toContain(
       "notebook",
     );
+  });
+});
+
+describe("app backend default identity in the departure pack", () => {
+  it("lists apps whose default identity is the subject, by object ID or UPN only", () => {
+    const base = data();
+    const app = (fabricId: string): Item => ({ ...item(fabricId), itemType: "AppBackend" });
+    const report = buildOffboardingReport(
+      {
+        ...base,
+        items: [...base.items, app("app-by-id"), app("app-by-upn"), app("app-by-name"), app("app-sp")],
+        governanceEvidence: parseGovernanceEvidence({
+          collectedAt: "2026-11-18T00:00:00Z",
+          appBackends: {
+            status: { status: "complete" },
+            entries: [
+              { itemId: "app-by-id", defaultIdentity: { type: "User", id: "PERSON-1" } },
+              { itemId: "app-by-upn", defaultIdentity: { type: "User", userPrincipalName: "Marie@Example.com" } },
+              { itemId: "app-by-name", defaultIdentity: { type: "User", displayName: "Marie" } },
+              { itemId: "app-sp", defaultIdentity: { type: "ServicePrincipal", id: "person-1" } },
+            ],
+          },
+        }),
+      },
+      person.principalId,
+    );
+    const apps = report.identityDependencies
+      .filter((entry) => entry.evidence.includes("app-default-identity"))
+      .map((entry) => entry.item.fabricId);
+    expect(apps).toEqual(["app-by-id", "app-by-upn"]);
   });
 });

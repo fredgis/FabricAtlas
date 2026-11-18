@@ -17,6 +17,7 @@ import {
   FabricRestError,
   RequestBudget,
   fabricSafeErrorCode,
+  type FabricQuery,
   type FabricSafeErrorCode,
 } from "./fabric-rest.js";
 import { requireAtlasSynchronizer } from "./synchronizer-gate.js";
@@ -34,7 +35,12 @@ export const DEFINITION_ROUTES: ReadonlyMap<string, string> = new Map([
   ["GraphModel", "graphModels"],
   ["DataAgent", "dataAgents"],
   ["Notebook", "notebooks"],
+  ["Eventstream", "eventstreams"],
+  ["PolicySet", "policySets"],
 ]);
+
+/** Preview definitions that need an explicit format; PolicySet only exists as `Beta`. */
+const DEFINITION_QUERY: ReadonlyMap<string, FabricQuery> = new Map([["PolicySet", { format: "Beta" }]]);
 
 export const COLLECT_DEFINITION_LIMITS = {
   ...FABRIC_REST_DEFAULTS,
@@ -313,6 +319,7 @@ export async function collectWorkspaceDefinitions(
           maxResponseBytes: limits.maxDefinitionResponseBytes,
         },
         budget,
+        DEFINITION_QUERY.get(item.type),
       );
       const projection = projectDefinition(item.type, response);
       const code: DefinitionStatusCode | undefined = projection.unknownParts

@@ -846,6 +846,8 @@ export function buildCatalogObjects(
           ),
         });
       }
+    } else if (metadata.kind === "eventstream" || metadata.kind === "policySet") {
+      // Topology nodes are shown in the item detail; lineage carries the item links.
     } else {
       for (const fn of metadata.functions) {
         add(item, {

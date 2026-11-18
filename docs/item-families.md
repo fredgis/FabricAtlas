@@ -3,8 +3,9 @@
 `src/atlas/item-families.ts` records what Atlas collects for each Fabric item
 family. Every family states five coverage dimensions independently, so an
 unsupported or deferred enrichment is shown as such instead of as zero, empty
-or healthy. Entries reflect Microsoft documentation verified on 2026-10-02 and
-a read-only observation of the reference tenant on the same date.
+or healthy. Entries reflect Microsoft documentation verified on 2026-11-17
+(Ignite 2026 `ItemType` update) and a read-only observation of the reference
+tenant on 2026-10-02.
 
 ## Coverage states
 
@@ -44,7 +45,7 @@ data exists:
 
 ## Families
 
-- **Documented item types.** All 51 values of the Fabric `ItemType`
+- **Documented item types.** All 60 values of the Fabric `ItemType`
   enumeration are registered. A test keeps the list identical to the Catalog
   Search filter allowlist. Families with a definition in Microsoft's
   [item-definition overview](https://learn.microsoft.com/en-us/rest/api/fabric/articles/item-management/definitions/item-definition-overview)
@@ -65,12 +66,39 @@ data exists:
   use dotted `Publisher.Workload.ItemType` names. They keep top-level
   identity, a readable label and explicit **Unsupported** structure.
 - **Unknown types** keep top-level identity with a neutral fallback.
-- **Fabric Apps.** `AppBackend` and `OrgApp` stay at top-level identity until
-  a documented contract exposes dependent items or services.
+- **Fabric Apps.** `AppBackend` is generally available since Ignite 2026.
+  Atlas reads its default identity from `GET /v1/workspaces/{id}/appBackends`
+  (viewer role) and flags `EntireTenant` or personal `User` identities. Block
+  state, Content Security Policy and Secure Embed are portal-only and stay
+  Unknown. `AppBackend` and `OrgApp` dependent items stay at top-level identity
+  until a documented contract exposes them.
+- **Ignite 2026 item types.** `PostgreSQLDatabase` (announced as Fabric
+  HorizonDB; the label stays generic until confirmed on a real item),
+  `PolicySet`, `Monitoring`, `DeploymentPlan`, `Share`, `ShareSubscription`,
+  `Playbook`, `MirroredOneLake` and `CustomStreamConnector` are registered.
+  PostgreSQL database objects stay Deferred, never zero, until a read-only
+  `pg_catalog` stage is reviewed.
 - **Notebooks.** `workspaceCollectDefinitions` reads the documented notebook
   definition and projects direct literal table and `Tables/...` references.
   Object and lineage coverage are Partial because code, cells, SQL text,
   credentials and dynamic references are never persisted.
+- **Dataflow Gen1 and Gen2.** Both arrive with the Atlas type `Dataflow`.
+  The Fabric Items API lists only Dataflow Gen2, while the Power BI scanner
+  lists both. The scanner compatibility stage returns the scanner dataflows
+  that the Items API did not list; Atlas stores them as Dataflow Gen1
+  evidence (ID, name, whether an owner is recorded, downstream semantic
+  models) and raises `legacy-dataflow-gen1`. When either listing is
+  incomplete, or the snapshot predates v3, the generation stays Unknown and
+  no finding is raised. Atlas never calls the Upgrade API.
+- **Eventstreams.** `workspaceCollectDefinitions` reads the documented
+  `eventstream.json` part and keeps only source, stream, operator and
+  destination names and types, plus explicit item, workspace and connection
+  UUIDs and destination schema and table names. Source items feed the
+  Eventstream (`eventstream source`) and the Eventstream feeds destination
+  items (`eventstream destination`); connection IDs are written as source
+  provenance so the Connections view joins them to the tenant inventory.
+  Operator expressions, properties, endpoints, keys and event payloads are
+  dropped, and nothing is matched by name.
 
 ## Reference tenant observation (2026-10-02)
 
@@ -94,7 +122,6 @@ row below is one bounded follow-up, not a collector rewrite.
 | Follow-up | Families | Blocker or next step |
 | --- | --- | --- |
 | Publish source provenance | Lakehouse, Warehouse, KQL database, Mirrored database, MLV, OneLake shortcut | Adapter exists; publication waits for the durable snapshot cutover and a reviewed persistence shape |
-| Eventstream topology | Eventstream (observed) | Project source and destination item IDs from the documented definition without event payloads |
 | Event Schema Set adapter | Event schema set | Documented definition supports **user identity only**; Atlas collectors use the application identity |
 | Fabric Apps dependent items | AppBackend (observed), Org app | Wait for a documented contract that exposes dependent items or services |
 | Definition reviews | Copy job, Variable library, Environment, Spark job definition, Activator, API for GraphQL, Mounted Data Factory, Mirrored Azure Databricks catalog, Snowflake database, Mirrored catalog, dbt job, Azure Databricks storage, Paginated report, Org app audience | Review each documented definition for a metadata-only projection; Variable library could expose names and types only |

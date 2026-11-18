@@ -35,6 +35,7 @@ import { describeProvenanceValue } from "../connections";
 import { OneLakeRolesList } from "../components/OneLakeRolesList";
 import { downloadText, fileSlug } from "../download";
 import { itemPassportMarkdown, scoutItemQuestion } from "../item-passport";
+import { AppIdentityPanel } from "../components/AppIdentityPanel";
 import { ScoutChatContext } from "../scout-chat-context";
 import {
   CATALOG_FACETS,
@@ -1147,6 +1148,12 @@ export function CatalogView({
                     <div className="p-l">
                       <OneLakeRolesList value={dOneLakeRoles} principals={data.principals} />
                     </div>
+                  </DrawerSection>
+                )}
+
+                {detail?.itemType === "AppBackend" && (
+                  <DrawerSection icon={ShieldCheck} title="App identity" sectionKey="app-identity">
+                    <AppIdentityPanel data={data} itemId={detail.fabricId} />
                   </DrawerSection>
                 )}
 

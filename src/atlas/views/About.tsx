@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { pythonCollectorRollbackEnabled } from "../browser-collector-sync";
 import { PageHeader } from "../components/PageHeader";
+import { HardeningPanel } from "../components/HardeningPanel";
 import {
   APP_VERSION,
   BUILD_COMMIT,
@@ -185,6 +186,7 @@ export function AboutView() {
           </aside>
         </div>
       </Card>
+      <HardeningPanel />
       <Card className="overflow-hidden border-border shadow-fabric-2">
         <div className="flex flex-wrap items-center gap-m border-b border-border bg-secondary px-l py-m">
           <span className="flex icon-size-500 items-center justify-center rounded-lg bg-primary/10 text-brand-foreground">

@@ -1,6 +1,6 @@
 # Rayfin platform gaps
 
-Assessment: **3 October 2026, Rayfin 1.36.2**.
+Assessment: **3 October 2026, Rayfin 1.36.2**. Re-checked on 2026-11-18 with Rayfin 2.0.1 (GA): Functions still expose only the `Sql`, `Storage`, `Fabric`, `AzureAI` and `ADO` audiences, so the conclusions below are unchanged.
 
 Fabric Atlas is Rayfin-first since 2.1. Typed Rayfin Functions collect the catalog,
 definitions, SQL and KQL structure, Item Relations, source provenance and

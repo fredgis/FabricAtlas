@@ -13,6 +13,9 @@ import {
 } from "./governance";
 import { SAMPLE_DATA, type AtlasData, type Item } from "./model";
 import { searchJobId } from "./search";
+import { parseGovernanceEvidence } from "./governance-evidence";
+import { appIdentityLine, itemPassportMarkdown } from "./item-passport";
+import { legacyDataflowEvidence } from "./browser-collector-sync";
 
 function item(
   fabricId: string,
@@ -783,5 +786,299 @@ describe("connection findings", () => {
       ["connection-single-owner", "medium"],
     ]);
     expect(findings.every((finding) => finding.itemId === LH)).toBe(true);
+  });
+});
+describe("sensitivity downgrade along lineage", () => {
+  const labelled = (id: string, sensitivity?: string, extra: Partial<Item> = {}) =>
+    item(id, { sensitivity, sensitivityMetadataAvailable: true, ...extra });
+  const edge = (source: string, target: string, broken = false) => ({
+    source,
+    target,
+    relation: "feeds",
+    ...(broken ? { broken } : {}),
+  });
+  const downgrades = (data: AtlasData) =>
+    buildGovernanceFindings(data).filter((finding) =>
+      finding.id.startsWith("sensitivity-downgrade:"),
+    );
+
+  it("flags a direct downgrade with high severity from Highly Confidential", () => {
+    const [finding] = downgrades(
+      atlas({
+        items: [labelled("model", "Highly Confidential"), labelled("report", "General")],
+        edges: [edge("model", "report")],
+      }),
+    );
+    expect(finding).toMatchObject({
+      id: "sensitivity-downgrade:report",
+      severity: "high",
+      category: "access",
+      itemId: "report",
+    });
+    expect(finding.evidenceIds).toEqual([
+      "item:report:sensitivity",
+      "item:model:sensitivity",
+      expect.stringMatching(/^edge:/),
+    ]);
+  });
+
+  it("follows multi-hop lineage and records every hop", () => {
+    const [finding] = downgrades(
+      atlas({
+        items: [
+          labelled("lake", "Confidential"),
+          labelled("model", "Confidential"),
+          labelled("report", "Public"),
+        ],
+        edges: [edge("lake", "model"), edge("model", "report")],
+      }),
+    );
+    expect(finding.severity).toBe("medium");
+    expect(finding.detail).toContain("directly");
+  });
+
+  it("reaches a stricter source two hops away through an unlabeled middle item", () => {
+    const findings = downgrades(
+      atlas({
+        items: [
+          labelled("lake", "Highly Confidential"),
+          item("model", { sensitivityMetadataAvailable: false }),
+          labelled("report", "Confidential"),
+        ],
+        edges: [edge("lake", "model"), edge("model", "report")],
+      }),
+    );
+    expect(findings.map((finding) => finding.id)).toEqual(["sensitivity-downgrade:report"]);
+    expect(findings[0].evidenceIds.filter((id) => id.startsWith("edge:"))).toHaveLength(2);
+    expect(findings[0].detail).toContain("2 lineage hops");
+  });
+
+  it("flags a consumer that dropped the label entirely", () => {
+    const [finding] = downgrades(
+      atlas({
+        items: [labelled("model", "Confidential"), labelled("report")],
+        edges: [edge("model", "report")],
+      }),
+    );
+    expect(finding.title).toContain("Missing label");
+    expect(finding.detail).toContain("no label");
+  });
+
+  it("emits one finding per consumer anchored on the strictest upstream", () => {
+    const findings = downgrades(
+      atlas({
+        items: [
+          labelled("a", "Confidential"),
+          labelled("b", "Highly Confidential"),
+          labelled("c", "Confidential"),
+          labelled("report", "General"),
+        ],
+        edges: [edge("a", "report"), edge("b", "report"), edge("c", "report")],
+      }),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0].evidenceIds).toContain("item:b:sensitivity");
+    expect(findings[0].severity).toBe("high");
+  });
+
+  it("ignores broken edges, uncollected metadata and unranked labels", () => {
+    expect(
+      downgrades(
+        atlas({
+          items: [
+            labelled("model", "Highly Confidential"),
+            labelled("broken-report", "General"),
+            item("uncollected", { sensitivity: "General", sensitivityMetadataAvailable: false }),
+            labelled("custom", "Contoso Tier 2"),
+            labelled("custom-source", "Contoso Gold"),
+            labelled("report", "General"),
+          ],
+          edges: [
+            edge("model", "broken-report", true),
+            edge("model", "uncollected"),
+            edge("model", "custom"),
+            edge("custom-source", "report"),
+          ],
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("does not flag consumers at or above the upstream label", () => {
+    expect(
+      downgrades(
+        atlas({
+          items: [labelled("model", "Confidential"), labelled("report", "Highly Confidential")],
+          edges: [edge("model", "report")],
+        }),
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("dormant producer findings", () => {
+  const OLD = "2025-12-01T00:00:00.000Z";
+  const workspace = (lineage?: "complete" | "failed") => ({
+    ...atlas().workspace,
+    syncedAt: "2026-06-01T00:00:00.000Z",
+    ...(lineage ? { syncSections: { lineage: { status: lineage } } } : {}),
+  });
+  const ruleIds = (data: AtlasData, rule: string) =>
+    buildGovernanceFindings(data)
+      .filter((finding) => finding.id.startsWith(`${rule}:`))
+      .map((finding) => finding.itemId)
+      .sort();
+
+  it("flags idle producers with no downstream item and leaves consumer types out", () => {
+    const data = atlas({
+      workspace: workspace("complete"),
+      items: [
+        item("lake", { lastRefresh: OLD }),
+        item("model", { itemType: "SemanticModel", updatedAt: OLD }),
+        item("report", { itemType: "Report", updatedAt: OLD }),
+        item("notebook", { itemType: "Notebook", updatedAt: OLD }),
+      ],
+      edges: [{ source: "model", target: "report", relation: "binds" }],
+    });
+    const [finding] = buildGovernanceFindings(data).filter((f) => f.id.startsWith("dormant-producer:"));
+    expect(finding).toMatchObject({ id: "dormant-producer:lake", severity: "high", category: "operations" });
+    expect(finding.detail).toContain("no recorded downstream items in the synchronized scope");
+    expect(ruleIds(data, "item-inactive")).toEqual(["model", "notebook", "report"]);
+  });
+
+  it("deduplicates against item-inactive", () => {
+    const data = atlas({ workspace: workspace("complete"), items: [item("lake", { lastRefresh: OLD })] });
+    expect(ruleIds(data, "dormant-producer")).toEqual(["lake"]);
+    expect(ruleIds(data, "item-inactive")).toEqual([]);
+  });
+
+  it("skips active producers, producers with consumers and certified items", () => {
+    const data = atlas({
+      workspace: workspace("complete"),
+      items: [
+        item("active", { updatedAt: "2026-05-20T00:00:00.000Z" }),
+        item("jobbed", { updatedAt: OLD }),
+        item("fed", { lastRefresh: OLD }),
+        item("report", { itemType: "Report", updatedAt: "2026-05-20T00:00:00.000Z" }),
+        item("certified", { endorsement: "certified", updatedAt: OLD }),
+      ],
+      edges: [
+        { source: "fed", target: "report", relation: "feeds" },
+        { source: "active", target: "missing", relation: "feeds", broken: true },
+      ],
+      jobs: [
+        { itemFabricId: "jobbed", itemName: "jobbed", jobType: "Pipeline", status: "completed", startedAt: "2026-05-30T00:00:00.000Z", durationSec: 1 },
+      ],
+    });
+    expect(ruleIds(data, "dormant-producer")).toEqual([]);
+  });
+
+  it("flags promoted producers with endorsement context", () => {
+    const data = atlas({
+      workspace: workspace("complete"),
+      items: [item("lake", { endorsement: "promoted", updatedAt: OLD })],
+    });
+    const finding = buildGovernanceFindings(data).find((f) => f.id === "dormant-producer:lake");
+    expect(finding?.detail).toContain("still promoted");
+  });
+
+  it("stays Unknown without activity, or when lineage collection is failed or unrecorded", () => {
+    const items = [item("lake", { lastRefresh: OLD }), item("silent")];
+    expect(ruleIds(atlas({ workspace: workspace("failed"), items }), "dormant-producer")).toEqual([]);
+    expect(ruleIds(atlas({ workspace: workspace(), items }), "dormant-producer")).toEqual([]);
+    expect(ruleIds(atlas({ workspace: workspace("failed"), items }), "item-inactive")).toEqual(["lake"]);
+    expect(ruleIds(atlas({ workspace: workspace("complete"), items }), "dormant-producer")).toEqual(["lake"]);
+  });
+});
+
+describe("Dataflow Gen1 findings", () => {
+  const evidence = (legacyDataflows: unknown) =>
+    parseGovernanceEvidence({ collectedAt: "2026-11-18T00:00:00Z", legacyDataflows })!;
+  const gen1 = (overrides: Record<string, unknown> = {}) => ({
+    id: "DF1", displayName: "Legacy flow", ownerKnown: true, downstreamModelIds: [], ...overrides,
+  });
+  const findings = (data: AtlasData) =>
+    buildGovernanceFindings(data).filter((finding) => finding.id.startsWith("legacy-dataflow-gen1:"));
+
+  it("flags scanner-only dataflows and names downstream models and reports", () => {
+    const [finding] = findings(
+      atlas({
+        items: [item("model", { itemType: "SemanticModel" }), item("report", { itemType: "Report" })],
+        edges: [{ source: "model", target: "report", relation: "binds" }],
+        governanceEvidence: evidence({ status: { status: "complete" }, entries: [gen1({ downstreamModelIds: ["MODEL"] })] }),
+      }),
+    );
+    expect(finding).toMatchObject({ id: "legacy-dataflow-gen1:df1", severity: "medium", category: "operations" });
+    expect(finding.detail).toContain("feeds model and 1 report (report)");
+    expect(finding.recommendation).toContain("Upgrade wizard or API");
+  });
+
+  it("is low without downstream models and medium when the owner is unresolved", () => {
+    const low = findings(atlas({ governanceEvidence: evidence({ status: { status: "complete" }, entries: [gen1()] }) }));
+    expect(low[0].severity).toBe("low");
+    const unowned = findings(atlas({ governanceEvidence: evidence({ status: { status: "complete" }, entries: [gen1({ ownerKnown: false })] }) }));
+    expect(unowned[0].severity).toBe("medium");
+    expect(unowned[0].detail).toContain("owner is not recorded");
+  });
+
+  it("stays Unknown when the scanner or Items API listing is incomplete, or evidence predates v3", () => {
+    expect(findings(atlas({ governanceEvidence: evidence({ status: { status: "failed", code: "scanner-incomplete" }, entries: [gen1()] }) }))).toEqual([]);
+    expect(findings(atlas({ governanceEvidence: evidence({ status: { status: "failed", code: "items-incomplete" }, entries: [gen1()] }) }))).toEqual([]);
+    expect(findings(atlas({ governanceEvidence: evidence(undefined) }))).toEqual([]);
+  });
+
+  it("never fires on Dataflow Gen2 items listed by the Items API", () => {
+    expect(
+      findings(atlas({ items: [item("gen2", { itemType: "Dataflow" })], governanceEvidence: evidence({ status: { status: "complete" }, entries: [] }) })),
+    ).toEqual([]);
+  });
+
+  it("derives evidence only when both listings are complete", () => {
+    const scanner = { sections: { scanner: { status: "complete" as const } }, scannerOnlyDataflows: [gen1()] };
+    expect(legacyDataflowEvidence({ status: "complete" }, scanner).status).toEqual({ status: "complete" });
+    expect(legacyDataflowEvidence({ status: "failed" }, scanner).status.status).toBe("failed");
+    expect(legacyDataflowEvidence({ status: "complete" }, { ...scanner, sections: { scanner: { status: "failed" as const } } }).status.status).toBe("failed");
+    expect(legacyDataflowEvidence({ status: "complete" }, { sections: scanner.sections }).status).toEqual({ status: "unsupported", code: "collector-not-updated" });
+  });
+});
+
+describe("app default identity findings", () => {
+  const evidence = (entries: unknown[], status = "complete") =>
+    parseGovernanceEvidence({ collectedAt: "2026-11-18T00:00:00Z", appBackends: { status: { status }, entries } })!;
+  const appFindings = (data: AtlasData) =>
+    buildGovernanceFindings(data).filter((finding) => finding.id.startsWith("app-default-identity:"));
+
+  it("flags EntireTenant as high and a personal user as medium", () => {
+    const findings = appFindings(
+      atlas({
+        items: [item("app-a", { itemType: "AppBackend" }), item("app-b", { itemType: "AppBackend" }), item("app-c", { itemType: "AppBackend" })],
+        governanceEvidence: evidence([
+          { itemId: "app-a", defaultIdentity: { type: "EntireTenant" } },
+          { itemId: "app-b", defaultIdentity: { type: "User", id: "u1", displayName: "Ana" } },
+          { itemId: "app-c", defaultIdentity: { type: "ServicePrincipal", id: "sp" } },
+        ]),
+      }),
+    );
+    expect(findings.map((finding) => [finding.itemId, finding.severity])).toEqual([
+      ["app-a", "high"],
+      ["app-b", "medium"],
+    ]);
+    expect(findings[1].detail).toContain("the user Ana");
+  });
+
+  it("raises nothing when the section is not complete or missing", () => {
+    const items = [item("app-a", { itemType: "AppBackend" })];
+    expect(appFindings(atlas({ items, governanceEvidence: evidence([{ itemId: "app-a", defaultIdentity: { type: "EntireTenant" } }], "unsupported") }))).toEqual([]);
+    expect(appFindings(atlas({ items }))).toEqual([]);
+  });
+
+  it("shows the identity in the identity sheet and Unknown when not collected", () => {
+    const data = atlas({
+      items: [item("app-b", { itemType: "AppBackend" })],
+      governanceEvidence: evidence([{ itemId: "app-b", defaultIdentity: { type: "User", id: "u1", displayName: "Ana" } }]),
+    });
+    expect(appIdentityLine(data, "app-b")).toBe("User · Ana");
+    expect(appIdentityLine({}, "app-b")).toBe("Not collected");
+    expect(itemPassportMarkdown(data, "app-b")).toContain("- App default identity: User · Ana");
   });
 });

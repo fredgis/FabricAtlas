@@ -59,6 +59,22 @@ export interface ExternalShareInfo {
   paths: string[];
 }
 
+/** A Power BI scanner dataflow absent from the Fabric Items API: Dataflow Gen1. */
+export interface LegacyDataflowInfo {
+  id: string;
+  displayName: string;
+  ownerKnown: boolean;
+  downstreamModelIds: string[];
+}
+
+export type AppIdentityType = "User" | "ServicePrincipal" | "ServicePrincipalProfile" | "Group" | "EntireTenant" | "Other";
+
+export interface AppBackendInfo {
+  itemId: string;
+  logicalId?: string;
+  defaultIdentity?: { type: AppIdentityType; id?: string; displayName?: string; userPrincipalName?: string };
+}
+
 export interface OneLakeRoleInfo {
   itemId: string;
   roleName: string;
@@ -82,6 +98,10 @@ export interface GovernanceEvidence {
   network: { status: GovernanceSectionState; policy?: NetworkPolicyInfo };
   externalShares: { status: GovernanceSectionState; entries: ExternalShareInfo[] };
   oneLakeRoles: { status: GovernanceSectionState; entries: OneLakeRoleInfo[] };
+  /** Absent before v3; a missing section means Unknown, so nothing is inferred. */
+  /** Fabric app backend default identities (v3); absent before v3. */
+  appBackends?: { status: GovernanceSectionState; entries: AppBackendInfo[] };
+  legacyDataflows?: { status: GovernanceSectionState; entries: LegacyDataflowInfo[] };
 }
 
 const LIMIT = 5_000;
@@ -206,6 +226,41 @@ export function parseGovernanceEvidence(value: unknown): GovernanceEvidence | un
         ...roleConstraints(v),
       };
     }),
+    ...(isRecord(value.appBackends) ? { appBackends: entries(value.appBackends, (v) => {
+      const itemId = str(v.itemId, 128);
+      if (!itemId) return undefined;
+      const logicalId = str(v.logicalId, 128);
+      const identity = isRecord(v.defaultIdentity) ? v.defaultIdentity : undefined;
+      const type = str(identity?.type, 64);
+      const types: AppIdentityType[] = ["User", "ServicePrincipal", "ServicePrincipalProfile", "Group", "EntireTenant"];
+      const principalId = str(identity?.id, 128);
+      const displayName = str(identity?.displayName, 256);
+      const upn = str(identity?.userPrincipalName, 320);
+      return {
+        itemId: itemId.toLowerCase(),
+        ...(logicalId ? { logicalId: logicalId.toLowerCase() } : {}),
+        ...(type
+          ? {
+              defaultIdentity: {
+                type: types.includes(type as AppIdentityType) ? (type as AppIdentityType) : "Other",
+                ...(principalId ? { id: principalId.toLowerCase() } : {}),
+                ...(displayName ? { displayName } : {}),
+                ...(upn ? { userPrincipalName: upn } : {}),
+              },
+            }
+          : {}),
+      };
+    }) } : {}),
+    ...(isRecord(value.legacyDataflows) ? { legacyDataflows: entries(value.legacyDataflows, (v) => {
+      const id = str(v.id, 128);
+      if (!id) return undefined;
+      return {
+        id: id.toLowerCase(),
+        displayName: str(v.displayName, 256) ?? id,
+        ownerKnown: v.ownerKnown === true,
+        downstreamModelIds: strings(v.downstreamModelIds, 50).map((entry) => entry.toLowerCase()),
+      };
+    }) } : {}),
   };
 }
 
@@ -299,6 +354,21 @@ export interface ItemOneLakeRoles {
 }
 
 /** OneLake data access roles of one item; `known` is false when the section was not collected. */
+/** Collected default identity of one app backend, or why it is unknown. */
+export function appBackendIdentity(
+  evidence: GovernanceEvidence | undefined,
+  itemId: string,
+): { status: "collected"; identity?: AppBackendInfo["defaultIdentity"]; logicalId?: string } | { status: "unknown"; reason: string } {
+  const section = evidence?.appBackends;
+  if (!section) return { status: "unknown", reason: "App backend identities were not collected in this snapshot." };
+  if (section.status.status !== "complete") {
+    return { status: "unknown", reason: `App backend collection is ${section.status.status}${section.status.code ? ` (${section.status.code})` : ""}.` };
+  }
+  const entry = section.entries.find((candidate) => candidate.itemId === itemId.toLowerCase());
+  if (!entry) return { status: "unknown", reason: "Fabric did not return this app backend." };
+  return { status: "collected", identity: entry.defaultIdentity, logicalId: entry.logicalId };
+}
+
 export function itemOneLakeRoles(evidence: GovernanceEvidence | undefined, itemId: string): ItemOneLakeRoles {
   const section = evidence?.oneLakeRoles;
   if (section?.status.status !== "complete") return { known: false, roles: [] };

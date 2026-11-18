@@ -17,6 +17,7 @@ import {
   type DefinitionStageEnvelope,
 } from "../../rayfin/functions/src/workspace-definitions";
 import {
+  metadataItemLineageEdges,
   parseFabricItemMetadata,
   projectItemMetadataToSchema,
 } from "./item-metadata";
@@ -1238,5 +1239,183 @@ describe("workspaceCollectDefinitions cancellation, deadline and budgets", () =>
     expect(itemStatus(envelope, GRAPH)).toEqual({ status: "failed", code: "request-budget-exhausted" });
     expect(itemStatus(envelope, AGENT)).toEqual({ status: "failed", code: "not-attempted" });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("Eventstream definition projection", () => {
+  const EVENTSTREAM = "77777777-7777-4777-8777-777777777777";
+  const KQL = "88888888-8888-4888-8888-888888888888";
+  const CONNECTION = "99999999-9999-4999-8999-999999999999";
+  const ROUTE_ES = `${BASE}/eventstreams/${EVENTSTREAM}/getDefinition`;
+
+  function eventstreamDefinition() {
+    return definition([
+      part(".platform", { metadata: { type: "Eventstream", displayName: "private" } }),
+      part("eventstreamProperties.json", { retentionTimeInDays: 1 }),
+      part("eventstream.json", {
+        sources: [
+          {
+            name: "orders-hub",
+            type: "AzureEventHub",
+            properties: {
+              dataConnectionId: CONNECTION,
+              consumerGroupName: "$Default",
+              connectionString: "Endpoint=sb://x.servicebus.windows.net/;SharedAccessKeyName=root;SharedAccessKey=secret123456;",
+            },
+          },
+          { name: "lake-events", type: "FabricWorkspaceItemEvents", properties: { workspaceId: WS, itemId: LAKEHOUSE } },
+          { name: "AccountKey=abc123", type: "CustomEndpoint", properties: {} },
+        ],
+        streams: [{ name: "es-stream", type: "DefaultStream", properties: {}, inputNodes: [{ name: "orders-hub" }] }],
+        operators: [
+          {
+            name: "HighValue",
+            type: "Filter",
+            inputNodes: [{ name: "es-stream" }],
+            properties: { conditions: [{ expression: "SELECT * FROM secret_table WHERE amount > 1000" }] },
+          },
+        ],
+        destinations: [
+          {
+            name: "kql-sink",
+            type: "Eventhouse",
+            properties: { workspaceId: WS, itemId: KQL, databaseName: "ops", tableName: "Orders", dataIngestionMode: "ProcessedIngestion" },
+            inputNodes: [{ name: "HighValue" }],
+          },
+          { name: "by-name", type: "Lakehouse", properties: { itemName: "Operations lakehouse", deltaTable: "orders" }, inputNodes: [] },
+        ],
+        compatibilityLevel: "1.0",
+      }),
+    ]);
+  }
+
+  it("keeps structural topology and explicit IDs while dropping expressions, keys and endpoints", () => {
+    const projection = projectDefinition("Eventstream", eventstreamDefinition());
+    expect(projection.metadata).toEqual({
+      kind: "eventstream",
+      sources: [
+        { name: "orders-hub", type: "AzureEventHub", inputs: [], connectionId: CONNECTION },
+        { name: "lake-events", type: "FabricWorkspaceItemEvents", inputs: [], itemId: LAKEHOUSE, workspaceId: WS },
+      ],
+      streams: [{ name: "es-stream", type: "DefaultStream", inputs: ["orders-hub"] }],
+      operators: [{ name: "HighValue", type: "Filter", inputs: ["es-stream"] }],
+      destinations: [
+        { name: "kql-sink", type: "Eventhouse", inputs: ["HighValue"], itemId: KQL, workspaceId: WS, table: "Orders" },
+        { name: "by-name", type: "Lakehouse", inputs: [], table: "orders" },
+      ],
+    });
+    const serialized = JSON.stringify(projection);
+    for (const secret of ["SharedAccessKey", "servicebus", "secret_table", "SELECT", "$Default", "AccountKey", "Operations lakehouse", "private"]) {
+      expect(serialized).not.toContain(secret);
+    }
+    expect(projection.references.sourceItemIds).toEqual([LAKEHOUSE]);
+    expect(projection.unknownParts).toBe(0);
+    expect(projection.facts).toContainEqual({
+      section: "Source provenance",
+      label: "eventstream-source",
+      value: `provider=AzureEventHub; connection=${CONNECTION}; field=properties.dataConnectionId; location=orders-hub`,
+    });
+  });
+
+  it("projects lineage from explicit item IDs only, never by name", () => {
+    const projection = projectDefinition("Eventstream", eventstreamDefinition());
+    const metadata = parseFabricItemMetadata("Eventstream", projection.metadata);
+    expect(metadata).toBeDefined();
+    expect(metadataItemLineageEdges(EVENTSTREAM, metadata!)).toEqual([
+      { source: LAKEHOUSE, target: EVENTSTREAM, relation: "eventstream source" },
+      { source: EVENTSTREAM, target: KQL, relation: "eventstream destination" },
+    ]);
+    expect(projectItemMetadataToSchema(metadata!).map((table) => table.objectType)).toEqual([
+      "Eventstream source",
+      "Eventstream source",
+      "Eventstream destination",
+      "Eventstream destination",
+      "Atlas item metadata",
+    ]);
+  });
+
+  it("collects Eventstream definitions and degrades permission denials to unsupported", async () => {
+    const ok = await collect(
+      routes({ [ROUTE_ES]: () => json(eventstreamDefinition()) }),
+      [{ id: EVENTSTREAM, type: "Eventstream" }],
+    ).result;
+    expect(ok.items[0]).toMatchObject({ id: EVENTSTREAM, status: "complete" });
+    expect(ok.artifactMetadata[EVENTSTREAM]).toMatchObject({ kind: "eventstream" });
+
+    const denied = await collect(
+      routes({ [ROUTE_ES]: () => json({ errorCode: "Forbidden" }, { status: 403 }) }),
+      [{ id: EVENTSTREAM, type: "Eventstream" }],
+    ).result;
+    expect(denied.items[0]).toEqual({ id: EVENTSTREAM, type: "Eventstream", status: "unsupported", code: "read-write-permission-required" });
+    expect(denied.sections.definitions.status).toBe("unsupported");
+  });
+
+  it("rejects a definition without eventstream.json", () => {
+    expect(() => projectDefinition("Eventstream", definition([part(".platform", {})]))).toThrow(/invalid-definition/);
+  });
+});
+
+describe("PolicySet definition projection", () => {
+  const POLICY = "abababab-abab-4bab-8bab-abababababab";
+  const ROUTE_PS = `${BASE}/policySets/${POLICY}/getDefinition`;
+  function policySetDefinition() {
+    return definition([
+      part(".platform", { metadata: { type: "PolicySet", displayName: "private platform" } }),
+      part("policySet.json", {
+        properties: { scope: { type: "Capacity" }, owner: "secret-owner@contoso.com" },
+        policyRules: [
+          {
+            displayName: "Item Creation Policy",
+            description: "Allow specific item types for the finance team",
+            policy: "ItemCreation",
+            conditions: [{ type: "Dynamic", targetProperty: "item.type", predicate: { operator: "AnyOf", values: ["ReflexProject", "KustoEventHouse"] }, hidden: "x" }],
+            then: [{ effect: "Allow", note: "internal" }],
+            extra: { anything: "dropped" },
+          },
+          ...Array.from({ length: 51 }, (_, index) => ({
+            displayName: `Share ${index}`, policy: "ExternalDataSharing", conditions: [], then: [{ effect: "Deny" }],
+          })),
+        ],
+      }),
+    ]);
+  }
+
+  it("keeps the documented rule structure and drops descriptions, platform and unknown fields", () => {
+    const projection = projectDefinition("PolicySet", policySetDefinition());
+    const metadata = projection.metadata as { kind: string; scope: string; rules: unknown[] };
+    expect(metadata.kind).toBe("policySet");
+    expect(metadata.scope).toBe("Capacity");
+    expect(metadata.rules[0]).toEqual({
+      displayName: "Item Creation Policy",
+      policy: "ItemCreation",
+      conditions: [{ type: "Dynamic", targetProperty: "item.type", operator: "AnyOf", operands: ["ReflexProject", "KustoEventHouse"] }],
+      effects: ["Allow"],
+    });
+    expect(metadata.rules).toHaveLength(51);
+    expect(projection.metadataTruncated).toBe(true);
+    const serialized = JSON.stringify(projection);
+    for (const dropped of ["finance team", "private platform", "secret-owner", "internal", "dropped", "hidden"]) {
+      expect(serialized).not.toContain(dropped);
+    }
+    const parsed = parseFabricItemMetadata("PolicySet", projection.metadata);
+    expect(parsed?.kind).toBe("policySet");
+    const schema = projectItemMetadataToSchema(parsed!);
+    expect(schema[0]).toMatchObject({ name: "Item Creation Policy", objectType: "Policy rule", description: "ItemCreation → Allow" });
+  });
+
+  it("calls getDefinition with format=Beta and degrades a missing Contributor role to unsupported", async () => {
+    const ok = collect(
+      routes({ [`${ROUTE_PS}?format=Beta`]: () => json(policySetDefinition()) }),
+      [{ id: POLICY, type: "PolicySet" }],
+    );
+    const envelope = await ok.result;
+    expect(envelope.items[0]).toMatchObject({ id: POLICY, status: "complete" });
+    expect(urls(ok.fetchImpl)).toEqual([`${ROUTE_PS}?format=Beta`]);
+
+    const denied = await collect(
+      routes({ [`${ROUTE_PS}?format=Beta`]: () => json({ errorCode: "InsufficientPrivileges" }, { status: 403 }) }),
+      [{ id: POLICY, type: "PolicySet" }],
+    ).result;
+    expect(denied.items[0]).toMatchObject({ status: "unsupported", code: "read-write-permission-required" });
   });
 });

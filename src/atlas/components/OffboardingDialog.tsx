@@ -35,6 +35,7 @@ const EVIDENCE_LABELS = {
   "direct-edit-access": "Direct Edit access",
   "workspace-edit-access": "Workspace Edit access",
   "configured-by": "Configured by",
+  "app-default-identity": "App default identity",
   "modified-by": "Modified by",
   "ownership-unknown": "Ownership unknown",
 } as const;

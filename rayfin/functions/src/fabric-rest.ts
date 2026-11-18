@@ -156,7 +156,7 @@ export interface FabricLongRunningLimits {
 export type FabricQuery = Readonly<{
   beta?: true;
   type?: "Report" | "SemanticModel";
-  format?: "TMSL";
+  format?: "TMSL" | "Beta";
   maxResults?: 100;
 }>;
 
@@ -198,7 +198,7 @@ function allowlistedQuery(query: FabricQuery | undefined): URLSearchParams {
     params.set("type", query.type);
   }
   if (query.format !== undefined) {
-    if (query.format !== "TMSL") throw new FabricRestError("invalid-response");
+    if (query.format !== "TMSL" && query.format !== "Beta") throw new FabricRestError("invalid-response");
     params.set("format", query.format);
   }
   if (query.maxResults !== undefined) {

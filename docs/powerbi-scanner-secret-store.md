@@ -1,6 +1,6 @@
 # Optional Power BI scanner through Rayfin Secret Store
 
-Contract review: **2026-10-02, Rayfin 1.36.2**.
+Contract review: **2026-10-02, Rayfin 1.36.2**. Re-checked on 2026-11-18 with Rayfin 2.0.1 (GA): Functions still expose only the `Sql`, `Storage`, `Fabric`, `AzureAI` and `ADO` audiences, so the conclusions below are unchanged.
 
 `workspaceCollectPowerBiScanner` supplies a supported, optional server-side
 identity path for the public Power BI admin scanner. It is disabled unless a

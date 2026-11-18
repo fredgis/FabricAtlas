@@ -130,6 +130,11 @@ export interface AtlasMcpToolArguments {
     limit: number;
     offset: number;
   };
+  atlas_get_departure_pack: WorkspaceArguments & {
+    principal: string;
+    limit: number;
+    offset: number;
+  };
 }
 
 type Args = Record<string, unknown>;
@@ -287,6 +292,17 @@ function itemTypes(args: Args): string[] {
   return [...new Set(value as string[])];
 }
 
+function principal(args: Args): string {
+  const value = args.principal;
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text || text.length > ATLAS_MCP_LIMITS.identifierLength || [...text].some((char) => char.charCodeAt(0) < 32)) {
+    invalid(
+      `principal is required: an Entra object ID or user principal name of up to ${ATLAS_MCP_LIMITS.identifierLength} characters.`,
+    );
+  }
+  return text;
+}
+
 function query(args: Args): string {
   const value = args.query;
   const text =
@@ -339,6 +355,7 @@ const ALLOWED: Record<AtlasMcpToolName, readonly string[]> = {
   ],
   atlas_get_connection_evidence: ["workspaceId", "itemId", "limit"],
   atlas_export_snapshot: ["workspaceId", "section", "limit", "offset"],
+  atlas_get_departure_pack: ["workspaceId", "principal", "limit", "offset"],
 };
 
 /** Validates raw MCP tool arguments; throws `invalid-arguments` on any violation. */
@@ -406,6 +423,12 @@ export function parseToolArguments<T extends AtlasMcpToolName>(
       workspaceId: workspaceId(args),
       section: optionalOneOf(args, "section", SNAPSHOT_SECTIONS),
       limit: integer(args, "limit", ATLAS_MCP_LIMITS.snapshotRows),
+      offset: offset(args),
+    }),
+    atlas_get_departure_pack: () => ({
+      workspaceId: workspaceId(args),
+      principal: principal(args),
+      limit: integer(args, "limit", ATLAS_MCP_LIMITS.departureRows),
       offset: offset(args),
     }),
   };

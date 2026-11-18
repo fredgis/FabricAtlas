@@ -592,6 +592,8 @@ export interface RawSync {
   objectEdges?: unknown;
   objectLineage?: unknown;
   governanceEvidence?: unknown;
+  /** Scanner dataflows the Fabric Items API did not list (Dataflow Gen1). */
+  scannerOnlyDataflows?: unknown;
   enrichmentItemIds?: string[];
   requestedItemIds?: string[];
   completedItemIds?: string[];

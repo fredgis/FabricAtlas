@@ -106,7 +106,7 @@ import {
   type AtlasMcpWorkspaceRef,
 } from "./contract";
 import type { AtlasMcpDataSource } from "./data-source";
-import { exportSnapshot, governanceFindings } from "./governance-tools";
+import { departurePack, exportSnapshot, governanceFindings } from "./governance-tools";
 
 // Deterministic evidence tools. Each evaluator reuses the same helpers as the
 // Atlas UI over one validated snapshot and never writes or calls Fabric.
@@ -1582,6 +1582,13 @@ export async function callAtlasMcpTool(
         outcome = connectionEvidence(
           data,
           args as AtlasMcpToolArguments["atlas_get_connection_evidence"],
+          await connectionInventory(runtime),
+        );
+        break;
+      case "atlas_get_departure_pack":
+        outcome = departurePack(
+          data,
+          args as AtlasMcpToolArguments["atlas_get_departure_pack"],
           await connectionInventory(runtime),
         );
         break;

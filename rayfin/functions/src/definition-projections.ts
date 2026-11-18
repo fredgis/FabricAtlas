@@ -166,11 +166,50 @@ export type NotebookArtifactMetadata = {
   }[];
 };
 
+export type EventstreamNodeArtifactMetadata = {
+  name: string;
+  type: string;
+  inputs: string[];
+};
+
+export type EventstreamEndpointArtifactMetadata = EventstreamNodeArtifactMetadata & {
+  itemId?: string;
+  workspaceId?: string;
+  connectionId?: string;
+  schema?: string;
+  table?: string;
+};
+
+/** Structural Eventstream topology only: no properties, expressions, endpoints or keys. */
+export type EventstreamArtifactMetadata = {
+  kind: "eventstream";
+  sources: EventstreamEndpointArtifactMetadata[];
+  streams: EventstreamNodeArtifactMetadata[];
+  operators: EventstreamNodeArtifactMetadata[];
+  destinations: EventstreamEndpointArtifactMetadata[];
+};
+
+export type PolicySetRuleArtifactMetadata = {
+  displayName: string;
+  policy: string;
+  conditions: { type: string; targetProperty: string; operator: string; operands: string[] }[];
+  effects: string[];
+};
+
+/** Authored policySet.json rules only; descriptions and activation are not projected. */
+export type PolicySetArtifactMetadata = {
+  kind: "policySet";
+  scope?: string;
+  rules: PolicySetRuleArtifactMetadata[];
+};
+
 export type DefinitionArtifactMetadata =
   | OntologyArtifactMetadata
   | GraphModelArtifactMetadata
   | DataAgentArtifactMetadata
-  | NotebookArtifactMetadata;
+  | NotebookArtifactMetadata
+  | EventstreamArtifactMetadata
+  | PolicySetArtifactMetadata;
 
 export type DefinitionFact = { section: string; label: string; value: string };
 
@@ -771,6 +810,174 @@ function projectNotebook(
     ...(defaultLakehouse ? { defaultLakehouse } : {}),
     objects,
   };
+}
+
+type EventstreamSection = "sources" | "streams" | "operators" | "destinations";
+const EVENTSTREAM_TYPE = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
+
+/** A node name kept only when it is plain bounded text that cannot carry secrets. */
+function eventstreamName(value: unknown): string | undefined {
+  const text = boundedText(value);
+  if (!text || hasControlCharacter(text) || isCredentialLikeText(text)) return undefined;
+  return text;
+}
+
+function eventstreamUuid(value: unknown): string | undefined {
+  const id = normalizedId(value);
+  return id && UUID.test(id) ? id : undefined;
+}
+
+function eventstreamNode(value: unknown): EventstreamNodeArtifactMetadata | undefined {
+  if (!isRecord(value)) return undefined;
+  const name = eventstreamName(value.name);
+  const type = strictText(value.type);
+  if (!name || !type || !EVENTSTREAM_TYPE.test(type)) return undefined;
+  const inputs = list(value.inputNodes)
+    .map((input) => (isRecord(input) ? eventstreamName(input.name) : undefined))
+    .filter((input): input is string => !!input);
+  return { name, type, inputs: [...new Set(inputs)].slice(0, LIMITS.maxMetadataCollection) };
+}
+
+function eventstreamEndpoint(value: unknown): EventstreamEndpointArtifactMetadata | undefined {
+  const node = eventstreamNode(value);
+  if (!node || !isRecord(value)) return undefined;
+  const properties = isRecord(value.properties) ? value.properties : {};
+  const itemId = eventstreamUuid(properties.itemId);
+  const workspaceId = eventstreamUuid(properties.workspaceId);
+  const connectionId = eventstreamUuid(pyOr(properties.dataConnectionId, properties.connectionId));
+  const schema = eventstreamName(properties.schema);
+  const table = eventstreamName(pyOr(properties.deltaTable, properties.tableName, properties.table));
+  return {
+    ...node,
+    ...(itemId ? { itemId } : {}),
+    ...(workspaceId ? { workspaceId } : {}),
+    ...(connectionId ? { connectionId } : {}),
+    ...(schema ? { schema } : {}),
+    ...(table ? { table } : {}),
+  };
+}
+
+/** Provenance values are `key=value; ...`; separators inside a name would split it. */
+function provenanceText(value: string): string {
+  return value.replace(/[;=]/g, " ").trim();
+}
+
+function projectEventstream(response: unknown, state: ProjectionState): EventstreamArtifactMetadata {
+  let topology: JsonRecord | undefined;
+  for (const part of definitionParts(response)) {
+    const path = partPath(part);
+    if (path === ".platform" || path === "eventstreamProperties.json") continue;
+    if (path === "eventstream.json") {
+      if (topology) invalid();
+      topology = decodeJsonPart(part, state);
+      continue;
+    }
+    state.unknownParts += 1;
+  }
+  if (!topology) invalid();
+  const read = <T>(section: EventstreamSection, parse: (value: unknown) => T | undefined): T[] => {
+    const values = list(topology![section]);
+    if (values.length > LIMITS.maxMetadataCollection) state.metadataTruncated = true;
+    return values
+      .slice(0, LIMITS.maxMetadataCollection)
+      .map(parse)
+      .filter((entry): entry is T => entry !== undefined);
+  };
+  const sources = read("sources", eventstreamEndpoint);
+  const streams = read("streams", eventstreamNode);
+  const operators = read("operators", eventstreamNode);
+  const destinations = read("destinations", eventstreamEndpoint);
+
+  for (const source of sources) {
+    if (source.itemId) state.sourceIds.add(source.itemId);
+    state.facts.add("Eventstream sources", source.name, source.type);
+    if (source.connectionId) {
+      state.facts.add(
+        "Source provenance",
+        "eventstream-source",
+        `provider=${provenanceText(source.type)}; connection=${source.connectionId}; field=properties.dataConnectionId; location=${provenanceText(source.name)}`,
+      );
+    }
+  }
+  for (const operator of operators) state.facts.add("Eventstream operators", operator.name, operator.type);
+  for (const stream of streams) state.facts.add("Eventstream streams", stream.name, stream.type);
+  for (const destination of destinations) {
+    const target = [destination.schema, destination.table].filter(Boolean).join(".");
+    state.facts.add("Eventstream destinations", destination.name, target ? `${destination.type} · ${target}` : destination.type);
+    if (destination.connectionId) {
+      state.facts.add(
+        "Source provenance",
+        "eventstream-destination",
+        `provider=${provenanceText(destination.type)}; connection=${destination.connectionId}; field=properties.connectionId; location=${provenanceText(destination.name)}`,
+      );
+    }
+  }
+  return { kind: "eventstream", sources, streams, operators, destinations };
+}
+
+/** Documented limit: at most 50 policies of one type in a policy set. */
+const POLICY_RULES_PER_TYPE = 50;
+const POLICY_TOKEN = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
+
+function policyToken(value: unknown): string | undefined {
+  const text = strictText(value);
+  return text && POLICY_TOKEN.test(text) ? text : undefined;
+}
+
+function projectPolicySet(response: unknown, state: ProjectionState): PolicySetArtifactMetadata {
+  let document: JsonRecord | undefined;
+  for (const part of definitionParts(response)) {
+    const path = partPath(part);
+    if (path === ".platform") continue;
+    if (path === "policySet.json") {
+      if (document) invalid();
+      document = decodeJsonPart(part, state);
+      continue;
+    }
+    state.unknownParts += 1;
+  }
+  if (!document) invalid();
+  const properties = isRecord(document.properties) ? document.properties : {};
+  const scope = policyToken(isRecord(properties.scope) ? properties.scope.type : undefined);
+  const perType = new Map<string, number>();
+  const rules: PolicySetRuleArtifactMetadata[] = [];
+  for (const raw of list(document.policyRules)) {
+    if (!isRecord(raw)) continue;
+    const displayName = eventstreamName(raw.displayName);
+    const policy = policyToken(raw.policy);
+    if (!displayName || !policy) continue;
+    const count = perType.get(policy) ?? 0;
+    if (count >= POLICY_RULES_PER_TYPE) {
+      state.metadataTruncated = true;
+      continue;
+    }
+    perType.set(policy, count + 1);
+    const conditions = list(raw.conditions).flatMap((condition) => {
+      if (!isRecord(condition)) return [];
+      const type = policyToken(condition.type);
+      const targetProperty = policyToken(condition.targetProperty);
+      const predicate = isRecord(condition.predicate) ? condition.predicate : {};
+      const operator = policyToken(predicate.operator);
+      if (!type || !targetProperty || !operator) return [];
+      // Stored as `operands`: the client metadata guard rejects any `values` key.
+      const operands = list(predicate.values)
+        .map((value) => eventstreamName(value))
+        .filter((value): value is string => !!value)
+        .slice(0, LIMITS.maxMetadataCollection);
+      return [{ type, targetProperty, operator, operands }];
+    });
+    const effects = list(raw.then)
+      .map((step) => (isRecord(step) ? policyToken(step.effect) : undefined))
+      .filter((effect): effect is string => !!effect);
+    rules.push({ displayName, policy, conditions, effects });
+    state.facts.add(
+      "Policy rules",
+      displayName,
+      `${policy}${effects.length ? ` → ${effects.join(", ")}` : ""}`,
+    );
+  }
+  if (scope) state.facts.add("Policy set", "Scope", scope);
+  return { kind: "policySet", ...(scope ? { scope } : {}), rules };
 }
 
 interface TmdlLine {
@@ -1840,7 +2047,11 @@ export function projectDefinition(itemType: string, response: unknown): Definiti
           ? projectDataAgent(response, state)
           : itemType === "Notebook"
             ? projectNotebook(response, state)
-          : invalid();
+            : itemType === "Eventstream"
+              ? projectEventstream(response, state)
+              : itemType === "PolicySet"
+                ? projectPolicySet(response, state)
+                : invalid();
   assertSafeMetadata(metadata);
   if (JSON.stringify(metadata).length > LIMITS.maxSerializedMetadata) {
     throw new DefinitionProjectionError("projection-limit-exceeded");

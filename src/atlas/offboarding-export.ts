@@ -22,6 +22,7 @@ const EVIDENCE_LABEL: Record<OffboardingReviewEvidence, string> = {
   "workspace-edit-access": "Workspace Edit access",
   "configured-by": "Configured by",
   "modified-by": "Modified by",
+  "app-default-identity": "App default identity",
   "ownership-unknown": "Ownership unknown",
 };
 

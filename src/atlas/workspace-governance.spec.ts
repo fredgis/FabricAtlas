@@ -173,3 +173,64 @@ describe("workspaceCollectGovernance", () => {
     expect(role).toMatchObject({ rowSecurity: false, columnSecurity: true, memberIds: [] });
   });
 });
+
+describe("app backend default identity", () => {
+  const APP = "88888888-8888-4888-8888-888888888888";
+  const SP = "99999999-9999-4999-8999-999999999999";
+
+  it("collects the documented default identity and drops undocumented fields", async () => {
+    const envelope = await collectWorkspaceGovernance("token", { workspaceId: WS, correlationId: null }, {
+      sleep: NO_SLEEP,
+      fetch: fetchFor({
+        [`${API}/v1/workspaces/${WS}/items`]: () => json({ value: [] }),
+        [`${API}/v1/workspaces/${WS}/appBackends`]: () => json({ value: [
+          {
+            id: APP, type: "AppBackend", displayName: "Portal", logicalId: SP,
+            defaultIdentity: { id: USER, type: "User", displayName: "Ana", userDetails: { userPrincipalName: "ana@contoso.com" }, secret: "x" },
+            sensitivityLabel: { id: SP },
+          },
+          { id: SP, type: "AppBackend", defaultIdentity: { id: SP, type: "ServicePrincipal", userDetails: { userPrincipalName: "ignored@contoso.com" } } },
+          { id: REPORT, type: "AppBackend" },
+        ] }),
+      }),
+    });
+    expect(envelope.appBackends).toEqual({
+      status: { status: "complete" },
+      entries: [
+        { itemId: APP, logicalId: SP, defaultIdentity: { type: "User", id: USER, displayName: "Ana", userPrincipalName: "ana@contoso.com" } },
+        { itemId: SP, defaultIdentity: { type: "ServicePrincipal", id: SP } },
+        { itemId: REPORT },
+      ],
+    });
+    expect(JSON.stringify(envelope.appBackends)).not.toContain("secret");
+  });
+
+  it("reports an unavailable endpoint as unsupported", async () => {
+    const envelope = await collectWorkspaceGovernance("token", { workspaceId: WS, correlationId: null }, {
+      sleep: NO_SLEEP,
+      fetch: fetchFor({ [`${API}/v1/workspaces/${WS}/items`]: () => json({ value: [] }) }),
+    });
+    expect(envelope.appBackends.status.status).toBe("unsupported");
+    expect(envelope.appBackends.entries).toEqual([]);
+  });
+});
+
+describe("GA admin contracts", () => {
+  it("calls /v1/admin/domains without the retired preview query parameter", async () => {
+    const urls: string[] = [];
+    const base = fetchFor({
+      [`${API}/v1/admin/domains`]: () => json({ domains: [] }),
+      [`${API}/v1/workspaces/${WS}/items`]: () => json({ value: [] }),
+    });
+    await collectWorkspaceGovernance("token", { workspaceId: WS, correlationId: null }, {
+      sleep: NO_SLEEP,
+      fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        urls.push(String(input instanceof Request ? input.url : input));
+        return base(input, init);
+      }) as typeof fetch,
+    });
+    const domainCalls = urls.filter((url) => new URL(url).pathname === "/v1/admin/domains");
+    expect(domainCalls).toHaveLength(1);
+    expect(new URL(domainCalls[0]).search).toBe("");
+  });
+});

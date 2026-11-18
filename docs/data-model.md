@@ -157,10 +157,13 @@ A configuration fact or a chunk of serialized object metadata.
 
 Schema chunks use the private `__schema__` section. Chunking preserves complete
 object lists within the bounded SQL text field. A hidden metadata envelope
-retains safe KQL, Ontology, Graph Model, Data Agent and Notebook reference
-structures after reload. Notebook metadata contains only bounded object names,
-read or write direction and optional source item/workspace IDs. It contains no
-cell source, SQL text or dynamic expression.
+retains safe KQL, Ontology, Graph Model, Data Agent, Notebook, Eventstream and
+Policy set structures after reload. Notebook metadata contains only bounded
+object names, read or write direction and optional source item/workspace IDs. It
+contains no cell source, SQL text or dynamic expression. Eventstream metadata
+(3.0) keeps node names, types, inputs and explicit item, workspace and
+connection IDs; policy set metadata (3.0) keeps the scope and the authored rule
+structure (policy, conditions with `operands`, effects), without descriptions.
 
 Verified object-lineage edges use the private `__object_edges__` section. Each
 edge stores source and target item, object kind, stable ID, readable name,
@@ -172,7 +175,9 @@ Since 2.6, optional governance evidence from `workspaceCollectGovernance` uses
 the private `__governance_evidence__` section, chunked as `v1:part:total:json`.
 It holds Fabric domains, tags, tenant settings, the workspace network policy,
 external data shares, OneLake data access roles and Fabric Policy items, each
-with its own `complete`, `unsupported` or `failed` status. A missing section
+with its own `complete`, `unsupported` or `failed` status. Since 3.0 it also
+holds Fabric app default identities (`appBackends`) and the Dataflow Gen1 list
+(`legacyDataflows`, from the scanner compatibility stage). A missing section
 is shown as Unknown, never as healthy.
 
 No extra Rayfin entity is required, so this metadata follows the same immutable

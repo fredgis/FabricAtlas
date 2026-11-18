@@ -8,14 +8,38 @@ release tag was published.
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-11-18
+
+Fabric Atlas 3.0 runs on the generally available Rayfin 2.0 and adds the governance signals announced at Microsoft Ignite 2026.
+
+### Added
+
+- **Sensitivity downgrade along lineage.** The `sensitivity-downgrade` rule flags an item that carries a weaker label, or no label, than its strictest labelled upstream item (up to 6 hops). One finding per consumer, high from Highly Confidential, medium from Confidential; custom labels and uncollected metadata stay Unknown (#100).
+- **Send the Sync Brief to Teams.** Governance Center > Changes posts the brief as an Adaptive Card 1.5 through the existing `teamsNotify` Function. Unavailable sections say so instead of showing zero, and entry lists shrink until the card fits under 28 KB (#101).
+- **MCP tool `atlas_get_departure_pack`.** The 12th read-only MCP tool returns ownership, orphan risk, blast radius, reassignment candidates and connection ownership for one principal, matched on Entra object ID or user principal name only; display names return `ambiguous` or `unresolved` (#102).
+- **Dormant producers.** The `dormant-producer` rule flags unendorsed or promoted lakehouses, warehouses, semantic models and databases with no recorded downstream item and no activity beyond the inactivity threshold. It replaces `item-inactive` on the same item and needs a complete lineage section (#103).
+- **Eventstream topology.** Eventstream definitions are read with the other definitions: source, stream, operator and destination names and types, plus explicit item and connection IDs. Source and destination items get lineage edges; connection IDs join the Connections view. Operator expressions, properties, endpoints and keys are dropped (#104).
+- **Dataflow Gen1 to upgrade.** Dataflows that the Power BI scanner lists but the Fabric Items API does not are Dataflow Gen1. The `legacy-dataflow-gen1` finding names the downstream models and reports and points to the generally available Upgrade wizard and API (#105).
+- **Fabric app identity.** The governance stage reads `GET /appBackends` and keeps each app's default identity. `app-default-identity` flags `EntireTenant` (high) and personal `User` identities (medium); the Departure Pack and `atlas_get_departure_pack` list apps that run as the departing user; the Catalog drawer shows an **App identity** section (#106).
+- **Data Agent observability.** Policies & AI shows the tenant telemetry switches for Data Agents (operational, user-level, cross-geo), and a finding is raised when user-level telemetry is allowed while an agent reads Confidential sources (#107).
+- **Ignite 2026 item types.** `PostgreSQLDatabase`, `PolicySet`, `Monitoring`, `DeploymentPlan`, `Share`, `ShareSubscription`, `Playbook`, `MirroredOneLake` and `CustomStreamConnector` are registered (60 documented types), with dedicated glyphs for PostgreSQL database and Policy set (#108).
+- **Policy set rules.** With the Fabric policies flag on, Atlas reads each policy set definition (`getDefinition?format=Beta`) and shows the authored rules, scope, conditions and effects in Policies & AI, with activation Unknown. Rule changes appear in Change Center (#109).
+- **Production hardening.** About shows a hardening checklist and a **Copy recommended CSP** button. A test fails when the source or bundle references an origin that the documented CSP does not cover (#110).
+
 ### Changed
 
 - Fabric Atlas runs on Rayfin 2.0.1, the generally available release, instead of 1.36.2. The client is built with `RayfinClient.create` and explicit data, functions and browser-session services, and the Functions package uses `@microsoft/fabric-user-data-functions` 2.0.1 (#111).
 - Generated Functions metadata is refreshed with the 2.0 CLI (schema 3.0). It now lists `teamsNotify`, `suggestDescriptions`, `workspaceCollectGovernance` and `tenantCollectConnections`, which the previous file had missed.
+- `AppBackend` maturity is GA. The item family registry is verified on 2026-11-17.
+- The README is shorter: the feature reference moved to a collapsed section.
 
 ### Upgrade notes
 
-- No schema change and no new entity: deploy with `npx rayfin up`, never `--force`. Every Rayfin package and the Functions worker must be on the same 2.0.x version, or the CLI refuses to generate types or deploy.
+- No new table or entity. New evidence (Dataflow Gen1, app identities) travels in the existing governance evidence JSON, and Eventstream and policy set projections in item metadata.
+- Deploy with `npx rayfin up`, never `--force`. Every Rayfin package and the Functions worker must be on the same 2.0.x version, or the CLI refuses to generate types or deploy.
+- Republish the `atlas_sync_functions` UDF (`function_app.py`) so the scanner stage reports Dataflow Gen1; until then the generation stays Unknown.
+- Policy set rules need the Contributor role for the Atlas identity on the governance workspace and `VITE_ATLAS_FEATURE_FABRIC_POLICIES=true`. See [installation](docs/installation.md#optional-policy-set-definitions-fabric-policies-preview).
+- Version 3.0 starts a new deployment generation: run a synchronization after the upgrade.
 
 ## [2.9.2] - 2026-11-09
 

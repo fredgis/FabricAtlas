@@ -12,6 +12,7 @@ import {
 } from "./item-relations-evidence";
 import { sourceProvenanceSnapshot } from "./source-provenance-snapshot";
 import { preferredSyncMode, type SyncModePreference } from "./sync-mode";
+import { isFeatureEnabled } from "./feature-flags";
 import { applyReusedEnrichment, fullRescanDue, planIncrementalSync, syncPlanSummary, type SyncPlan } from "./incremental-sync";
 import { browserCollectionCache, type CachedCollection, type CollectionCache } from "./sync-snapshot-cache";
 
@@ -53,6 +54,8 @@ export interface BrowserCollectorDependencies {
   maxCalls?: number;
   maxAttempts?: number;
   retryDelayMs?: number;
+  /** Overrides the `fabric-policies` flag for policy set definition collection. */
+  fabricPolicies?: boolean;
 }
 const COLLECTOR_BATCH_SIZE = 4;
 const COMPATIBILITY_BATCH_SIZE = 4;
@@ -61,6 +64,7 @@ const DEFINITIONS = new Set([
   "GraphModel",
   "DataAgent",
   "Notebook",
+  "Eventstream",
 ]);
 const SQL = new Set([
   "SQLDatabase",
@@ -197,6 +201,20 @@ export function carryForwardDomainNames<T>(current: T, previous: unknown): T {
   if (!now || now.status?.status === "complete") return current;
   if (before?.status?.status !== "complete" || !Array.isArray(before.entries) || !before.entries.length) return current;
   return { ...current, domains: { status: { status: "complete", code: "carried-forward" }, entries: before.entries } };
+}
+
+/**
+ * Gen1 needs both listings: a complete Fabric Items API inventory and a
+ * complete scanner result that reported its scanner-only dataflows.
+ */
+export function legacyDataflowEvidence(
+  itemsSection: { status?: string } | undefined,
+  scanner: Pick<RawSync, "sections" | "scannerOnlyDataflows">,
+) {
+  if (itemsSection?.status !== "complete") return { status: { status: "failed", code: "items-incomplete" }, entries: [] };
+  if (scanner.sections?.scanner?.status !== "complete") return { status: { status: "failed", code: "scanner-incomplete" }, entries: [] };
+  if (!Array.isArray(scanner.scannerOnlyDataflows)) return { status: { status: "unsupported", code: "collector-not-updated" }, entries: [] };
+  return { status: { status: "complete" }, entries: scanner.scannerOnlyDataflows.slice(0, 500) };
 }
 
 export async function collectBrowserWorkspace(
@@ -372,7 +390,9 @@ export async function collectBrowserWorkspace(
       }
       merge(sourceProvenanceSnapshot(result, known));
     }
-    const definitions = batch.filter((item) => DEFINITIONS.has(item.type));
+    // Policy set definitions are Preview and need Contributor on the governance workspace.
+    const definitions = batch.filter((item) => DEFINITIONS.has(item.type) ||
+      (item.type === "PolicySet" && (dependencies.fabricPolicies ?? isFeatureEnabled("fabric-policies"))));
     if (definitions.length) {
       const result = await call("workspaceCollectDefinitions", { protocolVersion: 1, workspaceId, items: definitions, correlationId });
       validateStage(result, "definitions", workspaceId, correlationId, definitions);
@@ -634,7 +654,10 @@ export async function collectBrowserWorkspace(
       protocolVersion: 1, workspaceId, correlationId, delegatedToken: delegatedToken ?? null,
     });
     if (governance.authoritative === false && governance.workspaceId === workspaceId) {
-      raw.governanceEvidence = carryForwardDomainNames(governance, cached?.workspaceId === workspaceId ? cached.raw.governanceEvidence : undefined);
+      raw.governanceEvidence = {
+        ...carryForwardDomainNames(governance, cached?.workspaceId === workspaceId ? cached.raw.governanceEvidence : undefined),
+        legacyDataflows: legacyDataflowEvidence(core.sections?.items, scanner),
+      };
     }
   } catch {
     // Governance evidence is optional: without it, domain names, tags and policies stay Unknown.

@@ -8,7 +8,7 @@ import { ITEM_TYPES, type AtlasData } from "./model";
  * unknown and Workload Hub types stay visible with an explicit fallback.
  */
 
-export const ITEM_FAMILIES_VERIFIED_AT = "2026-10-02";
+export const ITEM_FAMILIES_VERIFIED_AT = "2026-11-17";
 const DEFINITIONS_DOC =
   "https://learn.microsoft.com/en-us/rest/api/fabric/articles/item-management/definitions";
 
@@ -115,8 +115,10 @@ export const FABRIC_DOCUMENTED_ITEM_TYPES = [
   "DigitalTwinBuilderFlow", "MirroredAzureDatabricksCatalog", "Map",
   "AnomalyDetector", "UserDataFunction", "GraphModel", "GraphQuerySet",
   "SnowflakeDatabase", "OperationsAgent", "CosmosDBDatabase", "Ontology",
-  "EventSchemaSet", "DataAgent", "MirroredCatalog", "AppBackend", "OrgApp",
+  "EventSchemaSet", "DataAgent", "MirroredCatalog", "PolicySet", "AppBackend", "OrgApp",
   "OrgAppAudience", "DataBuildToolJob", "AzureDatabricksStorage", "Plan",
+  "Monitoring", "DeploymentPlan", "ShareSubscription", "Share", "Playbook",
+  "MirroredOneLake", "PostgreSQLDatabase", "CustomStreamConnector",
 ] as const;
 
 /** Item types listed in Microsoft's item-definition overview. */
@@ -348,10 +350,9 @@ const FAMILIES: readonly ItemFamilyCapability[] = [
   }),
   family("Eventstream", {
     coverage: {
-      objects: entry("deferred", "Stream topology is not expanded. A documented definition exists but no metadata-only projection is reviewed."),
-      lineage: SCANNER_RELATIONS,
+      objects: entry("partial", "Source, stream, operator and destination names and types from eventstream.json; operator expressions, properties, endpoints and keys are dropped."),
+      lineage: entry("partial", "Scanner relations plus explicit source and destination item IDs from the definition; connection IDs join the tenant connection inventory. Nothing is matched by name."),
     },
-    followUp: "Project source and destination item IDs from the documented Eventstream definition, without event payloads.",
   }),
   family("MirroredDatabase", {
     adapters: ["sql-metadata", "source-provenance"],
@@ -369,11 +370,11 @@ const FAMILIES: readonly ItemFamilyCapability[] = [
     },
   }),
   family("AppBackend", {
-    maturity: "preview",
+    maturity: "ga",
     coverage: {
       catalog: entry("collected", "Item identity from the Fabric Items API."),
       objects: entry("unsupported", "No public API exposes dependent services or child items."),
-      access: entry("partial", "Workspace roles only. Restrictions are not evaluated."),
+      access: entry("partial", "Workspace roles plus the app default identity from the appBackends API. Block state, CSP and Secure Embed are portal-only."),
     },
   }),
   family("PaginatedReport", { label: "Paginated report", coverage: { lineage: SCANNER_RELATIONS }, followUp: definitionFollowUp("paginated report") }),
@@ -428,6 +429,28 @@ const FAMILIES: readonly ItemFamilyCapability[] = [
   family("DataBuildToolJob", { label: "dbt job", followUp: definitionFollowUp("dbt job") }),
   family("AzureDatabricksStorage", { label: "Azure Databricks storage", followUp: definitionFollowUp("Azure Databricks storage") }),
   family("Plan", { label: "Plan" }),
+  family("PostgreSQLDatabase", {
+    label: "PostgreSQL database",
+    maturity: "preview",
+    coverage: {
+      objects: entry("deferred", "Schemas and tables stay Deferred, never zero, until a read-only pg_catalog metadata stage is reviewed."),
+      lineage: entry("partial", "Scanner relations and OneLake mirroring relations only."),
+    },
+    followUp: "Review a read-only pg_catalog metadata stage for schema, table and column names (announced as Fabric HorizonDB).",
+  }),
+  family("PolicySet", {
+    label: "Policy set",
+    coverage: {
+      objects: entry("deferred", "Policy rules come from policySet.json (getDefinition format=Beta) behind the Fabric Policies flag."),
+    },
+  }),
+  family("Monitoring", { label: "Monitoring" }),
+  family("DeploymentPlan", { label: "Deployment plan" }),
+  family("Share", { label: "Share" }),
+  family("ShareSubscription", { label: "Share subscription" }),
+  family("Playbook", { label: "Playbook" }),
+  family("MirroredOneLake", { label: "Mirrored OneLake" }),
+  family("CustomStreamConnector", { label: "Custom stream connector" }),
 ];
 
 export const MLV_REFRESH_JOB_TYPE = "RefreshMaterializedLakeViews";

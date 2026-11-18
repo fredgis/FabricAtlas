@@ -1,6 +1,6 @@
 # Power BI metadata replacement
 
-Contract and identity review: **2026-10-02, Rayfin 1.36.2**.
+Contract and identity review: **2026-10-02, Rayfin 1.36.2**. Re-checked on 2026-11-18 with Rayfin 2.0.1 (GA): Functions still expose only the `Sql`, `Storage`, `Fabric`, `AzureAI` and `ADO` audiences, so the conclusions below are unchanged.
 
 `workspaceCollectPowerBi` is a deployed-compatible, read-only Functions tranche.
 It replaces supported scanner metadata reads through public Fabric REST APIs,

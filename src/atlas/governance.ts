@@ -18,6 +18,7 @@ import { searchJobId } from "./search";
 import { buildAccessEvidenceCoverage, type AccessEvidenceCoverage } from "./access-coverage";
 import { domainIndex, domainPath, type GovernanceEvidence } from "./governance-evidence";
 import { connectionFlags, connectionUsages, usagesByConnection } from "./connections";
+import { confidentialDataAgents, dataAgentTelemetryGuardrails } from "./data-agent-telemetry";
 
 export type AccessOrigin = "workspace" | "item" | "mixed";
 export type PrincipalResolution = "resolved" | "unresolved" | "ambiguous";
@@ -832,8 +833,12 @@ export function buildGovernanceFindings(
   }
 
   findings.push(
+    ...sensitivityDowngradeFindings(data.items, data.edges, sensitivityEligibleItems),
+    ...legacyDataflowFindings(data),
+    ...appDefaultIdentityFindings(data),
+    ...dataAgentTelemetryFindings(data),
     ...endorsedInactiveFindings(data.items, data.workspace.syncedAt),
-    ...itemInactiveFindings(data.items, data.jobs, data.workspace.syncedAt),
+    ...dormantAndInactiveFindings(data),
     ...objectDescriptionFindings(data.items, data.schema),
   );
 
@@ -1010,6 +1015,97 @@ export function connectionFindings(
   return findings;
 }
 
+const SENSITIVITY_LINEAGE_MAX_HOPS = 6;
+const CONFIDENTIAL_RANK = 2;
+const HIGHLY_CONFIDENTIAL_RANK = 3;
+
+/**
+ * A consumer that carries a weaker standard label, or no label, than its
+ * strictest labelled upstream item along recorded lineage. Only items whose
+ * label metadata was collected and whose label maps to the standard taxonomy
+ * take part: custom labels and label IDs without a name stay Unknown.
+ * One finding per consumer, anchored on the strictest upstream item.
+ */
+export function sensitivityDowngradeFindings(
+  items: readonly Item[],
+  edges: readonly Edge[],
+  eligible: ReadonlySet<string>,
+): GovernanceFinding[] {
+  const byId = new Map(items.map((item) => [item.fabricId, item]));
+  const upstream = new Map<string, Edge[]>();
+  for (const edge of edges) {
+    if (edge.broken || edge.source === edge.target) continue;
+    if (!byId.has(edge.source) || !byId.has(edge.target)) continue;
+    const incoming = upstream.get(edge.target) ?? [];
+    incoming.push(edge);
+    upstream.set(edge.target, incoming);
+  }
+  const findings: GovernanceFinding[] = [];
+  for (const consumer of items) {
+    if (!eligible.has(consumer.fabricId) || !upstream.has(consumer.fabricId)) continue;
+    const labelled = itemHasSensitivity(consumer);
+    const consumerRank = labelled ? standardLabelRank(consumer.sensitivity) : undefined;
+    if (labelled && consumerRank === undefined) continue;
+
+    let strictest: { item: Item; rank: number; hops: number } | undefined;
+    const via = new Map<string, Edge>();
+    const visited = new Set([consumer.fabricId]);
+    let frontier = [consumer.fabricId];
+    for (let hops = 1; hops <= SENSITIVITY_LINEAGE_MAX_HOPS && frontier.length; hops += 1) {
+      const next: string[] = [];
+      for (const id of frontier) {
+        for (const edge of upstream.get(id) ?? []) {
+          if (visited.has(edge.source)) continue;
+          visited.add(edge.source);
+          via.set(edge.source, edge);
+          next.push(edge.source);
+          if (!eligible.has(edge.source)) continue;
+          const source = byId.get(edge.source)!;
+          const rank = standardLabelRank(source.sensitivity);
+          if (rank === undefined) continue;
+          if (
+            !strictest ||
+            rank > strictest.rank ||
+            (rank === strictest.rank && hops === strictest.hops &&
+              compareText(source.fabricId, strictest.item.fabricId) < 0)
+          ) {
+            strictest = { item: source, rank, hops };
+          }
+        }
+      }
+      frontier = next.sort(compareText);
+    }
+    if (!strictest || strictest.rank < CONFIDENTIAL_RANK) continue;
+    if (consumerRank !== undefined && consumerRank >= strictest.rank) continue;
+
+    const pathEdges: string[] = [];
+    for (let cursor = strictest.item.fabricId; cursor !== consumer.fabricId; ) {
+      const edge = via.get(cursor)!;
+      pathEdges.push(`edge:${lineageEdgeKey(edge)}`);
+      cursor = edge.target;
+    }
+    const source = strictest.item;
+    const carried = labelled ? consumer.sensitivity! : "no label";
+    const path = strictest.hops === 1 ? "directly" : `through ${strictest.hops} lineage hops`;
+    findings.push({
+      id: findingId("sensitivity-downgrade", consumer.fabricId),
+      severity: strictest.rank >= HIGHLY_CONFIDENTIAL_RANK ? "high" : "medium",
+      category: "access",
+      title: `${labelled ? "Weaker" : "Missing"} label downstream of ${source.sensitivity}: ${consumer.displayName}`,
+      detail: `${consumer.displayName} carries ${carried} but reads ${path} from ${source.displayName}, labelled ${source.sensitivity}.`,
+      recommendation: `Apply ${source.sensitivity} or a stricter label to ${consumer.displayName} in Fabric, or record a justified exception.`,
+      evidenceIds: [
+        `item:${consumer.fabricId}:sensitivity`,
+        `item:${source.fabricId}:sensitivity`,
+        ...pathEdges,
+      ],
+      target: { kind: "item", itemId: consumer.fabricId },
+      itemId: consumer.fabricId,
+    });
+  }
+  return findings;
+}
+
 const UNASSIGNED_DOMAIN = "unassigned";
 export const ENDORSED_INACTIVE_DAYS = 90;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -1116,6 +1212,210 @@ export function externalShareFindings(
   });
 }
 
+/**
+ * Dataflow Gen1: listed by the Power BI scanner but not by the Fabric Items
+ * API. Raised only when both listings were complete in this snapshot; the GA
+ * upgrade keeps owner and connections, and Atlas never calls it.
+ */
+export function legacyDataflowFindings(
+  data: Pick<AtlasData, "workspace" | "items" | "edges" | "governanceEvidence">,
+): GovernanceFinding[] {
+  const section = data.governanceEvidence?.legacyDataflows;
+  if (section?.status.status !== "complete") return [];
+  const byId = new Map(data.items.map((item) => [item.fabricId.toLowerCase(), item]));
+  const reportsOf = (modelId: string) =>
+    data.edges
+      .filter((edge) => !edge.broken && edge.source.toLowerCase() === modelId)
+      .map((edge) => byId.get(edge.target.toLowerCase()))
+      .filter((item): item is Item => item?.itemType === "Report");
+  return section.entries.map((dataflow) => {
+    const models = dataflow.downstreamModelIds
+      .map((id) => byId.get(id))
+      .filter((item): item is Item => !!item);
+    const reports = [...new Map(models.flatMap((model) => reportsOf(model.fabricId.toLowerCase())).map((item) => [item.fabricId, item])).values()];
+    const impact = models.length
+      ? ` It feeds ${models.map((item) => item.displayName).join(", ")}${reports.length ? ` and ${reports.length} report${reports.length === 1 ? "" : "s"} (${reports.map((item) => item.displayName).join(", ")})` : ""}.`
+      : "";
+    const owner = dataflow.ownerKnown ? "" : " Its owner is not recorded.";
+    return {
+      id: findingId("legacy-dataflow-gen1", dataflow.id),
+      severity: models.length || !dataflow.ownerKnown ? "medium" : "low",
+      category: "operations",
+      title: `Dataflow Gen1 to upgrade: ${dataflow.displayName}`,
+      detail: `${dataflow.displayName} is a Dataflow Gen1: the Power BI scanner lists it but the Fabric Items API does not.${impact}${owner}`,
+      recommendation:
+        "A Workspace or Tenant Admin can upgrade it to Dataflow Gen2 (CI/CD) with the generally available Upgrade wizard or API, which keeps the original owner and data source connections.",
+      evidenceIds: [
+        `workspace:${data.workspace.fabricId}:dataflow-gen1:${dataflow.id}`,
+        ...models.map((item) => `item:${item.fabricId}:upstream-dataflow:${dataflow.id}`),
+      ],
+      target: { kind: "workspace" },
+    } satisfies GovernanceFinding;
+  });
+}
+
+/**
+ * Fabric app backends whose default identity is the entire tenant (high) or
+ * one person (medium): disabling that user breaks the app. Only collected
+ * identities count; block state, CSP and Secure Embed are portal-only and
+ * stay Unknown.
+ */
+export function appDefaultIdentityFindings(
+  data: Pick<AtlasData, "items" | "governanceEvidence">,
+): GovernanceFinding[] {
+  const section = data.governanceEvidence?.appBackends;
+  if (section?.status.status !== "complete") return [];
+  const byId = new Map(data.items.map((item) => [item.fabricId.toLowerCase(), item]));
+  return section.entries.flatMap((entry): GovernanceFinding[] => {
+    const identity = entry.defaultIdentity;
+    if (identity?.type !== "EntireTenant" && identity?.type !== "User") return [];
+    const item = byId.get(entry.itemId);
+    const itemId = item?.fabricId ?? entry.itemId;
+    const name = item?.displayName ?? entry.itemId;
+    const who = identity.displayName ?? identity.userPrincipalName ?? identity.id ?? "a user";
+    const tenant = identity.type === "EntireTenant";
+    return [{
+      id: findingId("app-default-identity", entry.itemId),
+      severity: tenant ? "high" : "medium",
+      category: "access",
+      title: tenant ? `App runs as the entire tenant: ${name}` : `App runs as a personal identity: ${name}`,
+      detail: tenant
+        ? `The default identity of ${name} is EntireTenant, so every user in the tenant is the identity the app acts as.`
+        : `The default identity of ${name} is the user ${who}. If that account is disabled or leaves, the app stops working.`,
+      recommendation:
+        "Assign a dedicated service principal or item identity to the app in the OneLake catalog governance view (Apps) or the app settings in Fabric.",
+      evidenceIds: [`item:${itemId}:app-default-identity:${identity.type}${identity.id ? `:${identity.id}` : ""}`],
+      target: { kind: "item", itemId },
+      itemId,
+    }];
+  });
+}
+
+/**
+ * Tenant-level Data Agent telemetry export eligibility next to agents that read
+ * Confidential+ sources. The API exposes the tenant switch, not whether an
+ * agent has an Application Insights connection, so this never claims export.
+ */
+export function dataAgentTelemetryFindings(
+  data: Pick<AtlasData, "workspace" | "items" | "itemMetadata" | "governanceEvidence">,
+): GovernanceFinding[] {
+  const agents = confidentialDataAgents(data);
+  if (!agents.length) return [];
+  const guardrails = dataAgentTelemetryGuardrails(data);
+  const names = agents.map(({ agent }) => agent.displayName).join(", ");
+  const evidence = agents.flatMap(({ agent, sources }) =>
+    sources.map((source) => `item:${agent.fabricId}:source:${source.fabricId}:sensitivity`));
+  const findings: GovernanceFinding[] = [];
+  const user = guardrails.find((guardrail) => guardrail.id === "userContent");
+  if (user?.state === "enabled") {
+    findings.push({
+      id: findingId("data-agent-telemetry", data.workspace.fabricId, "user-content"),
+      severity: "high",
+      category: "access",
+      title: `User-level Data Agent telemetry is allowed with Confidential sources`,
+      detail: `The tenant allows Data Agents to send prompts, responses and generated queries to Application Insights or Foundry (${user.title ?? user.settingName}), and ${names} read Confidential or stricter sources. Whether an agent has a telemetry connection is not exposed by the API.`,
+      recommendation:
+        "Confirm that no agent reading Confidential data sends user-level telemetry, or restrict the tenant setting to a security group in the Fabric admin portal.",
+      evidenceIds: [`tenant-setting:${user.settingName}:enabled`, ...evidence],
+      target: { kind: "workspace" },
+    });
+  }
+  const geo = guardrails.find((guardrail) => guardrail.id === "crossGeo");
+  if (geo?.state === "enabled") {
+    findings.push({
+      id: findingId("data-agent-telemetry", data.workspace.fabricId, "cross-geo"),
+      severity: "medium",
+      category: "access",
+      title: `Cross-geo AI processing is allowed with Confidential Data Agents`,
+      detail: `The tenant allows AI processing or storage outside the capacity geography (${geo.title ?? geo.settingName}), and ${names} read Confidential or stricter sources.`,
+      recommendation: "Check that the compliance boundary of the connected Application Insights or Foundry resource matches your data residency rules.",
+      evidenceIds: [`tenant-setting:${geo.settingName}:enabled`, ...evidence],
+      target: { kind: "workspace" },
+    });
+  }
+  return findings;
+}
+
+/** Data stores and models whose value lies in feeding other items. */
+export const DORMANT_PRODUCER_TYPES: ReadonlySet<string> = new Set([
+  "Lakehouse",
+  "Warehouse",
+  "SemanticModel",
+  "SQLDatabase",
+  "KQLDatabase",
+  "MirroredDatabase",
+  "Datamart",
+]);
+
+function lastJobByItem(jobs: AtlasData["jobs"]): Map<string, number> {
+  const lastJob = new Map<string, number>();
+  for (const job of jobs) {
+    const started = Date.parse(job.startedAt);
+    if (!Number.isFinite(started)) continue;
+    lastJob.set(job.itemFabricId, Math.max(lastJob.get(job.itemFabricId) ?? started, started));
+  }
+  return lastJob;
+}
+
+/**
+ * Unendorsed or promoted producer items with no recorded downstream item in
+ * the synchronized scope and no observed modification, refresh or job run
+ * beyond the threshold. Needs a complete lineage section and at least one
+ * activity timestamp: missing evidence stays Unknown. Never claims the item is
+ * unused, since ad-hoc queries and external tools are not observed.
+ */
+export function dormantProducerFindings(
+  data: Pick<AtlasData, "items" | "edges" | "jobs" | "workspace">,
+  thresholdDays: number = ITEM_INACTIVE_DAYS,
+): GovernanceFinding[] {
+  const reference = data.workspace.syncedAt ? Date.parse(data.workspace.syncedAt) : Number.NaN;
+  if (!Number.isFinite(reference)) return [];
+  if (data.workspace.syncSections?.lineage?.status !== "complete") return [];
+  const consumers = new Set(
+    data.edges.filter((edge) => !edge.broken && edge.source !== edge.target).map((edge) => edge.source),
+  );
+  const lastJob = lastJobByItem(data.jobs);
+  const findings: GovernanceFinding[] = [];
+  for (const item of data.items) {
+    if (!DORMANT_PRODUCER_TYPES.has(item.itemType)) continue;
+    if (item.endorsement === "certified" || consumers.has(item.fabricId)) continue;
+    const candidates = [latestActivity(item), lastJob.get(item.fabricId)].filter(
+      (value): value is number => value !== undefined,
+    );
+    if (candidates.length === 0) continue;
+    const days = Math.floor((reference - Math.max(...candidates)) / DAY_MS);
+    if (days <= thresholdDays) continue;
+    const promoted = item.endorsement === "promoted" ? " It is still promoted." : "";
+    findings.push({
+      id: findingId("dormant-producer", item.fabricId),
+      severity: "high",
+      category: "operations",
+      title: `Dormant producer: ${item.displayName}`,
+      detail: `${item.displayName} (${item.itemType}) has no recorded downstream items in the synchronized scope and no observed modification, refresh or job run for ${days} days (threshold ${thresholdDays}).${promoted} Ad-hoc queries and external tools are not observed, so it may still be read.`,
+      recommendation:
+        "Confirm with the owner whether it still serves a consumer outside Atlas; otherwise plan archiving or retirement in Fabric.",
+      evidenceIds: [`item:${item.fabricId}:activity`, `item:${item.fabricId}:lineage:downstream:0`],
+      target: { kind: "item", itemId: item.fabricId },
+      itemId: item.fabricId,
+    });
+  }
+  return findings;
+}
+
+/** `dormant-producer` supersedes `item-inactive` on the same item. */
+function dormantAndInactiveFindings(
+  data: Pick<AtlasData, "items" | "edges" | "jobs" | "workspace">,
+): GovernanceFinding[] {
+  const dormant = dormantProducerFindings(data);
+  const dormantItems = new Set(dormant.map((finding) => finding.itemId));
+  return [
+    ...dormant,
+    ...itemInactiveFindings(data.items, data.jobs, data.workspace.syncedAt).filter(
+      (finding) => !dormantItems.has(finding.itemId),
+    ),
+  ];
+}
+
 function itemInactiveFindings(
   items: readonly Item[],
   jobs: AtlasData["jobs"],
@@ -1124,12 +1424,7 @@ function itemInactiveFindings(
 ): GovernanceFinding[] {
   const reference = syncedAt ? Date.parse(syncedAt) : Number.NaN;
   if (!Number.isFinite(reference)) return [];
-  const lastJob = new Map<string, number>();
-  for (const job of jobs) {
-    const started = Date.parse(job.startedAt);
-    if (!Number.isFinite(started)) continue;
-    lastJob.set(job.itemFabricId, Math.max(lastJob.get(job.itemFabricId) ?? started, started));
-  }
+  const lastJob = lastJobByItem(jobs);
   const findings: GovernanceFinding[] = [];
   for (const item of items) {
     if (item.endorsement !== "none") continue;

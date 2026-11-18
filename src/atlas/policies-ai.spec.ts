@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { buildAiGovernanceInventory, compareAgentSourceSelections } from "./policies-ai";
-import { snapshotFromData } from "./history";
+import { buildAiGovernanceInventory, compareAgentSourceSelections, policyConditionText, policySetRules } from "./policies-ai";
+import { compareSnapshots, snapshotFromData } from "./history";
+import { projectItemMetadataToSchema, type PolicySetMetadata } from "./item-metadata";
 import type { AtlasData } from "./model";
 import type { DataAgentMetadata } from "./item-metadata";
 
@@ -133,5 +134,43 @@ describe("Policies & AI evidence", () => {
     );
     expect(result.differences.map((change) => change.type)).toEqual(["source-removed"]);
     expect(JSON.stringify(result)).not.toMatch(/revoked|not.exposed|compliant|AI.safe/i);
+  });
+});
+
+describe("policy set rules", () => {
+  it("returns collected rules and keeps unread policy sets Not collected", () => {
+    const base = {
+      items: [
+        { fabricId: "p1", displayName: "Read", itemType: "PolicySet", health: "healthy", endorsement: "none", tags: [] },
+        { fabricId: "p2", displayName: "Unread", itemType: "PolicySet", health: "healthy", endorsement: "none", tags: [] },
+      ],
+      itemMetadata: {
+        p1: { kind: "policySet", rules: [{ displayName: "R", policy: "ItemCreation", effects: ["Deny"], conditions: [] }] },
+      },
+    } as unknown as AtlasData;
+    const rows = policySetRules(base);
+    expect(rows.map((row) => [row.item.fabricId, row.status, row.rules.length])).toEqual([["p1", "collected", 1], ["p2", "not-collected", 0]]);
+    expect(policyConditionText(rows[0].rules[0])).toBe("No condition");
+  });
+});
+
+describe("policy rule changes in snapshot comparison", () => {
+  it("reports added and modified authored rules", () => {
+    const snapshot = (id: string, metadata: PolicySetMetadata) => snapshotFromData({
+      workspace: { fabricId: "ws", displayName: "WS", capacity: "", region: "", snapshotId: id, syncedAt: `2026-11-1${id === "a" ? 7 : 8}T00:00:00Z` },
+      items: [{ fabricId: "p1", displayName: "Policies", itemType: "PolicySet", health: "healthy", endorsement: "none", tags: [] }],
+      itemMetadata: { p1: metadata },
+      schema: { p1: projectItemMetadataToSchema(metadata) },
+      edges: [], principals: [], grants: [], jobs: [], config: [], comments: [], syncRuns: [],
+    } as AtlasData);
+    const rule = (effect: string) => ({ displayName: "Creation", policy: "ItemCreation", effects: [effect], conditions: [] });
+    const changes = compareSnapshots(
+      snapshot("a", { kind: "policySet", scope: "Tenant", rules: [rule("Allow")] }),
+      snapshot("b", { kind: "policySet", scope: "Tenant", rules: [rule("Deny"), { ...rule("Allow"), displayName: "Sharing", policy: "ExternalDataSharing" }] }),
+    ).filter((change) => change.domain === "schema");
+    expect(changes.map((change) => [change.type, change.label])).toEqual(expect.arrayContaining([
+      ["schema-object-modified", "Creation"],
+      ["schema-object-added", "Sharing"],
+    ]));
   });
 });

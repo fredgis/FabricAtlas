@@ -5550,6 +5550,41 @@ def _compatibility_plan(value):
         raise ValueError("Invalid compatibility collector plan") from None
 
 
+SCANNER_ONLY_DATAFLOW_LIMIT = 500
+
+
+def _scanner_only_dataflows(artifacts, workspace_ids):
+    """Dataflows the scanner reports but the Fabric Items API did not list: Dataflow Gen1.
+
+    Only IDs, a bounded name, whether an owner was recorded and the semantic
+    models that declare the dataflow upstream are returned.
+    """
+    consumers = {}
+    for artifact_id, artifact in artifacts.items():
+        if artifact.get("_type") != "SemanticModel":
+            continue
+        for upstream in artifact.get("upstreamDataflows") or []:
+            if isinstance(upstream, dict):
+                target = _normalized_id(upstream.get("targetDataflowId"))
+                if target:
+                    consumers.setdefault(target, set()).add(artifact_id)
+    entries = []
+    for artifact_id in sorted(artifacts):
+        artifact = artifacts[artifact_id]
+        if artifact.get("_type") != "Dataflow" or artifact_id in workspace_ids:
+            continue
+        name = _safe_text(artifact.get("name")) or _safe_text(artifact.get("displayName")) or artifact_id
+        entries.append({
+            "id": artifact_id,
+            "displayName": name[:256],
+            "ownerKnown": bool(_safe_text(artifact.get("configuredBy"))),
+            "downstreamModelIds": sorted(consumers.get(artifact_id, set()))[:50],
+        })
+        if len(entries) >= SCANNER_ONLY_DATAFLOW_LIMIT:
+            break
+    return entries
+
+
 @udf.function()
 def sync_compatibility(
     fabricToken: str,
@@ -5686,6 +5721,7 @@ def sync_compatibility(
                         fabricToken, ws, artifact, artifact["_type"], out["schema"].get(_artifact_id(artifact), []),
                     ))
                 out["lineage"] = _official_lineage(selected, workspace_ids, ws)
+                out["scannerOnlyDataflows"] = _scanner_only_dataflows(artifacts, workspace_ids)
                 for name in ("scanner", "access", "lineage", "schema", "config"):
                     _set_section(out, name, "complete")
                 _set_metadata_capabilities(out)

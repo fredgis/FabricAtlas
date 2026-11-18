@@ -358,4 +358,23 @@ export const ATLAS_MCP_TOOLS: readonly AtlasMcpToolDefinition[] = [
       offset: OFFSET,
     }),
   ),
+  tool(
+    "atlas_get_departure_pack",
+    "Get departure pack",
+    "Returns the Atlas Departure Pack for one principal: sole and shared ownership, orphan risks with downstream blast radius, deterministic reassignment candidates, privileged access to review and Fabric connections the principal owns from the latest tenant connection inventory. The principal is matched only on its Entra object ID or user principal name; display names return ambiguous or unresolved, never a guess. Read-only: Atlas never revokes access or reassigns owners.",
+    input(
+      {
+        workspaceId: WORKSPACE_ID,
+        principal: {
+          type: "string",
+          description: "Entra object ID or user principal name. Display names are not unique and are not resolved.",
+          minLength: 1,
+          maxLength: ATLAS_MCP_LIMITS.identifierLength,
+        },
+        limit: limit(ATLAS_MCP_LIMITS.departureRows),
+        offset: OFFSET,
+      },
+      ["principal"],
+    ),
+  ),
 ];

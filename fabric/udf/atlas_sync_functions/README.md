@@ -92,7 +92,7 @@ collector.
 `sync_compatibility` receives an exact, bounded plan and may run only the
 collectors named in that plan. The browser verifies the echoed plan before
 merging results. This keeps Python for gaps that are not yet supported or live
-validated in Rayfin 1.36.2:
+validated in Rayfin (reviewed with 1.36.2 and re-checked with 2.0.1 GA):
 
 | Compatibility path | Why it remains |
 | --- | --- |
