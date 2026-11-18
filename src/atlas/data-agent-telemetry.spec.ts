@@ -23,7 +23,7 @@ describe("Data Agent telemetry guardrails", () => {
   it("is Unknown when tenant settings were not collected or names are not verified", () => {
     expect(dataAgentTelemetryGuardrails({ governanceEvidence: settings([], "unsupported") }, NAMES).every((entry) => entry.state === "unknown")).toBe(true);
     expect(dataAgentTelemetryGuardrails({}, NAMES)[0].reason).toMatch(/not collected/);
-    expect(dataAgentTelemetryGuardrails({ governanceEvidence: settings([{ settingName: "UserSetting", enabled: true }]) }, { operational: [], userContent: [], crossGeo: [] })[1].reason).toMatch(/not verified/);
+    expect(dataAgentTelemetryGuardrails({ governanceEvidence: settings([{ settingName: "UserSetting", enabled: true }]) }, { operational: [], userContent: [], crossGeo: [] })[1].reason).toMatch(/Not exposed/);
   });
 
   it("finds agents reading Confidential or stricter sources", () => {
@@ -40,6 +40,23 @@ describe("Data Agent telemetry guardrails", () => {
       },
     } as unknown as AtlasData;
     expect(confidentialDataAgents(data).map((entry) => entry.agent.fabricId)).toEqual(["agent"]);
+  });
+
+  it("uses the observed setting names and raises cross-geo for Confidential agents", () => {
+    const data = {
+      workspace: { fabricId: "ws", displayName: "WS", capacity: "", region: "" },
+      items: [item("lake", { sensitivity: "Confidential" }), item("agent", { itemType: "DataAgent" })],
+      itemMetadata: { agent: { kind: "dataAgent", sources: [{ artifactId: "lake", displayName: "lake", sourceType: "lakehouse_tables", elements: [], selectedElements: [] }] } },
+      edges: [], principals: [], grants: [], jobs: [], config: [], comments: [], syncRuns: [],
+      governanceEvidence: settings([
+        { settingName: "MicrosoftFoundryTelemetry", enabled: true },
+        { settingName: "AllowSendAOAIDataToOtherRegions", enabled: true },
+        { settingName: "AllowStoreAOAIDataInOtherRegions", enabled: false },
+      ]),
+    } as unknown as AtlasData;
+    expect(dataAgentTelemetryGuardrails(data).map((entry) => entry.state)).toEqual(["enabled", "unknown", "enabled"]);
+    const findings = buildGovernanceFindings(data).filter((finding) => finding.id.startsWith("data-agent-telemetry:"));
+    expect(findings.map((finding) => [finding.severity, finding.id])).toEqual([["medium", "data-agent-telemetry:ws:cross-geo"]]);
   });
 
   it("raises nothing without Confidential agents, even when user-level telemetry is allowed", () => {

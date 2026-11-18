@@ -9,10 +9,13 @@ import { standardLabelRank } from "./governance";
  * from a snapshot stays Unknown.
  */
 export const DATA_AGENT_TELEMETRY_SETTINGS = {
-  observedAt: "",
-  operational: [] as readonly string[],
+  // Observed on the reference tenant with GET /v1/admin/tenantsettings (190 settings).
+  observedAt: "2026-11-18",
+  operational: ["MicrosoftFoundryTelemetry"] as readonly string[],
+  // Announced at Ignite 2026 but not returned by the API yet: stays Unknown.
   userContent: [] as readonly string[],
-  crossGeo: [] as readonly string[],
+  // Data Agents run on Azure OpenAI; these switches allow processing or storage outside the capacity geography.
+  crossGeo: ["AllowSendAOAIDataToOtherRegions", "AllowStoreAOAIDataInOtherRegions"] as readonly string[],
 };
 
 export type TelemetryGuardrailId = "operational" | "userContent" | "crossGeo";
@@ -47,7 +50,13 @@ export function dataAgentTelemetryGuardrails(
     const allowed = new Set(names[id]);
     const matches = section.entries.filter((entry) => allowed.has(entry.settingName));
     if (!matches.length) {
-      return { ...base, state: "unknown", reason: allowed.size ? "The setting was not returned for this tenant." : "The setting name is not verified yet." };
+      return {
+        ...base,
+        state: "unknown",
+        reason: allowed.size
+          ? "The setting was not returned for this tenant."
+          : `Not exposed by the tenant settings API yet (checked ${DATA_AGENT_TELEMETRY_SETTINGS.observedAt}).`,
+      };
     }
     const enabled = matches.find((entry) => entry.enabled);
     const setting = enabled ?? matches[0];
