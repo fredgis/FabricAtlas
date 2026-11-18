@@ -78,7 +78,7 @@ export type SyncProgressReporter = (progress: number, stage: string) => void;
 
 type Row = Record<string, unknown>;
 const SNAPSHOT_WRITE_BATCH_SIZE = 8;
-const SNAPSHOT_WRITE_RETRY_DELAYS_MS = [1_000, 3_000, 8_000];
+const SNAPSHOT_WRITE_RETRY_DELAYS_MS = [1_000, 3_000, 8_000, 15_000];
 const SYNC_RUN_UPDATE_RETRY_DELAYS_MS = [0, 100, 400];
 const PERSISTED_TEXT_LIMITS = {
   reference: {
@@ -247,6 +247,11 @@ function isRetryableSnapshotWriteError(error: unknown): boolean {
       snapshotWriteErrorMessage(error),
     ) ||
     /HTTP (?:Error )?(?:408|429|5\d\d)\b/i.test(
+      snapshotWriteErrorMessage(error),
+    ) ||
+    // Gateway throttling or resets reach the browser without CORS headers,
+    // so the Rayfin SDK only reports a fetch-level network error.
+    /Network error|Failed to fetch|NetworkError when attempting|Load failed/i.test(
       snapshotWriteErrorMessage(error),
     )
   );
