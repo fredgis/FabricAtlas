@@ -124,6 +124,13 @@ describe("item family capability registry", () => {
     expect(family.followUp).toMatch(/delegated-user/i);
   });
 
+  it("projects Eventstream topology as partial objects and lineage", () => {
+    const family = itemFamilyCapability("Eventstream");
+    expect(family.coverage.objects.state).toBe("partial");
+    expect(family.coverage.lineage.state).toBe("partial");
+    expect(family.followUp).toBeUndefined();
+  });
+
   it("keeps Fabric Apps at top-level identity until dependent items are exposed", () => {
     expect(itemFamilyCapability("AppBackend").coverage.objects).toMatchObject({ state: "unsupported" });
     expect(itemFamilyCapability("OrgApp").coverage.objects.detail).toMatch(/only when a documented contract exposes them/);

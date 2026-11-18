@@ -20,6 +20,8 @@ export const METADATA_OBJECT_TYPES = {
   graphEdge: "Graph edge",
   dataAgentSource: "Data Agent source",
   notebookObject: "Notebook object reference",
+  eventstreamSource: "Eventstream source",
+  eventstreamDestination: "Eventstream destination",
 } as const;
 
 export const DATA_AGENT_LINEAGE_ELEMENT_TYPES = [
@@ -270,12 +272,35 @@ export interface NotebookMetadata {
   objects: NotebookObjectMetadata[];
 }
 
+export interface EventstreamNodeMetadata {
+  name: string;
+  type: string;
+  inputs: string[];
+}
+
+export interface EventstreamEndpointMetadata extends EventstreamNodeMetadata {
+  itemId?: string;
+  workspaceId?: string;
+  connectionId?: string;
+  schema?: string;
+  table?: string;
+}
+
+export interface EventstreamMetadata {
+  kind: "eventstream";
+  sources: EventstreamEndpointMetadata[];
+  streams: EventstreamNodeMetadata[];
+  operators: EventstreamNodeMetadata[];
+  destinations: EventstreamEndpointMetadata[];
+}
+
 export type FabricItemMetadata =
   | OntologyMetadata
   | GraphModelMetadata
   | DataAgentMetadata
   | KqlDatabaseMetadata
-  | NotebookMetadata;
+  | NotebookMetadata
+  | EventstreamMetadata;
 
 export type MetadataObjectKind =
   | "sourceObject"
@@ -1543,6 +1568,40 @@ export function parseNotebookMetadata(
   };
 }
 
+function parseEventstreamNode(value: unknown): EventstreamNodeMetadata | undefined {
+  if (!isRecord(value)) return undefined;
+  const name = firstText(value, ["name"]);
+  const type = firstText(value, ["type"]);
+  const inputs = Array.isArray(value.inputs)
+    ? value.inputs.filter((input): input is string => typeof input === "string" && !!input.trim())
+    : undefined;
+  if (!name || !type || !inputs) return undefined;
+  return { name, type, inputs };
+}
+
+function parseEventstreamEndpoint(value: unknown): EventstreamEndpointMetadata | undefined {
+  const node = parseEventstreamNode(value);
+  if (!node || !isRecord(value)) return undefined;
+  const fields = ["itemId", "workspaceId", "connectionId", "schema", "table"] as const;
+  const parsed: EventstreamEndpointMetadata = { ...node };
+  for (const field of fields) {
+    const text = optionalText(value[field]);
+    if (text === null) return undefined;
+    if (text) parsed[field] = text;
+  }
+  return parsed;
+}
+
+export function parseEventstreamMetadata(value: unknown): EventstreamMetadata | undefined {
+  if (!isRecord(value) || containsUnsafeContent(value)) return undefined;
+  const sources = parseList(array(value, ["sources"]), parseEventstreamEndpoint);
+  const streams = parseList(array(value, ["streams"]), parseEventstreamNode);
+  const operators = parseList(array(value, ["operators"]), parseEventstreamNode);
+  const destinations = parseList(array(value, ["destinations"]), parseEventstreamEndpoint);
+  if (!sources || !streams || !operators || !destinations) return undefined;
+  return { kind: "eventstream", sources, streams, operators, destinations };
+}
+
 export function parseFabricItemMetadata(
   itemType: ItemType | string,
   value: unknown,
@@ -1558,6 +1617,8 @@ export function parseFabricItemMetadata(
       return parseKqlDatabaseMetadata(value);
     case "Notebook":
       return parseNotebookMetadata(value);
+    case "Eventstream":
+      return parseEventstreamMetadata(value);
     default:
       return undefined;
   }
@@ -1572,6 +1633,7 @@ export function metadataSchemaEntry(
     dataAgent: "DataAgent",
     kql: "KQLDatabase",
     notebook: "Notebook",
+    eventstream: "Eventstream",
   };
   const parsed = parseFabricItemMetadata(
     itemTypeByKind[metadata.kind],
@@ -1709,6 +1771,28 @@ export function projectItemMetadataToSchema(
         })),
         envelope,
       ];
+    case "eventstream":
+      return [
+        ...metadata.sources.map((source) => ({
+          name: source.name,
+          objectType: METADATA_OBJECT_TYPES.eventstreamSource,
+          source: source.itemId ?? source.connectionId,
+          description: source.type,
+          columns: [],
+          measures: [],
+        })),
+        ...metadata.destinations.map((destination) => ({
+          name: destination.name,
+          objectType: METADATA_OBJECT_TYPES.eventstreamDestination,
+          source: destination.itemId,
+          description: [destination.type, [destination.schema, destination.table].filter(Boolean).join(".")]
+            .filter(Boolean)
+            .join(" · "),
+          columns: [],
+          measures: [],
+        })),
+        envelope,
+      ];
   }
 }
 
@@ -1809,6 +1893,20 @@ export function metadataItemLineageEdges(
   itemId: string,
   metadata: FabricItemMetadata,
 ): Edge[] {
+  if (metadata.kind === "eventstream") {
+    return uniqueItemEdges([
+      ...metadata.sources.flatMap((source) =>
+        source.itemId && source.itemId !== itemId
+          ? [{ source: source.itemId, target: itemId, relation: "eventstream source" }]
+          : [],
+      ),
+      ...metadata.destinations.flatMap((destination) =>
+        destination.itemId && destination.itemId !== itemId
+          ? [{ source: itemId, target: destination.itemId, relation: "eventstream destination" }]
+          : [],
+      ),
+    ]);
+  }
   if (metadata.kind === "notebook") {
     return uniqueItemEdges(
       metadata.objects.flatMap((object) => {
@@ -2307,6 +2405,8 @@ export function metadataObjectLineageEdges(
           ? dataAgentObjectLineageEdges(itemId, metadata)
           : metadata.kind === "notebook"
             ? notebookObjectLineageEdges(itemId, metadata)
+          : metadata.kind === "eventstream"
+            ? []
           : metadata.materializedViews.flatMap((view) =>
               view.sourceTable
                 ? [

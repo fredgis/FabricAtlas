@@ -1275,7 +1275,9 @@ export function dormantProducerFindings(
 }
 
 /** `dormant-producer` supersedes `item-inactive` on the same item. */
-function dormantAndInactiveFindings(data: AtlasData): GovernanceFinding[] {
+function dormantAndInactiveFindings(
+  data: Pick<AtlasData, "items" | "edges" | "jobs" | "workspace">,
+): GovernanceFinding[] {
   const dormant = dormantProducerFindings(data);
   const dormantItems = new Set(dormant.map((finding) => finding.itemId));
   return [

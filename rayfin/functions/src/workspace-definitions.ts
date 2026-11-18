@@ -34,6 +34,7 @@ export const DEFINITION_ROUTES: ReadonlyMap<string, string> = new Map([
   ["GraphModel", "graphModels"],
   ["DataAgent", "dataAgents"],
   ["Notebook", "notebooks"],
+  ["Eventstream", "eventstreams"],
 ]);
 
 export const COLLECT_DEFINITION_LIMITS = {

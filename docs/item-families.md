@@ -71,6 +71,15 @@ data exists:
   definition and projects direct literal table and `Tables/...` references.
   Object and lineage coverage are Partial because code, cells, SQL text,
   credentials and dynamic references are never persisted.
+- **Eventstreams.** `workspaceCollectDefinitions` reads the documented
+  `eventstream.json` part and keeps only source, stream, operator and
+  destination names and types, plus explicit item, workspace and connection
+  UUIDs and destination schema and table names. Source items feed the
+  Eventstream (`eventstream source`) and the Eventstream feeds destination
+  items (`eventstream destination`); connection IDs are written as source
+  provenance so the Connections view joins them to the tenant inventory.
+  Operator expressions, properties, endpoints, keys and event payloads are
+  dropped, and nothing is matched by name.
 
 ## Reference tenant observation (2026-10-02)
 
@@ -94,7 +103,6 @@ row below is one bounded follow-up, not a collector rewrite.
 | Follow-up | Families | Blocker or next step |
 | --- | --- | --- |
 | Publish source provenance | Lakehouse, Warehouse, KQL database, Mirrored database, MLV, OneLake shortcut | Adapter exists; publication waits for the durable snapshot cutover and a reviewed persistence shape |
-| Eventstream topology | Eventstream (observed) | Project source and destination item IDs from the documented definition without event payloads |
 | Event Schema Set adapter | Event schema set | Documented definition supports **user identity only**; Atlas collectors use the application identity |
 | Fabric Apps dependent items | AppBackend (observed), Org app | Wait for a documented contract that exposes dependent items or services |
 | Definition reviews | Copy job, Variable library, Environment, Spark job definition, Activator, API for GraphQL, Mounted Data Factory, Mirrored Azure Databricks catalog, Snowflake database, Mirrored catalog, dbt job, Azure Databricks storage, Paginated report, Org app audience | Review each documented definition for a metadata-only projection; Variable library could expose names and types only |

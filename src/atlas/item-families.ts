@@ -348,10 +348,9 @@ const FAMILIES: readonly ItemFamilyCapability[] = [
   }),
   family("Eventstream", {
     coverage: {
-      objects: entry("deferred", "Stream topology is not expanded. A documented definition exists but no metadata-only projection is reviewed."),
-      lineage: SCANNER_RELATIONS,
+      objects: entry("partial", "Source, stream, operator and destination names and types from eventstream.json; operator expressions, properties, endpoints and keys are dropped."),
+      lineage: entry("partial", "Scanner relations plus explicit source and destination item IDs from the definition; connection IDs join the tenant connection inventory. Nothing is matched by name."),
     },
-    followUp: "Project source and destination item IDs from the documented Eventstream definition, without event payloads.",
   }),
   family("MirroredDatabase", {
     adapters: ["sql-metadata", "source-provenance"],

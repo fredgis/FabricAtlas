@@ -61,6 +61,7 @@ const DEFINITIONS = new Set([
   "GraphModel",
   "DataAgent",
   "Notebook",
+  "Eventstream",
 ]);
 const SQL = new Set([
   "SQLDatabase",

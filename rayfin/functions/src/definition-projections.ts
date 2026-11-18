@@ -166,11 +166,35 @@ export type NotebookArtifactMetadata = {
   }[];
 };
 
+export type EventstreamNodeArtifactMetadata = {
+  name: string;
+  type: string;
+  inputs: string[];
+};
+
+export type EventstreamEndpointArtifactMetadata = EventstreamNodeArtifactMetadata & {
+  itemId?: string;
+  workspaceId?: string;
+  connectionId?: string;
+  schema?: string;
+  table?: string;
+};
+
+/** Structural Eventstream topology only: no properties, expressions, endpoints or keys. */
+export type EventstreamArtifactMetadata = {
+  kind: "eventstream";
+  sources: EventstreamEndpointArtifactMetadata[];
+  streams: EventstreamNodeArtifactMetadata[];
+  operators: EventstreamNodeArtifactMetadata[];
+  destinations: EventstreamEndpointArtifactMetadata[];
+};
+
 export type DefinitionArtifactMetadata =
   | OntologyArtifactMetadata
   | GraphModelArtifactMetadata
   | DataAgentArtifactMetadata
-  | NotebookArtifactMetadata;
+  | NotebookArtifactMetadata
+  | EventstreamArtifactMetadata;
 
 export type DefinitionFact = { section: string; label: string; value: string };
 
@@ -771,6 +795,109 @@ function projectNotebook(
     ...(defaultLakehouse ? { defaultLakehouse } : {}),
     objects,
   };
+}
+
+const EVENTSTREAM_SECTIONS = ["sources", "streams", "operators", "destinations"] as const;
+const EVENTSTREAM_TYPE = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
+
+/** A node name kept only when it is plain bounded text that cannot carry secrets. */
+function eventstreamName(value: unknown): string | undefined {
+  const text = boundedText(value);
+  if (!text || hasControlCharacter(text) || isCredentialLikeText(text)) return undefined;
+  return text;
+}
+
+function eventstreamUuid(value: unknown): string | undefined {
+  const id = normalizedId(value);
+  return id && UUID.test(id) ? id : undefined;
+}
+
+function eventstreamNode(value: unknown): EventstreamNodeArtifactMetadata | undefined {
+  if (!isRecord(value)) return undefined;
+  const name = eventstreamName(value.name);
+  const type = strictText(value.type);
+  if (!name || !type || !EVENTSTREAM_TYPE.test(type)) return undefined;
+  const inputs = list(value.inputNodes)
+    .map((input) => (isRecord(input) ? eventstreamName(input.name) : undefined))
+    .filter((input): input is string => !!input);
+  return { name, type, inputs: [...new Set(inputs)].slice(0, LIMITS.maxMetadataCollection) };
+}
+
+function eventstreamEndpoint(value: unknown): EventstreamEndpointArtifactMetadata | undefined {
+  const node = eventstreamNode(value);
+  if (!node || !isRecord(value)) return undefined;
+  const properties = isRecord(value.properties) ? value.properties : {};
+  const itemId = eventstreamUuid(properties.itemId);
+  const workspaceId = eventstreamUuid(properties.workspaceId);
+  const connectionId = eventstreamUuid(pyOr(properties.dataConnectionId, properties.connectionId));
+  const schema = eventstreamName(properties.schema);
+  const table = eventstreamName(pyOr(properties.deltaTable, properties.tableName, properties.table));
+  return {
+    ...node,
+    ...(itemId ? { itemId } : {}),
+    ...(workspaceId ? { workspaceId } : {}),
+    ...(connectionId ? { connectionId } : {}),
+    ...(schema ? { schema } : {}),
+    ...(table ? { table } : {}),
+  };
+}
+
+/** Provenance values are `key=value; ...`; separators inside a name would split it. */
+function provenanceText(value: string): string {
+  return value.replace(/[;=]/g, " ").trim();
+}
+
+function projectEventstream(response: unknown, state: ProjectionState): EventstreamArtifactMetadata {
+  let topology: JsonRecord | undefined;
+  for (const part of definitionParts(response)) {
+    const path = partPath(part);
+    if (path === ".platform" || path === "eventstreamProperties.json") continue;
+    if (path === "eventstream.json") {
+      if (topology) invalid();
+      topology = decodeJsonPart(part, state);
+      continue;
+    }
+    state.unknownParts += 1;
+  }
+  if (!topology) invalid();
+  const read = <T>(section: (typeof EVENTSTREAM_SECTIONS)[number], parse: (value: unknown) => T | undefined): T[] => {
+    const values = list(topology![section]);
+    if (values.length > LIMITS.maxMetadataCollection) state.metadataTruncated = true;
+    return values
+      .slice(0, LIMITS.maxMetadataCollection)
+      .map(parse)
+      .filter((entry): entry is T => entry !== undefined);
+  };
+  const sources = read("sources", eventstreamEndpoint);
+  const streams = read("streams", eventstreamNode);
+  const operators = read("operators", eventstreamNode);
+  const destinations = read("destinations", eventstreamEndpoint);
+
+  for (const source of sources) {
+    if (source.itemId) state.sourceIds.add(source.itemId);
+    state.facts.add("Eventstream sources", source.name, source.type);
+    if (source.connectionId) {
+      state.facts.add(
+        "Source provenance",
+        "eventstream-source",
+        `provider=${provenanceText(source.type)}; connection=${source.connectionId}; field=properties.dataConnectionId; location=${provenanceText(source.name)}`,
+      );
+    }
+  }
+  for (const operator of operators) state.facts.add("Eventstream operators", operator.name, operator.type);
+  for (const stream of streams) state.facts.add("Eventstream streams", stream.name, stream.type);
+  for (const destination of destinations) {
+    const target = [destination.schema, destination.table].filter(Boolean).join(".");
+    state.facts.add("Eventstream destinations", destination.name, target ? `${destination.type} · ${target}` : destination.type);
+    if (destination.connectionId) {
+      state.facts.add(
+        "Source provenance",
+        "eventstream-destination",
+        `provider=${provenanceText(destination.type)}; connection=${destination.connectionId}; field=properties.connectionId; location=${provenanceText(destination.name)}`,
+      );
+    }
+  }
+  return { kind: "eventstream", sources, streams, operators, destinations };
 }
 
 interface TmdlLine {
@@ -1840,7 +1967,9 @@ export function projectDefinition(itemType: string, response: unknown): Definiti
           ? projectDataAgent(response, state)
           : itemType === "Notebook"
             ? projectNotebook(response, state)
-          : invalid();
+            : itemType === "Eventstream"
+              ? projectEventstream(response, state)
+              : invalid();
   assertSafeMetadata(metadata);
   if (JSON.stringify(metadata).length > LIMITS.maxSerializedMetadata) {
     throw new DefinitionProjectionError("projection-limit-exceeded");
