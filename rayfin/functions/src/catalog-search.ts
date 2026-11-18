@@ -23,7 +23,7 @@ export const CATALOG_SEARCH_SOURCE = "onelake-catalog-search";
 export const CATALOG_SEARCH_API_VERSION = "v1-preview";
 export const CATALOG_SEARCH_PATH = "/v1/catalog/search";
 
-/** Documented `ItemType` values plus `Workspace`, verified 2026-10-02. */
+/** Documented `ItemType` values plus `Workspace`, verified 2026-11-17. */
 export const CATALOG_SEARCH_FILTER_TYPES = [
   "Dashboard", "Report", "SemanticModel", "PaginatedReport", "Datamart",
   "Lakehouse", "Eventhouse", "Environment", "KQLDatabase", "KQLQueryset",
@@ -35,8 +35,10 @@ export const CATALOG_SEARCH_FILTER_TYPES = [
   "DigitalTwinBuilderFlow", "MirroredAzureDatabricksCatalog", "Map",
   "AnomalyDetector", "UserDataFunction", "GraphModel", "GraphQuerySet",
   "SnowflakeDatabase", "OperationsAgent", "CosmosDBDatabase", "Ontology",
-  "EventSchemaSet", "DataAgent", "MirroredCatalog", "AppBackend", "OrgApp",
+  "EventSchemaSet", "DataAgent", "MirroredCatalog", "PolicySet", "AppBackend", "OrgApp",
   "OrgAppAudience", "DataBuildToolJob", "AzureDatabricksStorage", "Plan",
+  "Monitoring", "DeploymentPlan", "ShareSubscription", "Share", "Playbook",
+  "MirroredOneLake", "PostgreSQLDatabase", "CustomStreamConnector",
   "Workspace",
 ] as const;
 

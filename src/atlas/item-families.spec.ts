@@ -10,6 +10,7 @@ import { ATLAS_FEATURE_FLAGS } from "./feature-flags";
 import {
   COVERAGE_DIMENSIONS,
   FABRIC_DOCUMENTED_ITEM_TYPES,
+  ITEM_FAMILIES_VERIFIED_AT,
   ITEM_FAMILY_ADAPTERS,
   MLV_REFRESH_JOB_TYPE,
   derivedItemFamilies,
@@ -122,6 +123,18 @@ describe("item family capability registry", () => {
     expect(family).toMatchObject({ maturity: "preview", coverage: { objects: { state: "deferred" } } });
     expect(family.coverage.objects.detail).toMatch(/user identity only/);
     expect(family.followUp).toMatch(/delegated-user/i);
+  });
+
+  it("registers the Ignite 2026 item types and marks Fabric apps GA", () => {
+    expect(FABRIC_DOCUMENTED_ITEM_TYPES).toHaveLength(60);
+    for (const type of ["PostgreSQLDatabase", "PolicySet", "Monitoring", "DeploymentPlan", "Share", "ShareSubscription", "Playbook", "MirroredOneLake", "CustomStreamConnector"]) {
+      expect(FABRIC_DOCUMENTED_ITEM_TYPES).toContain(type);
+      expect(itemFamilyCapability(type).kind).toBe("fabric-item");
+    }
+    expect(itemFamilyCapability("AppBackend").maturity).toBe("ga");
+    expect(itemFamilyCapability("PostgreSQLDatabase").coverage.objects.state).toBe("deferred");
+    expect(itemFamilyLabel("PostgreSQLDatabase")).toBe("PostgreSQL database");
+    expect(ITEM_FAMILIES_VERIFIED_AT).toBe("2026-11-17");
   });
 
   it("projects Eventstream topology as partial objects and lineage", () => {

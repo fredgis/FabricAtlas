@@ -3,8 +3,9 @@
 `src/atlas/item-families.ts` records what Atlas collects for each Fabric item
 family. Every family states five coverage dimensions independently, so an
 unsupported or deferred enrichment is shown as such instead of as zero, empty
-or healthy. Entries reflect Microsoft documentation verified on 2026-10-02 and
-a read-only observation of the reference tenant on the same date.
+or healthy. Entries reflect Microsoft documentation verified on 2026-11-17
+(Ignite 2026 `ItemType` update) and a read-only observation of the reference
+tenant on 2026-10-02.
 
 ## Coverage states
 
@@ -44,7 +45,7 @@ data exists:
 
 ## Families
 
-- **Documented item types.** All 51 values of the Fabric `ItemType`
+- **Documented item types.** All 60 values of the Fabric `ItemType`
   enumeration are registered. A test keeps the list identical to the Catalog
   Search filter allowlist. Families with a definition in Microsoft's
   [item-definition overview](https://learn.microsoft.com/en-us/rest/api/fabric/articles/item-management/definitions/item-definition-overview)
@@ -65,8 +66,18 @@ data exists:
   use dotted `Publisher.Workload.ItemType` names. They keep top-level
   identity, a readable label and explicit **Unsupported** structure.
 - **Unknown types** keep top-level identity with a neutral fallback.
-- **Fabric Apps.** `AppBackend` and `OrgApp` stay at top-level identity until
-  a documented contract exposes dependent items or services.
+- **Fabric Apps.** `AppBackend` is generally available since Ignite 2026.
+  Atlas reads its default identity from `GET /v1/workspaces/{id}/appBackends`
+  (viewer role) and flags `EntireTenant` or personal `User` identities. Block
+  state, Content Security Policy and Secure Embed are portal-only and stay
+  Unknown. `AppBackend` and `OrgApp` dependent items stay at top-level identity
+  until a documented contract exposes them.
+- **Ignite 2026 item types.** `PostgreSQLDatabase` (announced as Fabric
+  HorizonDB; the label stays generic until confirmed on a real item),
+  `PolicySet`, `Monitoring`, `DeploymentPlan`, `Share`, `ShareSubscription`,
+  `Playbook`, `MirroredOneLake` and `CustomStreamConnector` are registered.
+  PostgreSQL database objects stay Deferred, never zero, until a read-only
+  `pg_catalog` stage is reviewed.
 - **Notebooks.** `workspaceCollectDefinitions` reads the documented notebook
   definition and projects direct literal table and `Tables/...` references.
   Object and lineage coverage are Partial because code, cells, SQL text,

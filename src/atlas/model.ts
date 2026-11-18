@@ -34,7 +34,9 @@ export type ItemType =
   | "GraphModel"
   | "DataAgent"
   | "UserDataFunction"
-  | "AppBackend";
+  | "AppBackend"
+  | "PostgreSQLDatabase"
+  | "PolicySet";
 
 export type Health = "healthy" | "stale" | "failing" | "unknown";
 export type Endorsement = "none" | "promoted" | "certified";
@@ -79,6 +81,8 @@ export const ITEM_TYPES: Record<ItemType, TypeMeta> = {
   DataAgent: { label: "Data agent", code: "DA", color: "#4f46e5", icon: "Bot" },
   UserDataFunction: { label: "User data function", code: "Fn", color: "#64748b", icon: "FunctionSquare" },
   AppBackend: { label: "Fabric app", code: "AP", color: "#0b818f", icon: "AppWindow" },
+  PostgreSQLDatabase: { label: "PostgreSQL database", code: "PG", color: "#336791", icon: "Database" },
+  PolicySet: { label: "Policy set", code: "PS", color: "#5b5fc7", icon: "ShieldCheck" },
 };
 
 const FALLBACK_META: TypeMeta = { label: "Item", code: "··", color: "#697587", icon: "Box" };

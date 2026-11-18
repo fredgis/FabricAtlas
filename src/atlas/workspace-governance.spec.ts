@@ -214,3 +214,23 @@ describe("app backend default identity", () => {
     expect(envelope.appBackends.entries).toEqual([]);
   });
 });
+
+describe("GA admin contracts", () => {
+  it("calls /v1/admin/domains without the retired preview query parameter", async () => {
+    const urls: string[] = [];
+    const base = fetchFor({
+      [`${API}/v1/admin/domains`]: () => json({ domains: [] }),
+      [`${API}/v1/workspaces/${WS}/items`]: () => json({ value: [] }),
+    });
+    await collectWorkspaceGovernance("token", { workspaceId: WS, correlationId: null }, {
+      sleep: NO_SLEEP,
+      fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        urls.push(String(input instanceof Request ? input.url : input));
+        return base(input, init);
+      }) as typeof fetch,
+    });
+    const domainCalls = urls.filter((url) => new URL(url).pathname === "/v1/admin/domains");
+    expect(domainCalls).toHaveLength(1);
+    expect(new URL(domainCalls[0]).search).toBe("");
+  });
+});
