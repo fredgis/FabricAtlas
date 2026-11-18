@@ -52,6 +52,7 @@ export const CSP_NON_CONNECT_ORIGINS: Readonly<Record<string, string>> = {
   "https://login.salesforce.com": "Preview sample data",
   "https://s3.eu-central-1.amazonaws.com": "Preview sample data",
   "https://docs.microsoft.com": "Library documentation strings in bundled dependencies",
+  "https://teams.microsoft.com": "Secure Embed host listed in frame-ancestors, not a request host",
   "https://login.microsoftonline.de": "MSAL sovereign-cloud authority metadata, unused in the public cloud",
   "https://login.microsoftonline.us": "MSAL sovereign-cloud authority metadata, unused in the public cloud",
   "https://login.partner.microsoftonline.cn": "MSAL sovereign-cloud authority metadata, unused in the public cloud",
