@@ -32,6 +32,7 @@ const RULE_LABEL: Record<string, string> = {
   "dormant-producer": "Dormant producers",
   "legacy-dataflow-gen1": "Dataflow Gen1 to upgrade",
   "app-default-identity": "App default identity",
+  "data-agent-telemetry": "Data Agent telemetry",
   "workspace-public-network": "Public network with Highly Confidential data",
   "workspace-outbound-network": "Outbound access unrestricted",
   "external-share-sensitive": "Sensitive item shared externally",

@@ -18,6 +18,7 @@ import { searchJobId } from "./search";
 import { buildAccessEvidenceCoverage, type AccessEvidenceCoverage } from "./access-coverage";
 import { domainIndex, domainPath, type GovernanceEvidence } from "./governance-evidence";
 import { connectionFlags, connectionUsages, usagesByConnection } from "./connections";
+import { confidentialDataAgents, dataAgentTelemetryGuardrails } from "./data-agent-telemetry";
 
 export type AccessOrigin = "workspace" | "item" | "mixed";
 export type PrincipalResolution = "resolved" | "unresolved" | "ambiguous";
@@ -835,6 +836,7 @@ export function buildGovernanceFindings(
     ...sensitivityDowngradeFindings(data.items, data.edges, sensitivityEligibleItems),
     ...legacyDataflowFindings(data),
     ...appDefaultIdentityFindings(data),
+    ...dataAgentTelemetryFindings(data),
     ...endorsedInactiveFindings(data.items, data.workspace.syncedAt),
     ...dormantAndInactiveFindings(data),
     ...objectDescriptionFindings(data.items, data.schema),
@@ -1287,6 +1289,51 @@ export function appDefaultIdentityFindings(
       itemId,
     }];
   });
+}
+
+/**
+ * Tenant-level Data Agent telemetry export eligibility next to agents that read
+ * Confidential+ sources. The API exposes the tenant switch, not whether an
+ * agent has an Application Insights connection, so this never claims export.
+ */
+export function dataAgentTelemetryFindings(
+  data: Pick<AtlasData, "workspace" | "items" | "itemMetadata" | "governanceEvidence">,
+): GovernanceFinding[] {
+  const agents = confidentialDataAgents(data);
+  if (!agents.length) return [];
+  const guardrails = dataAgentTelemetryGuardrails(data);
+  const names = agents.map(({ agent }) => agent.displayName).join(", ");
+  const evidence = agents.flatMap(({ agent, sources }) =>
+    sources.map((source) => `item:${agent.fabricId}:source:${source.fabricId}:sensitivity`));
+  const findings: GovernanceFinding[] = [];
+  const user = guardrails.find((guardrail) => guardrail.id === "userContent");
+  if (user?.state === "enabled") {
+    findings.push({
+      id: findingId("data-agent-telemetry", data.workspace.fabricId, "user-content"),
+      severity: "high",
+      category: "access",
+      title: `User-level Data Agent telemetry is allowed with Confidential sources`,
+      detail: `The tenant allows Data Agents to send prompts, responses and generated queries to Application Insights or Foundry (${user.title ?? user.settingName}), and ${names} read Confidential or stricter sources. Whether an agent has a telemetry connection is not exposed by the API.`,
+      recommendation:
+        "Confirm that no agent reading Confidential data sends user-level telemetry, or restrict the tenant setting to a security group in the Fabric admin portal.",
+      evidenceIds: [`tenant-setting:${user.settingName}:enabled`, ...evidence],
+      target: { kind: "workspace" },
+    });
+  }
+  const geo = guardrails.find((guardrail) => guardrail.id === "crossGeo");
+  if (geo?.state === "enabled") {
+    findings.push({
+      id: findingId("data-agent-telemetry", data.workspace.fabricId, "cross-geo"),
+      severity: "medium",
+      category: "access",
+      title: `Cross-geo AI processing is allowed with Confidential Data Agents`,
+      detail: `The tenant allows AI processing or storage outside the capacity geography (${geo.title ?? geo.settingName}), and ${names} read Confidential or stricter sources.`,
+      recommendation: "Check that the compliance boundary of the connected Application Insights or Foundry resource matches your data residency rules.",
+      evidenceIds: [`tenant-setting:${geo.settingName}:enabled`, ...evidence],
+      target: { kind: "workspace" },
+    });
+  }
+  return findings;
 }
 
 /** Data stores and models whose value lies in feeding other items. */

@@ -9,6 +9,7 @@ import {
   type AiInventoryRow,
 } from "../policies-ai";
 import { isFeatureEnabled } from "../feature-flags";
+import { confidentialDataAgents, dataAgentTelemetryGuardrails } from "../data-agent-telemetry";
 import {
   useStoredPolicyEvidence, type PolicyEvidenceLoader,
 } from "../access-policy-evidence-source";
@@ -42,6 +43,8 @@ export function PoliciesAiSection({
 }) {
   const rows = useMemo(() => buildAiGovernanceInventory(data), [data]);
   const policySets = useMemo(() => policySetRules(data), [data]);
+  const telemetry = useMemo(() => dataAgentTelemetryGuardrails(data), [data]);
+  const confidentialAgents = useMemo(() => confidentialDataAgents(data).length, [data]);
   const collectedRules = policySets.filter((row) => row.status === "collected");
   const comparison = useMemo(() => compareAgentSourceSelections(previous, current), [previous, current]);
   const [search, setSearch] = useState("");
@@ -181,6 +184,27 @@ export function PoliciesAiSection({
         <Info className="mt-xxs icon-size-200 shrink-0" aria-hidden="true" />
         Coverage is partial. AI and Copilot exposure is not collected because Fabric has no public exposure contract. Unknown exposure does not mean not exposed; unknown controls are not compliant.
       </div>
+      <section aria-labelledby="agent-telemetry-heading" data-testid="agent-telemetry"
+        className="grid gap-s rounded-lg border border-border bg-card p-m text-200 leading-300">
+        <h3 id="agent-telemetry-heading" className="text-300 font-semibold">Data Agent observability (tenant settings)</h3>
+        <p className="text-muted-foreground">
+          Tenant switches only: whether an agent has an Application Insights or Foundry connection is not exposed by the API.
+          {confidentialAgents ? ` ${confidentialAgents} agent${confidentialAgents === 1 ? " reads" : "s read"} Confidential or stricter sources.` : ""}
+        </p>
+        <ul className="grid gap-s sm:grid-cols-3">
+          {telemetry.map((guardrail) => (
+            <li key={guardrail.id} className="rounded-md border border-border p-s">
+              <p className="font-semibold">{guardrail.label}</p>
+              <p className={cn("mt-xs font-semibold",
+                guardrail.state === "enabled" ? "text-signal-warning-foreground"
+                  : guardrail.state === "disabled" ? "text-status-healthy" : "text-muted-foreground")}>
+                {guardrail.state === "enabled" ? "Allowed" : guardrail.state === "disabled" ? "Off" : "Unknown"}
+              </p>
+              <p className="mt-xxs text-100 text-muted-foreground">{guardrail.settingName ?? guardrail.reason}</p>
+            </li>
+          ))}
+        </ul>
+      </section>
       <dl aria-label="Policy and AI inventory summary" className="grid grid-cols-1 gap-s sm:grid-cols-3">
         {[
           ["Models", rows.filter((row) => row.item.itemType === "SemanticModel").length, "Semantic models in inventory"],
