@@ -238,15 +238,21 @@ The configured URL is the published `sync_all` endpoint. Atlas derives the
 
 ### Production hardening (Fabric app settings)
 
-After the first deployment, a Fabric administrator applies three settings to
-the Atlas app in the OneLake catalog governance view (Apps). Atlas shows the
-same checklist and a **Copy recommended CSP** button in **About**:
+After the first deployment, a Fabric administrator applies three settings.
+Atlas shows the same checklist and a **Copy recommended CSP** button in
+**About**:
 
-1. **Content Security Policy.** Paste the recommended policy. It allows
-   connections only to Entra sign-in, the Fabric API (Atlas Scout), the Rayfin
-   data and functions host (`*.pbidedicated.windows.net`) and the compatibility
-   UDF host (`*.userdatafunctions.fabric.microsoft.com`). See
-   [Architecture](architecture.md#fabric-app-hardening) for every directive.
+1. **Strict Content Security Policy.** Fabric does not accept a custom policy.
+   Enable the tenant setting **Enforce a strict content security policy for
+   static-hosted Fabric Apps (preview)** (`EnforceStrictCspForStaticHostedFabricApps`),
+   first for a pilot security group, then for the organization. Its fixed
+   policy allows Fabric, Power BI and AppBackend endpoints; Atlas only calls
+   Entra sign-in, the Fabric API (Atlas Scout), the Rayfin data and functions
+   host (`*.pbidedicated.windows.net`) and the compatibility UDF host
+   (`*.userdatafunctions.fabric.microsoft.com`), and bundles every script,
+   style and font. Changes take up to one hour. The copied policy is the
+   equivalent Atlas policy for a reverse proxy or a security review; see
+   [Architecture](architecture.md#fabric-app-hardening).
 2. **Item identity.** Run the app under a dedicated service principal or item
    identity, not a personal account or the entire tenant. Atlas raises an
    `app-default-identity` finding otherwise.

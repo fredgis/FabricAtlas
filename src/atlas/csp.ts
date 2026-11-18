@@ -1,9 +1,13 @@
 /**
- * Content Security Policy baseline for Fabric Atlas as a Fabric app. The
- * policy itself is set by a Fabric administrator in the OneLake catalog
- * governance view (Apps); the browser cannot read what is enforced, so Atlas
- * only recommends this baseline.
+ * Content Security Policy baseline for Fabric Atlas as a Fabric app. Fabric
+ * does not accept a custom policy: the tenant setting
+ * `EnforceStrictCspForStaticHostedFabricApps` applies a fixed strict policy
+ * that allows Fabric, Power BI and AppBackend endpoints. This inventory proves
+ * Atlas stays within those hosts and serves as the policy for a reverse proxy
+ * or a security review. The browser cannot read what is enforced.
  */
+
+export const STRICT_CSP_TENANT_SETTING = "EnforceStrictCspForStaticHostedFabricApps";
 
 export interface CspOrigin {
   origin: string;
@@ -97,8 +101,8 @@ export interface HardeningCheck {
 export const HARDENING_CHECKLIST: readonly HardeningCheck[] = [
   {
     id: "csp",
-    title: "Content Security Policy",
-    detail: "Paste the recommended policy in the app settings of the OneLake catalog governance view (Apps).",
+    title: "Strict Content Security Policy",
+    detail: "Enable the tenant setting \"Enforce a strict content security policy for static-hosted Fabric Apps\", first for a pilot group. Atlas only calls Fabric, Power BI and Entra sign-in hosts.",
   },
   {
     id: "identity",
