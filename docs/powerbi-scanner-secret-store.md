@@ -1,6 +1,11 @@
 # Optional Power BI scanner through Rayfin Secret Store
 
-Contract review: **2026-10-02, Rayfin 1.36.2**. Re-checked on 2026-11-18 with Rayfin 2.0.1 (GA): Functions still expose only the `Sql`, `Storage`, `Fabric`, `AzureAI` and `ADO` audiences, so the conclusions below are unchanged.
+Contract review: **2026-10-02, Rayfin 1.36.2**. Re-audited on 2026-11-18
+against Rayfin 2.0.1: the Functions secrets guide is unchanged (typed
+`ctx.Secrets`, values supplied per invocation, missing values throw). Rayfin
+2.0.1 also documents custom audiences, a possible alternative to this adapter
+that would avoid storing a client secret; see
+[Rayfin platform gaps](rayfin-platform-gaps.md#what-rayfin-20-changes).
 
 `workspaceCollectPowerBiScanner` supplies a supported, optional server-side
 identity path for the public Power BI admin scanner. It is disabled unless a
@@ -193,13 +198,15 @@ output label also rejects the envelope.
 `authoritative` always remains false. `readyForScannerMerge` describes the
 required fields for this bounded scanner/Core comparison, not permission to
 publish a snapshot. The active UI/publisher and Python UDF have not been cut over.
-The generic Power BI audience remains absent in 1.36.2, but this separately
-approved Secret Store service-principal path closes that scanner identity gap
-without a platform upgrade. A deployed test with real operator-provisioned
+The generic Power BI audience was absent in 1.36.2; Rayfin 2.0.1 adds custom
+audiences, not yet validated for the scanner. This separately approved Secret
+Store service-principal path closes that scanner identity gap without relying
+on them. A deployed test with real operator-provisioned
 credentials/settings remains required before production cutover.
 
 ## References and verification
 
+- Rayfin 2.0.1 Functions secrets and connections guides (re-read 2026-11-18).
 - Installed Rayfin 1.36.2 Functions secrets guide, CLI secrets guide, external API
   workflow template and SDK public `RayfinContext`/secret registry declarations.
 - [Public OAuth client credentials protocol](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow).

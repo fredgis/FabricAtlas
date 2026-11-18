@@ -1,6 +1,8 @@
 # Rayfin platform gaps
 
-Assessment: **3 October 2026, Rayfin 1.36.2**. Re-checked on 2026-11-18 with Rayfin 2.0.1 (GA): Functions still expose only the `Sql`, `Storage`, `Fabric`, `AzureAI` and `ADO` audiences, so the conclusions below are unchanged.
+Assessment: **3 October 2026, Rayfin 1.36.2**. Re-audited on **18 November 2026
+against the installed Rayfin 2.0.1 guide and type declarations**; see
+[What Rayfin 2.0 changes](#what-rayfin-20-changes).
 
 Fabric Atlas is Rayfin-first since 2.1. Typed Rayfin Functions collect the catalog,
 definitions, SQL and KQL structure, Item Relations, source provenance and
@@ -48,6 +50,26 @@ They remain explicit coverage states.
 | Constraint | Atlas mitigation |
 |---|---|
 | Data API Builder reads a GraphQL type whose name ends in `Connection` as a pagination type, and the Rayfin reserved-name check does not reject such names. Every create and read of the entity then fails with an internal server error and the mutation rolls back. | The connection entity is named `ConnectionEntry` since 2.8.2, and a schema test rejects any entity name ending in `Connection` |
+
+## What Rayfin 2.0 changes
+
+Source: installed `@microsoft/rayfin-guide` 2.0.1 (`functions/connections`,
+`functions/index`, `known-limitations`, `cli/connectors`, `changelog/2.0.0`) and
+the `@microsoft/fabric-user-data-functions` 2.0.1 declarations. Nothing below
+is live-validated yet; each item is a candidate exit path, not a closed gap.
+
+| Gap | Rayfin 2.0.1 contract | Status for Atlas |
+|---|---|---|
+| Power BI application audience | `AudienceType` still lists only `Sql`, `Storage`, `Fabric`, `AzureAI` and `ADO`, but Functions can now declare a **custom audience** (an application ID or `https://` resource URI) and read `ctx.Tokens["<resource>"]`. The token is issued to the app identity, which is the Fabric app item's owner | Candidate: `https://analysis.windows.net/powerbi/api` could back the admin scanner and report pages. Needs a deployed probe proving that the scanner accepts that token in the target tenant |
+| Kusto application audience | Same custom-audience mechanism; the `eventhouse` connector runs with `application` auth but its authoring is held in 2.0.1 and it stays experimental | Candidate: a cluster URI as custom audience. The connector is not usable yet |
+| Semantic model engine metadata | The `fabric-semanticmodel` connector is still `delegated` only | Unchanged |
+| PBIR-Legacy pages | No new contract | Unchanged |
+| Unattended timer or trigger | None documented | Unchanged: scheduling stays disabled |
+| Distributed claim, lease or fencing | Functions gain raw SQL on MSSQL (`ctx.sql.query` / `ctx.sql.execute`), running as the app and bypassing entity policies | Candidate: a conditional `UPDATE ... WHERE claimEpoch = @epoch` is an atomic compare-and-set inside one statement. Multi-statement transactions are not documented. Not adopted: it bypasses the row policies Atlas relies on |
+| Caller identity in Functions | `ctx.user.id` and `ctx.getClaims()` | Usable; Atlas keeps the `SynchronizerAuthority` row check as the authorization source |
+
+The Python compatibility UDF therefore stays until a probe validates the
+custom Power BI and Kusto audiences end to end.
 
 ## Active Rayfin collection
 

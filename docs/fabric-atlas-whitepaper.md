@@ -879,9 +879,9 @@ flowchart LR
 | Domains, tags, tenant settings, network, external shares, OneLake roles and app identities | `workspaceCollectGovernance` | None; each section degrades to Unknown |
 | Tenant connection inventory (2.8) | `tenantCollectConnections`, once per batch | None; the admin connections API is Preview |
 | Access-policy context | `workspaceCollectAccessPolicyEvidence` | Portal-only layers remain unavailable |
-| Power BI admin scanner, scanner lineage and Dataflow Gen1 list | Python UDF | Retained because Rayfin Functions, including Rayfin 2.0, have no documented Power BI audience |
+| Power BI admin scanner, scanner lineage and Dataflow Gen1 list | Python UDF | Retained until Rayfin 2.0 custom audiences are validated against the Power BI admin scanner |
 | PBIR-Legacy report pages | Python UDF | Retained until a supported application-identity path exists |
-| Kusto live schema | Python UDF | Retained because Rayfin Functions have no documented Kusto audience |
+| Kusto live schema | Python UDF | Retained until Rayfin 2.0 custom audiences are validated against Kusto |
 
 ### Why one synchronization can take several minutes
 
@@ -1197,7 +1197,7 @@ npm run build
 |---|---|---|
 | Scheduled synchronization | Disabled | Supported unattended trigger and identity for every required API |
 | Durable server execution | Additive commands and checkpoints exist as a fail-closed probe | Distributed claim or transaction primitive plus browser-closure recovery |
-| Python compatibility | Limited to Power BI scanner, PBIR-Legacy pages, Kusto live metadata and rollback | Documented Power BI and Kusto audiences for Rayfin Functions |
+| Python compatibility | Limited to Power BI scanner, PBIR-Legacy pages, Kusto live metadata and rollback | A deployed probe proving Rayfin 2.0 custom audiences for Power BI and Kusto |
 | Atlas MCP | Implemented and disabled by default | Public client, delegated permission, reviewed exchange and live validation |
 | OneLake security | Data access roles, direct members and RLS/CLS presence for up to 40 Lakehouses | Group expansion and constraint evaluation APIs |
 | Purview DLP and Fabric policies | Purview shown as unavailable; policy set rules read with a Preview API behind a flag, activation Unknown | Public read APIs for policy activation and evaluation results |

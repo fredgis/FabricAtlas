@@ -640,8 +640,8 @@ flowchart LR
 | Tenant connection inventory and role assignments (2.8) | `tenantCollectConnections`, once per synchronization batch | None; the admin connections API is Preview and needs a Fabric administrator |
 | Item Relations evidence | `workspaceCollectItemRelations` | None; the API remains Beta and non-authoritative |
 | Access-policy context | `workspaceCollectAccessPolicyEvidence` | Portal-only layers remain marked unavailable |
-| Power BI admin scanner and authoritative scanner lineage | Python UDF | Retained because Rayfin Functions have no documented Power BI audience |
-| Kusto live schema | Python UDF | Retained because Rayfin Functions have no documented Kusto audience |
+| Power BI admin scanner and authoritative scanner lineage | Python UDF | Retained until Rayfin 2.0 custom audiences are validated against the Power BI admin scanner |
+| Kusto live schema | Python UDF | Retained until Rayfin 2.0 custom audiences are validated against Kusto |
 
 #### Why synchronization can take several minutes
 
@@ -736,7 +736,7 @@ contracts or a separate product decision.
 |---|---|---|
 | Scheduled synchronization | Disabled. Sync still needs a browser-held delegated identity | A supported unattended trigger and identity for every required API |
 | Durable server execution | Additive commands and checkpoints are implemented as a fail-closed probe | Distributed claim or transaction primitive plus live browser-closure recovery |
-| Python compatibility | Limited to Power BI scanner, PBIR-Legacy pages, Kusto live metadata and rollback | Documented Power BI and Kusto audiences for Rayfin Functions |
+| Python compatibility | Limited to Power BI scanner, PBIR-Legacy pages, Kusto live metadata and rollback | A deployed probe proving Rayfin 2.0 custom audiences for Power BI and Kusto |
 | Atlas Scout security | Read-only, but every agent user sees every synchronized workspace | Row-level filtering or per-workspace scope in the Atlas SQL database |
 | Atlas MCP | Read-only stdio server implemented and disabled by default | Public client, `Item.Execute.All`, reviewed token exchange and live validation |
 | OneLake security and Purview DLP | OneLake data access roles (RLS/CLS) collected since 2.6; Purview DLP remains a portal link | Public read APIs for Purview restriction evidence |
