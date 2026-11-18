@@ -295,7 +295,7 @@ function itemTypes(args: Args): string[] {
 function principal(args: Args): string {
   const value = args.principal;
   const text = typeof value === "string" ? value.trim() : "";
-  if (!text || text.length > ATLAS_MCP_LIMITS.identifierLength || /[\u0000-\u001f]/.test(text)) {
+  if (!text || text.length > ATLAS_MCP_LIMITS.identifierLength || [...text].some((char) => char.charCodeAt(0) < 32)) {
     invalid(
       `principal is required: an Entra object ID or user principal name of up to ${ATLAS_MCP_LIMITS.identifierLength} characters.`,
     );
