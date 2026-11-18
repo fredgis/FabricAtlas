@@ -13,7 +13,8 @@ export interface CachedCollection {
 }
 
 /** Bump when reused enrichment changes so stale cached collections cannot seed an incremental run. */
-export const COLLECTION_CACHE_FORMAT = 2;
+// 3: v3 adds Eventstream and policy set definitions and new governance evidence.
+export const COLLECTION_CACHE_FORMAT = 3;
 
 export interface CollectionCache {
   load(workspaceId: string): Promise<CachedCollection | undefined>;
