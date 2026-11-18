@@ -35,6 +35,7 @@ const RULE_LABEL: Record<string, string> = {
   "missing-object-description": "Undocumented model objects",
   "domain-default-label-missing": "Unlabeled despite domain default",
   "domain-default-label-below": "Labels below the domain default",
+  "sensitivity-downgrade": "Sensitivity downgraded along lineage",
   "workspace-no-admin": "Workspace without Admin",
   "workspace-no-domain": "Workspace without domain",
   "domain-empty": "Domains without workspace",

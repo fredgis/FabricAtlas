@@ -832,6 +832,7 @@ export function buildGovernanceFindings(
   }
 
   findings.push(
+    ...sensitivityDowngradeFindings(data.items, data.edges, sensitivityEligibleItems),
     ...endorsedInactiveFindings(data.items, data.workspace.syncedAt),
     ...itemInactiveFindings(data.items, data.jobs, data.workspace.syncedAt),
     ...objectDescriptionFindings(data.items, data.schema),
@@ -1006,6 +1007,97 @@ export function connectionFindings(
         });
       }
     }
+  }
+  return findings;
+}
+
+const SENSITIVITY_LINEAGE_MAX_HOPS = 6;
+const CONFIDENTIAL_RANK = 2;
+const HIGHLY_CONFIDENTIAL_RANK = 3;
+
+/**
+ * A consumer that carries a weaker standard label, or no label, than its
+ * strictest labelled upstream item along recorded lineage. Only items whose
+ * label metadata was collected and whose label maps to the standard taxonomy
+ * take part: custom labels and label IDs without a name stay Unknown.
+ * One finding per consumer, anchored on the strictest upstream item.
+ */
+export function sensitivityDowngradeFindings(
+  items: readonly Item[],
+  edges: readonly Edge[],
+  eligible: ReadonlySet<string>,
+): GovernanceFinding[] {
+  const byId = new Map(items.map((item) => [item.fabricId, item]));
+  const upstream = new Map<string, Edge[]>();
+  for (const edge of edges) {
+    if (edge.broken || edge.source === edge.target) continue;
+    if (!byId.has(edge.source) || !byId.has(edge.target)) continue;
+    const incoming = upstream.get(edge.target) ?? [];
+    incoming.push(edge);
+    upstream.set(edge.target, incoming);
+  }
+  const findings: GovernanceFinding[] = [];
+  for (const consumer of items) {
+    if (!eligible.has(consumer.fabricId) || !upstream.has(consumer.fabricId)) continue;
+    const labelled = itemHasSensitivity(consumer);
+    const consumerRank = labelled ? standardLabelRank(consumer.sensitivity) : undefined;
+    if (labelled && consumerRank === undefined) continue;
+
+    let strictest: { item: Item; rank: number; hops: number } | undefined;
+    const via = new Map<string, Edge>();
+    const visited = new Set([consumer.fabricId]);
+    let frontier = [consumer.fabricId];
+    for (let hops = 1; hops <= SENSITIVITY_LINEAGE_MAX_HOPS && frontier.length; hops += 1) {
+      const next: string[] = [];
+      for (const id of frontier) {
+        for (const edge of upstream.get(id) ?? []) {
+          if (visited.has(edge.source)) continue;
+          visited.add(edge.source);
+          via.set(edge.source, edge);
+          next.push(edge.source);
+          if (!eligible.has(edge.source)) continue;
+          const source = byId.get(edge.source)!;
+          const rank = standardLabelRank(source.sensitivity);
+          if (rank === undefined) continue;
+          if (
+            !strictest ||
+            rank > strictest.rank ||
+            (rank === strictest.rank && hops === strictest.hops &&
+              compareText(source.fabricId, strictest.item.fabricId) < 0)
+          ) {
+            strictest = { item: source, rank, hops };
+          }
+        }
+      }
+      frontier = next.sort(compareText);
+    }
+    if (!strictest || strictest.rank < CONFIDENTIAL_RANK) continue;
+    if (consumerRank !== undefined && consumerRank >= strictest.rank) continue;
+
+    const pathEdges: string[] = [];
+    for (let cursor = strictest.item.fabricId; cursor !== consumer.fabricId; ) {
+      const edge = via.get(cursor)!;
+      pathEdges.push(`edge:${lineageEdgeKey(edge)}`);
+      cursor = edge.target;
+    }
+    const source = strictest.item;
+    const carried = labelled ? consumer.sensitivity! : "no label";
+    const path = strictest.hops === 1 ? "directly" : `through ${strictest.hops} lineage hops`;
+    findings.push({
+      id: findingId("sensitivity-downgrade", consumer.fabricId),
+      severity: strictest.rank >= HIGHLY_CONFIDENTIAL_RANK ? "high" : "medium",
+      category: "access",
+      title: `${labelled ? "Weaker" : "Missing"} label downstream of ${source.sensitivity}: ${consumer.displayName}`,
+      detail: `${consumer.displayName} carries ${carried} but reads ${path} from ${source.displayName}, labelled ${source.sensitivity}.`,
+      recommendation: `Apply ${source.sensitivity} or a stricter label to ${consumer.displayName} in Fabric, or record a justified exception.`,
+      evidenceIds: [
+        `item:${consumer.fabricId}:sensitivity`,
+        `item:${source.fabricId}:sensitivity`,
+        ...pathEdges,
+      ],
+      target: { kind: "item", itemId: consumer.fabricId },
+      itemId: consumer.fabricId,
+    });
   }
   return findings;
 }

@@ -51,6 +51,7 @@ const PROTECT_RULES = new Set([
   "certified-missing-sensitivity",
   "domain-default-label-missing",
   "domain-default-label-below",
+  "sensitivity-downgrade",
 ]);
 
 export function microsoftPillarForPosture(

@@ -785,3 +785,130 @@ describe("connection findings", () => {
     expect(findings.every((finding) => finding.itemId === LH)).toBe(true);
   });
 });
+describe("sensitivity downgrade along lineage", () => {
+  const labelled = (id: string, sensitivity?: string, extra: Partial<Item> = {}) =>
+    item(id, { sensitivity, sensitivityMetadataAvailable: true, ...extra });
+  const edge = (source: string, target: string, broken = false) => ({
+    source,
+    target,
+    relation: "feeds",
+    ...(broken ? { broken } : {}),
+  });
+  const downgrades = (data: AtlasData) =>
+    buildGovernanceFindings(data).filter((finding) =>
+      finding.id.startsWith("sensitivity-downgrade:"),
+    );
+
+  it("flags a direct downgrade with high severity from Highly Confidential", () => {
+    const [finding] = downgrades(
+      atlas({
+        items: [labelled("model", "Highly Confidential"), labelled("report", "General")],
+        edges: [edge("model", "report")],
+      }),
+    );
+    expect(finding).toMatchObject({
+      id: "sensitivity-downgrade:report",
+      severity: "high",
+      category: "access",
+      itemId: "report",
+    });
+    expect(finding.evidenceIds).toEqual([
+      "item:report:sensitivity",
+      "item:model:sensitivity",
+      expect.stringMatching(/^edge:/),
+    ]);
+  });
+
+  it("follows multi-hop lineage and records every hop", () => {
+    const [finding] = downgrades(
+      atlas({
+        items: [
+          labelled("lake", "Confidential"),
+          labelled("model", "Confidential"),
+          labelled("report", "Public"),
+        ],
+        edges: [edge("lake", "model"), edge("model", "report")],
+      }),
+    );
+    expect(finding.severity).toBe("medium");
+    expect(finding.detail).toContain("directly");
+  });
+
+  it("reaches a stricter source two hops away through an unlabeled middle item", () => {
+    const findings = downgrades(
+      atlas({
+        items: [
+          labelled("lake", "Highly Confidential"),
+          item("model", { sensitivityMetadataAvailable: false }),
+          labelled("report", "Confidential"),
+        ],
+        edges: [edge("lake", "model"), edge("model", "report")],
+      }),
+    );
+    expect(findings.map((finding) => finding.id)).toEqual(["sensitivity-downgrade:report"]);
+    expect(findings[0].evidenceIds.filter((id) => id.startsWith("edge:"))).toHaveLength(2);
+    expect(findings[0].detail).toContain("2 lineage hops");
+  });
+
+  it("flags a consumer that dropped the label entirely", () => {
+    const [finding] = downgrades(
+      atlas({
+        items: [labelled("model", "Confidential"), labelled("report")],
+        edges: [edge("model", "report")],
+      }),
+    );
+    expect(finding.title).toContain("Missing label");
+    expect(finding.detail).toContain("no label");
+  });
+
+  it("emits one finding per consumer anchored on the strictest upstream", () => {
+    const findings = downgrades(
+      atlas({
+        items: [
+          labelled("a", "Confidential"),
+          labelled("b", "Highly Confidential"),
+          labelled("c", "Confidential"),
+          labelled("report", "General"),
+        ],
+        edges: [edge("a", "report"), edge("b", "report"), edge("c", "report")],
+      }),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0].evidenceIds).toContain("item:b:sensitivity");
+    expect(findings[0].severity).toBe("high");
+  });
+
+  it("ignores broken edges, uncollected metadata and unranked labels", () => {
+    expect(
+      downgrades(
+        atlas({
+          items: [
+            labelled("model", "Highly Confidential"),
+            labelled("broken-report", "General"),
+            item("uncollected", { sensitivity: "General", sensitivityMetadataAvailable: false }),
+            labelled("custom", "Contoso Tier 2"),
+            labelled("custom-source", "Contoso Gold"),
+            labelled("report", "General"),
+          ],
+          edges: [
+            edge("model", "broken-report", true),
+            edge("model", "uncollected"),
+            edge("model", "custom"),
+            edge("custom-source", "report"),
+          ],
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("does not flag consumers at or above the upstream label", () => {
+    expect(
+      downgrades(
+        atlas({
+          items: [labelled("model", "Confidential"), labelled("report", "Highly Confidential")],
+          edges: [edge("model", "report")],
+        }),
+      ),
+    ).toEqual([]);
+  });
+});
