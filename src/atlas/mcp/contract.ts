@@ -33,6 +33,7 @@ export const ATLAS_MCP_TOOL_NAMES = [
   "atlas_get_snapshot_changes",
   "atlas_get_governance_findings",
   "atlas_export_snapshot",
+  "atlas_get_departure_pack",
 ] as const;
 
 export type AtlasMcpToolName = (typeof ATLAS_MCP_TOOL_NAMES)[number];
@@ -64,6 +65,8 @@ export const ATLAS_MCP_LIMITS = {
   changes: { default: 25, max: 100 },
   findings: { default: 25, max: 100 },
   connections: { default: 25, max: 100 },
+  departureRows: { default: 25, max: 100 },
+  principalCandidates: 10,
   findingText: 500,
   snapshotRows: { default: 50, max: 200 },
   pageOffset: 100_000,

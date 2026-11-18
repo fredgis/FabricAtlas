@@ -7,7 +7,9 @@ import {
   type GovernanceFinding,
   type GovernanceSeverity,
 } from "../governance";
-import type { AtlasData } from "../model";
+import type { ConnectionInventoryView } from "../connections";
+import type { AtlasData, Item, Principal } from "../model";
+import { buildOffboardingReport, connectionAction } from "../offboarding";
 import { MICROSOFT_PILLAR_LABEL, microsoftPillarForFinding } from "../ms-pillars";
 import { buildSnapshotManifest, snapshotPayload } from "../snapshot-export";
 import type { AtlasMcpToolArguments } from "./arguments";
@@ -227,6 +229,220 @@ export function exportSnapshot(
     },
     sources: [source(data, ["Workspace", "SnapshotManifest", args.section])],
     coverage: page("complete", slice.length, rows.length, args.offset),
+    limitations,
+  };
+}
+
+const PRINCIPAL_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export type DepartureConnectionState =
+  | { status: "available"; inventory: ConnectionInventoryView }
+  | { status: "not-collected" | "unavailable" };
+
+type DepartureResolution = "resolved" | "ambiguous" | "unresolved";
+
+function lower(value: string | undefined): string {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function principalRef(principal: Principal) {
+  return {
+    principalId: principal.principalId,
+    displayName: principal.displayName,
+    kind: principal.kind,
+    ...(principal.external ? { external: true } : {}),
+  };
+}
+
+function departureItem(item: Item) {
+  return { itemId: item.fabricId, name: item.displayName, itemType: item.itemType };
+}
+
+/**
+ * Strict identity match: Entra object ID, or user principal name against the
+ * recorded email. A display name never resolves; matching ones are returned
+ * as candidates so the caller can retry with an ID.
+ */
+function resolveDeparturePrincipal(data: AtlasData, input: string): {
+  resolution: DepartureResolution;
+  matchedOn: "object-id" | "upn" | "display-name" | "none";
+  principal?: Principal;
+  candidates: Principal[];
+} {
+  const value = lower(input);
+  const byId = data.principals.filter((principal) => lower(principal.principalId) === value);
+  if (PRINCIPAL_UUID.test(value) || byId.length) {
+    return byId.length === 1
+      ? { resolution: "resolved", matchedOn: "object-id", principal: byId[0], candidates: byId }
+      : { resolution: byId.length ? "ambiguous" : "unresolved", matchedOn: byId.length ? "object-id" : "none", candidates: byId };
+  }
+  if (value.includes("@")) {
+    const byUpn = data.principals.filter((principal) => lower(principal.email) === value);
+    return byUpn.length === 1
+      ? { resolution: "resolved", matchedOn: "upn", principal: byUpn[0], candidates: byUpn }
+      : { resolution: byUpn.length ? "ambiguous" : "unresolved", matchedOn: byUpn.length ? "upn" : "none", candidates: byUpn };
+  }
+  const byName = data.principals.filter((principal) => lower(principal.displayName) === value);
+  return {
+    resolution: byName.length ? "ambiguous" : "unresolved",
+    matchedOn: byName.length ? "display-name" : "none",
+    candidates: byName,
+  };
+}
+
+export function departurePack(
+  data: AtlasData,
+  args: AtlasMcpToolArguments["atlas_get_departure_pack"],
+  connections: DepartureConnectionState,
+): GovernanceToolOutcome {
+  const identity = resolveDeparturePrincipal(data, args.principal);
+  const candidates = [...identity.candidates]
+    .sort((left, right) => (left.principalId < right.principalId ? -1 : 1))
+    .slice(0, ATLAS_MCP_LIMITS.principalCandidates)
+    .map(principalRef);
+  const sources: AtlasMcpSource[] = [
+    source(data, ["Principal", "AccessGrant", "FabricItem", "LineageEdge"]),
+  ];
+  const limitations = [
+    "Ownership is limited to documented type-specific Fabric metadata; items without owner evidence are listed as unknown, never as safe.",
+    "Group membership is not expanded: grants through a group the principal belongs to are not attributed to it.",
+    "Reassignment candidates are deterministic suggestions from lineage and ownership, not approvals.",
+    "Owner emails are withheld; principals are returned by object ID, display name and kind.",
+    "Atlas is read-only: it never revokes access, reassigns owners or changes Fabric connections.",
+  ];
+  if (identity.resolution !== "resolved" || !identity.principal) {
+    return {
+      result: {
+        resolution: identity.resolution,
+        matchedOn: identity.matchedOn,
+        candidates,
+        blocked: true,
+        message:
+          identity.resolution === "ambiguous"
+            ? "Several principals match. Retry with the Entra object ID of one candidate."
+            : "No principal of the snapshot matches. Pass an Entra object ID or user principal name.",
+      },
+      sources,
+      coverage: page("unavailable", 0, 0, 0, [
+        "Ownership, orphan risk and reassignment are blocked until the principal resolves to exactly one identity.",
+      ]),
+      limitations,
+    };
+  }
+
+  const inventory = connections.status === "available" ? connections.inventory : undefined;
+  const report = buildOffboardingReport(
+    { ...data, connections: inventory ?? data.connections },
+    identity.principal.principalId,
+  );
+  if (inventory) {
+    sources.push({
+      id: "atlas-connection-inventory",
+      label: "Tenant connection inventory (admin connections API, Preview)",
+      authority: "non-authoritative",
+      entities: ["ConnectionInventory", "ConnectionEntry", "ConnectionRoleAssignment"],
+      observedAt: inventory.collectedAt,
+      maturity: "preview",
+    });
+  }
+  const orphan = new Map(report.orphanRisk.map((risk) => [risk.item.fabricId, risk.consumers]));
+  const reassign = new Map(report.reassignment.map((entry) => [entry.item.fabricId, entry]));
+  const ownership = [...report.ownership].sort(
+    (left, right) =>
+      ({ sole: 0, indeterminate: 1, shared: 2 })[left.status] -
+        ({ sole: 0, indeterminate: 1, shared: 2 })[right.status] ||
+      (orphan.get(right.item.fabricId)?.length ?? 0) - (orphan.get(left.item.fabricId)?.length ?? 0) ||
+      (left.item.fabricId < right.item.fabricId ? -1 : 1),
+  );
+  const owned = ownership.slice(args.offset, args.offset + args.limit);
+  const connectionRows = report.connections.slice(args.offset, args.offset + args.limit);
+  const total = Math.max(ownership.length, report.connections.length);
+  const returned = Math.max(owned.length, connectionRows.length);
+  const notes = [
+    ...(report.workspaceOwnershipCoverage.unknown
+      ? [`${report.workspaceOwnershipCoverage.unknown} of ${report.workspaceOwnershipCoverage.total} items have no documented ownership evidence and need separate review.`]
+      : []),
+    ...(connections.status !== "available" && !data.connections
+      ? ["The tenant connection inventory is not available: connection ownership is unknown, not zero."]
+      : []),
+    ...(report.connectionCoverage.unknown
+      ? [`${report.connectionCoverage.unknown} connection role lookups were skipped or failed: the principal may still hold a role there.`]
+      : []),
+    ...(report.connectionCoverage.personal
+      ? [`${report.connectionCoverage.personal} personal connections expose no roles and are not checked.`]
+      : []),
+  ];
+  return {
+    result: {
+      resolution: "resolved",
+      matchedOn: identity.matchedOn,
+      subject: principalRef(identity.principal),
+      kind: report.kind,
+      blocked: false,
+      summary: {
+        soleOwned: report.soleOwned.length,
+        sharedOwned: report.ownership.filter((entry) => entry.status === "shared").length,
+        indeterminateOwnership: report.indeterminateOwnership.length,
+        orphanRisks: report.orphanRisk.length,
+        blastRadius: report.blastRadius.length,
+        privilegedReview: report.privilegedReview.length,
+        identityDependencies: report.identityDependencies.length,
+        connections: report.connections.length,
+        connectionRisks: report.connectionRisk.length,
+      },
+      ownership: owned.map((entry) => {
+        const suggestion = reassign.get(entry.item.fabricId);
+        return {
+          item: departureItem(entry.item),
+          status: entry.status,
+          otherOwners: entry.otherOwners.map(principalRef),
+          uncertainOwnerRefs: entry.uncertainOwnerRefs.length,
+          downstreamConsumers: orphan.get(entry.item.fabricId)?.length ?? 0,
+          reassignment: suggestion
+            ? {
+                reasonCode: suggestion.reasonCode,
+                reason: truncateText(suggestion.reason) ?? "",
+                candidate: suggestion.suggested ? principalRef(suggestion.suggested) : null,
+              }
+            : null,
+        };
+      }),
+      privilegedReview: report.privilegedReview.slice(0, args.limit).map((entry) => ({
+        item: departureItem(entry.item),
+        evidence: entry.evidence,
+        accessLevel: entry.accessLevel ?? null,
+      })),
+      connections: connectionRows.map((entry) => ({
+        connectionId: entry.connection.id,
+        displayName: entry.connection.displayName,
+        roles: entry.roles,
+        match: entry.match,
+        status: entry.status,
+        urgent: entry.urgent,
+        otherOwners: entry.otherOwners.length,
+        usedBy: entry.usages.length,
+        action: connectionAction(entry),
+      })),
+      connectionCoverage: {
+        status: report.connectionCoverage.available ? "available" : connections.status,
+        collectedAt: report.connectionCoverage.collectedAt ?? null,
+        checked: report.connectionCoverage.checked,
+        unknown: report.connectionCoverage.unknown,
+        personal: report.connectionCoverage.personal,
+      },
+      warnings: report.warnings.map((warning) => truncateText(warning) ?? ""),
+      offset: args.offset,
+      nextOffset: nextOffset(args.offset, returned, total),
+    },
+    sources,
+    coverage: page(
+      report.connectionCoverage.available && !report.connectionCoverage.unknown ? "complete" : "partial",
+      returned,
+      total,
+      args.offset,
+      notes,
+    ),
     limitations,
   };
 }

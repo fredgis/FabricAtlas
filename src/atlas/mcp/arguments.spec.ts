@@ -61,7 +61,8 @@ describe("Atlas MCP arguments", () => {
       if (
         tool === "atlas_find_catalog_items" ||
         tool === "atlas_get_known_impact" ||
-        tool === "atlas_explain_lineage_evidence"
+        tool === "atlas_explain_lineage_evidence" ||
+        tool === "atlas_get_departure_pack"
       ) {
         continue;
       }
