@@ -29,6 +29,7 @@ const RULE_LABEL: Record<string, string> = {
   "certified-missing-sensitivity": "Certified without sensitivity label",
   "endorsed-inactive": "Endorsed but inactive",
   "item-inactive": "Inactive items",
+  "dormant-producer": "Dormant producers",
   "workspace-public-network": "Public network with Highly Confidential data",
   "workspace-outbound-network": "Outbound access unrestricted",
   "external-share-sensitive": "Sensitive item shared externally",

@@ -912,3 +912,78 @@ describe("sensitivity downgrade along lineage", () => {
     ).toEqual([]);
   });
 });
+
+describe("dormant producer findings", () => {
+  const OLD = "2025-12-01T00:00:00.000Z";
+  const workspace = (lineage?: "complete" | "failed") => ({
+    ...atlas().workspace,
+    syncedAt: "2026-06-01T00:00:00.000Z",
+    ...(lineage ? { syncSections: { lineage: { status: lineage } } } : {}),
+  });
+  const ruleIds = (data: AtlasData, rule: string) =>
+    buildGovernanceFindings(data)
+      .filter((finding) => finding.id.startsWith(`${rule}:`))
+      .map((finding) => finding.itemId)
+      .sort();
+
+  it("flags idle producers with no downstream item and leaves consumer types out", () => {
+    const data = atlas({
+      workspace: workspace("complete"),
+      items: [
+        item("lake", { lastRefresh: OLD }),
+        item("model", { itemType: "SemanticModel", updatedAt: OLD }),
+        item("report", { itemType: "Report", updatedAt: OLD }),
+        item("notebook", { itemType: "Notebook", updatedAt: OLD }),
+      ],
+      edges: [{ source: "model", target: "report", relation: "binds" }],
+    });
+    const [finding] = buildGovernanceFindings(data).filter((f) => f.id.startsWith("dormant-producer:"));
+    expect(finding).toMatchObject({ id: "dormant-producer:lake", severity: "high", category: "operations" });
+    expect(finding.detail).toContain("no recorded downstream items in the synchronized scope");
+    expect(ruleIds(data, "item-inactive")).toEqual(["model", "notebook", "report"]);
+  });
+
+  it("deduplicates against item-inactive", () => {
+    const data = atlas({ workspace: workspace("complete"), items: [item("lake", { lastRefresh: OLD })] });
+    expect(ruleIds(data, "dormant-producer")).toEqual(["lake"]);
+    expect(ruleIds(data, "item-inactive")).toEqual([]);
+  });
+
+  it("skips active producers, producers with consumers and certified items", () => {
+    const data = atlas({
+      workspace: workspace("complete"),
+      items: [
+        item("active", { updatedAt: "2026-05-20T00:00:00.000Z" }),
+        item("jobbed", { updatedAt: OLD }),
+        item("fed", { lastRefresh: OLD }),
+        item("report", { itemType: "Report", updatedAt: "2026-05-20T00:00:00.000Z" }),
+        item("certified", { endorsement: "certified", updatedAt: OLD }),
+      ],
+      edges: [
+        { source: "fed", target: "report", relation: "feeds" },
+        { source: "active", target: "missing", relation: "feeds", broken: true },
+      ],
+      jobs: [
+        { itemFabricId: "jobbed", itemName: "jobbed", jobType: "Pipeline", status: "completed", startedAt: "2026-05-30T00:00:00.000Z", durationSec: 1 },
+      ],
+    });
+    expect(ruleIds(data, "dormant-producer")).toEqual([]);
+  });
+
+  it("flags promoted producers with endorsement context", () => {
+    const data = atlas({
+      workspace: workspace("complete"),
+      items: [item("lake", { endorsement: "promoted", updatedAt: OLD })],
+    });
+    const finding = buildGovernanceFindings(data).find((f) => f.id === "dormant-producer:lake");
+    expect(finding?.detail).toContain("still promoted");
+  });
+
+  it("stays Unknown without activity, or when lineage collection is failed or unrecorded", () => {
+    const items = [item("lake", { lastRefresh: OLD }), item("silent")];
+    expect(ruleIds(atlas({ workspace: workspace("failed"), items }), "dormant-producer")).toEqual([]);
+    expect(ruleIds(atlas({ workspace: workspace(), items }), "dormant-producer")).toEqual([]);
+    expect(ruleIds(atlas({ workspace: workspace("failed"), items }), "item-inactive")).toEqual(["lake"]);
+    expect(ruleIds(atlas({ workspace: workspace("complete"), items }), "dormant-producer")).toEqual(["lake"]);
+  });
+});

@@ -834,7 +834,7 @@ export function buildGovernanceFindings(
   findings.push(
     ...sensitivityDowngradeFindings(data.items, data.edges, sensitivityEligibleItems),
     ...endorsedInactiveFindings(data.items, data.workspace.syncedAt),
-    ...itemInactiveFindings(data.items, data.jobs, data.workspace.syncedAt),
+    ...dormantAndInactiveFindings(data),
     ...objectDescriptionFindings(data.items, data.schema),
   );
 
@@ -1208,6 +1208,84 @@ export function externalShareFindings(
   });
 }
 
+/** Data stores and models whose value lies in feeding other items. */
+export const DORMANT_PRODUCER_TYPES: ReadonlySet<string> = new Set([
+  "Lakehouse",
+  "Warehouse",
+  "SemanticModel",
+  "SQLDatabase",
+  "KQLDatabase",
+  "MirroredDatabase",
+  "Datamart",
+]);
+
+function lastJobByItem(jobs: AtlasData["jobs"]): Map<string, number> {
+  const lastJob = new Map<string, number>();
+  for (const job of jobs) {
+    const started = Date.parse(job.startedAt);
+    if (!Number.isFinite(started)) continue;
+    lastJob.set(job.itemFabricId, Math.max(lastJob.get(job.itemFabricId) ?? started, started));
+  }
+  return lastJob;
+}
+
+/**
+ * Unendorsed or promoted producer items with no recorded downstream item in
+ * the synchronized scope and no observed modification, refresh or job run
+ * beyond the threshold. Needs a complete lineage section and at least one
+ * activity timestamp: missing evidence stays Unknown. Never claims the item is
+ * unused, since ad-hoc queries and external tools are not observed.
+ */
+export function dormantProducerFindings(
+  data: Pick<AtlasData, "items" | "edges" | "jobs" | "workspace">,
+  thresholdDays: number = ITEM_INACTIVE_DAYS,
+): GovernanceFinding[] {
+  const reference = data.workspace.syncedAt ? Date.parse(data.workspace.syncedAt) : Number.NaN;
+  if (!Number.isFinite(reference)) return [];
+  if (data.workspace.syncSections?.lineage?.status !== "complete") return [];
+  const consumers = new Set(
+    data.edges.filter((edge) => !edge.broken && edge.source !== edge.target).map((edge) => edge.source),
+  );
+  const lastJob = lastJobByItem(data.jobs);
+  const findings: GovernanceFinding[] = [];
+  for (const item of data.items) {
+    if (!DORMANT_PRODUCER_TYPES.has(item.itemType)) continue;
+    if (item.endorsement === "certified" || consumers.has(item.fabricId)) continue;
+    const candidates = [latestActivity(item), lastJob.get(item.fabricId)].filter(
+      (value): value is number => value !== undefined,
+    );
+    if (candidates.length === 0) continue;
+    const days = Math.floor((reference - Math.max(...candidates)) / DAY_MS);
+    if (days <= thresholdDays) continue;
+    const promoted = item.endorsement === "promoted" ? " It is still promoted." : "";
+    findings.push({
+      id: findingId("dormant-producer", item.fabricId),
+      severity: "high",
+      category: "operations",
+      title: `Dormant producer: ${item.displayName}`,
+      detail: `${item.displayName} (${item.itemType}) has no recorded downstream items in the synchronized scope and no observed modification, refresh or job run for ${days} days (threshold ${thresholdDays}).${promoted} Ad-hoc queries and external tools are not observed, so it may still be read.`,
+      recommendation:
+        "Confirm with the owner whether it still serves a consumer outside Atlas; otherwise plan archiving or retirement in Fabric.",
+      evidenceIds: [`item:${item.fabricId}:activity`, `item:${item.fabricId}:lineage:downstream:0`],
+      target: { kind: "item", itemId: item.fabricId },
+      itemId: item.fabricId,
+    });
+  }
+  return findings;
+}
+
+/** `dormant-producer` supersedes `item-inactive` on the same item. */
+function dormantAndInactiveFindings(data: AtlasData): GovernanceFinding[] {
+  const dormant = dormantProducerFindings(data);
+  const dormantItems = new Set(dormant.map((finding) => finding.itemId));
+  return [
+    ...dormant,
+    ...itemInactiveFindings(data.items, data.jobs, data.workspace.syncedAt).filter(
+      (finding) => !dormantItems.has(finding.itemId),
+    ),
+  ];
+}
+
 function itemInactiveFindings(
   items: readonly Item[],
   jobs: AtlasData["jobs"],
@@ -1216,12 +1294,7 @@ function itemInactiveFindings(
 ): GovernanceFinding[] {
   const reference = syncedAt ? Date.parse(syncedAt) : Number.NaN;
   if (!Number.isFinite(reference)) return [];
-  const lastJob = new Map<string, number>();
-  for (const job of jobs) {
-    const started = Date.parse(job.startedAt);
-    if (!Number.isFinite(started)) continue;
-    lastJob.set(job.itemFabricId, Math.max(lastJob.get(job.itemFabricId) ?? started, started));
-  }
+  const lastJob = lastJobByItem(jobs);
   const findings: GovernanceFinding[] = [];
   for (const item of items) {
     if (item.endorsement !== "none") continue;
