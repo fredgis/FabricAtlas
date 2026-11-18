@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { SyncBrief } from "../sync-brief";
 import { SyncBriefPanel } from "./SyncBriefPanel";
@@ -41,5 +41,30 @@ describe("SyncBriefPanel", () => {
     );
     expect(screen.getByText(/first validated snapshot/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Copy Markdown" })).toBeNull();
+  });
+
+  it.each([
+    ["sent", "Sync Brief sent to Teams."],
+    ["not-configured", "Teams webhook not configured. Set the ATLAS_TEAMS_WEBHOOK_URL secret."],
+    ["invalid-webhook", "The configured webhook is not a valid https URL."],
+    ["failed", "Teams did not accept the card."],
+  ] as const)("sends the brief to Teams and reports %s", async (status, label) => {
+    let resolve!: (value: { status: typeof status }) => void;
+    const onSendTeams = vi.fn(() => new Promise<{ status: typeof status }>((done) => (resolve = done)));
+    render(
+      <SyncBriefPanel brief={base} loading={false} onCopy={async () => {}} onDownload={() => {}} onOpen={() => {}} onSendTeams={onSendTeams} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send to Teams" }));
+    expect((screen.getByRole("button", { name: "Sending…" }) as HTMLButtonElement).disabled).toBe(true);
+    resolve({ status });
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe(label));
+    expect(onSendTeams).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides Send to Teams without comparable snapshots", () => {
+    render(
+      <SyncBriefPanel brief={{ ...base, state: "first-snapshot", sections: [] }} loading={false} onCopy={async () => {}} onDownload={() => {}} onOpen={() => {}} onSendTeams={vi.fn()} />,
+    );
+    expect(screen.queryByRole("button", { name: "Send to Teams" })).toBeNull();
   });
 });

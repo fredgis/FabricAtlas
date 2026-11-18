@@ -1,6 +1,7 @@
-import { ArrowRight, CheckCircle2, ClipboardCopy, Download, FileClock } from "lucide-react";
+import { ArrowRight, CheckCircle2, ClipboardCopy, Download, FileClock, Send } from "lucide-react";
 import { useState } from "react";
 import type { SyncBrief, SyncBriefLink } from "../sync-brief";
+import { TEAMS_SYNC_BRIEF_STATUS_LABEL, type TeamsNotifyResult } from "../teams-notify";
 import { Card, cn } from "../ui";
 
 export function SyncBriefPanel({
@@ -9,14 +10,17 @@ export function SyncBriefPanel({
   onCopy,
   onDownload,
   onOpen,
+  onSendTeams,
 }: {
   brief: SyncBrief;
   loading: boolean;
   onCopy: () => Promise<void>;
   onDownload: () => void;
   onOpen: (link: SyncBriefLink) => void;
+  onSendTeams?: () => Promise<TeamsNotifyResult>;
 }) {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const [teams, setTeams] = useState<{ busy: boolean; message?: string; ok?: boolean }>({ busy: false });
   const comparable = brief.state === "changes" || brief.state === "no-changes";
   return (
     <div className="mb-l" data-testid="sync-brief">
@@ -51,9 +55,40 @@ export function SyncBriefPanel({
               <Download className="icon-size-200" />
               Download
             </button>
+            {onSendTeams && (
+              <button
+                type="button"
+                disabled={teams.busy}
+                title="Post this brief through the server-side ATLAS_TEAMS_WEBHOOK_URL secret"
+                className="atlas-control inline-flex items-center gap-xs rounded-lg border border-input bg-card px-m text-200 font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={async () => {
+                  setTeams({ busy: true });
+                  try {
+                    const result = await onSendTeams();
+                    setTeams({ busy: false, ok: result.status === "sent", message: TEAMS_SYNC_BRIEF_STATUS_LABEL[result.status] });
+                  } catch {
+                    setTeams({ busy: false, ok: false, message: "Teams notification unavailable in this session." });
+                  }
+                }}
+              >
+                <Send className="icon-size-200" aria-hidden="true" />
+                {teams.busy ? "Sending…" : "Send to Teams"}
+              </button>
+            )}
           </>
         )}
       </div>
+      {teams.message && (
+        <p
+          role="status"
+          className={cn(
+            "border-b border-border px-m py-xs text-200",
+            teams.ok ? "text-status-healthy" : "text-muted-foreground",
+          )}
+        >
+          {teams.message}
+        </p>
+      )}
       {loading ? (
         <p className="px-m py-m text-200 text-muted-foreground">Loading validated snapshots…</p>
       ) : brief.state === "no-snapshot" ? (
