@@ -372,6 +372,38 @@ describe("Rayfin snapshot persistence", () => {
     expect(mocks.data.Workspace.create).toHaveBeenCalledOnce();
   });
 
+  it("retries a row write that failed with a fetch-level network error", async () => {
+    const atlas = structuredClone(SAMPLE_DATA);
+    atlas.items = [atlas.items[0]];
+    atlas.principals = [];
+    atlas.grants = [];
+    atlas.jobs = [];
+    atlas.edges = [];
+    atlas.config = [];
+    atlas.schema = {};
+    atlas.itemMetadata = {};
+    atlas.objectEdges = [];
+    mocks.mapSyncToAtlas.mockReturnValue(atlas);
+    mocks.data.FabricItem.create.mockImplementation(async (row) => {
+      if (mocks.data.FabricItem.create.mock.calls.length === 1) {
+        throw new Error("Network error: Failed to fetch");
+      }
+      const stored = row as Record<string, unknown>;
+      mocks.data.FabricItem.rows.push(stored);
+      return stored;
+    });
+    vi.useFakeTimers();
+    try {
+      const sync = runFabricSync(false, identity);
+      await vi.runAllTimersAsync();
+      await expect(sync).resolves.toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(mocks.data.FabricItem.create).toHaveBeenCalledTimes(2);
+    expect(mocks.data.Workspace.create).toHaveBeenCalledOnce();
+  });
+
   it("accepts a timed-out mutation that committed before retry", async () => {
     const atlas = structuredClone(SAMPLE_DATA);
     atlas.items = [atlas.items[0]];
