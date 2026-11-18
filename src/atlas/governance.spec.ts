@@ -14,6 +14,7 @@ import {
 import { SAMPLE_DATA, type AtlasData, type Item } from "./model";
 import { searchJobId } from "./search";
 import { parseGovernanceEvidence } from "./governance-evidence";
+import { appIdentityLine, itemPassportMarkdown } from "./item-passport";
 import { legacyDataflowEvidence } from "./browser-collector-sync";
 
 function item(
@@ -1038,5 +1039,46 @@ describe("Dataflow Gen1 findings", () => {
     expect(legacyDataflowEvidence({ status: "failed" }, scanner).status.status).toBe("failed");
     expect(legacyDataflowEvidence({ status: "complete" }, { ...scanner, sections: { scanner: { status: "failed" as const } } }).status.status).toBe("failed");
     expect(legacyDataflowEvidence({ status: "complete" }, { sections: scanner.sections }).status).toEqual({ status: "unsupported", code: "collector-not-updated" });
+  });
+});
+
+describe("app default identity findings", () => {
+  const evidence = (entries: unknown[], status = "complete") =>
+    parseGovernanceEvidence({ collectedAt: "2026-11-18T00:00:00Z", appBackends: { status: { status }, entries } })!;
+  const appFindings = (data: AtlasData) =>
+    buildGovernanceFindings(data).filter((finding) => finding.id.startsWith("app-default-identity:"));
+
+  it("flags EntireTenant as high and a personal user as medium", () => {
+    const findings = appFindings(
+      atlas({
+        items: [item("app-a", { itemType: "AppBackend" }), item("app-b", { itemType: "AppBackend" }), item("app-c", { itemType: "AppBackend" })],
+        governanceEvidence: evidence([
+          { itemId: "app-a", defaultIdentity: { type: "EntireTenant" } },
+          { itemId: "app-b", defaultIdentity: { type: "User", id: "u1", displayName: "Ana" } },
+          { itemId: "app-c", defaultIdentity: { type: "ServicePrincipal", id: "sp" } },
+        ]),
+      }),
+    );
+    expect(findings.map((finding) => [finding.itemId, finding.severity])).toEqual([
+      ["app-a", "high"],
+      ["app-b", "medium"],
+    ]);
+    expect(findings[1].detail).toContain("the user Ana");
+  });
+
+  it("raises nothing when the section is not complete or missing", () => {
+    const items = [item("app-a", { itemType: "AppBackend" })];
+    expect(appFindings(atlas({ items, governanceEvidence: evidence([{ itemId: "app-a", defaultIdentity: { type: "EntireTenant" } }], "unsupported") }))).toEqual([]);
+    expect(appFindings(atlas({ items }))).toEqual([]);
+  });
+
+  it("shows the identity in the identity sheet and Unknown when not collected", () => {
+    const data = atlas({
+      items: [item("app-b", { itemType: "AppBackend" })],
+      governanceEvidence: evidence([{ itemId: "app-b", defaultIdentity: { type: "User", id: "u1", displayName: "Ana" } }]),
+    });
+    expect(appIdentityLine(data, "app-b")).toBe("User · Ana");
+    expect(appIdentityLine({}, "app-b")).toBe("Not collected");
+    expect(itemPassportMarkdown(data, "app-b")).toContain("- App default identity: User · Ana");
   });
 });

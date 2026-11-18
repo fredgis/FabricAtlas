@@ -834,6 +834,7 @@ export function buildGovernanceFindings(
   findings.push(
     ...sensitivityDowngradeFindings(data.items, data.edges, sensitivityEligibleItems),
     ...legacyDataflowFindings(data),
+    ...appDefaultIdentityFindings(data),
     ...endorsedInactiveFindings(data.items, data.workspace.syncedAt),
     ...dormantAndInactiveFindings(data),
     ...objectDescriptionFindings(data.items, data.schema),
@@ -1248,6 +1249,43 @@ export function legacyDataflowFindings(
       ],
       target: { kind: "workspace" },
     } satisfies GovernanceFinding;
+  });
+}
+
+/**
+ * Fabric app backends whose default identity is the entire tenant (high) or
+ * one person (medium): disabling that user breaks the app. Only collected
+ * identities count; block state, CSP and Secure Embed are portal-only and
+ * stay Unknown.
+ */
+export function appDefaultIdentityFindings(
+  data: Pick<AtlasData, "items" | "governanceEvidence">,
+): GovernanceFinding[] {
+  const section = data.governanceEvidence?.appBackends;
+  if (section?.status.status !== "complete") return [];
+  const byId = new Map(data.items.map((item) => [item.fabricId.toLowerCase(), item]));
+  return section.entries.flatMap((entry): GovernanceFinding[] => {
+    const identity = entry.defaultIdentity;
+    if (identity?.type !== "EntireTenant" && identity?.type !== "User") return [];
+    const item = byId.get(entry.itemId);
+    const itemId = item?.fabricId ?? entry.itemId;
+    const name = item?.displayName ?? entry.itemId;
+    const who = identity.displayName ?? identity.userPrincipalName ?? identity.id ?? "a user";
+    const tenant = identity.type === "EntireTenant";
+    return [{
+      id: findingId("app-default-identity", entry.itemId),
+      severity: tenant ? "high" : "medium",
+      category: "access",
+      title: tenant ? `App runs as the entire tenant: ${name}` : `App runs as a personal identity: ${name}`,
+      detail: tenant
+        ? `The default identity of ${name} is EntireTenant, so every user in the tenant is the identity the app acts as.`
+        : `The default identity of ${name} is the user ${who}. If that account is disabled or leaves, the app stops working.`,
+      recommendation:
+        "Assign a dedicated service principal or item identity to the app in the OneLake catalog governance view (Apps) or the app settings in Fabric.",
+      evidenceIds: [`item:${itemId}:app-default-identity:${identity.type}${identity.id ? `:${identity.id}` : ""}`],
+      target: { kind: "item", itemId },
+      itemId,
+    }];
   });
 }
 

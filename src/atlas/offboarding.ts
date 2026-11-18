@@ -64,6 +64,7 @@ export type OffboardingReviewEvidence =
   | "workspace-edit-access"
   | "configured-by"
   | "modified-by"
+  | "app-default-identity"
   | "ownership-unknown";
 
 export interface OffboardingReviewItem {
@@ -253,9 +254,28 @@ function subjectReferences(principal: Principal): Set<string> {
   );
 }
 
+/** App backends whose collected default identity is the subject, by object ID or UPN only. */
+function appIdentityItems(data: AtlasData, principal: Principal): Set<string> {
+  const section = data.governanceEvidence?.appBackends;
+  if (section?.status.status !== "complete") return new Set();
+  const id = normalize(principal.principalId);
+  const email = normalize(principal.email);
+  return new Set(
+    section.entries
+      .filter((entry) => {
+        const identity = entry.defaultIdentity;
+        if (identity?.type !== "User") return false;
+        return (!!identity.id && normalize(identity.id) === id) ||
+          (!!email && !!identity.userPrincipalName && normalize(identity.userPrincipalName) === email);
+      })
+      .map((entry) => entry.itemId),
+  );
+}
+
 function identityEvidence(
   item: Item,
   references: ReadonlySet<string>,
+  appIdentities: ReadonlySet<string> = new Set(),
 ): OffboardingReviewEvidence[] {
   const evidence: OffboardingReviewEvidence[] = [];
   if (
@@ -270,6 +290,7 @@ function identityEvidence(
   ) {
     evidence.push("modified-by");
   }
+  if (appIdentities.has(item.fabricId.toLowerCase())) evidence.push("app-default-identity");
   return evidence;
 }
 
@@ -474,8 +495,9 @@ export function buildOffboardingReport(
       }),
     );
   const references = subjectReferences(principal);
+  const appIdentities = appIdentityItems(data, principal);
   const identityDependencies = data.items.flatMap((item) => {
-    const evidence = identityEvidence(item, references);
+    const evidence = identityEvidence(item, references, appIdentities);
     return evidence.length
       ? [{ item, evidence } satisfies OffboardingReviewItem]
       : [];

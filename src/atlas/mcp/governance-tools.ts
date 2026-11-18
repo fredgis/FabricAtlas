@@ -388,6 +388,8 @@ export function departurePack(
         blastRadius: report.blastRadius.length,
         privilegedReview: report.privilegedReview.length,
         identityDependencies: report.identityDependencies.length,
+        appDefaultIdentities: report.identityDependencies.filter((entry) =>
+          entry.evidence.includes("app-default-identity")).length,
         connections: report.connections.length,
         connectionRisks: report.connectionRisk.length,
       },

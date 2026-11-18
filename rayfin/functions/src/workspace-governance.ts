@@ -32,6 +32,7 @@ export const COLLECT_GOVERNANCE_LIMITS = {
   maxSharesPerItem: 200,
   maxRoleItems: 40,
   maxRolesPerItem: 200,
+  maxAppBackends: 500,
   maxEnvelopeBytes: 4 * 1024 * 1024,
 } as const;
 
@@ -105,6 +106,20 @@ export interface GovernanceOneLakeRole {
   columnRules?: { tablePath: string; effect: string; columns: string[] }[];
 }
 
+export type AppIdentityType = "User" | "ServicePrincipal" | "ServicePrincipalProfile" | "Group" | "EntireTenant" | "Other";
+
+/** Default identity of a Fabric app backend; only documented principal fields are kept. */
+export interface GovernanceAppBackend {
+  itemId: string;
+  logicalId?: string;
+  defaultIdentity?: {
+    type: AppIdentityType;
+    id?: string;
+    displayName?: string;
+    userPrincipalName?: string;
+  };
+}
+
 export interface WorkspaceGovernanceEnvelope {
   protocolVersion: 1;
   authoritative: false;
@@ -117,6 +132,7 @@ export interface WorkspaceGovernanceEnvelope {
   network: { status: GovernanceSectionStatus; policy?: GovernanceNetworkPolicy };
   externalShares: { status: GovernanceSectionStatus; entries: GovernanceExternalShare[] };
   oneLakeRoles: { status: GovernanceSectionStatus; entries: GovernanceOneLakeRole[] };
+  appBackends: { status: GovernanceSectionStatus; entries: GovernanceAppBackend[] };
 }
 
 const SHARE_ITEM_TYPES = new Set(["Lakehouse", "Warehouse", "KQLDatabase", "SQLDatabase", "MirroredDatabase"]);
@@ -235,6 +251,35 @@ export function sanitizeExternalShare(value: unknown, itemId: string): Governanc
   };
 }
 
+const APP_IDENTITY_TYPES = new Set(["User", "ServicePrincipal", "ServicePrincipalProfile", "Group", "EntireTenant"]);
+
+export function sanitizeAppBackend(value: unknown): GovernanceAppBackend | undefined {
+  if (!isRecord(value)) return undefined;
+  const itemId = id(value.id);
+  if (!itemId) return undefined;
+  const logicalId = id(value.logicalId);
+  const identity = isRecord(value.defaultIdentity) ? value.defaultIdentity : undefined;
+  const rawType = text(identity?.type, 64);
+  const user = identity && isRecord(identity.userDetails) ? identity.userDetails : undefined;
+  const principalId = id(identity?.id);
+  const displayName = text(identity?.displayName, 256);
+  const userPrincipalName = text(user?.userPrincipalName, 320);
+  return {
+    itemId,
+    ...(logicalId ? { logicalId } : {}),
+    ...(identity && rawType
+      ? {
+          defaultIdentity: {
+            type: (APP_IDENTITY_TYPES.has(rawType) ? rawType : "Other") as AppIdentityType,
+            ...(principalId ? { id: principalId } : {}),
+            ...(displayName ? { displayName } : {}),
+            ...(rawType === "User" && userPrincipalName ? { userPrincipalName } : {}),
+          },
+        }
+      : {}),
+  };
+}
+
 export function sanitizeOneLakeRole(value: unknown, itemId: string): GovernanceOneLakeRole | undefined {
   if (!isRecord(value)) return undefined;
   const roleName = text(value.name, 256);
@@ -339,6 +384,7 @@ export async function collectWorkspaceGovernance(
     network: { status: complete },
     externalShares: { status: complete, entries: [] },
     oneLakeRoles: { status: complete, entries: [] },
+    appBackends: { status: complete, entries: [] },
   };
 
   try {
@@ -437,6 +483,15 @@ export async function collectWorkspaceGovernance(
         break;
       }
     }
+  }
+
+  try {
+    // The viewer role is enough; workspaces without app backends return an empty list.
+    const values = await withFallback(workspaceClients, (candidate) =>
+      candidate.list(`${workspacePath}/appBackends`, { maxPages: 10, maxRecords: limits.maxAppBackends }));
+    envelope.appBackends.entries = values.flatMap((value) => sanitizeAppBackend(value) ?? []);
+  } catch (error) {
+    envelope.appBackends.status = failure(error);
   }
 
   if (new TextEncoder().encode(JSON.stringify(envelope)).byteLength > limits.maxEnvelopeBytes) {

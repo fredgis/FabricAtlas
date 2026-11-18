@@ -1,6 +1,7 @@
 import { buildGovernanceFindings, type GovernanceFinding, type GovernanceSeverity } from "./governance";
 import { typeMeta, type AtlasData, type Item } from "./model";
 import { authenticationLabel, connectionUsages, ownerSummary } from "./connections";
+import { appBackendIdentity } from "./governance-evidence";
 
 export type ItemPassportData = Pick<
   AtlasData,
@@ -40,6 +41,16 @@ function tagsLine(item: Item): string {
   if (item.tags.length) return item.tags.join(", ");
   if (item.tagIds?.length) return `${item.tagIds.length} tag(s), names not resolved`;
   return item.tagMetadataAvailable === false ? "Not collected" : "None";
+}
+
+/** Collected app backend default identity, or Not collected. */
+export function appIdentityLine(data: Pick<ItemPassportData, "governanceEvidence">, itemId: string): string {
+  const value = appBackendIdentity(data.governanceEvidence, itemId);
+  if (value.status === "unknown") return "Not collected";
+  const identity = value.identity;
+  if (!identity) return "Not returned by Fabric";
+  const name = identity.displayName ?? identity.userPrincipalName ?? identity.id;
+  return name ? `${identity.type} · ${name}` : identity.type;
 }
 
 function cell(value: string): string {
@@ -89,6 +100,7 @@ export function itemPassportMarkdown(
   lines.push(`- Documented owner: ${ownerLine(item)}`);
   lines.push(`- Configured by: ${item.configuredBy ?? "Not collected"}`);
   lines.push(`- Modified by: ${item.modifiedBy ?? "Not collected"}`);
+  if (item.itemType === "AppBackend") lines.push(`- App default identity: ${appIdentityLine(data, item.fabricId)}`);
   lines.push("");
 
   lines.push("## Trust", "");
