@@ -402,6 +402,26 @@ Excluded content includes:
 
 Unexpected collector fields are not persisted by default.
 
+### Fabric app hardening
+
+Atlas is itself a Fabric app (Rayfin GA). A Fabric administrator sets its
+Content Security Policy, Secure Embed and item identity in the OneLake catalog
+governance view (Apps); the browser cannot read what is enforced. The
+recommended baseline lives in `src/atlas/csp.ts` and is shown, with a copy
+button, in **About > Production hardening**:
+
+| Directive | Value | Why |
+| --- | --- | --- |
+| `connect-src` | `'self'`, `https://login.microsoftonline.com`, `https://api.fabric.microsoft.com`, `https://*.pbidedicated.windows.net`, `https://*.userdatafunctions.fabric.microsoft.com` | Sign-in, Atlas Scout, Rayfin data and functions API, Python compatibility UDF |
+| `frame-src` | `https://login.microsoftonline.com` | MSAL silent sign-in iframe |
+| `frame-ancestors` | `'self'`, `https://app.fabric.microsoft.com`, `https://teams.microsoft.com`, `https://*.teams.microsoft.com` | Secure Embed in the Fabric portal and Teams |
+| `script-src` / `style-src` | `'self'` (styles also `'unsafe-inline'` for React style attributes) | Every asset is bundled; no CDN |
+
+Teams cards and catalog search run in Rayfin Functions, so their hosts are not
+browser origins. `src/atlas/csp.spec.ts` fails when the source or the built
+bundle references a Microsoft origin that is neither allowed by `connect-src`
+nor classified as a link, token audience or sample value.
+
 ## Deployment
 
 The canonical Fabric deployment command is:

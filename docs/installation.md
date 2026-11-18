@@ -236,6 +236,27 @@ and 50 targets per request; suggestions are reviewed before use.
 The configured URL is the published `sync_all` endpoint. Atlas derives the
 `sync_compatibility` and rollback endpoints from the same trusted UDF origin.
 
+### Production hardening (Fabric app settings)
+
+After the first deployment, a Fabric administrator applies three settings to
+the Atlas app in the OneLake catalog governance view (Apps). Atlas shows the
+same checklist and a **Copy recommended CSP** button in **About**:
+
+1. **Content Security Policy.** Paste the recommended policy. It allows
+   connections only to Entra sign-in, the Fabric API (Atlas Scout), the Rayfin
+   data and functions host (`*.pbidedicated.windows.net`) and the compatibility
+   UDF host (`*.userdatafunctions.fabric.microsoft.com`). See
+   [Architecture](architecture.md#fabric-app-hardening) for every directive.
+2. **Item identity.** Run the app under a dedicated service principal or item
+   identity, not a personal account or the entire tenant. Atlas raises an
+   `app-default-identity` finding otherwise.
+3. **Secure Embed.** Allow embedding only in the Fabric portal and Teams.
+   Sign-in still uses a popup or redirect to `login.microsoftonline.com`.
+
+Then sign in, run a synchronization, open Atlas Scout and a chart view to
+confirm nothing is blocked (browser console: no `Content-Security-Policy`
+violations).
+
 ### Optional: policy set definitions (Fabric policies, Preview)
 
 With `VITE_ATLAS_FEATURE_FABRIC_POLICIES=true`, the synchronization reads the
