@@ -4,7 +4,8 @@ import type { AtlasData } from "../model";
 import type { HistoricalSnapshot } from "../history";
 import type { AtlasNavigation } from "../navigation";
 import {
-  buildAiGovernanceInventory, compareAgentSourceSelections, POLICIES_AI_LIMITATION, FABRIC_POLICIES_UNKNOWN, FABRIC_POLICIES_DOCS_URL, isFabricPolicyItem,
+  buildAiGovernanceInventory, compareAgentSourceSelections, POLICIES_AI_LIMITATION, FABRIC_POLICIES_UNKNOWN, FABRIC_POLICIES_DOCS_URL,
+  FABRIC_POLICIES_COLLECTED, POLICY_ACTIVATION_UNKNOWN, policyConditionText, policySetRules,
   type AiInventoryRow,
 } from "../policies-ai";
 import { isFeatureEnabled } from "../feature-flags";
@@ -40,7 +41,8 @@ export function PoliciesAiSection({
   policyEvidenceLoader?: PolicyEvidenceLoader;
 }) {
   const rows = useMemo(() => buildAiGovernanceInventory(data), [data]);
-  const policyItems = useMemo(() => data.items.filter(isFabricPolicyItem), [data.items]);
+  const policySets = useMemo(() => policySetRules(data), [data]);
+  const collectedRules = policySets.filter((row) => row.status === "collected");
   const comparison = useMemo(() => compareAgentSourceSelections(previous, current), [previous, current]);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -87,7 +89,7 @@ export function PoliciesAiSection({
         <p className="text-muted-foreground">
           {isPreview
             ? "Attribute-based policies from the Fabric Policies center, read with the public API. Atlas lists them; edit them in Fabric."
-            : FABRIC_POLICIES_UNKNOWN}
+            : collectedRules.length ? FABRIC_POLICIES_COLLECTED : FABRIC_POLICIES_UNKNOWN}
         </p>
         {isPreview ? (
           <div className="overflow-x-auto">
@@ -118,10 +120,41 @@ export function PoliciesAiSection({
               </tbody>
             </table>
           </div>
-        ) : policyItems.length ? (
+        ) : collectedRules.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-left text-200" data-testid="policy-set-rules">
+              <caption className="sr-only">Authored rules of the policy sets in this workspace</caption>
+              <thead className="border-b border-border text-100 uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  {["Rule", "Policy set", "Scope", "Policy", "Condition", "Effect", "Activation"].map((label) => (
+                    <th key={label} scope="col" className="px-s py-xs font-semibold">{label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {collectedRules.flatMap((row) => row.rules.map((rule, index) => (
+                  <tr key={`${row.item.fabricId}:${index}`}>
+                    <th scope="row" className="px-s py-xs font-semibold">{rule.displayName}</th>
+                    <td className="px-s py-xs">{row.item.displayName}</td>
+                    <td className="px-s py-xs">{row.scope ?? "Unknown"}</td>
+                    <td className="px-s py-xs">{rule.policy}</td>
+                    <td className="px-s py-xs">{policyConditionText(rule)}</td>
+                    <td className="px-s py-xs">{rule.effects.join(", ") || "Unknown"}</td>
+                    <td className="px-s py-xs text-muted-foreground">{POLICY_ACTIVATION_UNKNOWN}</td>
+                  </tr>
+                )))}
+              </tbody>
+            </table>
+            {policySets.some((row) => row.status === "not-collected") && (
+              <p className="mt-xs text-muted-foreground">
+                Not collected: {policySets.filter((row) => row.status === "not-collected").map((row) => row.item.displayName).join(", ")}.
+              </p>
+            )}
+          </div>
+        ) : policySets.length ? (
           <ul aria-label="Policy items in this workspace" className="flex flex-wrap gap-xs">
-            {policyItems.map((item) => (
-              <li key={item.fabricId} className="rounded border border-border px-xs">{item.displayName}</li>
+            {policySets.map((row) => (
+              <li key={row.item.fabricId} className="rounded border border-border px-xs">{row.item.displayName}</li>
             ))}
           </ul>
         ) : (

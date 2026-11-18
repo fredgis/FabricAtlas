@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AtlasData } from "../model";
 import { snapshotFromData } from "../history";
 import { PoliciesAiSection } from "./PoliciesAi";
-import { POLICIES_AI_LIMITATION, FABRIC_POLICIES_UNKNOWN, FABRIC_POLICIES_DOCS_URL } from "../policies-ai";
+import { POLICIES_AI_LIMITATION, FABRIC_POLICIES_UNKNOWN, FABRIC_POLICIES_DOCS_URL, FABRIC_POLICIES_COLLECTED } from "../policies-ai";
 import type { PolicyEvidenceLoader } from "../access-policy-evidence-source";
 
 const feature = vi.hoisted(() => ({ enabled: false }));
@@ -43,6 +43,36 @@ describe("PoliciesAiSection", () => {
     render(<PoliciesAiSection {...base} isPreview={false} data={withPolicy} />);
     card = screen.getByTestId("fabric-policies");
     expect(within(card).getByRole("list", { name: "Policy items in this workspace" })).toHaveTextContent("Tenant policy set");
+  });
+
+  it("renders authored policy set rules with activation Unknown", () => {
+    const base = props();
+    const withRules = {
+      ...base.data,
+      items: [
+        ...base.data.items,
+        { ...base.data.items[0], fabricId: "pol-1", displayName: "Capacity policies", itemType: "PolicySet" },
+        { ...base.data.items[0], fabricId: "pol-2", displayName: "Unread policies", itemType: "PolicySet" },
+      ],
+      itemMetadata: {
+        ...base.data.itemMetadata,
+        "pol-1": {
+          kind: "policySet", scope: "Capacity",
+          rules: [{
+            displayName: "Item Creation Policy", policy: "ItemCreation", effects: ["Allow"],
+            conditions: [{ type: "Dynamic", targetProperty: "item.type", operator: "AnyOf", operands: ["ReflexProject", "KustoEventHouse"] }],
+          }],
+        },
+      },
+    } as AtlasData;
+    render(<PoliciesAiSection {...base} isPreview={false} data={withRules} />);
+    const table = screen.getByTestId("policy-set-rules");
+    expect(within(table).getByRole("rowheader", { name: "Item Creation Policy" })).toBeVisible();
+    expect(table).toHaveTextContent("item.type AnyOf ReflexProject, KustoEventHouse");
+    expect(table).toHaveTextContent("Unknown (verify in Policies center)");
+    const card = screen.getByTestId("fabric-policies");
+    expect(within(card).getByText(FABRIC_POLICIES_COLLECTED)).toBeVisible();
+    expect(card).toHaveTextContent("Not collected: Unread policies.");
   });
 
   it("shows observed empty definitions as unknown exposure with real provenance and no synthetic score", () => {

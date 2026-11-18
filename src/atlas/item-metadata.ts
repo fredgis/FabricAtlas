@@ -20,8 +20,13 @@ export const METADATA_OBJECT_TYPES = {
   graphEdge: "Graph edge",
   dataAgentSource: "Data Agent source",
   notebookObject: "Notebook object reference",
+} as const;
+
+/** Projected as ordinary schema objects so they appear in the catalog and in snapshot comparison. */
+export const DEFINITION_OBJECT_TYPES = {
   eventstreamSource: "Eventstream source",
   eventstreamDestination: "Eventstream destination",
+  policyRule: "Policy rule",
 } as const;
 
 export const DATA_AGENT_LINEAGE_ELEMENT_TYPES = [
@@ -294,13 +299,27 @@ export interface EventstreamMetadata {
   destinations: EventstreamEndpointMetadata[];
 }
 
+export interface PolicySetRuleMetadata {
+  displayName: string;
+  policy: string;
+  conditions: { type: string; targetProperty: string; operator: string; operands: string[] }[];
+  effects: string[];
+}
+
+export interface PolicySetMetadata {
+  kind: "policySet";
+  scope?: string;
+  rules: PolicySetRuleMetadata[];
+}
+
 export type FabricItemMetadata =
   | OntologyMetadata
   | GraphModelMetadata
   | DataAgentMetadata
   | KqlDatabaseMetadata
   | NotebookMetadata
-  | EventstreamMetadata;
+  | EventstreamMetadata
+  | PolicySetMetadata;
 
 export type MetadataObjectKind =
   | "sourceObject"
@@ -1602,6 +1621,37 @@ export function parseEventstreamMetadata(value: unknown): EventstreamMetadata | 
   return { kind: "eventstream", sources, streams, operators, destinations };
 }
 
+function stringList(value: unknown): string[] | undefined {
+  return Array.isArray(value) && value.every((entry) => typeof entry === "string") ? [...value] : undefined;
+}
+
+function parsePolicyRule(value: unknown): PolicySetRuleMetadata | undefined {
+  if (!isRecord(value)) return undefined;
+  const displayName = firstText(value, ["displayName"]);
+  const policy = firstText(value, ["policy"]);
+  const effects = stringList(value.effects);
+  if (!displayName || !policy || !effects || !Array.isArray(value.conditions)) return undefined;
+  const conditions: PolicySetRuleMetadata["conditions"] = [];
+  for (const condition of value.conditions) {
+    if (!isRecord(condition)) return undefined;
+    const type = firstText(condition, ["type"]);
+    const targetProperty = firstText(condition, ["targetProperty"]);
+    const operator = firstText(condition, ["operator"]);
+    const operands = stringList(condition.operands);
+    if (!type || !targetProperty || !operator || !operands) return undefined;
+    conditions.push({ type, targetProperty, operator, operands });
+  }
+  return { displayName, policy, conditions, effects };
+}
+
+export function parsePolicySetMetadata(value: unknown): PolicySetMetadata | undefined {
+  if (!isRecord(value) || containsUnsafeContent(value)) return undefined;
+  const scope = optionalText(value.scope);
+  const rules = parseList(array(value, ["rules"]), parsePolicyRule);
+  if (scope === null || !rules) return undefined;
+  return { kind: "policySet", ...(scope ? { scope } : {}), rules };
+}
+
 export function parseFabricItemMetadata(
   itemType: ItemType | string,
   value: unknown,
@@ -1619,6 +1669,8 @@ export function parseFabricItemMetadata(
       return parseNotebookMetadata(value);
     case "Eventstream":
       return parseEventstreamMetadata(value);
+    case "PolicySet":
+      return parsePolicySetMetadata(value);
     default:
       return undefined;
   }
@@ -1634,6 +1686,7 @@ export function metadataSchemaEntry(
     kql: "KQLDatabase",
     notebook: "Notebook",
     eventstream: "Eventstream",
+    policySet: "PolicySet",
   };
   const parsed = parseFabricItemMetadata(
     itemTypeByKind[metadata.kind],
@@ -1775,7 +1828,7 @@ export function projectItemMetadataToSchema(
       return [
         ...metadata.sources.map((source) => ({
           name: source.name,
-          objectType: METADATA_OBJECT_TYPES.eventstreamSource,
+          objectType: DEFINITION_OBJECT_TYPES.eventstreamSource,
           source: source.itemId ?? source.connectionId,
           description: source.type,
           columns: [],
@@ -1783,12 +1836,28 @@ export function projectItemMetadataToSchema(
         })),
         ...metadata.destinations.map((destination) => ({
           name: destination.name,
-          objectType: METADATA_OBJECT_TYPES.eventstreamDestination,
+          objectType: DEFINITION_OBJECT_TYPES.eventstreamDestination,
           source: destination.itemId,
           description: [destination.type, [destination.schema, destination.table].filter(Boolean).join(".")]
             .filter(Boolean)
             .join(" · "),
           columns: [],
+          measures: [],
+        })),
+        envelope,
+      ];
+    case "policySet":
+      return [
+        ...metadata.rules.map((rule) => ({
+          name: rule.displayName,
+          objectType: DEFINITION_OBJECT_TYPES.policyRule,
+          source: metadata.scope,
+          description: `${rule.policy}${rule.effects.length ? ` → ${rule.effects.join(", ")}` : ""}`,
+          columns: rule.conditions.map((condition) => ({
+            name: condition.targetProperty,
+            dataType: `${condition.operator} ${condition.operands.join(", ")}`.trim(),
+            description: condition.type,
+          })),
           measures: [],
         })),
         envelope,
@@ -1893,6 +1962,7 @@ export function metadataItemLineageEdges(
   itemId: string,
   metadata: FabricItemMetadata,
 ): Edge[] {
+  if (metadata.kind === "policySet") return [];
   if (metadata.kind === "eventstream") {
     return uniqueItemEdges([
       ...metadata.sources.flatMap((source) =>
@@ -2405,7 +2475,7 @@ export function metadataObjectLineageEdges(
           ? dataAgentObjectLineageEdges(itemId, metadata)
           : metadata.kind === "notebook"
             ? notebookObjectLineageEdges(itemId, metadata)
-          : metadata.kind === "eventstream"
+          : metadata.kind === "eventstream" || metadata.kind === "policySet"
             ? []
           : metadata.materializedViews.flatMap((view) =>
               view.sourceTable

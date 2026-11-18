@@ -47,6 +47,26 @@ allow/deny/default *evaluation decision*. No policy definition JSON, conditions,
 free-text rules or raw upstream error bodies are stored. The workspace settings
 GETs are not silently relabeled as centralized Fabric Policies evaluation.
 
+### Policy set definitions (v3)
+
+Since v3, with the Fabric policies flag on, `workspaceCollectDefinitions` reads
+`PolicySet` definitions with `getDefinition?format=Beta`. The projection keeps
+only `properties.scope.type` and, per `policyRules[]` entry, `displayName`,
+`policy`, `conditions[].type`, `targetProperty`, `predicate.operator`,
+`predicate.values` (stored as `operands`) and `then[].effect`, with at most 50
+rules per policy type. `description`, the `.platform` part and any other field
+are dropped. Rules are stored in the snapshot item metadata (no new entity) and
+appear in Change Center as added, removed or modified objects.
+
+This Preview API needs **read and write** permission on the policy set. The
+accepted decision (2026-11-18) is to grant the Atlas application identity the
+**Contributor** role on the governance workspace that holds the policy sets;
+see [installation](installation.md#optional-policy-set-definitions-fabric-policies-preview).
+Atlas never writes to it. A missing role or a label-protected definition gives
+`unsupported` without failing the sync. A definition shows authored rules, not
+enforcement: activation stays Unknown (verify in the Policies center), and the
+central evaluation blocker above still applies.
+
 Since 2.6, `workspaceCollectGovernance` reads OneLake data access roles
 (`GET /items/{id}/dataAccessRoles`) for up to 40 Lakehouses: role name, direct
 Entra member IDs, Fabric item member count and whether row (RLS) or column

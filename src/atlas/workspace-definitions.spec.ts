@@ -1354,3 +1354,68 @@ describe("Eventstream definition projection", () => {
     expect(() => projectDefinition("Eventstream", definition([part(".platform", {})]))).toThrow(/invalid-definition/);
   });
 });
+
+describe("PolicySet definition projection", () => {
+  const POLICY = "abababab-abab-4bab-8bab-abababababab";
+  const ROUTE_PS = `${BASE}/policySets/${POLICY}/getDefinition`;
+  function policySetDefinition() {
+    return definition([
+      part(".platform", { metadata: { type: "PolicySet", displayName: "private platform" } }),
+      part("policySet.json", {
+        properties: { scope: { type: "Capacity" }, owner: "secret-owner@contoso.com" },
+        policyRules: [
+          {
+            displayName: "Item Creation Policy",
+            description: "Allow specific item types for the finance team",
+            policy: "ItemCreation",
+            conditions: [{ type: "Dynamic", targetProperty: "item.type", predicate: { operator: "AnyOf", values: ["ReflexProject", "KustoEventHouse"] }, hidden: "x" }],
+            then: [{ effect: "Allow", note: "internal" }],
+            extra: { anything: "dropped" },
+          },
+          ...Array.from({ length: 51 }, (_, index) => ({
+            displayName: `Share ${index}`, policy: "ExternalDataSharing", conditions: [], then: [{ effect: "Deny" }],
+          })),
+        ],
+      }),
+    ]);
+  }
+
+  it("keeps the documented rule structure and drops descriptions, platform and unknown fields", () => {
+    const projection = projectDefinition("PolicySet", policySetDefinition());
+    const metadata = projection.metadata as { kind: string; scope: string; rules: unknown[] };
+    expect(metadata.kind).toBe("policySet");
+    expect(metadata.scope).toBe("Capacity");
+    expect(metadata.rules[0]).toEqual({
+      displayName: "Item Creation Policy",
+      policy: "ItemCreation",
+      conditions: [{ type: "Dynamic", targetProperty: "item.type", operator: "AnyOf", operands: ["ReflexProject", "KustoEventHouse"] }],
+      effects: ["Allow"],
+    });
+    expect(metadata.rules).toHaveLength(51);
+    expect(projection.metadataTruncated).toBe(true);
+    const serialized = JSON.stringify(projection);
+    for (const dropped of ["finance team", "private platform", "secret-owner", "internal", "dropped", "hidden"]) {
+      expect(serialized).not.toContain(dropped);
+    }
+    const parsed = parseFabricItemMetadata("PolicySet", projection.metadata);
+    expect(parsed?.kind).toBe("policySet");
+    const schema = projectItemMetadataToSchema(parsed!);
+    expect(schema[0]).toMatchObject({ name: "Item Creation Policy", objectType: "Policy rule", description: "ItemCreation → Allow" });
+  });
+
+  it("calls getDefinition with format=Beta and degrades a missing Contributor role to unsupported", async () => {
+    const ok = collect(
+      routes({ [`${ROUTE_PS}?format=Beta`]: () => json(policySetDefinition()) }),
+      [{ id: POLICY, type: "PolicySet" }],
+    );
+    const envelope = await ok.result;
+    expect(envelope.items[0]).toMatchObject({ id: POLICY, status: "complete" });
+    expect(urls(ok.fetchImpl)).toEqual([`${ROUTE_PS}?format=Beta`]);
+
+    const denied = await collect(
+      routes({ [`${ROUTE_PS}?format=Beta`]: () => json({ errorCode: "InsufficientPrivileges" }, { status: 403 }) }),
+      [{ id: POLICY, type: "PolicySet" }],
+    ).result;
+    expect(denied.items[0]).toMatchObject({ status: "unsupported", code: "read-write-permission-required" });
+  });
+});

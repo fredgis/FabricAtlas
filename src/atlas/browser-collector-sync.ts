@@ -12,6 +12,7 @@ import {
 } from "./item-relations-evidence";
 import { sourceProvenanceSnapshot } from "./source-provenance-snapshot";
 import { preferredSyncMode, type SyncModePreference } from "./sync-mode";
+import { isFeatureEnabled } from "./feature-flags";
 import { applyReusedEnrichment, fullRescanDue, planIncrementalSync, syncPlanSummary, type SyncPlan } from "./incremental-sync";
 import { browserCollectionCache, type CachedCollection, type CollectionCache } from "./sync-snapshot-cache";
 
@@ -53,6 +54,8 @@ export interface BrowserCollectorDependencies {
   maxCalls?: number;
   maxAttempts?: number;
   retryDelayMs?: number;
+  /** Overrides the `fabric-policies` flag for policy set definition collection. */
+  fabricPolicies?: boolean;
 }
 const COLLECTOR_BATCH_SIZE = 4;
 const COMPATIBILITY_BATCH_SIZE = 4;
@@ -387,7 +390,9 @@ export async function collectBrowserWorkspace(
       }
       merge(sourceProvenanceSnapshot(result, known));
     }
-    const definitions = batch.filter((item) => DEFINITIONS.has(item.type));
+    // Policy set definitions are Preview and need Contributor on the governance workspace.
+    const definitions = batch.filter((item) => DEFINITIONS.has(item.type) ||
+      (item.type === "PolicySet" && (dependencies.fabricPolicies ?? isFeatureEnabled("fabric-policies"))));
     if (definitions.length) {
       const result = await call("workspaceCollectDefinitions", { protocolVersion: 1, workspaceId, items: definitions, correlationId });
       validateStage(result, "definitions", workspaceId, correlationId, definitions);

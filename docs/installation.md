@@ -236,6 +236,27 @@ and 50 targets per request; suggestions are reviewed before use.
 The configured URL is the published `sync_all` endpoint. Atlas derives the
 `sync_compatibility` and rollback endpoints from the same trusted UDF origin.
 
+### Optional: policy set definitions (Fabric policies, Preview)
+
+With `VITE_ATLAS_FEATURE_FABRIC_POLICIES=true`, the synchronization reads the
+authored rules of every `PolicySet` item through
+`POST /v1/workspaces/{id}/policySets/{id}/getDefinition?format=Beta`. This
+Preview API requires **read and write** permission on the policy set, so the
+Atlas application identity (the Fabric connection used by the Rayfin
+Functions) must hold the **Contributor** role on the workspace that holds the
+policy sets:
+
+1. In Fabric, open the governance workspace that contains the policy sets.
+2. Select **Manage access** > **Add people or groups**.
+3. Add the Atlas application identity (or a security group that contains it)
+   with the **Contributor** role.
+
+Atlas only reads the definition; it never updates or deletes a policy set.
+Without the role, each policy set is reported as `unsupported`
+(`read-write-permission-required`) and the sync continues. The `Beta` format is
+provided by Microsoft for evaluation and may change. Activation is not part of
+the definition, so Atlas shows it as Unknown.
+
 ## 8. Publish the compatibility UDF
 
 The source is in:

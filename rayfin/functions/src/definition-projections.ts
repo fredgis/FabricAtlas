@@ -189,12 +189,27 @@ export type EventstreamArtifactMetadata = {
   destinations: EventstreamEndpointArtifactMetadata[];
 };
 
+export type PolicySetRuleArtifactMetadata = {
+  displayName: string;
+  policy: string;
+  conditions: { type: string; targetProperty: string; operator: string; operands: string[] }[];
+  effects: string[];
+};
+
+/** Authored policySet.json rules only; descriptions and activation are not projected. */
+export type PolicySetArtifactMetadata = {
+  kind: "policySet";
+  scope?: string;
+  rules: PolicySetRuleArtifactMetadata[];
+};
+
 export type DefinitionArtifactMetadata =
   | OntologyArtifactMetadata
   | GraphModelArtifactMetadata
   | DataAgentArtifactMetadata
   | NotebookArtifactMetadata
-  | EventstreamArtifactMetadata;
+  | EventstreamArtifactMetadata
+  | PolicySetArtifactMetadata;
 
 export type DefinitionFact = { section: string; label: string; value: string };
 
@@ -898,6 +913,71 @@ function projectEventstream(response: unknown, state: ProjectionState): Eventstr
     }
   }
   return { kind: "eventstream", sources, streams, operators, destinations };
+}
+
+/** Documented limit: at most 50 policies of one type in a policy set. */
+const POLICY_RULES_PER_TYPE = 50;
+const POLICY_TOKEN = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
+
+function policyToken(value: unknown): string | undefined {
+  const text = strictText(value);
+  return text && POLICY_TOKEN.test(text) ? text : undefined;
+}
+
+function projectPolicySet(response: unknown, state: ProjectionState): PolicySetArtifactMetadata {
+  let document: JsonRecord | undefined;
+  for (const part of definitionParts(response)) {
+    const path = partPath(part);
+    if (path === ".platform") continue;
+    if (path === "policySet.json") {
+      if (document) invalid();
+      document = decodeJsonPart(part, state);
+      continue;
+    }
+    state.unknownParts += 1;
+  }
+  if (!document) invalid();
+  const properties = isRecord(document.properties) ? document.properties : {};
+  const scope = policyToken(isRecord(properties.scope) ? properties.scope.type : undefined);
+  const perType = new Map<string, number>();
+  const rules: PolicySetRuleArtifactMetadata[] = [];
+  for (const raw of list(document.policyRules)) {
+    if (!isRecord(raw)) continue;
+    const displayName = eventstreamName(raw.displayName);
+    const policy = policyToken(raw.policy);
+    if (!displayName || !policy) continue;
+    const count = perType.get(policy) ?? 0;
+    if (count >= POLICY_RULES_PER_TYPE) {
+      state.metadataTruncated = true;
+      continue;
+    }
+    perType.set(policy, count + 1);
+    const conditions = list(raw.conditions).flatMap((condition) => {
+      if (!isRecord(condition)) return [];
+      const type = policyToken(condition.type);
+      const targetProperty = policyToken(condition.targetProperty);
+      const predicate = isRecord(condition.predicate) ? condition.predicate : {};
+      const operator = policyToken(predicate.operator);
+      if (!type || !targetProperty || !operator) return [];
+      // Stored as `operands`: the client metadata guard rejects any `values` key.
+      const operands = list(predicate.values)
+        .map((value) => eventstreamName(value))
+        .filter((value): value is string => !!value)
+        .slice(0, LIMITS.maxMetadataCollection);
+      return [{ type, targetProperty, operator, operands }];
+    });
+    const effects = list(raw.then)
+      .map((step) => (isRecord(step) ? policyToken(step.effect) : undefined))
+      .filter((effect): effect is string => !!effect);
+    rules.push({ displayName, policy, conditions, effects });
+    state.facts.add(
+      "Policy rules",
+      displayName,
+      `${policy}${effects.length ? ` → ${effects.join(", ")}` : ""}`,
+    );
+  }
+  if (scope) state.facts.add("Policy set", "Scope", scope);
+  return { kind: "policySet", ...(scope ? { scope } : {}), rules };
 }
 
 interface TmdlLine {
@@ -1969,7 +2049,9 @@ export function projectDefinition(itemType: string, response: unknown): Definiti
             ? projectNotebook(response, state)
             : itemType === "Eventstream"
               ? projectEventstream(response, state)
-              : invalid();
+              : itemType === "PolicySet"
+                ? projectPolicySet(response, state)
+                : invalid();
   assertSafeMetadata(metadata);
   if (JSON.stringify(metadata).length > LIMITS.maxSerializedMetadata) {
     throw new DefinitionProjectionError("projection-limit-exceeded");
