@@ -5,13 +5,12 @@
 // </copyright>
 //-----------------------------------------------------------------------
 
-import RayfinClient from "@microsoft/rayfin-client";
 import type { OpaqueSession } from "@microsoft/rayfin-auth";
 import {
     initEmbeddedAuth as sdkInitEmbeddedAuth,
     type FabricAuthOptions,
 } from "@microsoft/rayfin-auth-provider-fabric";
-import { getRayfinClient } from "@/lib/rayfin-client";
+import { getRayfinClient, type AtlasRayfinClient } from "@/lib/rayfin-client";
 
 export interface IAuthService {
     /**
@@ -71,7 +70,7 @@ export function bootstrapAuth(): IAuthService {
  */
 class RayfinAuthService implements IAuthService {
     constructor(
-        private readonly client: RayfinClient,
+        private readonly client: AtlasRayfinClient,
         private readonly fabricOptions: FabricAuthOptions,
     ) {}
 

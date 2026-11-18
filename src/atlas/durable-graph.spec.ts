@@ -549,7 +549,7 @@ describe('internal publisher and storage boundary', () => {
     const registration = readFileSync(resolve('rayfin/functions/src/function_app.ts'), 'utf8');
     for (const name of ['Start', 'Continue', 'Status', 'Cancel']) expect(registration).toContain(`'syncGraph${name}'`);
     const entry = readFileSync(resolve('rayfin/functions/src/sync/graph-functions.ts'), 'utf8');
-    expect(entry).toContain('new GraphOrchestrator(ctx.getDataClient())');
+    expect(entry).toContain('new GraphOrchestrator(graphData(ctx))');
     expect(entry).not.toMatch(/process\.env|accessToken|\.Tokens|fetch\(/);
     for (const entity of ['SyncRootRun', 'SyncJob', 'SyncTask', 'SyncCommand']) {
       const source = readFileSync(resolve(`rayfin/data/${entity}.ts`), 'utf8');

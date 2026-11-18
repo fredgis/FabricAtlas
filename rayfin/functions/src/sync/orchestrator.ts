@@ -1,5 +1,4 @@
-import type { TypedDataClients } from '@microsoft/rayfin-data';
-import type { AtlasSchema } from '../../../data/schema.js';
+import type { RowClients } from './row-clients.js';
 import type { SyncCommand, SyncCommandKind } from '../../../data/SyncCommand.js';
 import type { SyncJob } from '../../../data/SyncJob.js';
 import type { SyncTask } from '../../../data/SyncTask.js';
@@ -25,7 +24,7 @@ import {
   type SyncStartInput,
 } from './protocol.js';
 
-export type SyncDataClient = Pick<TypedDataClients<AtlasSchema>, 'SyncJob' | 'SyncTask' | 'SyncCommand'>;
+export type SyncDataClient = RowClients<'SyncJob' | 'SyncTask' | 'SyncCommand'>;
 
 const JOB_FIELDS: (keyof SyncJob)[] = [
   'id', 'workspace_id', 'snapshotId', 'protocolVersion', 'state', 'phase',

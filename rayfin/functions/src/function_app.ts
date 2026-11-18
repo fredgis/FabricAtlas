@@ -8,6 +8,7 @@ import { createPingResult, type PingResult } from './ping.js';
 import { teamsNotify, type TeamsCardJsonInput, type TeamsNotifyResult } from './teams-notify.js';
 import { suggestDescriptions, type AiSuggestRequestJson, type AiSuggestResult } from './ai-suggest.js';
 import { SyncOrchestrator } from './sync/orchestrator.js';
+import { asRowClients } from './sync/row-clients.js';
 import { safeSyncCall, type SyncResponse, type SyncUuidInput } from './sync/protocol.js';
 import { graphStart, graphContinue, graphStatus, graphCancel } from './sync/graph-functions.js';
 import type {
@@ -296,7 +297,7 @@ udf.func(
     workspaceId: SyncUuidInput,
     requestId: SyncUuidInput,
   ): Promise<SyncResponse> => safeSyncCall(() =>
-    new SyncOrchestrator(ctx.getDataClient()).start({ protocolVersion, workspaceId, requestId })),
+    new SyncOrchestrator(asRowClients(ctx.getDataClient())).start({ protocolVersion, workspaceId, requestId })),
   [],
 );
 
@@ -309,7 +310,7 @@ udf.func(
     jobId: SyncUuidInput,
     requestId: SyncUuidInput,
   ): Promise<SyncResponse> => safeSyncCall(() =>
-    new SyncOrchestrator(ctx.getDataClient()).continue({ protocolVersion, workspaceId, jobId, requestId })),
+    new SyncOrchestrator(asRowClients(ctx.getDataClient())).continue({ protocolVersion, workspaceId, jobId, requestId })),
   [],
 );
 
@@ -321,7 +322,7 @@ udf.func(
     workspaceId: SyncUuidInput,
     jobId?: SyncUuidInput,
   ): Promise<SyncResponse> => safeSyncCall(() =>
-    new SyncOrchestrator(ctx.getDataClient()).status({ protocolVersion, workspaceId, jobId })),
+    new SyncOrchestrator(asRowClients(ctx.getDataClient())).status({ protocolVersion, workspaceId, jobId })),
   [],
 );
 
@@ -334,6 +335,6 @@ udf.func(
     jobId: SyncUuidInput,
     requestId: SyncUuidInput,
   ): Promise<SyncResponse> => safeSyncCall(() =>
-    new SyncOrchestrator(ctx.getDataClient()).cancel({ protocolVersion, workspaceId, jobId, requestId })),
+    new SyncOrchestrator(asRowClients(ctx.getDataClient())).cancel({ protocolVersion, workspaceId, jobId, requestId })),
   [],
 );

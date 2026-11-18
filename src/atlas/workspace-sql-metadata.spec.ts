@@ -2,8 +2,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
-// The SDK is installed only in the Functions package; import its enum module directly.
-import { AudienceType } from "../../rayfin/functions/node_modules/@microsoft/fabric-user-data-functions/dist/types/connection.js";
+// The SDK is installed only in the Functions package; import it from that package.
+import { AudienceType } from "../../rayfin/functions/node_modules/@microsoft/fabric-user-data-functions";
 import {
   SQL_CATALOG_QUERIES,
   SqlDriverError,
@@ -373,7 +373,7 @@ describe("SQL metadata identity and audience boundary", () => {
     const fn = metadata.functions.find((candidate) => candidate.functionName === "workspaceCollectSqlMetadata");
     expect(fn?.contextAudiences).toEqual(["Fabric", "Sql"]);
     expect(fn?.delegateParameters).toEqual([
-      expect.objectContaining({ name: "ctx", type: "RayfinContext<AtlasSchema, AudienceType.Fabric | AudienceType.Sql>" }),
+      expect.objectContaining({ name: "ctx", type: "RayfinContext" }),
       expect.objectContaining({ name: "protocolVersion", type: "1" }),
       expect.objectContaining({ name: "workspaceId", type: "SyncUuidInput" }),
       expect.objectContaining({ name: "items", type: "SqlMetadataItemsInput", hasDefault: false }),

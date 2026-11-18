@@ -37,7 +37,7 @@ describe("workspace discovery function", () => {
       delegateParameters: [
         {
           name: "ctx",
-          type: "RayfinContext<AtlasSchema, AudienceType.Fabric>",
+          type: "RayfinContext",
         },
       ],
     });

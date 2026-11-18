@@ -2,8 +2,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
-// The SDK is installed only in the Functions package; import its enum module directly.
-import { AudienceType } from "../../rayfin/functions/node_modules/@microsoft/fabric-user-data-functions/dist/types/connection.js";
+// The SDK is installed only in the Functions package; import it from that package.
+import { AudienceType } from "../../rayfin/functions/node_modules/@microsoft/fabric-user-data-functions";
 import { SYNCHRONIZER_AUTHORITY_ID } from "../../rayfin/functions/src/synchronizer-gate";
 import type { AppFunctionsSchema } from "../../rayfin/functions/src/types";
 import {
@@ -222,7 +222,7 @@ describe("KQL metadata identity boundary", () => {
     const fn = metadata.functions.find((candidate) => candidate.functionName === "workspaceCollectKqlMetadata");
     expect(fn?.contextAudiences).toEqual(["Fabric"]);
     expect(fn?.delegateParameters).toEqual([
-      expect.objectContaining({ name: "ctx", type: "RayfinContext<AtlasSchema, AudienceType.Fabric>" }),
+      expect.objectContaining({ name: "ctx", type: "RayfinContext" }),
       expect.objectContaining({ name: "protocolVersion", type: "1" }),
       expect.objectContaining({ name: "workspaceId", type: "SyncUuidInput" }),
       expect.objectContaining({ name: "items", type: "KqlMetadataItemsInput", hasDefault: false }),

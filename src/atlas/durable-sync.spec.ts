@@ -580,16 +580,16 @@ describe('generated durable Functions contracts', () => {
         name: string; type: string; optional: boolean;
       }[] }[];
     };
-    expect(metadata.schemaVersion).toBe('2.0');
+    expect(metadata.schemaVersion).toBe('3.0');
     const durableNames = ['syncStart', 'syncContinue', 'syncStatus', 'syncCancel'];
     expect(metadata.functions.map((fn) => fn.functionName))
-      .toEqual(['workspaceCollectAccessPolicyEvidence',
+      .toEqual(['workspaceCollectAccessPolicyEvidence', 'teamsNotify', 'suggestDescriptions',
         'syncGraphStart', 'syncGraphContinue', 'syncGraphStatus', 'syncGraphCancel',
-        'ping', 'workspaceDiscover', 'workspaceCollectCore', 'workspaceCollectDefinitions', 'workspaceCollectItemRelations', 'workspaceCollectKqlMetadata', 'workspaceCollectSqlMetadata', 'workspaceCollectPowerBi', 'searchCatalogPreview', 'workspaceCollectPowerBiScanner', 'workspaceCollectSourceProvenance', ...durableNames]);
+        'ping', 'workspaceDiscover', 'workspaceCollectCore', 'workspaceCollectGovernance', 'tenantCollectConnections', 'workspaceCollectDefinitions', 'workspaceCollectItemRelations', 'workspaceCollectKqlMetadata', 'workspaceCollectSqlMetadata', 'workspaceCollectPowerBi', 'searchCatalogPreview', 'workspaceCollectPowerBiScanner', 'workspaceCollectSourceProvenance', ...durableNames]);
     for (const name of durableNames) {
       const fn = metadata.functions.find((candidate) => candidate.functionName === name)!;
       expect(fn.contextAudiences).toEqual([]);
-      expect(fn.delegateParameters[0]).toMatchObject({ name: 'ctx', type: 'RayfinContext<AtlasSchema>' });
+      expect(fn.delegateParameters[0]).toMatchObject({ name: 'ctx', type: 'RayfinContext' });
       expect(fn.delegateParameters[1]).toMatchObject({ name: 'protocolVersion', type: '1' });
       expect(fn.delegateParameters.slice(2).every((parameter) => parameter.type === 'SyncUuidInput')).toBe(true);
     }

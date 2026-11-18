@@ -1,5 +1,5 @@
-import type { TypedDataClients } from '@microsoft/rayfin-data';
 import type { AtlasSchema } from '../../../data/schema.js';
+import type { RowClients } from './row-clients.js';
 import type { SyncJob } from '../../../data/SyncJob.js';
 import type { SyncRun } from '../../../data/SyncRun.js';
 import type { Workspace } from '../../../data/Workspace.js';
@@ -12,7 +12,7 @@ export type SnapshotDraft = {
   workspace: Pick<Workspace, 'displayName' | 'capacity' | 'region'>;
   rows: { [K in SnapshotEntity]: Omit<AtlasSchema[K], OwnedFields>[] };
 };
-export type SnapshotData = Pick<TypedDataClients<AtlasSchema>, SnapshotEntity | 'Workspace' | 'SyncRun'>;
+export type SnapshotData = RowClients<SnapshotEntity | 'Workspace' | 'SyncRun'>;
 type Row = Record<string, unknown> & { id: string };
 type Rule = number | readonly string[] | 'boolean' | 'date' | 'integer';
 const RULES: Record<SnapshotEntity, Record<string, Rule>> = {

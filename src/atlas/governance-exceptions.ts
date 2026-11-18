@@ -108,7 +108,7 @@ async function findExisting(key: string): Promise<GovernanceExceptionRow | undef
     .where({ recordKey: { eq: key } })
     .orderBy({ updatedAt: "desc" })
     .execute();
-  return rows[0];
+  return (rows as GovernanceExceptionRow[])[0];
 }
 
 export function governanceExceptionStatus(
@@ -145,7 +145,7 @@ export async function loadGovernanceExceptions(
     .where({ workspace_id: { eq: workspaceId } })
     .orderBy({ expiresAt: "asc" })
     .execute();
-  return rows.map(parse);
+  return (rows as GovernanceExceptionRow[]).map(parse);
 }
 
 export async function saveGovernanceException(
@@ -214,7 +214,7 @@ export async function saveGovernanceException(
         findingId,
         createdAt: now,
         ...values,
-      }),
+      }) as GovernanceExceptionRow,
     );
   } catch (error) {
     const concurrent = await findExisting(key);

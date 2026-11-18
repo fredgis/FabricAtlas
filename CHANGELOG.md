@@ -8,6 +8,15 @@ release tag was published.
 
 ## [Unreleased]
 
+### Changed
+
+- Fabric Atlas runs on Rayfin 2.0.1, the generally available release, instead of 1.36.2. The client is built with `RayfinClient.create` and explicit data, functions and browser-session services, and the Functions package uses `@microsoft/fabric-user-data-functions` 2.0.1 (#111).
+- Generated Functions metadata is refreshed with the 2.0 CLI (schema 3.0). It now lists `teamsNotify`, `suggestDescriptions`, `workspaceCollectGovernance` and `tenantCollectConnections`, which the previous file had missed.
+
+### Upgrade notes
+
+- No schema change and no new entity: deploy with `npx rayfin up`, never `--force`. Every Rayfin package and the Functions worker must be on the same 2.0.x version, or the CLI refuses to generate types or deploy.
+
 ## [2.9.2] - 2026-11-09
 
 ### Added

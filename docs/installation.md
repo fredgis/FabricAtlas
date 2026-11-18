@@ -16,7 +16,8 @@ compatibility gaps.
 
 - Microsoft Fabric capacity
 - Fabric Apps enabled for the target users
-- Rayfin CLI 1.36.2
+- Rayfin CLI 2.0.1 (Rayfin GA); every `@microsoft/rayfin-*` package and
+  `@microsoft/fabric-user-data-functions` must use the same version
 - Permission to create items in the target workspace
 - One Entra SPA registration for delegated compatibility calls
 - Fabric Administrator support for the Power BI metadata scanner settings

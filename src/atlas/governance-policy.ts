@@ -111,7 +111,7 @@ async function findExisting(
       "Multiple governance policy rows exist for this workspace.",
     );
   }
-  return rows[0];
+  return (rows as GovernancePolicyRow[])[0];
 }
 
 export async function loadGovernancePolicy(
@@ -179,7 +179,7 @@ export async function saveGovernancePolicy(
         recordKey: workspaceId,
         writerEmail: authorEmail,
         ...values,
-      }),
+      }) as GovernancePolicyRow,
     );
   } catch (error) {
     const concurrent = await findExisting(workspaceId);

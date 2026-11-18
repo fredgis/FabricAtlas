@@ -439,7 +439,7 @@ describe("workspaceCollectDefinitions contract", () => {
     const fn = metadata.functions.find((candidate) => candidate.functionName === "workspaceCollectDefinitions");
     expect(fn?.contextAudiences).toEqual(["Fabric"]);
     expect(fn?.delegateParameters).toEqual([
-      expect.objectContaining({ name: "ctx", type: "RayfinContext<AtlasSchema, AudienceType.Fabric>" }),
+      expect.objectContaining({ name: "ctx", type: "RayfinContext" }),
       expect.objectContaining({ name: "protocolVersion", type: "1" }),
       expect.objectContaining({ name: "workspaceId", type: "SyncUuidInput" }),
       // A custom alias bypasses the SDK's coercing array converter; the strict validator owns it.

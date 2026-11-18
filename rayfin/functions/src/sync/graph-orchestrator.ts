@@ -1,5 +1,4 @@
-import type { TypedDataClients } from '@microsoft/rayfin-data';
-import type { AtlasSchema } from '../../../data/schema.js';
+import type { RowClients } from './row-clients.js';
 import type { SyncRootRun } from '../../../data/SyncRootRun.js';
 import type { SyncJob } from '../../../data/SyncJob.js';
 import type { SyncTask } from '../../../data/SyncTask.js';
@@ -16,7 +15,7 @@ import {
   type SnapshotData, type SnapshotDraft,
 } from './snapshot-publisher.js';
 
-export type GraphData = Pick<TypedDataClients<AtlasSchema>, 'SyncRootRun' | 'SyncJob' | 'SyncTask' | 'SyncCommand'> & SnapshotData;
+export type GraphData = RowClients<'SyncRootRun' | 'SyncJob' | 'SyncTask' | 'SyncCommand'> & SnapshotData;
 export interface CollectorContext {
   rootRunId: string;
   workspaceId: string;

@@ -1,18 +1,11 @@
 export const SYNCHRONIZER_AUTHORITY_ID =
   "6f3e0c48-a302-4e37-83c8-e6ef1829124b";
 
-interface SynchronizerAuthorityRow {
-  id: string;
-  createdAt: Date;
-}
-
 /** Fluent-client surface needed for the synchronizer-only caller gate. */
 export interface SynchronizerGuardData {
   SynchronizerAuthority: {
-    findById: (id: string) => Promise<SynchronizerAuthorityRow | null>;
-    create: (
-      values: SynchronizerAuthorityRow,
-    ) => Promise<SynchronizerAuthorityRow>;
+    findById: (id: string) => Promise<{ id: string } | null>;
+    create: (values: { id: string; createdAt: Date }) => Promise<{ id: string }>;
   };
 }
 
