@@ -226,7 +226,7 @@ export function parseGovernanceEvidence(value: unknown): GovernanceEvidence | un
         ...roleConstraints(v),
       };
     }),
-    appBackends: entries(value.appBackends, (v) => {
+    ...(isRecord(value.appBackends) ? { appBackends: entries(value.appBackends, (v) => {
       const itemId = str(v.itemId, 128);
       if (!itemId) return undefined;
       const logicalId = str(v.logicalId, 128);
@@ -250,8 +250,8 @@ export function parseGovernanceEvidence(value: unknown): GovernanceEvidence | un
             }
           : {}),
       };
-    }),
-    legacyDataflows: entries(value.legacyDataflows, (v) => {
+    }) } : {}),
+    ...(isRecord(value.legacyDataflows) ? { legacyDataflows: entries(value.legacyDataflows, (v) => {
       const id = str(v.id, 128);
       if (!id) return undefined;
       return {
@@ -260,7 +260,7 @@ export function parseGovernanceEvidence(value: unknown): GovernanceEvidence | un
         ownerKnown: v.ownerKnown === true,
         downstreamModelIds: strings(v.downstreamModelIds, 50).map((entry) => entry.toLowerCase()),
       };
-    }),
+    }) } : {}),
   };
 }
 
