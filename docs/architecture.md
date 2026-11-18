@@ -98,9 +98,9 @@ page.
 | Fabric Policies context | `workspaceCollectAccessPolicyEvidence` | Portal-only evidence stays unavailable |
 | Domains, tags, tenant settings, network policy, external shares, OneLake data access roles (2.6), Fabric app default identities (3.0) | `workspaceCollectGovernance` | None; each section is optional and degrades to Unknown |
 | Tenant connection inventory and role assignments (2.8) | `tenantCollectConnections`, once per batch | None; the admin connections API is Preview and needs a Fabric administrator |
-| Power BI admin scanner, scanner lineage and the Dataflow Gen1 list (3.0) | Python `sync_compatibility` | Retained until Rayfin exposes a documented Power BI audience |
+| Power BI admin scanner, scanner lineage and the Dataflow Gen1 list (3.0) | Python `sync_compatibility` | Retained until Rayfin 2.0 custom audiences are validated for Power BI |
 | PBIR-Legacy pages | Python `sync_compatibility` | Retained until the supported definition path covers legacy reports |
-| Kusto live metadata | Python `sync_compatibility` | Retained until Rayfin exposes a documented Kusto audience |
+| Kusto live metadata | Python `sync_compatibility` | Retained until Rayfin 2.0 custom audiences are validated for Kusto |
 
 Ontology collection accepts both the legacy JSON definition layout and the
 Ontology 2.0 TMDL layout. The TMDL projection keeps bounded entity, property,
@@ -352,8 +352,9 @@ Synchronization still requires an open browser because:
   trigger;
 - the remaining compatibility collectors require a delegated identity;
 - Atlas never stores or replays browser access or refresh tokens;
-- Rayfin exposes no distributed claim and transactional fencing contract for
-  an unattended multi-host workflow.
+- Rayfin exposes no unattended timer or trigger, and no distributed claim and
+  transactional fencing contract for a multi-host workflow (2.0.1 raw SQL could
+  give a single-statement compare-and-set, but it bypasses entity policies).
 
 Scheduled refresh remains disabled.
 

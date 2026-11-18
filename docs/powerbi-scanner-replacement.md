@@ -1,6 +1,10 @@
 # Power BI metadata replacement
 
-Contract and identity review: **2026-10-02, Rayfin 1.36.2**. Re-checked on 2026-11-18 with Rayfin 2.0.1 (GA): Functions still expose only the `Sql`, `Storage`, `Fabric`, `AzureAI` and `ADO` audiences, so the conclusions below are unchanged.
+Contract and identity review: **2026-10-02, Rayfin 1.36.2**. Re-audited on
+2026-11-18 against Rayfin 2.0.1: Functions can now declare custom audiences
+(see [Rayfin platform gaps](rayfin-platform-gaps.md#what-rayfin-20-changes)),
+which is a candidate path for the Power BI blocker below. It is not validated,
+so the blockers stay in force.
 
 `workspaceCollectPowerBi` is a deployed-compatible, read-only Functions tranche.
 It replaces supported scanner metadata reads through public Fabric REST APIs,
@@ -99,7 +103,10 @@ cannot run with a supported deployed identity:
 
 - `scannerParity/powerbi-audience-unavailable`: Rayfin 1.36.2 provides no
   documented deployed Power BI REST application audience or admin-scanner
-  connector. Power BI `getInfo`, scan status/result and Reports Get Pages are
+  connector. Rayfin 2.0.1 documents custom audiences, so a function could
+  declare `https://analysis.windows.net/powerbi/api` and receive a token for
+  the app identity (the app item's owner); whether the admin scanner accepts it
+  is not yet verified, and the blocker code stays until a deployed probe passes. Power BI `getInfo`, scan status/result and Reports Get Pages are
   therefore not called by the Fabric-token tranche. Full scanner item lineage, datasource/upstream
   boundaries, scanner-specific owners, endorsement and sensitivity remain
   unavailable.
@@ -123,7 +130,9 @@ cannot run with a supported deployed identity:
 
 **Generic audience blocker:** provide a publicly
 documented, deployed application-identity **Power BI REST token binding** or
-server-side scanner connector in Rayfin. Its contract must cover
+server-side scanner connector in Rayfin. Rayfin 2.0.1 custom audiences are the
+first candidate; they close this blocker only after a deployed probe calls
+`getInfo` and the scan result with that token in the target tenant. Its contract must cover
 `POST /v1.0/myorg/admin/workspaces/getInfo`, scan status/result, and Power BI
 report pages, without browser token forwarding or caller-supplied endpoints.
 The optional Secret Store adapter is the supported alternative implemented in
@@ -193,4 +202,5 @@ Reviewed on 2026-10-02:
 - [Fabric Admin Get Item](https://learn.microsoft.com/en-us/rest/api/fabric/admin/items/get-item) and [List Item Access Details](https://learn.microsoft.com/en-us/rest/api/fabric/admin/items/list-item-access-details).
 - [Power BI scanner getInfo](https://learn.microsoft.com/en-us/rest/api/power-bi/admin/workspace-info-post-workspace-info), [service-principal admin approval](https://learn.microsoft.com/en-us/fabric/admin/enable-service-principal-admin-apis), and [metadata scanning tenant settings](https://learn.microsoft.com/en-us/fabric/admin/metadata-scanning-setup).
 - [Power BI Execute Queries limitations](https://learn.microsoft.com/en-us/rest/api/power-bi/datasets/execute-queries) and [INFO.DEPENDENCIES](https://learn.microsoft.com/en-us/dax/info-dependencies-function-dax).
+- Rayfin 2.0.1 package docs re-read on 2026-11-18: `rayfin-guide:functions/connections/index.md` (custom audiences), `rayfin-guide:cli/connectors/category-b-function-bridge.md` (`fabric-semanticmodel` still delegated only).
 - Version-locked Rayfin 1.36.2 package docs: `rayfin-guide:functions/connections/index.md`, `rayfin-guide:functions/index.md`, and `rayfin-guide:cli/connectors/category-b-function-bridge.md`; and the public `connection.d.ts` typings of the installed `fabric-user-data-functions` npm package (outside this repository).

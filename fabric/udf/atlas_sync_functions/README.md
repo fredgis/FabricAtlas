@@ -92,7 +92,7 @@ collector.
 `sync_compatibility` receives an exact, bounded plan and may run only the
 collectors named in that plan. The browser verifies the echoed plan before
 merging results. This keeps Python for gaps that are not yet supported or live
-validated in Rayfin (reviewed with 1.36.2 and re-checked with 2.0.1 GA):
+validated in Rayfin (reviewed with 1.36.2, re-audited on 2026-11-18 with 2.0.1 GA, whose custom audiences are a candidate replacement not yet probed):
 
 | Compatibility path | Why it remains |
 | --- | --- |
@@ -101,7 +101,7 @@ validated in Rayfin (reviewed with 1.36.2 and re-checked with 2.0.1 GA):
 | Lakehouse REST object kinds and selected downstream schema merges | SQL catalog structure does not replace every existing Lakehouse object/source boundary |
 | PBIR-Legacy report pages | The supported definition adapter cannot expose every legacy report page contract |
 | Definition fallback | Some item definitions require delegated write scope or are blocked by sensitivity labels |
-| Kusto data-plane schema | Rayfin Functions expose no documented Kusto audience; definition structure remains the supported primary path |
+| Kusto data-plane schema | Rayfin 2.0.1 custom audiences could carry a Kusto token but are not validated; definition structure remains the supported primary path |
 | SQL data-plane fallback | Retained only when the active Sql-audience collector reports an explicit unsupported or failed capability |
 
 `sync_all` and `sync_items` remain as the explicit
