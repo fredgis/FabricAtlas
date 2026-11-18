@@ -797,7 +797,7 @@ function projectNotebook(
   };
 }
 
-const EVENTSTREAM_SECTIONS = ["sources", "streams", "operators", "destinations"] as const;
+type EventstreamSection = "sources" | "streams" | "operators" | "destinations";
 const EVENTSTREAM_TYPE = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
 
 /** A node name kept only when it is plain bounded text that cannot carry secrets. */
@@ -860,7 +860,7 @@ function projectEventstream(response: unknown, state: ProjectionState): Eventstr
     state.unknownParts += 1;
   }
   if (!topology) invalid();
-  const read = <T>(section: (typeof EVENTSTREAM_SECTIONS)[number], parse: (value: unknown) => T | undefined): T[] => {
+  const read = <T>(section: EventstreamSection, parse: (value: unknown) => T | undefined): T[] => {
     const values = list(topology![section]);
     if (values.length > LIMITS.maxMetadataCollection) state.metadataTruncated = true;
     return values
