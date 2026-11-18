@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "2.9.2";
+  "3.0.0";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,36 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "3.0.0",
+    date: "2026-11-18",
+    title: "Rayfin GA and Ignite 2026",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Sensitivity downgrade along lineage: a consumer with a weaker label than its strictest upstream source is flagged.",
+          "Send the Sync Brief to Teams from Governance Center > Changes.",
+          "MCP tool atlas_get_departure_pack, matched on object ID or user principal name only.",
+          "Dormant producers: idle data stores and models that feed nothing in the synchronized scope.",
+          "Eventstream topology: sources and destinations become lineage, connections join the Connections view.",
+          "Dataflow Gen1 to upgrade, with the downstream models and reports.",
+          "Fabric app default identity in the Catalog drawer, findings and the departure pack.",
+          "Data Agent observability tenant switches in Policies & AI.",
+          "Ignite 2026 item types, including PostgreSQL database and Policy set.",
+          "Policy set rules (Preview, behind the Fabric policies flag) with activation Unknown.",
+          "Production hardening checklist and recommended CSP in About.",
+        ],
+      },
+      {
+        title: "Changed",
+        items: [
+          "Runs on Rayfin 2.0.1 (generally available).",
+          "Fabric apps (AppBackend) are marked GA.",
+        ],
+      },
+    ],
+  },
   {
     version: "2.9.2",
     date: "2026-11-09",

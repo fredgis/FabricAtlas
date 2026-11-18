@@ -307,5 +307,5 @@ tool error when Entra sign-in failed.
 [directory]: https://learn.microsoft.com/en-us/rest/api/fabric/articles/mcp-servers/fabric-mcp-servers-list
 
 Other sources: [Fabric MCP servers overview](https://learn.microsoft.com/en-us/rest/api/fabric/articles/mcp-servers/what-is-fabric-mcp-server)
-(ms.date 2026-09-17) and the Rayfin 1.36.2 guide
+(ms.date 2026-09-17) and the Rayfin guide (reviewed with 1.36.2, unchanged in 2.0.1)
 `node_modules/@microsoft/rayfin-guide/assets/docs/auth/direct-entra-auth.md`.

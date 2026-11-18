@@ -89,16 +89,16 @@ page.
 | Evidence | Primary collector | Compatibility path |
 |---|---|---|
 | Workspaces, items, roles and jobs | `workspaceCollectCore` | Explicit rollback only |
-| Ontology, Graph Model, Data Agent and Notebook definitions | `workspaceCollectDefinitions` | None |
+| Ontology, Graph Model, Data Agent, Notebook and Eventstream definitions; Policy set definitions (3.0, behind the Fabric policies flag) | `workspaceCollectDefinitions` | None |
 | Power BI model and PBIR structure | `workspaceCollectPowerBi` | Scanner fallback where definition evidence is unsupported |
 | Item Relations Preview | `workspaceCollectItemRelations` | None; remains Beta and non-authoritative |
 | KQL structural metadata | `workspaceCollectKqlMetadata` | Kusto live schema where required |
 | SQL Database, Warehouse, Lakehouse and Mirrored Database catalogs | `workspaceCollectSqlMetadata` | None |
 | Shortcuts, mirroring and materialized lake view provenance | `workspaceCollectSourceProvenance` | None |
 | Fabric Policies context | `workspaceCollectAccessPolicyEvidence` | Portal-only evidence stays unavailable |
-| Domains, tags, tenant settings, network policy, external shares, OneLake data access roles (2.6) | `workspaceCollectGovernance` | None; each section is optional and degrades to Unknown |
+| Domains, tags, tenant settings, network policy, external shares, OneLake data access roles (2.6), Fabric app default identities (3.0) | `workspaceCollectGovernance` | None; each section is optional and degrades to Unknown |
 | Tenant connection inventory and role assignments (2.8) | `tenantCollectConnections`, once per batch | None; the admin connections API is Preview and needs a Fabric administrator |
-| Power BI admin scanner and scanner lineage | Python `sync_compatibility` | Retained until Rayfin exposes a documented Power BI audience |
+| Power BI admin scanner, scanner lineage and the Dataflow Gen1 list (3.0) | Python `sync_compatibility` | Retained until Rayfin exposes a documented Power BI audience |
 | PBIR-Legacy pages | Python `sync_compatibility` | Retained until the supported definition path covers legacy reports |
 | Kusto live metadata | Python `sync_compatibility` | Retained until Rayfin exposes a documented Kusto audience |
 
