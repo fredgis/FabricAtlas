@@ -374,6 +374,7 @@ interface OptionalTracker {
   unsupported: number;
   failed: number;
   codes: CollectorStatusCode[];
+  failedCodes: CollectorStatusCode[];
 }
 
 function track(
@@ -383,12 +384,16 @@ function track(
 ): void {
   tracker[result] += 1;
   if (code && !tracker.codes.includes(code)) tracker.codes.push(code);
+  if (result === "failed" && code && !tracker.failedCodes.includes(code)) {
+    tracker.failedCodes.push(code);
+  }
 }
 
 /** Python `_finish_optional_section`. */
 function finishOptionalSection(tracker: OptionalTracker): CollectorStatus {
   if (tracker.failed) {
-    return { status: "failed", code: tracker.codes[0] ?? "upstream-failure" };
+    // Report the failure itself, not an earlier benign unsupported code.
+    return { status: "failed", code: tracker.failedCodes[0] ?? "upstream-failure" };
   }
   if (tracker.success) {
     const code = tracker.unsupported ? "partial-unsupported" : tracker.codes[0];
@@ -423,7 +428,13 @@ async function collectRecentJobs(
   limits: CollectCoreLimits,
   errors: SafeErrors,
 ): Promise<{ jobs: CollectedJob[]; status: CollectorStatus }> {
-  const tracker: OptionalTracker = { success: 0, unsupported: 0, failed: 0, codes: [] };
+  const tracker: OptionalTracker = {
+    success: 0,
+    unsupported: 0,
+    failed: 0,
+    codes: [],
+    failedCodes: [],
+  };
   const jobs: CollectedJob[] = [];
   const budget = new RequestBudget(limits.maxJobRequests);
   let stopCode: CollectorStatusCode | undefined;
@@ -442,6 +453,9 @@ async function collectRecentJobs(
         {
           maxPages: limits.maxJobPagesPerItem,
           maxRecords: limits.maxJobRecordsPerItem,
+          // Fabric lists job instances newest first; only the most recent are kept,
+          // so long histories must not exhaust the page limit.
+          stopAfter: limits.recentJobsPerItem,
         },
         budget,
       );
