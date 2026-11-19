@@ -904,6 +904,25 @@ describe("workspaceCollectCore optional jobs", () => {
     ).toEqual(["job-1", "job-2", "job-3"]);
   });
 
+  it("stops paging a long job history once the recent jobs are collected", async () => {
+    const routes = coreRoutes();
+    const next = `${JOBS(NOTEBOOK)}?continuationToken=jobs-2`;
+    routes[JOBS(NOTEBOOK)] = () => json({ ...notebookJobs(), continuationUri: next });
+    const { result, fetchImpl } = collect(routes, { limits: { maxJobPagesPerItem: 1 } });
+    const envelope = await result;
+
+    expect(requestedUrls(fetchImpl)).not.toContain(next);
+    expect(envelope.sections.jobs).toEqual({ status: "complete", code: "partial-unsupported" });
+    expect(envelope.jobs.filter((job) => job.itemId === NOTEBOOK)).toHaveLength(3);
+  });
+
+  it("reports the job failure code rather than an earlier unsupported item", async () => {
+    const routes = coreRoutes();
+    routes[JOBS(FUTURE)] = () => json({}, { status: 403 });
+    const envelope = await collect(routes).result;
+    expect(envelope.sections.jobs).toEqual({ status: "failed", code: "authorization-failed" });
+  });
+
   it("records item job failures without invalidating Core sections", async () => {
     const routes = coreRoutes();
     routes[JOBS(NOTEBOOK)] = () => json({ message: "private" }, { status: 403 });

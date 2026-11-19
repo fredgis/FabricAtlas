@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "3.0.0";
+  "3.0.1";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,22 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "3.0.1",
+    date: "2026-11-19",
+    title: "Reliable job health on busy workspaces",
+    sections: [
+      {
+        title: "Fixed",
+        items: [
+          "A single item with a long run history no longer fails the whole jobs section and blanks the Health pillar: only the 3 most recent runs are read.",
+          "A failed jobs section now reports its real cause instead of an earlier benign unsupported item.",
+          "Snapshot row writes retry after fetch-level network errors (\"Failed to fetch\").",
+          "The first sync after the v3 upgrade re-enriches every item once, so Eventstream topology is collected.",
+        ],
+      },
+    ],
+  },
   {
     version: "3.0.0",
     date: "2026-11-18",

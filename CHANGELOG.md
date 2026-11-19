@@ -8,6 +8,17 @@ release tag was published.
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-11-19
+
+Patch release: the synchronization generation is unchanged, so an incremental sync is enough.
+
+### Fixed
+
+- A single item with a long run history (more than 3 pages of job instances) no longer fails the whole jobs section and blanks the Health pillar. The collector stops after the 3 most recent runs, which Fabric lists first.
+- A failed jobs section reports its real cause instead of an earlier benign `endpoint-unsupported` item.
+- Snapshot row writes retry after fetch-level network errors ("Failed to fetch") (#117).
+- The first sync after the v3 upgrade re-enriches every item once, so Eventstream topology is collected (#115).
+
 ## [3.0.0] - 2026-11-18
 
 Fabric Atlas 3.0 runs on the generally available Rayfin 2.0 and adds the governance signals announced at Microsoft Ignite 2026.
@@ -1109,7 +1120,9 @@ Fabric Atlas 3.0 runs on the generally available Rayfin 2.0 and adds the governa
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v2.9.2...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v3.0.1...HEAD
+[3.0.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.1
+[3.0.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.0
 [2.9.2]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.9.2
 [2.9.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.9.1
 [2.9.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.9.0
