@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AtlasData, Item } from "./model";
 import type { SnapshotSummary } from "./history";
-import { buildAtlasInsights, JOB_CALENDAR_DAYS, projectSeries } from "./insights";
+import { buildAtlasInsights, JOB_CALENDAR_DAYS, projectSeries, sumTrends } from "./insights";
 
 const NOW = Date.parse("2026-06-01T12:00:00Z");
 
@@ -98,7 +98,60 @@ describe("Atlas Insights aggregates", () => {
     const hr = buildAtlasInsights({ ...base, scope: { workspace: "ws-hr" } });
     expect(hr.workspaces.map((entry) => entry.name)).toEqual(["HR"]);
     expect(hr.items).toBe(5);
+    expect(all.detailCoverage).toEqual({ loaded: 1, total: 3 });
     expect(all.domainOptions.map((option) => option.key)).toEqual(expect.arrayContaining(["dom-fin", "dom-hr"]));
+  });
+
+  it("aggregates every scoped workspace snapshot in the detail charts", () => {
+    const finance = atlas({
+      workspace: { ...atlas().workspace, fabricId: "ws-fin", displayName: "Finance" },
+      items: [item("f1", { itemType: "Report", ownerName: "Bo" }), item("f2", { itemType: "Report" })],
+      edges: [{ source: "f1", target: "f2", relation: "feeds" }],
+      grants: [{ accessLevel: "view" }] as unknown as AtlasData["grants"],
+      jobs: [{ itemFabricId: "f1", itemName: "f1", jobType: "Run", status: "failed", startedAt: "2026-05-30T09:00:00Z", durationSec: 1 }],
+    });
+    const base = {
+      now: NOW,
+      trend: [point("2026-05-01T00:00:00Z", 1), point("2026-05-20T00:00:00Z", 2)],
+      statuses: {
+        "ws-fin": { snapshotId: "s1", displayName: "Finance", fabricDomainId: "dom-fin" },
+        "ws-hr": { snapshotId: "s2", displayName: "HR", fabricDomainId: "dom-hr" },
+      },
+      data: atlas({
+        items: [item("a", { ownerName: "Ada" })],
+        jobs: [{ itemFabricId: "a", itemName: "a", jobType: "Run", status: "completed", startedAt: "2026-05-30T10:00:00Z", durationSec: 1 }],
+      }),
+      snapshots: { "ws-fin": { data: finance, trend: [point("2026-05-10T00:00:00Z", 2)] }, "ws-hr": null },
+    };
+    const all = buildAtlasInsights(base);
+    expect(all.detailCoverage).toEqual({ loaded: 2, total: 3 });
+    expect(all.detailItems).toBe(3);
+    expect(all.itemTypes).toEqual([
+      { key: "Report", label: "Report", value: 2 },
+      { key: "Lakehouse", label: "Lakehouse", value: 1 },
+    ]);
+    expect(all.access).toEqual([{ key: "view", label: "View", value: 1 }]);
+    expect(all.jobs).toEqual({ runs: 2, succeeded: 1, failed: 1, rate: 50 });
+    expect(all.jobCalendar.find((day) => day.date === "2026-05-30")).toEqual({ date: "2026-05-30", runs: 2, failed: 1 });
+    expect(all.lineage).toMatchObject({ edges: 1, resolved: 1, itemsWithLineage: 2 });
+    expect(all.owners.map((slice) => slice.label)).toEqual(["Ada", "Bo", "No owner"]);
+    expect(all.trend.map((entry) => entry.items)).toEqual([1, 3, 4]);
+
+    const onlyFinance = buildAtlasInsights({ ...base, scope: { domain: "dom-fin" } });
+    expect(onlyFinance.detailCoverage).toEqual({ loaded: 1, total: 1 });
+    expect(onlyFinance.detailItems).toBe(2);
+    expect(onlyFinance.jobs.rate).toBe(0);
+    expect(onlyFinance.trend.map((entry) => entry.items)).toEqual([2]);
+  });
+
+  it("sums trends by carrying each workspace's latest point forward", () => {
+    const summed = sumTrends([
+      [point("2026-01-01T00:00:00Z", 10), point("2026-03-01T00:00:00Z", 12)],
+      [point("2026-02-01T00:00:00Z", 5)],
+    ]);
+    expect(summed.map((entry) => [entry.syncedAt.slice(0, 10), entry.items])).toEqual([
+      ["2026-01-01", 10], ["2026-02-01", 15], ["2026-03-01", 17],
+    ]);
   });
 
   it("keeps unknown evidence unknown instead of zero", () => {

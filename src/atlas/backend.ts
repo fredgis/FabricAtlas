@@ -2856,6 +2856,37 @@ export async function loadFromDb(
   });
 }
 
+/**
+ * Read of a workspace's latest validated snapshot for Atlas Insights (no sync
+ * runs or comments), plus the trend points read from the snapshot markers only.
+ * Returns null when the workspace has no validated snapshot.
+ */
+export async function loadInsightSnapshotFromDb(
+  isPreview: boolean,
+  targetWorkspaceId: string,
+): Promise<{ data: AtlasData; trend: SnapshotSummary[] } | null> {
+  if (isPreview) return null;
+  const data = await dataApi();
+  const wid = workspaceId(targetWorkspaceId);
+  const read = readerFor(data);
+  const markers = trustedMarkers(await readTrustedWorkspaceMarkers(read, wid), wid);
+  for (const marker of markers) {
+    const markerWriter = realText(marker.writerEmail);
+    if (!markerWriter) continue;
+    try {
+      const rows = await readSnapshotRows(read, wid, String(marker.snapshotId), false, markerWriter);
+      const catalog = catalogFromRows(marker, rows);
+      const trend = markers
+        .map((entry) => snapshotSummaryFromManifest(entry))
+        .filter((entry): entry is SnapshotSummary => !!entry);
+      return { data: { ...catalog, comments: [], syncRuns: [] }, trend };
+    } catch (error) {
+      console.warn("[atlas] insights snapshot unavailable", marker.snapshotId, error);
+    }
+  }
+  return null;
+}
+
 export async function loadHistoricalSnapshotFromDb(
   isPreview: boolean,
   snapshotId: string,

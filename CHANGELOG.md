@@ -8,6 +8,14 @@ release tag was published.
 
 ## [Unreleased]
 
+## [3.0.12] - 2026-11-19
+
+No schema or synchronization change, no resync needed.
+
+### Changed
+
+- Atlas Insights: every chart follows the Domain and Workspace filters. Detail charts (items by type, access by level, lineage health, retirement signals, job runs, items per owner) and the snapshot trend now aggregate all scoped workspaces instead of the active one only. Atlas reads each workspace's latest validated snapshot on demand, caches it per snapshot id, and sums trends by carrying each workspace's latest point forward. Card subtitles show loading progress and how many scoped workspaces have a snapshot.
+
 ## [3.0.11] - 2026-11-19
 
 ### Fixed
@@ -1203,7 +1211,8 @@ Fabric Atlas 3.0 runs on the generally available Rayfin 2.0 and adds the governa
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v3.0.11...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v3.0.12...HEAD
+[3.0.12]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.12
 [3.0.11]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.11
 [3.0.10]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.10
 [3.0.9]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.9

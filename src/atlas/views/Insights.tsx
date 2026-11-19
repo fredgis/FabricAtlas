@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowRight, Download, PieChart } from "lucide-react";
 import { useAtlas } from "../store";
+import { useInsightSnapshots } from "../insight-snapshots";
 import type { AtlasNavigation, GovernanceSection, Tab } from "../navigation";
 import {
   buildAtlasInsights,
@@ -539,12 +540,12 @@ const SELECT = "h-[2rem] min-w-[10rem] rounded-md border border-input bg-card px
 
 export function InsightsView({ onNavigate }: { onNavigate: (navigation: AtlasNavigation) => void }) {
   const {
-    data, history, workspaceSyncStatuses, governanceTargets, connectionInventory,
+    data, history, workspaceSyncStatuses, governanceTargets, connectionInventory, isPreview,
   } = useAtlas();
   const [period, setPeriod] = useState<InsightPeriod>(12);
   const [domain, setDomain] = useState("");
   const [workspace, setWorkspace] = useState("");
-  const insights = useMemo(() => buildAtlasInsights({
+  const buildInput = useMemo(() => ({
     data,
     trend: history.trend,
     statuses: workspaceSyncStatuses,
@@ -553,6 +554,14 @@ export function InsightsView({ onNavigate }: { onNavigate: (navigation: AtlasNav
     period,
     scope: { ...(domain ? { domain } : {}), ...(workspace ? { workspace } : {}) },
   }), [connectionInventory.inventory, data, domain, governanceTargets, history.trend, period, workspace, workspaceSyncStatuses]);
+  const scoped = useMemo(() => buildAtlasInsights(buildInput), [buildInput]);
+  // Every scoped workspace feeds the detail charts: the others' snapshots are read on demand.
+  const otherIds = useMemo(() => scoped.workspaces.filter((entry) => !entry.active).map((entry) => entry.id), [scoped.workspaces]);
+  const { snapshots, loading } = useInsightSnapshots({ isPreview, workspaceIds: otherIds, statuses: workspaceSyncStatuses });
+  const insights = useMemo(
+    () => (Object.keys(snapshots).length ? buildAtlasInsights({ ...buildInput, snapshots }) : scoped),
+    [buildInput, scoped, snapshots],
+  );
 
   const workspaceOptions = insights.allWorkspaces.filter((entry) => !domain || entry.domainKey === domain);
   const chooseWorkspace = (id: string) => setWorkspace(id);
@@ -567,22 +576,19 @@ export function InsightsView({ onNavigate }: { onNavigate: (navigation: AtlasNav
   const scopeLabel = workspace
     ? insights.allWorkspaces.find((entry) => entry.id === workspace)?.name ?? "Selected workspace"
     : `${insights.workspaces.length} workspace${insights.workspaces.length === 1 ? "" : "s"}${domain ? ` in ${insights.domainOptions.find((option) => option.key === domain)?.label ?? "domain"}` : ""}`;
-  const detailSubtitle = workspace ? undefined : `Details for ${data.workspace.displayName}`;
   const noData = "No data yet. It appears after the next synchronization.";
-  // Detail charts need the full snapshot of the active workspace, switched in the global header selector.
-  const scopedName = insights.workspaces.length === 1 ? insights.workspaces[0].name : undefined;
-  const detailEmpty = insights.activeInScope ? undefined
-    : !insights.allWorkspaces.length ? noData
-      : scopedName ? `Details need ${scopedName} as the active workspace: switch it in the header selector.`
-        : "The active workspace is outside this scope: switch it in the header selector.";
-  const hasItems = insights.activeInScope && data.items.length > 0;
+  const { loaded, total: scopedTotal } = insights.detailCoverage;
+  const detailSubtitle = loading ? `Loading ${scopedTotal - loaded} more workspace${scopedTotal - loaded === 1 ? "" : "s"}…`
+    : loaded < scopedTotal ? `${loaded} of ${scopedTotal} workspaces with a snapshot` : undefined;
+  const detailEmpty = loaded ? undefined : loading ? "Loading workspace snapshots…" : noData;
+  const hasItems = insights.detailItems > 0;
   const trendValues = (key: "items" | "failing") => insights.trend.map((point) => Number(point[key]) || 0);
   const lineagePct = insights.lineage.lineageKnown && insights.lineage.edges
     ? Math.round((insights.lineage.resolved / insights.lineage.edges) * 100) : null;
   const linkedPct = insights.lineage.lineageKnown && hasItems
-    ? Math.round((insights.lineage.itemsWithLineage / data.items.length) * 100) : null;
+    ? Math.round((insights.lineage.itemsWithLineage / insights.detailItems) * 100) : null;
   const accessTotal = insights.access.reduce((sum, slice) => sum + slice.value, 0);
-  const detailItems = hasItems ? data.items.length : 0;
+  const detailItems = insights.detailItems;
   const workspaceMax = Math.max(1, ...insights.workspaces.map((entry) => (entry.findings ? total(entry.findings) : 0)));
 
   return (
@@ -635,7 +641,7 @@ export function InsightsView({ onNavigate }: { onNavigate: (navigation: AtlasNav
         <Kpi title="Fabric items" value={String(insights.items)} detail={scopeLabel}
           chart={<Sparkline values={trendValues("items")} color="#0078d4" />} onOpen={open("catalog")} />
         <Kpi title="Job success rate" value={insights.jobs.rate == null ? "–" : `${insights.jobs.rate}%`}
-          detail={insights.activeInScope ? `${insights.jobs.runs} runs · ${data.workspace.displayName}` : "Select a workspace"}
+          detail={`${insights.jobs.runs} runs · ${scopeLabel}`}
           chart={<Ring value={insights.jobs.rate} color="#107c10" label="Job success rate" />} onOpen={open("jobs")} />
         <Kpi title="Sensitivity coverage" value={insights.labeled.rate == null ? "–" : `${insights.labeled.rate}%`}
           detail={`${insights.labeled.labeled} of ${insights.labeled.total} items labeled`}
@@ -643,7 +649,7 @@ export function InsightsView({ onNavigate }: { onNavigate: (navigation: AtlasNav
       </div>
 
       <div className="grid gap-m xl:grid-cols-[3fr_2fr]">
-        <ChartCard title="Snapshot trend" subtitle={workspace ? `Last ${period} months` : `${data.workspace.displayName} · last ${period} months`}
+        <ChartCard title="Snapshot trend" subtitle={detailSubtitle ?? `${scopeLabel} · last ${period} months`}
           rows={insights.trend.map((point) => [new Date(point.syncedAt).toLocaleDateString(), `${point.items} items · ${point.labels} labeled · ${point.failing} failing · ${point.failedJobs} failed jobs · ${point.brokenEdges} broken`])}
           empty={detailEmpty ?? (insights.trend.length < 2 ? "Needs at least two validated snapshots in this period." : undefined)}
           open={{ label: "History", onClick: open("governance", "history") }}>
