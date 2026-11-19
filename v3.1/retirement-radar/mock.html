@@ -123,6 +123,12 @@ tr.on td:first-child{box-shadow:inset 3px 0 0 var(--primary)}
 .chk{display:flex;align-items:flex-start;gap:7px;font-size:12px;padding:5px 0;border-bottom:1px dashed var(--border)}
 .chk:last-child{border-bottom:0}
 .chk .ok{color:var(--healthy);font-weight:700}.chk .ko{color:var(--d-fg);font-weight:700}.chk .un{color:var(--muted-fg);font-weight:700}
+.chartcard{padding:8px 14px}
+.lg{display:grid;grid-template-columns:112px 1fr 16px;align-items:center;gap:8px;font-size:11px;line-height:14px}
+.lgl{color:var(--muted-fg);white-space:nowrap}
+.lgb{height:6px;border-radius:9px;background:var(--muted);overflow:hidden}
+.lgb>i{display:block;height:100%;border-radius:9px;background:#a4262c;opacity:.75}
+.lg b{text-align:right;font-size:11.5px}
 </style></head>
 <body>
 <div class="spectrum"></div>
@@ -165,11 +171,12 @@ tr.on td:first-child{box-shadow:inset 3px 0 0 var(--primary)}
       </div>
     </div>
 
-    <div class="grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:13px">
+    <div class="grid" style="grid-template-columns:repeat(3,1fr) 1.75fr;margin-bottom:13px">
       <div class="card kpi warn"><div class="l"><span data-i="archive" data-s="14"></span>Candidates to review</div><div class="v num">7</div><div class="d">2 new since last snapshot</div></div>
-      <div class="card kpi"><div class="l"><span data-i="activity" data-s="14"></span>Signals combined</div><div class="v num">5</div><div class="d">Dormant · failed jobs · no consumer · no owner · no trust metadata</div></div>
       <div class="card kpi"><div class="l"><span data-i="user" data-s="14"></span>Marked for follow-up</div><div class="v num">2</div><div class="d">Personal review state, kept across syncs</div></div>
       <div class="card kpi"><div class="l"><span data-i="info" data-s="14"></span>Skipped, evidence unknown</div><div class="v num">3</div><div class="d">Lineage or jobs section incomplete</div></div>
+      <div class="card kpi chartcard"><div class="l"><span data-i="activity" data-s="14"></span>Signal profile of the 7 candidates</div>
+        <div style="display:flex;align-items:center;gap:14px;margin-top:2px"><svg width="104" height="84" viewBox="0 0 124 100" style="flex-shrink:0"><polygon points="62.0,37.3 74.0,46.1 69.4,60.2 54.6,60.2 50.0,46.1" fill="none" stroke="#e0e0e0" stroke-width="1"/><polygon points="62.0,24.7 86.1,42.2 76.9,70.5 47.1,70.5 37.9,42.2" fill="none" stroke="#e0e0e0" stroke-width="1"/><polygon points="62.0,12.0 98.1,38.3 84.3,80.7 39.7,80.7 25.9,38.3" fill="none" stroke="#e0e0e0" stroke-width="1"/><line x1="62" y1="50" x2="62.0" y2="12.0" stroke="#e0e0e0" stroke-width="1"/><line x1="62" y1="50" x2="98.1" y2="38.3" stroke="#e0e0e0" stroke-width="1"/><line x1="62" y1="50" x2="84.3" y2="80.7" stroke="#e0e0e0" stroke-width="1"/><line x1="62" y1="50" x2="39.7" y2="80.7" stroke="#e0e0e0" stroke-width="1"/><line x1="62" y1="50" x2="25.9" y2="38.3" stroke="#e0e0e0" stroke-width="1"/><polygon points="62.0,28.3 87.8,41.6 68.4,58.8 58.8,54.4 41.3,43.3" fill="rgba(164,38,44,.16)" stroke="#a4262c" stroke-width="1.6"/><circle cx="62.0" cy="28.3" r="2.6" fill="#a4262c"/><circle cx="87.8" cy="41.6" r="2.6" fill="#a4262c"/><circle cx="68.4" cy="58.8" r="2.6" fill="#a4262c"/><circle cx="58.8" cy="54.4" r="2.6" fill="#a4262c"/><circle cx="41.3" cy="43.3" r="2.6" fill="#a4262c"/><text x="62.0" y="6.0" font-size="9" fill="#616161" text-anchor="middle" font-weight="600">Dormant</text><text x="106.7" y="38.5" font-size="9" fill="#616161" text-anchor="start" font-weight="600">Consumers</text><text x="89.6" y="91.0" font-size="9" fill="#616161" text-anchor="start" font-weight="600">Jobs</text><text x="34.4" y="91.0" font-size="9" fill="#616161" text-anchor="end" font-weight="600">Owner</text><text x="17.3" y="38.5" font-size="9" fill="#616161" text-anchor="end" font-weight="600">Trust</text></svg><div style="flex:1;min-width:0"><div class="lg"><span class="lgl">Dormant</span><span class="lgb"><i style="width:57%"></i></span><b class="num">4</b></div><div class="lg"><span class="lgl">No consumer</span><span class="lgb"><i style="width:71%"></i></span><b class="num">5</b></div><div class="lg"><span class="lgl">Failed jobs</span><span class="lgb"><i style="width:29%"></i></span><b class="num">2</b></div><div class="lg"><span class="lgl">No owner</span><span class="lgb"><i style="width:14%"></i></span><b class="num">1</b></div><div class="lg"><span class="lgl">No trust metadata</span><span class="lgb"><i style="width:57%"></i></span><b class="num">4</b></div></div></div></div>
     </div>
 
     <div class="grid" style="grid-template-columns:1fr 418px;align-items:start">
@@ -246,8 +253,7 @@ tr.on td:first-child{box-shadow:inset 3px 0 0 var(--primary)}
         <dl class="kv">
           <dt>Upstream</dt><dd>1 Lakehouse (<span class="mono">lh_catalog_silver</span>)</dd>
           <dt>Access</dt><dd class="num">9 principals · 1 external guest</dd>
-          <dt>Schema footprint</dt><dd class="num">11 tables · 46 measures</dd>
-          <dt>Rule IDs</dt><dd class="mono s11">dormant-producer, item-no-owner, trust-gap</dd>
+                    <dt>Rule IDs</dt><dd class="mono s11">dormant-producer, item-no-owner, trust-gap</dd>
         </dl>
 
         <div class="guard">
