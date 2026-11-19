@@ -8,6 +8,14 @@ release tag was published.
 
 ## [Unreleased]
 
+## [3.0.2] - 2026-11-19
+
+Patch release: the synchronization generation is unchanged, so an incremental sync is enough.
+
+### Fixed
+
+- After an incremental sync, KQL schema, KQL properties and report page coverage keep the status recorded when those items were collected, instead of "not applicable" because they were reused.
+
 ## [3.0.1] - 2026-11-19
 
 Patch release: the synchronization generation is unchanged, so an incremental sync is enough.
@@ -1120,7 +1128,8 @@ Fabric Atlas 3.0 runs on the generally available Rayfin 2.0 and adds the governa
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v3.0.1...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v3.0.2...HEAD
+[3.0.2]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.2
 [3.0.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.1
 [3.0.0]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.0
 [2.9.2]: https://github.com/fredgis/FabricAtlas/releases/tag/v2.9.2

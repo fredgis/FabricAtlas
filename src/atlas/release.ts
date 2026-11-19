@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "3.0.1";
+  "3.0.2";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,19 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "3.0.2",
+    date: "2026-11-19",
+    title: "Accurate coverage after incremental syncs",
+    sections: [
+      {
+        title: "Fixed",
+        items: [
+          "After an incremental sync, KQL schema, KQL properties and report page coverage keep the status from when those items were collected instead of showing \"not applicable\" because they were reused.",
+        ],
+      },
+    ],
+  },
   {
     version: "3.0.1",
     date: "2026-11-19",

@@ -56,6 +56,36 @@ export function planIncrementalSync(input: {
 }
 
 /**
+ * Codes a collector returns when it had no refreshed item to process. In an
+ * incremental run that only means the matching items were reused, so they
+ * must not overwrite the status recorded when those items were collected.
+ */
+const NOTHING_REFRESHED_CODES = new Set(["not-applicable", "no-structural-properties"]);
+
+type StatusMap = Record<string, { status?: "complete" | "unsupported" | "failed"; code?: string }>;
+
+function mergeReusedSections(
+  previous: StatusMap | undefined,
+  fresh: StatusMap | undefined,
+  reused: boolean,
+): StatusMap {
+  const merged: StatusMap = { ...previous, ...fresh };
+  if (!reused || !previous || !fresh) return merged;
+  for (const [name, status] of Object.entries(fresh)) {
+    const before = previous[name];
+    if (
+      before &&
+      status?.status === "unsupported" &&
+      NOTHING_REFRESHED_CODES.has(String(status.code)) &&
+      !NOTHING_REFRESHED_CODES.has(String(before.code))
+    ) {
+      merged[name] = before;
+    }
+  }
+  return merged;
+}
+
+/**
  * Copies the previous per-item enrichment for reused items into a fresh core
  * snapshot. Config sections listed in `regenerated` are rebuilt by the current
  * run for every item, so the previous copies are dropped to avoid duplicates.
@@ -94,8 +124,8 @@ export function applyReusedEnrichment(
     ],
     objectEdges: [...freshObjectEdges, ...reusedObjectEdges],
     objectLineage: undefined,
-    sections: { ...previous.sections, ...fresh.sections },
-    capabilities: { ...previous.capabilities, ...fresh.capabilities },
+    sections: mergeReusedSections(previous.sections, fresh.sections, ids.size > 0),
+    capabilities: mergeReusedSections(previous.capabilities, fresh.capabilities, ids.size > 0),
   };
 }
 
