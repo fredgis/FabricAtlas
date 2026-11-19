@@ -1,4 +1,5 @@
 import {
+  Archive,
   ArrowRight,
   CheckCircle2,
   CheckCheck,
@@ -90,6 +91,8 @@ import { useAtlas } from "../store";
 import { Card, SectionLabel, cn } from "../ui";
 import { SensitivityView } from "./Sensitivity";
 import { PoliciesAiSection } from "./PoliciesAi";
+import { RetirementRadarSection } from "./RetirementRadar";
+import { buildRetirementRadar } from "../retirement-radar";
 import { buildAiGovernanceInventory } from "../policies-ai";
 import { groupFindingsByRule } from "../finding-groups";
 import {
@@ -783,6 +786,7 @@ export function GovernanceCenterView({
       ),
     [governanceExceptions],
   );
+  const retirementCount = useMemo(() => buildRetirementRadar(data).candidates.length, [data]);
   const hasNewPriorityAlert =
     radar.state === "ready" && allRadarEntries.length > 0;
   const tabs: Array<{
@@ -807,6 +811,13 @@ export function GovernanceCenterView({
       detail: "Actionable governance checks",
       count: findings.length,
       icon: ShieldAlert,
+    },
+    {
+      id: "retirement",
+      label: "Retirement radar",
+      detail: "Candidates for human retirement review",
+      count: retirementCount,
+      icon: Archive,
     },
     {
       id: "changes",
@@ -1321,6 +1332,19 @@ export function GovernanceCenterView({
 
           <NetworkCard evidence={data.governanceEvidence} />
           <OpenInFabricCard />
+        </div>
+      </Tabs.Content>
+      <Tabs.Content value="retirement" asChild>
+        <div>
+          <RetirementRadarSection
+            data={data}
+            acknowledgements={findingAcks}
+            pendingIds={findingAckPendingIds}
+            acknowledgementsLoading={findingAcksLoading}
+            onSaveReview={saveFindingAcknowledgement}
+            onClearReview={removeFindingAcknowledgement}
+            onNavigate={onNavigate}
+          />
         </div>
       </Tabs.Content>
       <Tabs.Content value="tenant-settings" asChild>

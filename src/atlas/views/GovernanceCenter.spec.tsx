@@ -153,7 +153,7 @@ describe("GovernanceCenterView", () => {
     });
 
     await waitFor(() =>
-      expect(screen.getByRole("tab", { name: /Changes/ })).toHaveAttribute(
+      expect(screen.getByRole("tab", { name: /Retirement radar/ })).toHaveAttribute(
         "aria-selected",
         "true",
       ),

@@ -170,7 +170,7 @@ Each block below is collapsed; open the one you need.
 | Workspaces and sync | Shared workspace scope, independent validated snapshots, persisted per-workspace run status, active-workspace switching, staged progress and last-known-good fallback |
 | Catalog and search | Item Catalog with facets and tag scope, Collection status with the reason for each missing section (for example schema-enabled Lakehouses, whose tables come only from the SQL analytics endpoint), alphabetized Asset Catalog, `Ctrl+K` search with description snippets, Request access link, Markdown identity sheet export per item, SQL/KQL/semantic/Ontology 2.0/graph/Data Agent inventory |
 | Lineage and impact | Trusted Atlas graph, connected type-filter context, stable Impact mode, Item Relations Preview, Evidence, Changes, X-Ray, notebook and semantic object lineage, Eventstream source and destination lineage, exportable impact reports, and [external lineage](docs/external-lineage.md): OpenLineage import, link to Fabric items and NDJSON export |
-| Governance | Findings with Fix in Fabric links, Why panel and priority score, sensitivity downgrade along lineage, dormant producers, Dataflow Gen1 to upgrade, Fabric app default identity, My items, OneLake catalog pillars (Health, Protect, Trust), JSON and snapshot export, Teams Adaptive Card and optional webhook, Fabric domain names, filter and per-domain posture, tenant settings drift, a closed six-pillar Governance Radar, snapshot comparison, history, item-family Coverage, posture targets, Policies & AI with policy set rules (Preview) and Data Agent telemetry switches, Sync Brief to Teams and optional AI description suggestions |
+| Governance | Findings with Fix in Fabric links, Why panel and priority score, sensitivity downgrade along lineage, dormant producers, Retirement radar (3.0.5), Dataflow Gen1 to upgrade, Fabric app default identity, My items, OneLake catalog pillars (Health, Protect, Trust), JSON and snapshot export, Teams Adaptive Card and optional webhook, Fabric domain names, filter and per-domain posture, tenant settings drift, a closed six-pillar Governance Radar, snapshot comparison, history, item-family Coverage, posture targets, Policies & AI with policy set rules (Preview) and Data Agent telemetry switches, Sync Brief to Teams and optional AI description suggestions |
 | Access | Effective recorded access, principal type and role filters, OneLake data access roles (RLS/CLS), sensitive external shares, personal decisions, What-if simulation and evidence-based departure packs, including the Fabric connections the principal owns and the apps that run under their identity |
 | Connections | Tenant connection inventory from the Fabric admin connections API (Preview), owners and pending owners, authentication and single sign-on, credential recency, items that use each connection across synchronized workspaces, ownership and gateway encryption findings, draft data connection policy simulation, changes between inventories and CSV export |
 | Operations | Job history, observed incidents, inferred downstream impact, Full or Incremental sync (one shared choice; a notice explains when a full scan is required because this browser holds no previous full snapshot or the 60-day full rescan is due), rescanned/reused counts and real run duration, Open in Fabric cards for Govern and Admin monitoring, configuration and team notes |
@@ -390,6 +390,36 @@ The complete rule set evaluated on every validated snapshot:
 | `domain-default-label-missing` | Medium | Unlabeled item in a domain whose default sensitivity label is known (replaces `missing-sensitivity`). Label priority is not collected, so lower labels are not evaluated |
 
 ![Fabric Atlas Governance Center](docs/screenshots/governance-center-v2.png)
+
+#### Retirement radar
+
+Since 3.0.5, the **Retirement radar** tab of Governance Center lists items for
+human retirement review. It combines evidence already in the snapshot and
+never claims that an item is unused or safe to delete, because read usage,
+ad-hoc queries and external tools are not observed.
+
+| Signal | Trigger |
+|---|---|
+| Dormant | `dormant-producer`, `item-inactive` or `endorsed-inactive` fires on the item |
+| No downstream consumer | Lakehouse, warehouse, semantic model or database with no recorded downstream item. Needs complete lineage; report and other consumer types never get it |
+| Failing runs | At least two collected recent runs, all failed |
+| No owner | `missing-owner` fires on the item |
+| No trust metadata | Not endorsed, no sensitivity label and no description |
+| Duplicate name | Another item of the same type with the same name, ignoring copy markers such as "(copy)" or "(2)" |
+
+An item is listed with at least two signals, one of them Dormant, No
+downstream consumer, Failing runs or Duplicate name. Incomplete lineage or
+jobs keep the signal Unknown and are counted separately, never as a signal.
+Each candidate explains its signals and shows owner, sensitivity,
+endorsement, lineage, access and recent runs. A signal profile chart shows
+which signals drive the candidates. Filters cover signal, item type, owner,
+signal count and review state, and the filtered list exports as CSV or
+Markdown.
+
+Review state is personal and kept across synchronizations: **Mark
+follow-up**, **Mark reviewed** (reopens when the signals change), **Mute** and
+**Reopen**. It reuses the personal finding acknowledgement records, so no
+schema change is needed.
 
 #### Policies & AI
 

@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "3.0.4";
+  "3.0.5";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,19 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "3.0.5",
+    date: "2026-11-19",
+    title: "Retirement radar",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Retirement radar in Governance Center: items for human retirement review from combined evidence (dormant, no downstream consumer, failing runs, no owner, no trust metadata, duplicate name), with a per-signal explanation, a signal profile chart, filters, CSV and Markdown export, and personal follow-up, reviewed and mute states. It never claims an item is unused or safe to delete.",
+        ],
+      },
+    ],
+  },
   {
     version: "3.0.4",
     date: "2026-11-19",

@@ -73,6 +73,7 @@ const GOVERNANCE_SECTIONS = new Set([
   "posture",
   "policies-ai",
   "tenant-settings",
+  "retirement",
 ]);
 const GOVERNANCE_SEVERITIES = new Set([
   "all",

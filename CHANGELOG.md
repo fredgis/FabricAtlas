@@ -8,6 +8,14 @@ release tag was published.
 
 ## [Unreleased]
 
+## [3.0.5] - 2026-11-19
+
+Patch release: no schema or synchronization change, no resync needed.
+
+### Added
+
+- **Retirement radar** tab in Governance Center (#35). Items for human retirement review from combined snapshot evidence: dormant, no downstream consumer (producer types only, complete lineage required), failing runs (at least two, all failed), no owner, no trust metadata (not endorsed, no label, no description) and duplicate name. An item needs two signals including one retirement signal. Each candidate explains its signals with owner, sensitivity, endorsement, lineage, access and recent runs; a signal profile chart, filters (signal, item type, owner, signal count, review state) and CSV and Markdown export are included. Personal review state (follow-up, reviewed, muted) reuses the finding acknowledgement records and survives synchronizations; a reviewed candidate reopens when its signals change. Atlas never claims an item is unused or safe to delete.
+
 ## [3.0.4] - 2026-11-19
 
 ### Changed
@@ -1142,7 +1150,8 @@ Fabric Atlas 3.0 runs on the generally available Rayfin 2.0 and adds the governa
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v3.0.4...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v3.0.5...HEAD
+[3.0.5]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.5
 [3.0.4]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.4
 [3.0.3]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.3
 [3.0.2]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.2
