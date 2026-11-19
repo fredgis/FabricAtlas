@@ -1,4 +1,4 @@
-# Spike: Fabric policies (Policies center) — G20 / #83
+# Spike: Fabric policies (Policies center), G20 / #83
 
 **Outcome:** read-only awareness in Atlas; rule and activation collection deferred.
 

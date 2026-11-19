@@ -1,4 +1,4 @@
-# Atlas Scout — Fabric Data Agent
+# Atlas Scout: Fabric Data Agent
 
 Atlas Scout is a read-only Fabric Data Agent that answers governance questions in
 plain language over the Fabric Atlas SQL database. The **Atlas Scout** tab of the

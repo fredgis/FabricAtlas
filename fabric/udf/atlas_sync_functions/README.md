@@ -1,4 +1,4 @@
-# atlas_sync_functions — Fabric User Data Function
+# atlas_sync_functions: Fabric User Data Function
 
 This is the server-side function Fabric Atlas calls when you click **Sync**. It
 runs inside Fabric, receives the signed-in user's token, and returns the whole
@@ -180,6 +180,6 @@ app's hosting origin registered as a SPA redirect URI.
   labels and tags remain stable IDs when no trusted display-name lookup exists.
 - The current portable Fabric UDF Python API does not expose the containing
   workspace/item identity to this function. Consequently, the UDF cannot
-  independently enforce “only its deployed workspace” without a deployment-time
+  independently enforce "only its deployed workspace" without a deployment-time
   workspace setting. No workspace ID is hardcoded in tracked source; this remains
   a deployment/runtime limitation.

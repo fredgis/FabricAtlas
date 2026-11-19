@@ -26,6 +26,10 @@ business data or credentials.
   `rayfin/functions/src/tenant-connections.ts` collects it once per
   synchronization batch from the Fabric admin connections API (Preview).
 - `src/atlas/lineage.ts` normalizes and lays out lineage graphs.
+- `src/atlas/insights.ts`, `src/atlas/insight-snapshots.ts` and
+  `src/atlas/views/Insights.tsx` build Atlas Insights from the stored
+  snapshots of every workspace in scope; `src/atlas/retirement-radar.ts`
+  builds the Retirement radar of Governance Center.
 - `src/atlas/views/` contains the application pages.
 - `src/atlas/mcp/` defines the read-only Atlas MCP contract and evidence tools;
   `src/mcp/` is its local stdio entry point. Keep every tool read-only and
@@ -45,7 +49,12 @@ business data or credentials.
 
 - Use real Fabric or Rayfin metadata; never add mock production data.
 - Keep dark and light themes working through semantic tokens in `src/global.css`.
-- Use the existing spacing, typography, color and radius tokens.
+- Use the existing spacing, typography, color and radius tokens. Never use
+  `leading-none`: the theme resolves it to a 0px line height, and
+  `ui-contract.spec.ts` rejects it.
+- Switch the active workspace only from the global header; pages under
+  `src/atlas/views/` must not call `selectWorkspace` (also checked by
+  `ui-contract.spec.ts`).
 - Keep source comments in English.
 - Preserve the first-sync gate and staged synchronization progress.
 - Keep the configured synchronizer contact visible when another user is blocked

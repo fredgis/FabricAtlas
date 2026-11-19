@@ -41,6 +41,13 @@ governance signals announced at **Microsoft Ignite 2026**:
   production hardening checklist;
 - the Ignite 2026 item types, including PostgreSQL database and Policy set.
 
+The 3.0 patch releases added two review screens: the **Retirement radar** in
+Governance Center (3.0.5) and **Atlas Insights**, a charts-only dashboard over
+every synchronized workspace (3.0.9 to 3.0.12). They also made synchronization
+sturdier: a long run history no longer blanks the jobs section, incremental
+runs keep the coverage of reused items, and a full rescan is forced every 60
+days instead of every 7.
+
 See [CHANGELOG.md](CHANGELOG.md) for the details and upgrade notes.
 
 ## What it does
@@ -70,6 +77,10 @@ Fabric Atlas collects that metadata without copying business data.
   download a Teams Adaptive Card or send the Sync Brief to Teams.
 - Scope governance by Fabric domain, review per-domain posture, and see why a
   finding was raised with a deterministic priority score.
+- Follow posture, findings, items, access, lineage and jobs across every
+  synchronized workspace in Atlas Insights, filtered by domain or workspace.
+- List items worth a retirement review in the Retirement radar, with the
+  evidence behind each signal and a personal review state.
 - Review Fabric policy set rules (Preview), Data Agent telemetry switches,
   tenant settings drift, OneLake data access roles, public network access and
   external shares.
@@ -168,7 +179,7 @@ Each block below is collapsed; open the one you need.
 | Area | Included in Fabric Atlas 3.0 |
 |---|---|
 | Workspaces and sync | Shared workspace scope, independent validated snapshots, persisted per-workspace run status, active-workspace switching, staged progress and last-known-good fallback |
-| Atlas Insights (3.0.9) | Charts-only dashboard in the left menu: posture, findings, items, job success and label coverage tiles, snapshot trend with a dashed linear projection, posture by pillar, findings and label coverage by workspace, domain × pillar heatmap, items by type, access by level, lineage health, retirement signals, job-run calendar, items per owner and connections by connector. Empty or unknown evidence is drawn as a ghost or hatched chart with a short note, never as zero or healthy |
+| Atlas Insights (3.0.9) | Charts-only dashboard in the left menu, filtered by domain and workspace and aggregated over every workspace in scope: posture, findings, items, job success and label coverage tiles, snapshot trend with a dashed linear projection, posture by pillar, findings and label coverage by workspace, domain × pillar heatmap, items by type, access by level, lineage health, retirement signals, job-run calendar, items per owner and connections by connector. Empty or unknown evidence is drawn as a ghost or hatched chart with a short note, never as zero or healthy |
 | Catalog and search | Item Catalog with facets and tag scope, Collection status with the reason for each missing section (for example schema-enabled Lakehouses, whose tables come only from the SQL analytics endpoint), alphabetized Asset Catalog, `Ctrl+K` search with description snippets, Request access link, Markdown identity sheet export per item, SQL/KQL/semantic/Ontology 2.0/graph/Data Agent inventory |
 | Lineage and impact | Trusted Atlas graph, connected type-filter context, stable Impact mode, Item Relations Preview, Evidence, Changes, X-Ray, notebook and semantic object lineage, Eventstream source and destination lineage, exportable impact reports, and [external lineage](docs/external-lineage.md): OpenLineage import, link to Fabric items and NDJSON export |
 | Governance | Findings with Fix in Fabric links, Why panel and priority score, sensitivity downgrade along lineage, dormant producers, Retirement radar (3.0.5), Dataflow Gen1 to upgrade, Fabric app default identity, My items, OneLake catalog pillars (Health, Protect, Trust), JSON and snapshot export, Teams Adaptive Card and optional webhook, Fabric domain names, filter and per-domain posture, tenant settings drift, a closed six-pillar Governance Radar, snapshot comparison, history, item-family Coverage, posture targets, Policies & AI with policy set rules (Preview) and Data Agent telemetry switches, Sync Brief to Teams and optional AI description suggestions |
@@ -244,9 +255,10 @@ security, Purview DLP or actual data access.
 <details>
 <summary><strong>Product screenshots</strong></summary>
 
-These screens come from Fabric Atlas 2.x and a live FGI-MAIN
-metadata snapshot, except Connections, which shows the built-in preview sample
-data. Counts change when the workspace is synchronized again.
+Most screens come from Fabric Atlas 2.x and a live FGI-MAIN metadata
+snapshot. Atlas Insights comes from 3.0.12 with the four FGI workspaces, and
+Connections shows the built-in preview sample data. Counts change when a
+workspace is synchronized again.
 
 #### Workspace overview
 
@@ -336,35 +348,43 @@ upstream and downstream dependencies instead of an empty graph.
 
 #### Atlas Insights
 
-Since 3.0.9, **Explore > Atlas Insights** is a charts-only dashboard built from
-the validated snapshots already loaded by Atlas; nothing is collected or
-deployed outside the app.
+**Explore > Atlas Insights** (since 3.0.9) is a dashboard made only of
+charts. It reads the validated snapshots that Atlas already stores, so it
+needs no extra collection, no Power BI report and nothing deployed outside the
+app.
 
-- Filters: **Domain** and **Workspace** (both *All* by default) and the
-  snapshot period. Cross-workspace figures (tiles, posture by pillar,
-  findings and labels by workspace, domain heatmap) come from each
-  workspace's governance summary. Since 3.0.12 the detail charts (items by
-  type, access, lineage, retirement signals, job runs, owners, snapshot
-  trend) also aggregate every workspace in the scope: Atlas reads each
-  workspace's latest validated snapshot on demand and caches it until the
-  next synchronization. Workspaces without a snapshot are counted in the card
-  subtitle ("2 of 3 workspaces with a snapshot").
+![Atlas Insights across the four synchronized FGI workspaces](docs/screenshots/atlas-insights-v3.png)
+
+The **Domain** and **Workspace** filters start on *All*, and every chart
+follows them. Tiles, posture by pillar, findings and labels by workspace and
+the domain heatmap use each workspace's governance summary. The detail charts
+(items by type, access, lineage, retirement signals, job runs, owners and the
+snapshot trend) add up the full snapshots of the workspaces in scope. Atlas
+reads each snapshot on demand and keeps it until that workspace synchronizes
+again. A workspace without a snapshot is counted in the card subtitle, for
+example *2 of 3 workspaces with a snapshot*.
+
+The capture shows FGI-MAIN, FGI, FGI-ORACLE and MSFlix together: 200 items,
+805 open findings, a 79% job success rate over 104 runs, and 0% sensitivity
+coverage because none of the 181 items that can carry a label has one yet.
 
 - Tiles: governance posture (average of the OneLake Health, Protect and Trust
   pillars), open findings, Fabric items, job success rate and sensitivity
   label coverage, with rings or sparklines.
-- Charts: snapshot trend over the last 3, 6 or 12 months (with a dashed
-  **Projection**, a linear extrapolation that is labeled as such), posture by
-  pillar against a target of 70, findings and label coverage by synchronized
-  workspace (from their governance summaries), domain × pillar heatmap, items
-  by type, access by level, lineage health, retirement signal radar,
-  job-run calendar (recent runs kept per item), items per owner and
+- Charts: snapshot trend over the last 3, 6 or 12 months, posture by pillar
+  against a target of 70, findings and label coverage by workspace, a
+  domain × pillar heatmap, items by type, access by level, lineage health, a
+  retirement signal radar, a job-run calendar, items per owner and
   connections by connector.
-- A card with no data shows a ghost of its chart and a short reason (for
-  example *Needs at least two validated snapshots*); Unknown evidence is
-  hatched, never drawn as zero or healthy.
+- Across several workspaces the trend is a sum: at each date, every workspace
+  counts with its latest snapshot. From three snapshots, a dashed
+  **Projection** extends the lines. It is a linear extrapolation and the
+  legend says so.
+- A card without data shows a ghost of its chart and the reason (for example
+  *Needs at least two validated snapshots*). Unknown evidence is hatched; it
+  is never drawn as zero or healthy.
 - Each card opens the matching Atlas view, downloads its chart as PNG and has
-  a *View data* table; every chart has a text alternative.
+  a *View data* table. Every chart has a text alternative.
 
 #### Governance Center
 
@@ -766,7 +786,7 @@ Saved views, access-review decisions and Governance Radar acknowledgements are
 different: Rayfin policies bind those records to the authenticated subject, so
 each user sees only their own personal state.
 
-Access decisions are now append-only events. Older decisions remain in the
+Access decisions are append-only events. Older decisions remain in the
 history but require a new review because they do not contain a permission
 fingerprint. Clearing a decision appends an event rather than deleting history.
 
@@ -808,7 +828,7 @@ contracts or a separate product decision.
 | Connections | Tenant inventory readable by every Atlas user (a dedicated governance workspace is assumed); usage covers shortcuts and mirroring only; data connection policies are simulated as a personal draft | Administrator-only reading ([#98](https://github.com/fredgis/FabricAtlas/issues/98)), pipeline and Dataflow connection parsing, a public API for the configured policies |
 | Report visual usage | Not collected | A supported report definition path with sensitivity and permission handling |
 | Shared action plans and notifications | Optional Teams webhook for new critical findings and the Sync Brief; no shared action plans | Reviewed team workflow and ownership model |
-| Generated Power BI posture report (PBIP) | Not implemented; JSON and snapshot export, the Teams card and webhook cover sharing in 2.6 | A reviewed report template fed by the published snapshot |
+| Posture reporting outside Atlas | Atlas Insights covers the dashboard inside the app, with PNG and data-table export per chart; there is no Power BI (PBIP) template | A reviewed report template fed by the published snapshot, if teams need the charts outside Atlas |
 | 3.0 release line | See [the latest release](https://github.com/fredgis/FabricAtlas/releases/latest) and [CHANGELOG.md](CHANGELOG.md) | Patch releases for verified fixes; larger workflows depend on the contracts above |
 
 ## Development

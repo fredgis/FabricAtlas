@@ -94,7 +94,7 @@ is returned, because resuming would skip them silently.
 - `coverage`: pages fetched, entries received, returned, skipped as malformed,
   merged as duplicates and descriptions truncated, plus `moreAvailable` and
   `stopReason` (`page-limit`, `deadline-exhausted`, `result-limit`, `failure`).
-- `entries`: allowlisted fields only — `id`, `catalogEntryType`, `type`,
+- `entries`: allowlisted fields only: `id`, `catalogEntryType`, `type`,
   `displayName`, `description` (control characters removed, at most 500
   characters), `workspaceId` and `workspaceDisplayName`. Unknown upstream
   fields are dropped. IDs are lowercased and each entry has a stable
