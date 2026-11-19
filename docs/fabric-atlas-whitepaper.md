@@ -797,7 +797,7 @@ keeps its last valid snapshot until its own run publishes a new manifest.
 
 Runs can be full or incremental. The last FGI-MAIN incremental run rescanned 13
 of 90 items and reused 77 in 12 minutes 43 seconds, against 8 minutes 59
-seconds for the preceding full run. A full rescan is forced every seven days.
+seconds for the preceding full run. A full rescan is forced every 60 days.
 
 Scheduled refresh is disabled. Fabric Apps backend Functions do not expose a
 documented timer or unattended trigger, and the collectors need a delegated

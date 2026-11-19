@@ -10,7 +10,7 @@ export interface SyncPlanItem {
 }
 
 /** Incremental runs fall back to a full rescan once the last full collection is older than this. */
-export const FULL_RESCAN_INTERVAL_DAYS = 7;
+export const FULL_RESCAN_INTERVAL_DAYS = 60;
 
 /** True when the last full collection is missing, unparsable or older than {@link FULL_RESCAN_INTERVAL_DAYS}. */
 export function fullRescanDue(fullAt: string | undefined, now = Date.now()): boolean {
