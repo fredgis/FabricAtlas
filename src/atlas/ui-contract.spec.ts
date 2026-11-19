@@ -37,6 +37,17 @@ describe("UI class contract", () => {
     );
   });
 
+  it("never uses leading-none, which the theme resolves to a 0px line height", () => {
+    // In this theme leading-none computes to 0px, so the next line draws over the text.
+    const root = resolve(process.cwd(), "src", "atlas");
+    const offenders = sourceFiles(root).flatMap((file) =>
+      [...readFileSync(file, "utf8").matchAll(/\bleading-none\b/g)].map(
+        (match) => `${relative(root, file)}: ${match[0]}`,
+      ),
+    );
+    expect(offenders).toEqual([]);
+  });
+
   it("never sizes containers with the xs/xl keys that collide with spacing tokens", () => {
     const root = resolve(process.cwd(), "src");
     const offenders = sourceFiles(root).flatMap((file) =>

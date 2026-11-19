@@ -8,6 +8,12 @@ release tag was published.
 
 ## [Unreleased]
 
+## [3.0.11] - 2026-11-19
+
+### Fixed
+
+- Atlas Insights: the KPI tile value no longer draws over its title. It used `leading-none`, which the Atlas theme resolves to a 0px line height; tiles and card headers now use the theme line-height tokens, and a UI contract test rejects `leading-none` in the views.
+
 ## [3.0.10] - 2026-11-19
 
 No schema or synchronization change, no resync needed.
@@ -1197,7 +1203,8 @@ Fabric Atlas 3.0 runs on the generally available Rayfin 2.0 and adds the governa
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v3.0.10...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v3.0.11...HEAD
+[3.0.11]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.11
 [3.0.10]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.10
 [3.0.9]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.9
 [3.0.8]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.8
