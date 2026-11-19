@@ -27,7 +27,7 @@ describe("InsightsView", () => {
     const items = screen.getByRole("region", { name: "Items by type" });
     expect(within(items).getByText(/No data yet/)).toBeVisible();
     expect(within(items).getByRole("img", { name: "No items yet", hidden: true })).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "Snapshot trend" })).getByText(/two validated snapshots/)).toBeVisible();
+    expect(within(screen.getByRole("region", { name: "Snapshot trend" })).getByText(/No data yet/)).toBeVisible();
     expect(within(screen.getByRole("region", { name: "Connections by connector" })).getByText(/not collected yet/)).toBeVisible();
     expect(screen.getAllByRole("img", { name: /Unknown/ }).length).toBeGreaterThan(0);
   });
@@ -47,7 +47,7 @@ describe("InsightsView", () => {
     const items = screen.getByRole("region", { name: "Items by type" });
     expect(within(items).getByRole("img", { name: "Lakehouse: 1, Report: 1" })).toBeInTheDocument();
     expect(within(items).queryByText(/No data yet/)).toBeNull();
-    expect(screen.getByRole("img", { name: "Edges resolved: 100%" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /Edges resolved: 100%/ })).toBeInTheDocument();
     fireEvent.click(within(items).getByRole("button", { name: /Catalog/ }));
     expect(onNavigate).toHaveBeenCalledWith(expect.objectContaining({ tab: "catalog" }));
     fireEvent.click(screen.getByRole("button", { name: /Open findings/ }));

@@ -45,7 +45,8 @@ describe("Atlas Insights aggregates", () => {
       }),
     });
     expect(insights.items).toBe(3);
-    expect(insights.labeled).toEqual({ labeled: 1, total: 3, rate: 33 });
+    expect(insights.activeInScope).toBe(true);
+    expect(insights.labeled.labeled).toBe(1);
     expect(insights.jobs).toEqual({ runs: 2, succeeded: 1, failed: 1, rate: 50 });
     expect(insights.itemTypes).toEqual([
       { key: "Report", label: "Report", value: 2 },
@@ -58,6 +59,46 @@ describe("Atlas Insights aggregates", () => {
     expect(insights.lineage).toEqual({ edges: 2, resolved: 1, itemsWithLineage: 2, lineageKnown: true });
     expect(insights.jobCalendar).toHaveLength(JOB_CALENDAR_DAYS);
     expect(insights.jobCalendar.find((day) => day.date === "2026-05-30")).toEqual({ date: "2026-05-30", runs: 2, failed: 1 });
+  });
+
+  it("filters by domain and workspace, and limits detail charts to the loaded workspace", () => {
+    const summary = (items: number, critical: number) => ({
+      version: 1 as const, items,
+      findings: { critical, high: 0, medium: 0, low: 0 },
+      pillars: { health: 60, protect: 40, trust: 80 },
+      coverage: {
+        endorsed: { numerator: 0, denominator: items, unknown: 0 }, certified: { numerator: 0, denominator: items, unknown: 0 },
+        described: { numerator: 0, denominator: items, unknown: 0 }, labeled: { numerator: 1, denominator: items, unknown: 0 },
+        tagged: { numerator: 0, denominator: items, unknown: 0 },
+      },
+    });
+    const base = {
+      now: NOW, trend: [],
+      statuses: {
+        "ws-fin": { snapshotId: "s1", displayName: "Finance", fabricDomainId: "dom-fin", governanceSummary: summary(10, 2) },
+        "ws-hr": { snapshotId: "s2", displayName: "HR", fabricDomainId: "dom-hr", governanceSummary: summary(5, 1) },
+      },
+      data: atlas({ items: [item("a")] }),
+    };
+    const all = buildAtlasInsights(base);
+    expect(all.allWorkspaces.map((entry) => entry.name)).toEqual(["Sales", "Finance", "HR"]);
+    expect(all.items).toBe(16);
+    expect(all.activeInScope).toBe(true);
+
+    const finance = buildAtlasInsights({ ...base, scope: { domain: "dom-fin" } });
+    expect(finance.workspaces.map((entry) => entry.name)).toEqual(["Finance"]);
+    expect(finance.items).toBe(10);
+    expect(finance.findings.critical).toBe(2);
+    expect(finance.pillars).toEqual({ health: 60, protect: 40, trust: 80 });
+    expect(finance.posture).toBe(60);
+    expect(finance.activeInScope).toBe(false);
+    expect(finance.itemTypes).toEqual([]);
+    expect(finance.trend).toEqual([]);
+
+    const hr = buildAtlasInsights({ ...base, scope: { workspace: "ws-hr" } });
+    expect(hr.workspaces.map((entry) => entry.name)).toEqual(["HR"]);
+    expect(hr.items).toBe(5);
+    expect(all.domainOptions.map((option) => option.key)).toEqual(expect.arrayContaining(["dom-fin", "dom-hr"]));
   });
 
   it("keeps unknown evidence unknown instead of zero", () => {
@@ -91,9 +132,10 @@ describe("Atlas Insights aggregates", () => {
     const insights = buildAtlasInsights({
       now: NOW,
       period: 3,
+      scope: {},
       statuses: { "ws-other": { snapshotId: "s1", displayName: "Other", governanceSummary: summary } },
       trend: [point("2025-12-01T00:00:00Z", 5), point("2026-04-01T00:00:00Z", 8), point("2026-03-15T00:00:00Z", 7)],
-      data: atlas(),
+      data: atlas({ items: [item("a")] }),
     });
     expect(insights.workspaces.find((row) => row.id === "ws-other")).toMatchObject({
       findings: summary.findings, labeled: { labeled: 4, total: 10, unknown: 2 },

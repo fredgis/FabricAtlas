@@ -340,13 +340,22 @@ Since 3.0.9, **Explore > Atlas Insights** is a charts-only dashboard built from
 the validated snapshots already loaded by Atlas; nothing is collected or
 deployed outside the app.
 
-- Tiles: governance posture, open findings, Fabric items, job success rate and
-  sensitivity label coverage, with rings or sparklines.
+- Filters: **Domain** and **Workspace** (both *All* by default) and the
+  snapshot period. Cross-workspace figures (tiles, posture by pillar,
+  findings and labels by workspace, domain heatmap) come from each
+  workspace's governance summary. Detail charts need the full snapshot of the
+  active workspace (switched in the header selector); with *All* they show the
+  active workspace and say so, and when the filter excludes it they explain
+  how to switch.
+
+- Tiles: governance posture (average of the OneLake Health, Protect and Trust
+  pillars), open findings, Fabric items, job success rate and sensitivity
+  label coverage, with rings or sparklines.
 - Charts: snapshot trend over the last 3, 6 or 12 months (with a dashed
   **Projection**, a linear extrapolation that is labeled as such), posture by
-  pillar against targets, findings and label coverage by synchronized
+  pillar against a target of 70, findings and label coverage by synchronized
   workspace (from their governance summaries), domain × pillar heatmap, items
-  by type, access by level, lineage health gauges, retirement signal radar,
+  by type, access by level, lineage health, retirement signal radar,
   job-run calendar (recent runs kept per item), items per owner and
   connections by connector.
 - A card with no data shows a ghost of its chart and a short reason (for
