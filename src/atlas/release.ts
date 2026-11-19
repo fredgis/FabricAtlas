@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "3.0.3";
+  "3.0.4";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,19 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "3.0.4",
+    date: "2026-11-19",
+    title: "Fewer forced full scans",
+    sections: [
+      {
+        title: "Changed",
+        items: [
+          "Incremental synchronization forces a full rescan every 60 days instead of every 7 days.",
+        ],
+      },
+    ],
+  },
   {
     version: "3.0.3",
     date: "2026-11-19",

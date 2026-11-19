@@ -8,6 +8,12 @@ release tag was published.
 
 ## [Unreleased]
 
+## [3.0.4] - 2026-11-19
+
+### Changed
+
+- Incremental synchronization forces a full rescan every 60 days instead of every 7 days (`FULL_RESCAN_INTERVAL_DAYS`). Use **Full** in the scan mode control to rescan earlier.
+
 ## [3.0.3] - 2026-11-19
 
 Patch release: the synchronization generation is unchanged, so an incremental sync is enough.
@@ -1136,7 +1142,8 @@ Fabric Atlas 3.0 runs on the generally available Rayfin 2.0 and adds the governa
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v3.0.3...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v3.0.4...HEAD
+[3.0.4]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.4
 [3.0.3]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.3
 [3.0.2]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.2
 [3.0.1]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.1
