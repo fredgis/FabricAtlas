@@ -8,6 +8,18 @@ release tag was published.
 
 ## [Unreleased]
 
+## [3.0.9] - 2026-11-19
+
+No schema or synchronization change, no resync needed.
+
+### Added
+
+- **Atlas Insights** (#84), a new *Explore* entry in the left menu: a charts-only dashboard built from the loaded snapshots. KPI tiles (posture, findings, items, job success, label coverage), snapshot trend over 3, 6 or 12 months with a dashed linear projection, posture by pillar, findings and label coverage by workspace, domain × pillar heatmap, items by type, access by level, lineage health, retirement signal radar, job-run calendar, items per owner and connections by connector. Cards without data show a ghost chart and a reason; Unknown evidence is hatched. Each card opens the matching view, exports its chart as PNG and offers a data table.
+
+### Fixed
+
+- Map & lineage minimap: the viewport rectangle now follows zoom and scrolling (it was a fixed frame), and clicking or dragging in the minimap moves the view. The minimap and zoom controls also stay in view when the map scrolls horizontally.
+
 ## [3.0.8] - 2026-11-19
 
 ### Fixed
@@ -1173,7 +1185,8 @@ Fabric Atlas 3.0 runs on the generally available Rayfin 2.0 and adds the governa
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v3.0.8...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v3.0.9...HEAD
+[3.0.9]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.9
 [3.0.8]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.8
 [3.0.7]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.7
 [3.0.6]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.6

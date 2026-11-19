@@ -21,6 +21,7 @@ interface AtlasLocation {
 
 const TABS = new Set<Tab>([
   "overview",
+  "insights",
   "map",
   "external",
   "catalog",

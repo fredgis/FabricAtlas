@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "3.0.8";
+  "3.0.9";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,25 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "3.0.9",
+    date: "2026-11-19",
+    title: "Atlas Insights",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Atlas Insights in the left menu: a charts-only governance dashboard (posture, findings, items, jobs, labels, trend with projection, pillars, workspaces, domains, access, lineage, retirement signals, job calendar, owners and connectors). Empty or unknown evidence is shown as a ghost or hatched chart, never as zero.",
+        ],
+      },
+      {
+        title: "Fixed",
+        items: [
+          "Map & lineage minimap: the viewport rectangle follows zoom and scrolling, a click or drag in the minimap moves the view, and the minimap and zoom controls stay visible when the map scrolls horizontally.",
+        ],
+      },
+    ],
+  },
   {
     version: "3.0.8",
     date: "2026-11-19",
