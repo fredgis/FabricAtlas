@@ -24,7 +24,8 @@ export type GovernanceSection =
   | "coverage"
   | "posture"
   | "policies-ai"
-  | "tenant-settings";
+  | "tenant-settings"
+  | "retirement";
 
 export type WorkspaceSection =
   | "workspace"
