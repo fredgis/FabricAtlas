@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "3.0.7";
+  "3.0.8";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,20 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "3.0.8",
+    date: "2026-11-19",
+    title: "Clearer retirement radar selection",
+    sections: [
+      {
+        title: "Fixed",
+        items: [
+          "Retirement radar: the inspected row has a green bar and checked rows a blue background, with a hint explaining both.",
+          "Retirement radar: compact review buttons on one line (Follow-up, Reviewed, Muted, Open) and smaller catalog and lineage buttons.",
+        ],
+      },
+    ],
+  },
   {
     version: "3.0.7",
     date: "2026-11-19",

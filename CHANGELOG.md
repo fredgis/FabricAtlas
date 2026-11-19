@@ -8,6 +8,13 @@ release tag was published.
 
 ## [Unreleased]
 
+## [3.0.8] - 2026-11-19
+
+### Fixed
+
+- Retirement radar: the inspected row (shown in the detail panel) has a green bar and checked rows a blue background, with a hint explaining both; checking a row no longer looks like nothing happened.
+- Retirement radar: compact review buttons on one line (Follow-up, Reviewed, Muted, Open) and smaller catalog and lineage buttons.
+
 ## [3.0.7] - 2026-11-19
 
 ### Added
@@ -1166,7 +1173,8 @@ Fabric Atlas 3.0 runs on the generally available Rayfin 2.0 and adds the governa
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v3.0.7...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v3.0.8...HEAD
+[3.0.8]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.8
 [3.0.7]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.7
 [3.0.6]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.6
 [3.0.5]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.5

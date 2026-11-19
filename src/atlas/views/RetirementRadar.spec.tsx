@@ -88,4 +88,16 @@ describe("RetirementRadarSection", () => {
     expect(vi.mocked(props.onSaveReview).mock.calls.map(([input]) => input.findingId))
       .toEqual(["retirement:lake_legacy", "retirement:lake_old"]);
   });
+
+  it("marks the inspected row distinctly from checked rows", () => {
+    renderRadar({ data: { ...data, items: [...data.items, item("lake_old", { updatedAt: "2025-12-01T00:00:00Z" })] } });
+    const rowOf = (name: string) => screen.getByRole("button", { name: new RegExp(name) }).closest("tr")!;
+    expect(rowOf("lake_legacy")).toHaveAttribute("aria-current", "true");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select lake_old" }));
+    expect(rowOf("lake_old")).not.toHaveAttribute("aria-current");
+    expect(rowOf("lake_old").className).toContain("bg-signal-info-background");
+    fireEvent.click(within(rowOf("lake_old")).getAllByRole("cell")[3]);
+    expect(rowOf("lake_old")).toHaveAttribute("aria-current", "true");
+    expect(rowOf("lake_legacy")).not.toHaveAttribute("aria-current");
+  });
 });

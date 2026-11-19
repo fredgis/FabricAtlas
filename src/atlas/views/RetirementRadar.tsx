@@ -40,6 +40,7 @@ const SHORT_LABELS: Record<RetirementSignalId, string> = {
 };
 
 const SELECT_CLASS = "atlas-control rounded-md border border-input bg-card px-s text-200";
+const COMPACT_BUTTON = "inline-flex h-[1.875rem] items-center whitespace-nowrap rounded-md border border-border px-s text-200 hover:bg-accent";
 
 /** Radar polygon of how many candidates carry each signal. */
 function SignalProfile({ profile, total }: { profile: Record<RetirementSignalId, number>; total: number }) {
@@ -274,6 +275,9 @@ export function RetirementRadarSection({
                 className="atlas-control ml-auto rounded-md px-s text-200 text-primary hover:bg-accent">Clear selection</button>
             </div>
           )}
+          <p className="border-b border-border px-m py-xs text-100 text-muted-foreground">
+            Click a row to inspect it (green bar). Check rows to change their review state together.
+          </p>
           <table className="w-full table-fixed border-collapse text-left text-200">
             <caption className="sr-only">Retirement candidates. Select one to see why it appears.</caption>
             <thead className="border-b border-border bg-secondary text-muted-foreground">
@@ -293,8 +297,14 @@ export function RetirementRadarSection({
             <tbody className="divide-y divide-border">
               {filtered.map(({ candidate, state }) => (
                 <tr key={candidate.id} onClick={() => setSelectedId(candidate.id)}
-                  className={cn("cursor-pointer hover:bg-accent", selected?.candidate.id === candidate.id && "bg-primary/5")}>
-                  <td className="py-xs pl-m" onClick={(event) => event.stopPropagation()}>
+                  aria-current={selected?.candidate.id === candidate.id ? "true" : undefined}
+                  className={cn(
+                    "cursor-pointer hover:bg-accent",
+                    checked.has(candidate.id) && "bg-signal-info-background",
+                    selected?.candidate.id === candidate.id && "bg-primary/10",
+                  )}>
+                  <td onClick={(event) => event.stopPropagation()}
+                    className={cn("py-xs pl-m", selected?.candidate.id === candidate.id && "shadow-[inset_3px_0_0_var(--color-primary)]")}>
                     <input type="checkbox" aria-label={`Select ${candidate.item.displayName}`}
                       checked={checked.has(candidate.id)} onChange={() => toggleChecked(candidate.id)}
                       className="size-[1rem] accent-[var(--color-primary)]" />
@@ -379,22 +389,26 @@ export function RetirementRadarSection({
                   </div>
                 ))}
               </dl>
-              <div className="flex flex-wrap gap-s border-t border-border pt-m">
+              <div className="flex flex-wrap gap-xs border-t border-border pt-m">
                 <button type="button" onClick={() => navigate("catalog", selected.candidate.item.fabricId)}
-                  className="atlas-control rounded-md border border-border px-s text-200 hover:bg-accent">Open catalog</button>
+                  className={COMPACT_BUTTON}>Open catalog</button>
                 <button type="button" onClick={() => navigate("map", selected.candidate.item.fabricId)}
-                  className="atlas-control rounded-md border border-border px-s text-200 hover:bg-accent">Open lineage</button>
+                  className={COMPACT_BUTTON}>Open lineage</button>
               </div>
-              <fieldset className="m-0 flex min-w-0 flex-wrap gap-s border-0 p-0" disabled={acknowledgementsLoading || pendingIds.has(selected.candidate.id)}>
-                <legend className="sr-only">Personal review state</legend>
-                {(["follow-up", "reviewed", "muted", "open"] as const).map((state) => (
-                  <button key={state} type="button" aria-pressed={selected.state === state}
-                    onClick={() => void setReviewState(selected.candidate, state)}
-                    className={cn("atlas-control rounded-md border px-s text-200 hover:bg-accent disabled:opacity-50",
-                      selected.state === state ? "border-primary bg-primary/10 font-semibold" : "border-border")}>
-                    {state === "follow-up" ? "Mark follow-up" : state === "reviewed" ? "Mark reviewed" : state === "muted" ? "Mute" : "Reopen"}
-                  </button>
-                ))}
+              <fieldset className="m-0 min-w-0 border-0 p-0" disabled={acknowledgementsLoading || pendingIds.has(selected.candidate.id)}>
+                <legend className="mb-xs text-100 font-semibold uppercase tracking-wide text-muted-foreground">My review</legend>
+                <div className="inline-flex max-w-full overflow-hidden rounded-md border border-border">
+                  {(["follow-up", "reviewed", "muted", "open"] as const).map((state, index) => (
+                    <button key={state} type="button" aria-pressed={selected.state === state}
+                      aria-label={state === "follow-up" ? "Mark follow-up" : state === "reviewed" ? "Mark reviewed" : state === "muted" ? "Mute" : "Reopen"}
+                      onClick={() => void setReviewState(selected.candidate, state)}
+                      className={cn("h-[1.875rem] whitespace-nowrap px-s text-200 hover:bg-accent disabled:opacity-50",
+                        index > 0 && "border-l border-border",
+                        selected.state === state && "bg-primary/10 font-semibold text-primary")}>
+                      {REVIEW_LABELS[state]}
+                    </button>
+                  ))}
+                </div>
               </fieldset>
               <p className="flex min-w-0 items-start gap-xs text-100 text-muted-foreground">
                 <Archive className="mt-xxs icon-size-100 shrink-0" aria-hidden="true" />
