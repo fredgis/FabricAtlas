@@ -124,6 +124,8 @@ export function RetirementRadarSection({
   const [review, setReview] = useState<ReviewFilter>("active");
   const [minSignals, setMinSignals] = useState(RETIREMENT_MIN_SIGNALS);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
+  const [bulkPending, setBulkPending] = useState(false);
   const [error, setError] = useState<string>();
 
   const rows = radar.candidates.map((candidate) => ({
@@ -142,23 +144,44 @@ export function RetirementRadarSection({
   const selected = filtered.find(({ candidate }) => candidate.id === selectedId) ?? filtered[0];
   const followUps = rows.filter((row) => row.state === "follow-up").length;
 
+  const saveReviewState = async (candidate: RetirementCandidate, next: RetirementReviewState) => {
+    const current = ackById.get(candidate.id);
+    if (next === "open") {
+      if (current) await onClearReview(current.id);
+      return;
+    }
+    await onSaveReview({
+      findingId: candidate.id,
+      status: next === "muted" ? "muted" : "acked",
+      note: next === "follow-up" ? RETIREMENT_FOLLOW_UP_NOTE : next === "reviewed" ? retirementReviewedNote(candidate) : undefined,
+      occurrenceSnapshotId: data.workspace.snapshotId,
+    });
+  };
   const setReviewState = async (candidate: RetirementCandidate, next: RetirementReviewState) => {
     setError(undefined);
-    const current = ackById.get(candidate.id);
     try {
-      if (next === "open") {
-        if (current) await onClearReview(current.id);
-        return;
-      }
-      await onSaveReview({
-        findingId: candidate.id,
-        status: next === "muted" ? "muted" : "acked",
-        note: next === "follow-up" ? RETIREMENT_FOLLOW_UP_NOTE : next === "reviewed" ? retirementReviewedNote(candidate) : undefined,
-        occurrenceSnapshotId: data.workspace.snapshotId,
-      });
+      await saveReviewState(candidate, next);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     }
+  };
+  const visibleChecked = filtered.filter(({ candidate }) => checked.has(candidate.id));
+  const allChecked = filtered.length > 0 && visibleChecked.length === filtered.length;
+  const toggleChecked = (id: string) =>
+    setChecked((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const applyToChecked = async (next: RetirementReviewState) => {
+    setError(undefined);
+    setBulkPending(true);
+    const results = await Promise.allSettled(visibleChecked.map(({ candidate }) => saveReviewState(candidate, next)));
+    setBulkPending(false);
+    const failed = results.filter((result) => result.status === "rejected").length;
+    if (failed) setError(`${failed} of ${results.length} candidates could not be updated. Try again.`);
+    else setChecked(new Set());
   };
   const exportName = `retirement-candidates-${fileSlug(data.workspace.displayName)}`;
   const navigate = (tab: AtlasNavigation["tab"], itemId: string) =>
@@ -236,11 +259,32 @@ export function RetirementRadarSection({
               </button>
             </span>
           </div>
+          {visibleChecked.length > 0 && (
+            <div role="toolbar" aria-label="Review the checked candidates"
+              className="flex flex-wrap items-center gap-s border-b border-border bg-primary/5 px-m py-s text-200">
+              <span className="font-semibold">{visibleChecked.length} selected</span>
+              {(["follow-up", "reviewed", "muted", "open"] as const).map((state) => (
+                <button key={state} type="button" disabled={bulkPending || acknowledgementsLoading}
+                  onClick={() => void applyToChecked(state)}
+                  className="atlas-control rounded-md border border-border bg-card px-s text-200 hover:bg-accent disabled:opacity-50">
+                  {state === "follow-up" ? "Mark follow-up" : state === "reviewed" ? "Mark reviewed" : state === "muted" ? "Mute" : "Reopen"}
+                </button>
+              ))}
+              <button type="button" onClick={() => setChecked(new Set())}
+                className="atlas-control ml-auto rounded-md px-s text-200 text-primary hover:bg-accent">Clear selection</button>
+            </div>
+          )}
           <table className="w-full table-fixed border-collapse text-left text-200">
             <caption className="sr-only">Retirement candidates. Select one to see why it appears.</caption>
             <thead className="border-b border-border bg-secondary text-muted-foreground">
               <tr>
-                <th scope="col" className="w-2/5 px-m py-s font-medium md:w-1/3">Item</th>
+                <th scope="col" className="w-[2.75rem] py-s pl-m">
+                  <input type="checkbox" aria-label="Select all listed candidates" checked={allChecked}
+                    disabled={!filtered.length}
+                    onChange={() => setChecked(allChecked ? new Set() : new Set(filtered.map(({ candidate }) => candidate.id)))}
+                    className="size-[1rem] accent-[var(--color-primary)]" />
+                </th>
+                <th scope="col" className="w-2/5 px-s py-s font-medium md:w-1/3">Item</th>
                 <th scope="col" className="px-s py-s font-medium">Signals</th>
                 <th scope="col" className="hidden w-[6rem] px-s py-s font-medium md:table-cell">Evidence</th>
                 <th scope="col" className="w-[7rem] px-s py-s font-medium">Review</th>
@@ -248,8 +292,14 @@ export function RetirementRadarSection({
             </thead>
             <tbody className="divide-y divide-border">
               {filtered.map(({ candidate, state }) => (
-                <tr key={candidate.id} className={cn("hover:bg-accent", selected?.candidate.id === candidate.id && "bg-primary/5")}>
-                  <td className="px-m py-xs">
+                <tr key={candidate.id} onClick={() => setSelectedId(candidate.id)}
+                  className={cn("cursor-pointer hover:bg-accent", selected?.candidate.id === candidate.id && "bg-primary/5")}>
+                  <td className="py-xs pl-m" onClick={(event) => event.stopPropagation()}>
+                    <input type="checkbox" aria-label={`Select ${candidate.item.displayName}`}
+                      checked={checked.has(candidate.id)} onChange={() => toggleChecked(candidate.id)}
+                      className="size-[1rem] accent-[var(--color-primary)]" />
+                  </td>
+                  <td className="px-s py-xs">
                     <button type="button" aria-pressed={selected?.candidate.id === candidate.id}
                       onClick={() => setSelectedId(candidate.id)}
                       className="atlas-control flex w-full items-center gap-s rounded-md text-left text-300">

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { AtlasData, Item } from "../model";
 import { RetirementRadarSection } from "./RetirementRadar";
@@ -60,5 +60,32 @@ describe("RetirementRadarSection", () => {
     expect(screen.getByText("No candidate matches the current filters.")).toBeVisible();
     fireEvent.change(screen.getByLabelText("Review state"), { target: { value: "muted" } });
     expect(screen.getByRole("button", { name: /lake_legacy/ })).toBeVisible();
+  });
+
+  it("applies a review state to several checked candidates at once", async () => {
+    const props = renderRadar({
+      data: { ...data, items: [...data.items, item("lake_old", { updatedAt: "2025-12-01T00:00:00Z" })] },
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select all listed candidates" }));
+    const toolbar = screen.getByRole("toolbar", { name: "Review the checked candidates" });
+    expect(toolbar).toHaveTextContent("2 selected");
+    fireEvent.click(within(toolbar).getByRole("button", { name: "Mark follow-up" }));
+    await waitFor(() => expect(props.onSaveReview).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(props.onSaveReview).mock.calls.map(([input]) => input.findingId).sort())
+      .toEqual(["retirement:lake_legacy", "retirement:lake_old"]);
+    await waitFor(() => expect(screen.queryByRole("toolbar", { name: "Review the checked candidates" })).toBeNull());
+  });
+
+  it("selects a candidate from anywhere in its row, after another one was marked", () => {
+    const props = renderRadar({
+      data: { ...data, items: [...data.items, item("lake_old", { updatedAt: "2025-12-01T00:00:00Z" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Mark follow-up" }));
+    const row = screen.getByRole("button", { name: /lake_old/ }).closest("tr")!;
+    fireEvent.click(within(row).getAllByRole("cell")[2]);
+    expect(screen.getByRole("region", { name: "lake_old" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Mark follow-up" }));
+    expect(vi.mocked(props.onSaveReview).mock.calls.map(([input]) => input.findingId))
+      .toEqual(["retirement:lake_legacy", "retirement:lake_old"]);
   });
 });

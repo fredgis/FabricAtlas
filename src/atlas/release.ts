@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "3.0.6";
+  "3.0.7";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,25 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "3.0.7",
+    date: "2026-11-19",
+    title: "Retirement radar bulk review",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Retirement radar: check several candidates, or all listed ones, and mark them follow-up, reviewed, muted or open at once.",
+        ],
+      },
+      {
+        title: "Fixed",
+        items: [
+          "Retirement radar: clicking anywhere in a row selects that candidate, so another row can be marked after the first one.",
+        ],
+      },
+    ],
+  },
   {
     version: "3.0.6",
     date: "2026-11-19",

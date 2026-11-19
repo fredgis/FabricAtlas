@@ -418,8 +418,9 @@ Markdown.
 
 Review state is personal and kept across synchronizations: **Mark
 follow-up**, **Mark reviewed** (reopens when the signals change), **Mute** and
-**Reopen**. It reuses the personal finding acknowledgement records, so no
-schema change is needed.
+**Reopen**. Click anywhere in a row to inspect it, or check several rows
+(or all listed rows) to apply a review state to them at once. It reuses the
+personal finding acknowledgement records, so no schema change is needed.
 
 #### Policies & AI
 
