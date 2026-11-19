@@ -111,7 +111,7 @@ Every feed carries these limits:
 
 | Source | Atlas status | Why |
 | --- | --- | --- |
-| Fabric job history | Collected | Read through the Job Scheduler REST API at each synchronization and stored with the snapshot |
+| Fabric job history | Collected | Read through the Job Scheduler REST API at each synchronization and stored with the snapshot; Atlas keeps the three most recent runs of each item |
 | Workspace monitoring | Not collected | No Atlas collector exists. Atlas cannot detect whether monitoring is enabled |
 | Monitor hub job alerts | Fabric portal only | Alert rules and notifications have no public read API |
 | Fabric App Metrics | Fabric portal only | No public read API is documented |

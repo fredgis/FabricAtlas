@@ -8,6 +8,12 @@ release tag was published.
 
 ## [Unreleased]
 
+### Documentation
+
+- README: Atlas Insights section with a capture over the four FGI workspaces, Atlas Insights and Retirement radar in *What it does*, the 3.0 patch releases in *What's new in 3.0*, and the roadmap row for posture reporting outside Atlas.
+- Whitepaper updated to 3.0.12 and its PDF regenerated: a new Atlas Insights chapter with its figure, the Retirement radar, the 3.0.1 to 3.0.12 patch releases, the three most recent runs kept per item, and updated limits, figure index and glossary.
+- Markdown audit: no em or en dashes or curly quotes left in the project documentation; AGENTS.md lists the Insights and Retirement radar modules and the UI rules the tests enforce.
+
 ## [3.0.12] - 2026-11-19
 
 No schema or synchronization change, no resync needed.
@@ -32,7 +38,7 @@ No schema or synchronization change, no resync needed.
 
 ### Fixed
 
-- Atlas Insights: KPI tiles no longer overlap their title and value; charts are drawn at the real card width with uniform 10–11 px text instead of being scaled up; the projection band only appears from three snapshots; the *New* badge is removed from the menu.
+- Atlas Insights: KPI tiles no longer overlap their title and value; charts are drawn at the real card width with uniform 10 to 11 px text instead of being scaled up; the projection band only appears from three snapshots; the *New* badge is removed from the menu.
 
 ## [3.0.9] - 2026-11-19
 
@@ -928,7 +934,7 @@ Fabric Atlas 3.0 runs on the generally available Rayfin 2.0 and adds the governa
 
 - Freshly persisted snapshots now retain their deployment identity in memory, preventing Radar from resetting to a baseline after every sync.
 - New Fabric items, including Warehouses, become visible across the application immediately after synchronization.
-- Radar’s non-risky change action now opens the same adjacent snapshots used to calculate its count.
+- Radar's non-risky change action now opens the same adjacent snapshots used to calculate its count.
 
 ## [1.9.0] - 2026-08-30
 

@@ -6,11 +6,13 @@ author: "Fabric Atlas project"
 lang: en-GB
 ---
 
-> This paper documents Fabric Atlas 3.0.0. FGI-MAIN is used as the real
+> This paper documents Fabric Atlas 3.0.12. FGI-MAIN is used as the real
 > deployment example. Most figures were captured on 28 October 2026 with
 > release 2.6.4; the Atlas Scout and external lineage figures were captured
-> with release 2.7. The 2.8, 2.9 and 3.0 sections describe the behaviour
-> verified on FGI-MAIN on 18 November 2026 without new figures.
+> with release 2.7. The Atlas Insights figure was captured on 19 November 2026
+> with release 3.0.12 over the four FGI workspaces. The 2.8, 2.9 and 3.0
+> sections describe the behaviour verified on FGI-MAIN on 18 and 19 November
+> 2026.
 > Counts and findings describe that workspace at that point in time. They are
 > not product defaults, limits or benchmarks.
 
@@ -27,7 +29,7 @@ workspaces without copying business data. Users can browse Fabric items,
 inspect internal objects, trace lineage, review effective access, compare
 validated snapshots and keep operational notes beside the catalog.
 
-Version 2.0 changes how the metadata is collected. Typed Rayfin Functions now
+Version 2.0 changed how the metadata is collected. Typed Rayfin Functions
 own core inventory, definitions, Item Relations, SQL metadata, KQL structure,
 source provenance and access-policy evidence. A smaller Python User Data
 Function remains only for documented platform gaps: the Power BI admin
@@ -59,6 +61,12 @@ Agent telemetry tenant switches, the Sync Brief sent to Teams, a Departure Pack
 MCP tool and the Ignite item types. No new table is required: the new evidence
 travels in the existing governance evidence and item metadata.
 
+The 3.0 patch releases add two review screens. Atlas Insights is a
+charts-only dashboard that adds up posture, findings, items, access, lineage
+and jobs across every synchronized workspace, filtered by domain or workspace.
+The Retirement radar lists items that deserve a retirement review and shows
+the evidence behind each signal, without ever calling an item unused.
+
 The browser coordinates those collectors, isolates item failures, validates
 every response and publishes the workspace manifest last. Each selected
 workspace has an independent snapshot. A failed refresh in one workspace
@@ -80,12 +88,13 @@ Atlas distinguishes observed facts from derived context:
 | Area | Practical outcome |
 |---|---|
 | Workspace scope | A shared, administrator-selected list of workspaces with independent snapshots and active-workspace switching |
+| Atlas Insights | One charts-only dashboard over every synchronized workspace, filtered by domain or workspace, with Unknown evidence hatched rather than counted as zero |
 | Catalog | One searchable inventory of Fabric items with type, ownership, health, labels, tags, domain facets, My items scope and Request access links |
 | Asset inventory | Relational, semantic, KQL, ontology, graph and Data Agent objects grouped under their parent item |
 | Search | One command palette for items, objects, people, jobs and notes, with optional OneLake Catalog Preview integration |
 | Lineage | Stable source-to-consumer graphs, object expansion, evidence review and focused impact paths |
 | DAX X-Ray | Direct and transitive measure-to-column and measure-to-measure dependencies |
-| Governance | Findings with priority and Why panel, domain posture, tenant-setting drift, changes, history, coverage, posture targets, policy set rules and Data Agent telemetry switches |
+| Governance | Findings with priority and Why panel, domain posture, tenant-setting drift, changes, history, coverage, posture targets, Retirement radar, policy set rules and Data Agent telemetry switches |
 | Access review | Effective recorded access, principal and role filters, OneLake data access roles, external shares, local What-if scenarios and departure packs that include connections and Fabric apps |
 | Connections | Tenant connection inventory with owners, authentication, credential recency, the items that use each connection and a draft data connection policy |
 | Operations | Recent jobs, observed failures, inferred downstream reach, incremental sync, snapshot export, Sync Brief and optional Teams alerts |
@@ -146,7 +155,9 @@ The FGI-MAIN manifest used by the screenshots reports:
 
 FGI, FGI-MAIN, FGI-ORACLE and MSFlix are selected in the shared Atlas scope.
 FGI-MAIN is the active workspace in the screenshots. The other workspaces
-remain separately addressable and are loaded only when a user switches to them.
+remain separately addressable. Most pages load them only when a user switches
+to them; Atlas Insights reads their latest validated snapshot to add them to
+its charts.
 
 ## Workspace orientation
 
@@ -201,6 +212,63 @@ synchronized schema objects. Search results navigate back into the matching Atla
 OneLake Catalog Preview can extend the same dialog when the deployment enables
 the feature and the API is available. Results outside the selected Atlas scope
 open in Fabric instead of being copied into the snapshot.
+
+## Atlas Insights
+
+The pages described so far look at one workspace at a time. Atlas Insights
+looks at all of them. It is a charts-only dashboard under Explore, built from
+the validated snapshots that Atlas already stores, so nothing extra is
+collected and no Power BI report is deployed.
+
+![Atlas Insights over the four FGI workspaces, with Domain and Workspace set to All.](screenshots/atlas-insights-v3.png){ width=100% }
+
+The capture covers FGI-MAIN, FGI, FGI-ORACLE and MSFlix:
+
+| Tile | Value in the capture |
+|---|---|
+| Governance posture | 62 |
+| Open findings | 805, of which 11 critical and 23 high |
+| Fabric items | 200 |
+| Job success rate | 79% over 104 runs |
+| Sensitivity coverage | 0%: none of the 181 items that can carry a label has one |
+
+Health scores 87, Protect 26 and Trust 74 against a target of 70. MSFlix holds
+675 of the 805 findings, mostly medium and low. The domain heatmap shows
+Protect as the weakest pillar in every domain: 4 in Demo, 49 in FGI and 50 for
+workspaces without a domain. Notebooks lead the item types with 51, ahead of
+31 SQL endpoints and 20 lakehouses. Of 1,162 recorded grants, 1,141 are Edit
+and 21 Owner. Every recorded lineage edge resolves, 89 percent of items have at
+least one lineage link, and 37 items are retirement candidates.
+
+### Filters and aggregation
+
+The Domain and Workspace filters start on All, and every chart follows them.
+Tiles, posture by pillar, findings and labels by workspace and the domain
+heatmap read the compact governance summary stored with each workspace
+manifest, so they cost no extra read. The detail charts (items by type,
+access, lineage, retirement signals, job runs, owners and the snapshot trend)
+need full snapshots. Atlas reads the latest validated snapshot of each
+workspace in scope on demand and caches it by snapshot ID, so a new
+synchronization replaces it and an unchanged workspace is not read twice. A
+workspace without a snapshot is named in the card subtitle, for example
+*2 of 3 workspaces with a snapshot*.
+
+The snapshot trend is a sum. At each date, every workspace counts with its
+latest snapshot at or before that date, so the total does not dip because two
+workspaces synchronized on different days. A workspace joins the sum with its
+first validated snapshot, which makes the line step up when a workspace is
+synchronized for the first time. From three snapshots, a dashed Projection
+extends each series. It is a least-squares straight line, and the legend
+labels it as a projection, not a measure.
+
+### Unknown stays visible
+
+A card without data draws a grey ghost of its chart with the reason, such as
+*Needs at least two validated snapshots in this period*. A workspace whose
+governance summary is missing is hatched and counted as Unknown in the
+posture tile; it is never drawn as zero or healthy. Each card links to the
+Atlas page behind it, exports its chart as PNG and has a *View data* table,
+which is also the text alternative for screen readers.
 
 ## Internal asset inventory
 
@@ -417,6 +485,34 @@ FGI domain scores 91 percent Health, 49 percent Protect and 74 percent Trust,
 with two of three pillar groups at target. Fabric governance signals beside
 the Governance Radar report 2 percent endorsed items and 128 of 182 governance-relevant
 tenant settings enabled.
+
+### Retirement radar
+
+The Retirement radar tab of Governance Center lists items for a human
+retirement review. It combines evidence already in the snapshot. It never
+claims that an item is unused or safe to delete, because Atlas does not see
+read usage, ad-hoc queries or external tools.
+
+| Signal | Trigger |
+|---|---|
+| Dormant | `dormant-producer`, `item-inactive` or `endorsed-inactive` fires on the item |
+| No downstream consumer | Lakehouse, warehouse, semantic model or database with no recorded downstream item; needs complete lineage |
+| Failing runs | At least two collected recent runs, all failed |
+| No owner | `missing-owner` fires on the item |
+| No trust metadata | Not endorsed, no sensitivity label and no description |
+| Duplicate name | Another item of the same type with the same name, ignoring markers such as "(copy)" or "(2)" |
+
+An item is listed with at least two signals, one of which must be Dormant, No
+downstream consumer, Failing runs or Duplicate name. Incomplete lineage or job
+collection leaves a signal Unknown; it is counted apart and never raised. Each
+candidate shows its owner, sensitivity, endorsement, lineage, access and recent
+runs. The list filters by signal, item type, owner, signal count and review
+state, and exports as CSV or Markdown.
+
+Review state is personal: Follow-up, Reviewed or Muted, applied to one row or
+to several checked rows at once. A reviewed candidate reopens when its signals
+change. The state reuses the personal finding acknowledgement records, so the
+feature needed no new table.
 
 ### Policies & AI
 
@@ -681,6 +777,27 @@ security policy for static-hosted Fabric Apps* applies a fixed policy that
 cannot be customized; on 18 November 2026 it blocked the Entra token requests
 that synchronization needs, so it must stay off for Atlas users.
 
+### Patch releases 3.0.1 to 3.0.12
+
+None of the patch releases changes the schema or the synchronization
+generation, so an incremental synchronization is enough after each upgrade.
+
+* **Synchronization.** One MSFlix notebook had 1,001 runs. Reading every page
+  of its history exceeded the collector page limit, failed the jobs section
+  and left the Health pillar blank. The collector now stops after the three
+  most recent runs of each item, which Fabric lists first (3.0.1). A failed
+  section reports its real cause instead of an earlier harmless
+  `endpoint-unsupported` item (3.0.1 and 3.0.3), and snapshot writes retry
+  after a "Failed to fetch" network error. Incremental runs keep the KQL and
+  report page coverage recorded when a reused item was collected (3.0.2). A
+  full rescan is forced every 60 days instead of every 7 (3.0.4).
+* **Retirement radar** (3.0.5 to 3.0.8), described under Governance.
+* **Atlas Insights** (3.0.9 to 3.0.12), described in its own chapter. Release
+  3.0.12 makes the detail charts add up every workspace in scope instead of
+  the active one only.
+* **Map minimap** (3.0.9). The viewport rectangle follows zoom and scrolling,
+  and a click or drag in the minimap moves the map.
+
 ## Access review and departure planning
 
 ### Review matrix
@@ -759,7 +876,8 @@ inferred through stored lineage.
 ![Jobs, operational evidence and monitoring boundaries.](fabric-atlas-whitepaper/assets/23-jobs-health.png){ width=100% }
 
 The captured snapshot contains 14 recent runs: eight successful and six failed,
-with an average duration of 3 minutes and 16 seconds.
+with an average duration of 3 minutes and 16 seconds. Atlas keeps the three
+most recent runs of each item.
 
 Monitoring sources are explicit:
 
@@ -968,9 +1086,11 @@ reads and controlled cleanup without being allowed to publish.
 | ConnectionEntry | One Fabric connection without secrets (2.8) |
 | ConnectionRoleAssignment | One role of a principal on a connection (2.8) |
 
-Version 3.0 adds no entity. App identities and the Dataflow Gen1 list travel in
-the governance evidence of the snapshot; Eventstream and policy set projections
-travel in item metadata.
+Version 3.0 and its patch releases add no entity. App identities and the
+Dataflow Gen1 list travel in the governance evidence of the snapshot;
+Eventstream and policy set projections travel in item metadata. Retirement
+review state reuses `FindingAck`, and Atlas Insights only reads existing
+snapshots.
 
 ## Security and data boundaries
 
@@ -1129,7 +1249,7 @@ type, tenant settings and the endpoints Fabric exposes.
 
 ## Read-only Atlas MCP
 
-Version 2 includes an optional local stdio MCP server for deterministic,
+Atlas includes an optional local stdio MCP server for deterministic,
 read-only access to validated Atlas evidence. It runs on the MCP client machine,
 not as a Rayfin Function or permanent Fabric backend service.
 
@@ -1169,6 +1289,8 @@ build identifier, source repository, release history and clone command.
 | `src/atlas/sync-brief.ts` | Latest-sync summary and Markdown export |
 | `src/atlas/item-passport.ts` | Item identity sheet export and the Ask Scout item question |
 | `src/atlas/governance.ts` | Governance rules, including the 3.0 rules |
+| `src/atlas/retirement-radar.ts` | Retirement candidates, signals and profile |
+| `src/atlas/insights.ts` and `src/atlas/insight-snapshots.ts` | Atlas Insights aggregates and on-demand snapshot reads |
 | `src/atlas/data-agent-telemetry.ts` | Data Agent observability tenant switches |
 | `src/atlas/csp.ts` | Origin inventory and production hardening checklist |
 | `src/atlas/connections.ts` | Tenant connection inventory and usage |
@@ -1206,14 +1328,14 @@ npm run build
 | Report visual usage | Not collected | Supported report definition path with sensitivity and permission handling |
 | Shared actions and notifications | Optional Teams alert for new Critical findings and the Sync Brief; no shared assignments | Reviewed ownership model for shared actions |
 | Atlas Scout scope | Read-only, but every agent user sees every synchronized workspace | Row-level filtering or per-workspace scope in the Atlas SQL database |
-| Power BI posture report (PBIP) | Not implemented; JSON and snapshot export, Sync Brief and Teams card cover sharing | Reviewed report template fed by the published snapshot |
+| Posture reporting outside Atlas | Atlas Insights covers the dashboard inside the app, with PNG and data-table export per chart; no Power BI (PBIP) template | Reviewed report template fed by the published snapshot, if teams need the charts outside Atlas |
 
 ## Conclusion
 
 Fabric Atlas gives a Fabric team one consistent metadata system for selected
 workspaces. The same validated evidence supports catalog search, lineage,
-Preview review, DAX X-Ray, access analysis, governance, operations and team
-context.
+Preview review, DAX X-Ray, access analysis, governance, the cross-workspace
+Insights dashboard, operations and team context.
 
 Its boundaries are part of the product. Atlas does not copy business rows,
 source code, prompts or credentials. It does not turn missing metadata into a
@@ -1234,37 +1356,38 @@ Within those limits, Atlas answers four recurring questions:
 | 1 | Governance Radar Overview |
 | 2 | Item Catalog |
 | 3 | Workspace-wide search for `asmdb` |
-| 4 | Asset Catalog |
-| 5 | Measure expression and dependency evidence |
-| 6 | Atlas item lineage |
-| 7 | Item Relations Preview |
-| 8 | Lineage Evidence |
-| 9 | Semantic model X-Ray |
-| 10 | Object lineage |
-| 11 | Semantic model impact report |
-| 12 | Model column DAX consumers |
-| 13 | Object impact report |
-| 14 | Governance findings |
-| 15 | Change Center |
-| 16 | Metadata coverage |
-| 17 | Governance posture |
-| 18 | Policies & AI |
-| 19 | Atlas Scout home |
-| 20 | Atlas Scout lineage answer |
-| 21 | Floating Scout with suggested questions |
-| 22 | Floating Scout live progress |
-| 23 | External lineage lane on the Map |
-| 24 | Access Review matrix |
-| 25 | Principal-centred review |
-| 26 | Read-only access What-if |
-| 27 | Departure pack |
-| 28 | Jobs & health |
-| 29 | Multi-workspace scope |
-| 30 | Synchronization |
-| 31 | Configuration |
-| 32 | Team notes |
-| 33 | Architecture and metadata flow |
-| 34 | Immutable snapshot lifecycle |
+| 4 | Atlas Insights across four workspaces |
+| 5 | Asset Catalog |
+| 6 | Measure expression and dependency evidence |
+| 7 | Atlas item lineage |
+| 8 | Item Relations Preview |
+| 9 | Lineage Evidence |
+| 10 | Semantic model X-Ray |
+| 11 | Object lineage |
+| 12 | Semantic model impact report |
+| 13 | Model column DAX consumers |
+| 14 | Object impact report |
+| 15 | Governance findings |
+| 16 | Change Center |
+| 17 | Metadata coverage |
+| 18 | Governance posture |
+| 19 | Policies & AI |
+| 20 | Atlas Scout home |
+| 21 | Atlas Scout lineage answer |
+| 22 | Floating Scout with suggested questions |
+| 23 | Floating Scout live progress |
+| 24 | External lineage lane on the Map |
+| 25 | Access Review matrix |
+| 26 | Principal-centred review |
+| 27 | Read-only access What-if |
+| 28 | Departure pack |
+| 29 | Jobs & health |
+| 30 | Multi-workspace scope |
+| 31 | Synchronization |
+| 32 | Configuration |
+| 33 | Team notes |
+| 34 | Architecture and metadata flow |
+| 35 | Immutable snapshot lifecycle |
 
 ## Appendix B: glossary
 
@@ -1287,6 +1410,9 @@ Within those limits, Atlas answers four recurring questions:
 | Dormant producer | Data store or model with no recorded consumer and no activity beyond the inactivity threshold |
 | Policy set | Fabric item that holds authored policy rules for a tenant or capacity scope |
 | Sensitivity downgrade | Consumer whose label is weaker than its strictest labelled upstream item |
+| Atlas Insights | Charts-only dashboard that adds up the validated snapshots of every workspace in the selected scope |
+| Projection | Dashed least-squares extension of a trend series, shown from three snapshots and never presented as a measure |
+| Retirement candidate | Item with at least two retirement signals, listed for human review only |
 
 ## References
 

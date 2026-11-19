@@ -58,12 +58,12 @@ automatically there; the `source://partner-hub` datasets stay **To link**.
 
 The link point is the dataset that exists on both sides.
 
-- **Automatic (exact path)** — a dataset whose namespace is the OneLake host of
+- **Automatic (exact path)**: a dataset whose namespace is the OneLake host of
   the current workspace (`abfss://<workspace name or id>@onelake.dfs.fabric.microsoft.com`)
   and whose name is an item path (`<item>[.<Type>]/Tables/<schema>/<table>`,
   `<item>[.<Type>]/Files/...` or `<item>.<Type>`) is linked to that item.
   Names and GUIDs are both accepted; nothing is guessed.
-- **Manual** — every other dataset is **To link**. An administrator picks any
+- **Manual**: every other dataset is **To link**. An administrator picks any
   Fabric item of the workspace (data stores are listed first; search matches the
   name or the type, for example `eventstream`) or a known table, or marks it
   **External** (stays outside Fabric).
@@ -79,7 +79,7 @@ feeds.
 ## Download (export)
 
 **Download OpenLineage** (External lineage header or Map toolbar) writes an
-NDJSON file in the browser — no network call.
+NDJSON file in the browser without any network call.
 
 | Option | Effect |
 |---|---|
