@@ -8,6 +8,18 @@ release tag was published.
 
 ## [Unreleased]
 
+## [3.0.10] - 2026-11-19
+
+No schema or synchronization change, no resync needed.
+
+### Added
+
+- Atlas Insights: **Domain** and **Workspace** filters, both *All* by default. Tiles, posture by pillar (OneLake Health, Protect, Trust), findings and labels by workspace and the domain heatmap follow the filters through each workspace's governance summary; detail charts use the active workspace (switched in the header selector) and explain when the filter excludes it.
+
+### Fixed
+
+- Atlas Insights: KPI tiles no longer overlap their title and value; charts are drawn at the real card width with uniform 10–11 px text instead of being scaled up; the projection band only appears from three snapshots; the *New* badge is removed from the menu.
+
 ## [3.0.9] - 2026-11-19
 
 No schema or synchronization change, no resync needed.
@@ -1185,7 +1197,8 @@ Fabric Atlas 3.0 runs on the generally available Rayfin 2.0 and adds the governa
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v3.0.9...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v3.0.10...HEAD
+[3.0.10]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.10
 [3.0.9]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.9
 [3.0.8]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.8
 [3.0.7]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.7

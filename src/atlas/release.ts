@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "3.0.9";
+  "3.0.10";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,25 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "3.0.10",
+    date: "2026-11-19",
+    title: "Atlas Insights filters and polish",
+    sections: [
+      {
+        title: "Added",
+        items: [
+          "Atlas Insights: Domain and Workspace filters, both All by default. Detail charts use the active workspace and explain when the filter excludes it.",
+        ],
+      },
+      {
+        title: "Fixed",
+        items: [
+          "Atlas Insights: tiles no longer overlap their title and value, charts draw at their real width with uniform 10–11 px text, the projection band only appears with at least three snapshots, and the menu entry no longer carries a New badge.",
+        ],
+      },
+    ],
+  },
   {
     version: "3.0.9",
     date: "2026-11-19",

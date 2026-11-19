@@ -182,7 +182,7 @@ const NAV_GROUPS: {
     label: "Explore",
     items: [
       { id: "overview", label: "Overview", icon: BarChart3 },
-      { id: "insights", label: "Atlas Insights", icon: PieChart, badge: "New" },
+      { id: "insights", label: "Atlas Insights", icon: PieChart },
       { id: "map", label: "Map & lineage", icon: Waypoints },
       { id: "external", label: "External lineage", icon: Globe },
       { id: "catalog", label: "Catalog", icon: FolderTree },
