@@ -119,8 +119,8 @@ function ChartCard({
       className={cn("flex min-w-0 flex-col rounded-lg border border-border bg-card px-m pb-s pt-m", className)}>
       <header className="mb-s flex min-h-[1.75rem] min-w-0 items-center gap-s">
         <div className="min-w-0">
-          <h2 className="truncate text-300 font-semibold leading-tight">{title}</h2>
-          {subtitle && <p className="truncate text-100 leading-tight text-muted-foreground">{subtitle}</p>}
+          <h2 className="truncate text-300 font-semibold leading-300">{title}</h2>
+          {subtitle && <p className="truncate text-100 leading-200 text-muted-foreground">{subtitle}</p>}
         </div>
         <span className="ml-auto flex shrink-0 items-center gap-xxs">
           {!empty && (
@@ -220,12 +220,12 @@ function Kpi({ title, value, detail, chart, onOpen }: {
     <div className="flex min-w-0 items-center gap-s rounded-lg border border-border bg-card p-m">
       <div className="min-w-0 flex-1">
         <button type="button" onClick={onOpen}
-          className="group flex max-w-full items-center gap-xxs text-left text-200 font-semibold text-muted-foreground hover:text-primary">
+          className="group flex max-w-full items-center gap-xxs text-left text-200 font-semibold leading-200 text-muted-foreground hover:text-primary">
           <span className="truncate">{title}</span>
           <ArrowRight className="icon-size-100 shrink-0 opacity-0 group-hover:opacity-100" aria-hidden="true" />
         </button>
-        <p className="mt-xxs font-numeric text-500 font-semibold leading-none">{value}</p>
-        <p className="mt-xs truncate text-100 text-muted-foreground">{detail}</p>
+        <p className="mt-xxs font-numeric text-600 font-semibold leading-600">{value}</p>
+        <p className="truncate text-100 leading-200 text-muted-foreground">{detail}</p>
       </div>
       <div className="shrink-0">{chart}</div>
     </div>

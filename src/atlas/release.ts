@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "3.0.10";
+  "3.0.11";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,19 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "3.0.11",
+    date: "2026-11-19",
+    title: "Atlas Insights tile text",
+    sections: [
+      {
+        title: "Fixed",
+        items: [
+          "Atlas Insights: the tile value no longer draws over its title. It used leading-none, which the theme resolves to a 0px line height.",
+        ],
+      },
+    ],
+  },
   {
     version: "3.0.10",
     date: "2026-11-19",
