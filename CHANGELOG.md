@@ -8,6 +8,16 @@ release tag was published.
 
 ## [Unreleased]
 
+## [3.0.7] - 2026-11-19
+
+### Added
+
+- Retirement radar: check several candidates, or all listed ones, and apply follow-up, reviewed, muted or open to them at once.
+
+### Fixed
+
+- Retirement radar: clicking anywhere in a row selects that candidate. Only the item name was clickable, so after marking the first row the detail panel stayed on it.
+
 ## [3.0.6] - 2026-11-19
 
 ### Fixed
@@ -1156,7 +1166,8 @@ Fabric Atlas 3.0 runs on the generally available Rayfin 2.0 and adds the governa
 - Centralized lineage, object and status colors in the shared theme.
 - Improved keyboard focus, semantic control states, scrollbars and reduced-motion behavior.
 
-[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v3.0.6...HEAD
+[Unreleased]: https://github.com/fredgis/FabricAtlas/compare/v3.0.7...HEAD
+[3.0.7]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.7
 [3.0.6]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.6
 [3.0.5]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.5
 [3.0.4]: https://github.com/fredgis/FabricAtlas/releases/tag/v3.0.4
