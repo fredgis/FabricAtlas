@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "3.0.5";
+  "3.0.6";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,19 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "3.0.6",
+    date: "2026-11-19",
+    title: "Retirement radar layout",
+    sections: [
+      {
+        title: "Fixed",
+        items: [
+          "Retirement radar: the detail panel no longer overflows with long item names, long run lists or the review buttons, and the search field keeps a usable width.",
+        ],
+      },
+    ],
+  },
   {
     version: "3.0.5",
     date: "2026-11-19",

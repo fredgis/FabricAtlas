@@ -191,7 +191,7 @@ export function RetirementRadarSection({
       <div className="atlas-ai-workbench">
         <Card className="min-w-0 overflow-hidden shadow-none">
           <div className="atlas-toolbar flex flex-wrap items-center gap-s border-b border-border p-m">
-            <label className="relative min-w-0 flex-1 sm:max-w-[16rem]">
+            <label className="relative min-w-[12rem] flex-1 sm:max-w-[16rem]">
               <Search className="pointer-events-none absolute left-s top-1/2 icon-size-200 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
               <span className="sr-only">Search retirement candidates</span>
               <input type="search" value={search} onChange={(event) => setSearch(event.target.value)}
@@ -255,8 +255,8 @@ export function RetirementRadarSection({
                       className="atlas-control flex w-full items-center gap-s rounded-md text-left text-300">
                       <TypeGlyph type={candidate.item.itemType} size={24} />
                       <span className="min-w-0">
-                        <span className="block break-words font-medium">{candidate.item.displayName}</span>
-                        <span className="block text-100 text-muted-foreground">{candidate.item.itemType} · {candidate.context.owner ?? "No owner"}</span>
+                        <span className="block font-medium [overflow-wrap:anywhere]">{candidate.item.displayName}</span>
+                        <span className="block text-100 text-muted-foreground [overflow-wrap:anywhere]">{candidate.item.itemType} · {candidate.context.owner ?? "No owner"}</span>
                       </span>
                     </button>
                   </td>
@@ -286,12 +286,12 @@ export function RetirementRadarSection({
           )}
         </Card>
         {selected && (
-          <Card className="min-w-0 shadow-none">
-            <section aria-labelledby="retirement-detail-heading" className="grid gap-m p-m text-200 leading-300">
+          <Card className="min-w-0 overflow-hidden shadow-none">
+            <section aria-labelledby="retirement-detail-heading" className="grid min-w-0 gap-m p-m text-200 leading-300 [overflow-wrap:anywhere]">
               <div className="flex items-center gap-s border-b border-border pb-m">
                 <TypeGlyph type={selected.candidate.item.itemType} size={32} />
                 <div className="min-w-0">
-                  <h3 id="retirement-detail-heading" className="break-words text-300 font-semibold">{selected.candidate.item.displayName}</h3>
+                  <h3 id="retirement-detail-heading" className="text-300 font-semibold">{selected.candidate.item.displayName}</h3>
                   <p className="text-muted-foreground">
                     {selected.candidate.signals.length} of {RETIREMENT_SIGNAL_ORDER.length} retirement signals · {REVIEW_LABELS[selected.state]}
                   </p>
@@ -305,9 +305,9 @@ export function RetirementRadarSection({
                     const unknown = selected.candidate.unknown.includes(id);
                     if (!present && !unknown) return null;
                     return (
-                      <li key={id} className="flex gap-s">
+                      <li key={id} className="flex min-w-0 gap-s">
                         <span aria-hidden="true" className={cn("font-semibold", present ? "text-signal-danger-foreground" : "text-muted-foreground")}>{present ? "✕" : "?"}</span>
-                        <span><b>{RETIREMENT_SIGNAL_LABELS[id]}</b> · {present ? present.detail : "Unknown: the evidence was incomplete in this snapshot."}</span>
+                        <span className="min-w-0 flex-1"><b>{RETIREMENT_SIGNAL_LABELS[id]}</b> · {present ? present.detail : "Unknown: the evidence was incomplete in this snapshot."}</span>
                       </li>
                     );
                   })}
@@ -324,7 +324,7 @@ export function RetirementRadarSection({
                     ? selected.candidate.context.recentJobs.map((job) => `${job.status} ${job.startedAt.slice(0, 10)}`).join(" · ")
                     : "None collected"],
                 ].map(([label, value]) => (
-                  <div key={label} className="grid grid-cols-[7rem_1fr] gap-s">
+                  <div key={label} className="grid grid-cols-[7rem_minmax(0,1fr)] gap-s">
                     <dt className="text-muted-foreground">{label}</dt><dd className="break-words">{value}</dd>
                   </div>
                 ))}
@@ -335,7 +335,7 @@ export function RetirementRadarSection({
                 <button type="button" onClick={() => navigate("map", selected.candidate.item.fabricId)}
                   className="atlas-control rounded-md border border-border px-s text-200 hover:bg-accent">Open lineage</button>
               </div>
-              <fieldset className="flex flex-wrap gap-s" disabled={acknowledgementsLoading || pendingIds.has(selected.candidate.id)}>
+              <fieldset className="m-0 flex min-w-0 flex-wrap gap-s border-0 p-0" disabled={acknowledgementsLoading || pendingIds.has(selected.candidate.id)}>
                 <legend className="sr-only">Personal review state</legend>
                 {(["follow-up", "reviewed", "muted", "open"] as const).map((state) => (
                   <button key={state} type="button" aria-pressed={selected.state === state}
@@ -346,7 +346,7 @@ export function RetirementRadarSection({
                   </button>
                 ))}
               </fieldset>
-              <p className="flex items-start gap-xs text-100 text-muted-foreground">
+              <p className="flex min-w-0 items-start gap-xs text-100 text-muted-foreground">
                 <Archive className="mt-xxs icon-size-100 shrink-0" aria-hidden="true" />
                 Review state is personal. A reviewed candidate reopens when its signals change; follow-up and mute persist across synchronizations.
               </p>
