@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "3.0.11";
+  "3.0.12";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -57,6 +57,19 @@ export function sameDeploymentGeneration(
 
 export const RELEASES: AtlasRelease[] = [
   {
+    version: "3.0.12",
+    date: "2026-11-19",
+    title: "Atlas Insights across workspaces",
+    sections: [
+      {
+        title: "Changed",
+        items: [
+          "Atlas Insights: every chart now follows the Domain and Workspace filters. With All, items by type, access, lineage, retirement signals, job runs, owners and the snapshot trend add up all synchronized workspaces, not just the active one.",
+        ],
+      },
+    ],
+  },
+  {
     version: "3.0.11",
     date: "2026-11-19",
     title: "Atlas Insights tile text",
@@ -64,7 +77,7 @@ export const RELEASES: AtlasRelease[] = [
       {
         title: "Fixed",
         items: [
-          "Atlas Insights: the tile value no longer draws over its title. It used leading-none, which the theme resolves to a 0px line height.",
+          "Atlas Insights: the tile value no longer draws over its title. Its line-height utility resolved to 0px in the theme.",
         ],
       },
     ],

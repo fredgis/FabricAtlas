@@ -53,8 +53,12 @@ export interface AtlasInsights {
   items: number;
   /** Scoped workspaces whose governance summary is not available yet. */
   workspacesWithoutSummary: number;
-  /** True when the loaded workspace belongs to the scope, so detail charts apply. */
+  /** True when the loaded workspace belongs to the scope. */
   activeInScope: boolean;
+  /** Scoped workspaces whose full snapshot feeds the detail charts, out of the scoped total. */
+  detailCoverage: { loaded: number; total: number };
+  /** Items across the loaded detail snapshots. */
+  detailItems: number;
   /** Every synchronized workspace with its domain, for the filters. */
   allWorkspaces: WorkspaceInsight[];
   /** Domains of the synchronized workspaces, for the filters. */
@@ -103,9 +107,43 @@ const ACCESS_LABELS: Record<string, string> = { owner: "Owner", edit: "Edit", vi
 
 const PILLARS: readonly MicrosoftGovernancePillar[] = ["health", "protect", "trust"];
 
+/** Full snapshot of another workspace, loaded for the cross-workspace detail charts. */
+export interface InsightWorkspaceSnapshot {
+  data: AtlasData;
+  trend: readonly SnapshotSummary[];
+}
+
+/**
+ * Sums per-workspace trends: at each sync time, every workspace contributes its
+ * latest point at or before that time (carried forward), so totals never dip
+ * just because another workspace synchronized on a different day.
+ */
+export function sumTrends(series: ReadonlyArray<readonly SnapshotSummary[]>): SnapshotSummary[] {
+  const sorted = series
+    .map((points) => [...points].sort((left, right) => left.syncedAt.localeCompare(right.syncedAt)))
+    .filter((points) => points.length);
+  if (sorted.length === 1) return sorted[0];
+  const times = [...new Set(sorted.flatMap((points) => points.map((point) => point.syncedAt)))].sort();
+  return times.flatMap((syncedAt) => {
+    const current = sorted
+      .map((points) => points.filter((point) => point.syncedAt <= syncedAt).at(-1))
+      .filter((point): point is SnapshotSummary => !!point);
+    if (!current.length) return [];
+    const total: Record<string, unknown> = { snapshotId: `all:${syncedAt}`, syncedAt, label: current.at(-1)!.label };
+    for (const point of current) {
+      for (const [key, value] of Object.entries(point)) {
+        if (typeof value === "number") total[key] = (Number(total[key]) || 0) + value;
+      }
+    }
+    return [total as unknown as SnapshotSummary];
+  });
+}
+
 export function buildAtlasInsights(input: {
   data: AtlasData;
   trend: readonly SnapshotSummary[];
+  /** Full snapshots of the other scoped workspaces, keyed by lower-case workspace id. */
+  snapshots?: Readonly<Record<string, InsightWorkspaceSnapshot | null | undefined>>;
   statuses: Readonly<Record<string, PersistedWorkspaceSyncStatus>>;
   targets?: Partial<Record<PosturePillar, number>>;
   connections?: ConnectionInventoryView;
@@ -166,23 +204,40 @@ export function buildAtlasInsights(input: {
   ])) as Record<MicrosoftGovernancePillar, number | null>;
   const known = PILLARS.map((pillar) => pillars[pillar]).filter((value): value is number => value != null);
 
-  // Detail charts need the full snapshot, which is loaded for the active workspace only.
-  const detail = activeInScope ? data : { ...data, items: [], edges: [], grants: [], principals: [], jobs: [] };
-  const runs = detail.jobs.filter((job) => job.status === "completed" || job.status === "failed");
+  // Detail charts aggregate the full snapshot of every scoped workspace that is loaded.
+  const details: InsightWorkspaceSnapshot[] = workspaces.flatMap((workspace) => {
+    if (workspace.active) return [{ data, trend: input.trend }];
+    const snapshot = input.snapshots?.[workspace.id.toLowerCase()];
+    return snapshot ? [snapshot] : [];
+  });
+  const detailItems = details.flatMap((entry) => entry.data.items);
+  const detailGrants = details.flatMap((entry) => entry.data.grants);
+  const runs = details
+    .flatMap((entry) => entry.data.jobs)
+    .filter((job) => job.status === "completed" || job.status === "failed");
   const succeeded = runs.filter((job) => job.status === "completed").length;
 
   const since = now - (input.period ?? 12) * 30 * DAY_MS;
-  const trend = activeInScope
-    ? [...input.trend]
-      .filter((point) => Date.parse(point.syncedAt) >= since)
-      .sort((left, right) => left.syncedAt.localeCompare(right.syncedAt))
-    : [];
+  const trend = sumTrends(details.map((entry) => entry.trend))
+    .filter((point) => Date.parse(point.syncedAt) >= since);
 
-  const lineageEdges = detail.edges.filter((edge) => edge.source !== edge.target);
-  const connected = new Set(lineageEdges.flatMap((edge) => [edge.source, edge.target]));
-  const radar = activeInScope
-    ? buildRetirementRadar(data, findings)
-    : { candidates: [], profile: Object.fromEntries(RETIREMENT_SIGNAL_ORDER.map((id) => [id, 0])) as Record<RetirementSignalId, number> };
+  let edges = 0;
+  let resolved = 0;
+  let itemsWithLineage = 0;
+  let externalPrincipals = 0;
+  let candidates = 0;
+  const profile = Object.fromEntries(RETIREMENT_SIGNAL_ORDER.map((id) => [id, 0])) as Record<RetirementSignalId, number>;
+  for (const { data: snapshot } of details) {
+    const lineageEdges = snapshot.edges.filter((edge) => edge.source !== edge.target);
+    const connected = new Set(lineageEdges.flatMap((edge) => [edge.source, edge.target]));
+    edges += lineageEdges.length;
+    resolved += lineageEdges.filter((edge) => !edge.broken).length;
+    itemsWithLineage += snapshot.items.filter((item) => connected.has(item.fabricId)).length;
+    externalPrincipals += snapshot.principals.filter((principal) => principal.external).length;
+    const radar = buildRetirementRadar(snapshot, snapshot === data ? findings : buildGovernanceFindings(snapshot));
+    candidates += radar.candidates.length;
+    for (const id of RETIREMENT_SIGNAL_ORDER) profile[id] += radar.profile[id];
+  }
 
   const calendarStart = Math.floor(now / DAY_MS) * DAY_MS - (JOB_CALENDAR_DAYS - 1) * DAY_MS;
   const days = new Map<string, JobDay>();
@@ -204,6 +259,8 @@ export function buildAtlasInsights(input: {
     items,
     workspacesWithoutSummary: scopedInputs.length - summaries.length,
     activeInScope,
+    detailCoverage: { loaded: details.length, total: workspaces.length },
+    detailItems: detailItems.length,
     allWorkspaces,
     domainOptions: aggregateByDomain(inputs, data.governanceEvidence)
       .filter((row) => !row.empty)
@@ -216,20 +273,21 @@ export function buildAtlasInsights(input: {
     trend,
     workspaces,
     domains: aggregateByDomain(scopedInputs, data.governanceEvidence).filter((row) => !row.empty),
-    itemTypes: topSlices(count(detail.items, (item) => item.itemType), TOP_TYPES),
-    access: [...count(detail.grants, (grant) => grant.accessLevel)]
+    itemTypes: topSlices(count(detailItems, (item) => item.itemType), TOP_TYPES),
+    access: [...count(detailGrants, (grant) => grant.accessLevel)]
       .map(([key, value]) => ({ key, label: ACCESS_LABELS[key] ?? key, value }))
       .sort((left, right) => right.value - left.value),
-    externalPrincipals: detail.principals.filter((principal) => principal.external).length,
+    externalPrincipals,
     lineage: {
-      edges: lineageEdges.length,
-      resolved: lineageEdges.filter((edge) => !edge.broken).length,
-      itemsWithLineage: detail.items.filter((item) => connected.has(item.fabricId)).length,
-      lineageKnown: data.workspace.syncSections?.lineage?.status !== "failed",
+      edges,
+      resolved,
+      itemsWithLineage,
+      lineageKnown: (details.length ? details.map((entry) => entry.data) : [data])
+        .every((snapshot) => snapshot.workspace.syncSections?.lineage?.status !== "failed"),
     },
-    retirement: { candidates: radar.candidates.length, profile: radar.profile },
+    retirement: { candidates, profile },
     jobCalendar: [...days.values()],
-    owners: topSlices(count(detail.items, (item) => item.ownerName?.trim() || item.ownerEmail?.trim() || "No owner"), TOP_OWNERS, "Other owners"),
+    owners: topSlices(count(detailItems, (item) => item.ownerName?.trim() || item.ownerEmail?.trim() || "No owner"), TOP_OWNERS, "Other owners"),
     ...(input.connections
       ? { connectors: topSlices(count(input.connections.connections, (connection) => connection.connectorType || connection.connectivityType || "Unknown"), TOP_CONNECTORS) }
       : {}),

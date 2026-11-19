@@ -343,10 +343,12 @@ deployed outside the app.
 - Filters: **Domain** and **Workspace** (both *All* by default) and the
   snapshot period. Cross-workspace figures (tiles, posture by pillar,
   findings and labels by workspace, domain heatmap) come from each
-  workspace's governance summary. Detail charts need the full snapshot of the
-  active workspace (switched in the header selector); with *All* they show the
-  active workspace and say so, and when the filter excludes it they explain
-  how to switch.
+  workspace's governance summary. Since 3.0.12 the detail charts (items by
+  type, access, lineage, retirement signals, job runs, owners, snapshot
+  trend) also aggregate every workspace in the scope: Atlas reads each
+  workspace's latest validated snapshot on demand and caches it until the
+  next synchronization. Workspaces without a snapshot are counted in the card
+  subtitle ("2 of 3 workspaces with a snapshot").
 
 - Tiles: governance posture (average of the OneLake Health, Protect and Trust
   pillars), open findings, Fabric items, job success rate and sensitivity
