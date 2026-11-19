@@ -16,7 +16,7 @@ export const REPOSITORY_URL =
 
 export const APP_VERSION =
   (import.meta.env.VITE_APP_VERSION as string | undefined) ??
-  "3.0.2";
+  "3.0.3";
 
 export const BUILD_COMMIT =
   (import.meta.env.VITE_APP_BUILD_COMMIT as string | undefined) ?? "development";
@@ -56,6 +56,19 @@ export function sameDeploymentGeneration(
 }
 
 export const RELEASES: AtlasRelease[] = [
+  {
+    version: "3.0.3",
+    date: "2026-11-19",
+    title: "Accurate failure causes in collection status",
+    sections: [
+      {
+        title: "Fixed",
+        items: [
+          "Definitions, SQL and KQL metadata sections that fail now report the real failure cause instead of an earlier benign unsupported item.",
+        ],
+      },
+    ],
+  },
   {
     version: "3.0.2",
     date: "2026-11-19",

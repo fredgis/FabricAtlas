@@ -1158,6 +1158,18 @@ describe("SQL metadata permission, throttling, timeout and cancellation", () => 
     expect(sql.connects).toEqual([]);
   });
 
+  it("reports the section failure code rather than an earlier unsupported item", async () => {
+    const envelope = await collect(
+      routes({
+        [SQL_DB_URL]: () => json({}, { status: 404 }),
+        [WAREHOUSE_URL]: () => json({}, { status: 403 }),
+      }),
+      [{ id: SQL_DB, type: "SQLDatabase" }, { id: WAREHOUSE, type: "Warehouse" }],
+    ).result;
+    expect(itemStatus(envelope, SQL_DB)).toEqual({ status: "unsupported", code: "endpoint-unsupported" });
+    expect(envelope.sections.sqlProperties).toEqual({ status: "failed", code: "authorization-failed" });
+  });
+
   it("enforces the deadline, the SQL operation budget and the REST request budget", async () => {
     let now = 0;
     const late = await collect(
