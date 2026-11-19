@@ -515,6 +515,17 @@ describe("KQL metadata permission, throttling and budgets", () => {
     expect(envelope.errors).toEqual(itemStatus === "failed" ? [`kqlProperties:${EVENTHOUSE}: ${statusCode}`] : []);
   });
 
+  it("reports the section failure code rather than an earlier unsupported item", async () => {
+    const envelope = await collect(
+      routes({
+        [EVENTHOUSE_URL]: () => json({}, { status: 404 }),
+        [KQL_DB_URL]: () => json({}, { status: 403 }),
+      }),
+      [{ id: EVENTHOUSE, type: "Eventhouse" }, { id: KQL_DB, type: "KQLDatabase" }],
+    ).result;
+    expect(envelope.sections.kqlProperties).toEqual({ status: "failed", code: "authorization-failed" });
+  });
+
   it("retries transient failures and stops on persistent throttling", async () => {
     const recovered = await collect(
       routes({ [KQL_DB_URL]: [() => json({}, { status: 503 }), () => json(kqlDatabase())] }),

@@ -1060,6 +1060,18 @@ describe("workspaceCollectDefinitions permission and throttling evidence", () =>
     expect(JSON.stringify(envelope)).not.toContain("private");
   });
 
+  it("reports the section failure code rather than an earlier unsupported item", async () => {
+    const table = routes({
+      [ROUTE[ONTOLOGY]]: () => json({}, { status: 404 }),
+      [ROUTE[AGENT]]: () => json({}, { status: 409 }),
+    });
+    const envelope = await collect(table, [
+      { id: ONTOLOGY, type: "Ontology" },
+      { id: AGENT, type: "DataAgent" },
+    ]).result;
+    expect(envelope.sections.definitions).toEqual({ status: "failed", code: "upstream-http-error" });
+  });
+
   it("retries transient failures and stops the batch on persistent throttling", async () => {
     const retried = collect(
       routes({ [ROUTE[ONTOLOGY]]: [() => json({}, { status: 503 }), () => json(ontologyDefinition())] }),

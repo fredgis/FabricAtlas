@@ -214,6 +214,8 @@ interface Tracker {
   unsupported: number;
   failed: number;
   codes: DefinitionStatusCode[];
+  /** Codes of failed outcomes only, so a failure is not reported as an earlier unsupported code. */
+  failedCodes?: DefinitionStatusCode[];
 }
 
 function track(
@@ -223,11 +225,17 @@ function track(
 ): void {
   tracker[result] += 1;
   if (code && !tracker.codes.includes(code)) tracker.codes.push(code);
+  if (result === "failed" && code) {
+    tracker.failedCodes ??= [];
+    if (!tracker.failedCodes.includes(code)) tracker.failedCodes.push(code);
+  }
 }
 
 /** Python `_finish_optional_section`. */
 function finishSection(tracker: Tracker): DefinitionStatus {
-  if (tracker.failed) return { status: "failed", code: tracker.codes[0] ?? "upstream-failure" };
+  if (tracker.failed) {
+    return { status: "failed", code: tracker.failedCodes?.[0] ?? tracker.codes[0] ?? "upstream-failure" };
+  }
   if (tracker.success) {
     const code = tracker.unsupported ? "partial-unsupported" : tracker.codes[0];
     return code ? { status: "complete", code } : { status: "complete" };
