@@ -43,6 +43,39 @@ describe("incremental synchronization plan", () => {
     expect([...merged.config!].sort((l, r) => String(l.itemId).localeCompare(String(r.itemId)))).toEqual(full.config);
   });
 
+  it("keeps collected section statuses when the matching items were only reused", () => {
+    const full: RawSync = {
+      items: [{ id: "kql" }],
+      sections: {
+        kqlSchema: { status: "complete" },
+        kqlProperties: { status: "complete" },
+        jobs: { status: "complete" },
+        reportPages: { status: "unsupported", code: "not-applicable" },
+      },
+      capabilities: { kqlSchema: { status: "complete" } },
+    };
+    const fresh: RawSync = {
+      items: full.items,
+      sections: {
+        kqlSchema: { status: "unsupported", code: "not-applicable" },
+        kqlProperties: { status: "unsupported", code: "no-structural-properties" },
+        jobs: { status: "failed", code: "rate-limited" },
+        reportPages: { status: "unsupported", code: "not-applicable" },
+      },
+      capabilities: { kqlSchema: { status: "unsupported", code: "not-applicable" } },
+    };
+    const merged = applyReusedEnrichment(fresh, full, ["kql"]);
+    expect(merged.sections).toEqual({
+      kqlSchema: { status: "complete" },
+      kqlProperties: { status: "complete" },
+      jobs: { status: "failed", code: "rate-limited" },
+      reportPages: { status: "unsupported", code: "not-applicable" },
+    });
+    expect(merged.capabilities).toEqual({ kqlSchema: { status: "complete" } });
+    expect(applyReusedEnrichment(fresh, full, []).sections?.kqlSchema)
+      .toEqual({ status: "unsupported", code: "not-applicable" });
+  });
+
   it("keeps object-level edges of reused items so catalog object ids stay stable", () => {
     const edge = (itemId: string, table: string, column: string) => ({
       source: { itemId, kind: "sourceObject", id: `fabric-object://${itemId}/kql-table/${table}`, name: table, tableName: table },
