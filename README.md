@@ -168,6 +168,7 @@ Each block below is collapsed; open the one you need.
 | Area | Included in Fabric Atlas 3.0 |
 |---|---|
 | Workspaces and sync | Shared workspace scope, independent validated snapshots, persisted per-workspace run status, active-workspace switching, staged progress and last-known-good fallback |
+| Atlas Insights (3.0.9) | Charts-only dashboard in the left menu: posture, findings, items, job success and label coverage tiles, snapshot trend with a dashed linear projection, posture by pillar, findings and label coverage by workspace, domain × pillar heatmap, items by type, access by level, lineage health, retirement signals, job-run calendar, items per owner and connections by connector. Empty or unknown evidence is drawn as a ghost or hatched chart with a short note, never as zero or healthy |
 | Catalog and search | Item Catalog with facets and tag scope, Collection status with the reason for each missing section (for example schema-enabled Lakehouses, whose tables come only from the SQL analytics endpoint), alphabetized Asset Catalog, `Ctrl+K` search with description snippets, Request access link, Markdown identity sheet export per item, SQL/KQL/semantic/Ontology 2.0/graph/Data Agent inventory |
 | Lineage and impact | Trusted Atlas graph, connected type-filter context, stable Impact mode, Item Relations Preview, Evidence, Changes, X-Ray, notebook and semantic object lineage, Eventstream source and destination lineage, exportable impact reports, and [external lineage](docs/external-lineage.md): OpenLineage import, link to Fabric items and NDJSON export |
 | Governance | Findings with Fix in Fabric links, Why panel and priority score, sensitivity downgrade along lineage, dormant producers, Retirement radar (3.0.5), Dataflow Gen1 to upgrade, Fabric app default identity, My items, OneLake catalog pillars (Health, Protect, Trust), JSON and snapshot export, Teams Adaptive Card and optional webhook, Fabric domain names, filter and per-domain posture, tenant settings drift, a closed six-pillar Governance Radar, snapshot comparison, history, item-family Coverage, posture targets, Policies & AI with policy set rules (Preview) and Data Agent telemetry switches, Sync Brief to Teams and optional AI description suggestions |
@@ -332,6 +333,27 @@ can be resolved, Object Lineage shows the notebook's verified item-level
 upstream and downstream dependencies instead of an empty graph.
 
 ![Fabric Atlas object lineage](docs/screenshots/object-lineage-v2.png)
+
+#### Atlas Insights
+
+Since 3.0.9, **Explore > Atlas Insights** is a charts-only dashboard built from
+the validated snapshots already loaded by Atlas; nothing is collected or
+deployed outside the app.
+
+- Tiles: governance posture, open findings, Fabric items, job success rate and
+  sensitivity label coverage, with rings or sparklines.
+- Charts: snapshot trend over the last 3, 6 or 12 months (with a dashed
+  **Projection**, a linear extrapolation that is labeled as such), posture by
+  pillar against targets, findings and label coverage by synchronized
+  workspace (from their governance summaries), domain × pillar heatmap, items
+  by type, access by level, lineage health gauges, retirement signal radar,
+  job-run calendar (recent runs kept per item), items per owner and
+  connections by connector.
+- A card with no data shows a ghost of its chart and a short reason (for
+  example *Needs at least two validated snapshots*); Unknown evidence is
+  hatched, never drawn as zero or healthy.
+- Each card opens the matching Atlas view, downloads its chart as PNG and has
+  a *View data* table; every chart has a text alternative.
 
 #### Governance Center
 

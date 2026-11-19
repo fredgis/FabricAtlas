@@ -19,6 +19,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import {
   Activity,
   BarChart3,
+  PieChart,
   Boxes,
   Cable,
   Compass,
@@ -92,6 +93,7 @@ export type { Tab } from "./atlas/navigation";
 const overviewLoader = () => import("./atlas/views/Overview");
 const mapLoader = () => import("./atlas/views/Map");
 const externalLoader = () => import("./atlas/views/ExternalLineage");
+const insightsLoader = () => import("./atlas/views/Insights");
 const catalogLoader = () => import("./atlas/views/Catalog");
 const assetCatalogLoader = () => import("./atlas/views/AssetCatalog");
 const accessLoader = () => import("./atlas/views/Access");
@@ -105,6 +107,9 @@ const aboutLoader = () => import("./atlas/views/About");
 
 const OverviewView = lazy(() =>
   overviewLoader().then((module) => ({ default: module.OverviewView })),
+);
+const InsightsView = lazy(() =>
+  insightsLoader().then((module) => ({ default: module.InsightsView })),
 );
 const MapView = lazy(() =>
   mapLoader().then((module) => ({ default: module.MapView })),
@@ -154,6 +159,7 @@ const AboutView = lazy(() =>
 
 const VIEW_LOADERS: Partial<Record<Tab, () => Promise<unknown>>> = {
   overview: overviewLoader,
+  insights: insightsLoader,
   map: mapLoader,
   external: externalLoader,
   catalog: catalogLoader,
@@ -176,6 +182,7 @@ const NAV_GROUPS: {
     label: "Explore",
     items: [
       { id: "overview", label: "Overview", icon: BarChart3 },
+      { id: "insights", label: "Atlas Insights", icon: PieChart, badge: "New" },
       { id: "map", label: "Map & lineage", icon: Waypoints },
       { id: "external", label: "External lineage", icon: Globe },
       { id: "catalog", label: "Catalog", icon: FolderTree },
@@ -771,6 +778,7 @@ function App() {
                 }
               >
               {tab === "overview" && <OverviewView onOpen={navigate} />}
+              {tab === "insights" && <InsightsView onNavigate={navigate} />}
               {tab === "map" && <MapView />}
               {tab === "external" && <ExternalLineageView />}
               {tab === "catalog" && (

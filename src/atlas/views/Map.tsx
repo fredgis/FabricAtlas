@@ -142,6 +142,7 @@ import {
 } from "../lineage";
 import { xrayObjectKey } from "../semantic-xray";
 
+import { MINIMAP_H, MINIMAP_PAD, MINIMAP_W, minimapViewportStyle } from "../minimap";
 const NODE_W = 220;
 const NODE_H = 76;
 const OBJECT_W = 224;
@@ -808,6 +809,27 @@ export function MapView({
   const suppressItemClick = useRef(false);
   const suppressObjectClick = useRef(false);
   const mapRef = useRef<HTMLDivElement>(null);
+  const [mapViewport, setMapViewport] = useState({ left: 0, top: 0, width: 0, height: 0 });
+  const readMapViewport = useCallback(() => {
+    const viewport = mapRef.current;
+    if (!viewport) return;
+    setMapViewport((previous) =>
+      previous.left === viewport.scrollLeft && previous.top === viewport.scrollTop &&
+      previous.width === viewport.clientWidth && previous.height === viewport.clientHeight
+        ? previous
+        : { left: viewport.scrollLeft, top: viewport.scrollTop, width: viewport.clientWidth, height: viewport.clientHeight });
+  }, []);
+  useEffect(() => {
+    const viewport = mapRef.current;
+    if (!viewport) return;
+    const frame = window.requestAnimationFrame(readMapViewport);
+    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(readMapViewport);
+    observer?.observe(viewport);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer?.disconnect();
+    };
+  }, [readMapViewport, zoom]);
   const viewportRestoreFrame = useRef<number | undefined>(undefined);
 
   const preserveMapViewport = () => {
@@ -1639,6 +1661,28 @@ export function MapView({
     setIsPanning(false);
   };
 
+  /** Centers the map on the graph point under the pointer in the minimap. */
+  const minimapNavigate = (event: RPE<HTMLDivElement>) => {
+    const viewport = mapRef.current;
+    if (!viewport) return;
+    const box = event.currentTarget.getBoundingClientRect();
+    const graphX = ((event.clientX - box.left - MINIMAP_PAD) / MINIMAP_W) * Math.max(bounds.width, 1);
+    const graphY = ((event.clientY - box.top - MINIMAP_PAD) / MINIMAP_H) * Math.max(bounds.height, 1);
+    viewport.scrollLeft = graphX * zoom - viewport.clientWidth / 2;
+    viewport.scrollTop = graphY * zoom - viewport.clientHeight / 2;
+    readMapViewport();
+  };
+  const minimapPointerDown = (event: RPE<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    minimapNavigate(event);
+  };
+  const minimapPointerMove = (event: RPE<HTMLDivElement>) => {
+    event.stopPropagation();
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) minimapNavigate(event);
+  };
+
   const objectNodeClick = (
     event: RME<HTMLButtonElement>,
     node: ObjectNode,
@@ -2401,6 +2445,7 @@ export function MapView({
         <>
         <div
           ref={mapRef}
+          onScroll={readMapViewport}
           onPointerDown={mapPanStart}
           onPointerMove={mapPanMove}
           onPointerUp={mapPanEnd}
@@ -3162,11 +3207,20 @@ export function MapView({
             }
           />}
 
-          <div className="sticky bottom-[14px] float-right z-20 mr-[14px] flex w-fit flex-col items-end gap-s">
+          {/* Full-width sticky strip so the controls stay in view when the map scrolls horizontally. */}
+          <div className="pointer-events-none sticky bottom-[14px] left-0 z-20 flex w-full flex-col items-end gap-s pr-[14px]">
           {mode === "items" && visibleItems.length > 0 && (
             <div
               aria-hidden="true"
-              className="pointer-events-none relative h-[90px] w-[160px] overflow-hidden rounded-lg border border-border bg-card shadow-fabric-4"
+              data-testid="map-minimap"
+              title="Click or drag to move the view"
+              onPointerDown={minimapPointerDown}
+              onPointerMove={minimapPointerMove}
+              onPointerUp={(event) => {
+                event.stopPropagation();
+                event.currentTarget.releasePointerCapture?.(event.pointerId);
+              }}
+              className="pointer-events-auto relative h-[90px] w-[160px] cursor-pointer touch-none overflow-hidden rounded-lg border border-border bg-card shadow-fabric-4"
             >
               {visibleItems.map((item) => {
                 const point = posOf(item.fabricId);
@@ -3206,10 +3260,14 @@ export function MapView({
                   }}
                 />
               ))}
-              <span className="absolute inset-[7px] rounded border border-primary/60 bg-primary/5" />
+              <span
+                data-testid="map-minimap-viewport"
+                className="pointer-events-none absolute rounded border-2 border-primary/70 bg-primary/10"
+                style={minimapViewportStyle(mapViewport, zoom, bounds)}
+              />
             </div>
           )}
-          <div className="flex w-fit items-center gap-[3px] rounded-lg border border-border bg-card p-[3px] shadow-fabric-4">
+          <div className="pointer-events-auto flex w-fit items-center gap-[3px] rounded-lg border border-border bg-card p-[3px] shadow-fabric-4">
             <button
               type="button"
               aria-label="Zoom out"
